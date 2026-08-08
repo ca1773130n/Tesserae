@@ -289,6 +289,124 @@ def test_sessions_present_graph_json_has_no_memory_fields(tmp_path: Path) -> Non
 
 
 # ---------------------------------------------------------------------------
+# The LLM finding-mint path (the second blind spot).
+#
+# Every guard above pins ``llm_enabled="false"``, so findings come from the
+# STRUCTURAL pass and ``SessionGraphExtractor._mint_findings`` — which stamps
+# ``first_seen_at`` from transcript turn timestamps — is never reached. The
+# seeded sessions above also carry no ``metadata["turns"]`` at all. These tests
+# drive that path with a stub extractor and prove it stays byte-stable.
+# ---------------------------------------------------------------------------
+
+_TURN_TS = ("2026-05-19T10:07:00Z", "2026-05-19T11:42:00Z")
+
+
+def _seed_session_with_turns(wiki: ProjectWiki) -> None:
+    from tesserae.harness_sessions import HarnessSession
+    from tesserae.harness_sessions_db import HarnessSessionsDB
+
+    session = HarnessSession(
+        id="phase5-turn-session-001",
+        slug="phase5-turn-session",
+        harness="claude-code",
+        agent_label="Claude Code",
+        project_name="phase5_idempotence",
+        project_root=str(wiki.project_root.resolve()),
+        started_at="2026-05-19T10:00:00Z",
+        ended_at="2026-05-19T12:00:00Z",
+        title="turn-stamped session",
+        metadata={
+            "turns": [
+                {"role": "user", "text": "how do atomic writes work", "timestamp": _TURN_TS[0]},
+                {"role": "assistant", "text": "use a pid-suffixed tmp file", "timestamp": _TURN_TS[1]},
+            ]
+        },
+    )
+    HarnessSessionsDB(wiki.project_root / ".tesserae" / "harness_sessions.db").upsert(session)
+
+
+@pytest.fixture()
+def _stub_llm_findings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force the LLM finding pass on with a deterministic, offline extractor."""
+    import tesserae.session_graph as sg
+    from tesserae.session_graph_llm import Finding
+
+    def _extract(session, transcript_turns, doc_id_context, client, **kwargs):
+        return [
+            Finding(
+                kind="insight",
+                body="atomic writes need a pid-suffixed tmp file",
+                turn_ids=[1],
+                references=[],
+            )
+        ]
+
+    real_cls = sg.SessionGraphExtractor
+
+    def _factory(**kwargs):
+        # A non-None client is the extractor's only LLM gate; the stub above
+        # never touches it, so no backend is required (or contacted).
+        kwargs["json_client"] = kwargs.get("json_client") or object()
+        return real_cls(**kwargs)
+
+    monkeypatch.setattr(sg, "extract_with_llm", _extract)
+    monkeypatch.setattr(sg, "SessionGraphExtractor", _factory)
+
+
+def test_llm_minted_findings_are_dated_by_their_turn(
+    tmp_path: Path, _stub_llm_findings: None
+) -> None:
+    """A minted finding carries its source turn's timestamp, not started_at."""
+    wiki = _seed_project(tmp_path / "project")
+    _seed_session_with_turns(wiki)
+    wiki.compile(
+        session_options=SessionExtractionOptions(enabled=True, llm_enabled="true"),
+        vault_pull=False,
+    )
+
+    graph = json.loads(_graph_path(wiki).read_text(encoding="utf-8"))
+    minted = [
+        n
+        for n in graph["nodes"]
+        if (n.get("metadata") or {}).get("extractor") == "session-llm"
+    ]
+    assert minted, "the LLM finding pass must have minted a node"
+    assert {(n["metadata"] or {}).get("first_seen_at") for n in minted} == {_TURN_TS[1]}
+
+
+def test_llm_minted_findings_compile_byte_identically(
+    tmp_path: Path, _stub_llm_findings: None
+) -> None:
+    """Two compiles over the same transcript must produce identical bytes.
+
+    Guards the turn-timestamp derivation the same way the sibling tests guard
+    the session pass: bump the sidecar to a fixed FUTURE timestamp between the
+    two compiles so any wall-clock or access-state leak is glaring.
+    """
+    wiki = _seed_project(tmp_path / "project")
+    _seed_session_with_turns(wiki)
+    opts = SessionExtractionOptions(enabled=True, llm_enabled="true")
+
+    wiki.compile(session_options=opts, vault_pull=False)
+    graph_path = _graph_path(wiki)
+    first_bytes = graph_path.read_bytes()
+
+    future_ts = "2999-12-31T23:59:59+00:00"
+    for node_id in read_memory(wiki.paths.sqlite):
+        bump_access(wiki.paths.sqlite, node_id, future_ts)
+
+    wiki.compile(session_options=opts, vault_pull=False)
+    second_bytes = graph_path.read_bytes()
+
+    assert hashlib.sha256(second_bytes).hexdigest() == hashlib.sha256(first_bytes).hexdigest()
+    assert second_bytes == first_bytes
+    text = graph_path.read_text(encoding="utf-8")
+    assert "2999-12-31T23:59:59" not in text
+    for field_name in _MEMORY_FIELDS:
+        assert field_name not in text
+
+
+# ---------------------------------------------------------------------------
 # LLM-pass gating consistency (KB-03 / KB-04): supersede and contradiction must
 # run TOGETHER (gate on) or NOT AT ALL (gate off, the default) — never one
 # without the other. The two graph-mutating LLM passes share ONE compile-level
