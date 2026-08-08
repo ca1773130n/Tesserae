@@ -81,13 +81,15 @@ fi
 # closes the loop on the Tesserae side.
 #
 # Skip silently if:
+#   - the project has not opted into the code layer at all
 #   - opted out via ``sync_code_on_start: false``
 #   - the project doesn't use CodeGraph (no .codegraph/codegraph.db)
 #   - code-graph.json is already at-or-newer than the DB
 #   - tesserae binary isn't on PATH
 #   - another sync-code is already running (concurrent re-entry guard)
 # --------------------------------------------------------------------
-if [[ "$(read_plugin_setting sync_code_on_start)" == "true" ]]; then
+if [[ "$(code_layer_enabled)" == "true" &&
+      "$(read_plugin_setting sync_code_on_start)" == "true" ]]; then
   codegraph_db="${project_root}/.codegraph/codegraph.db"
   code_graph_json="${tdir}/code-graph.json"
 

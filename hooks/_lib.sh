@@ -86,6 +86,44 @@ hook_autocompile_enabled() {
 }
 
 # --------------------------------------------------------------------
+# code_layer_enabled — is the OPT-IN code layer switched on here?
+#
+# Echoes "true" only when .tesserae/config.json carries an
+# ``external_tools`` entry with id ``codegraph`` that is not explicitly
+# disabled. Absent config, absent entry, unreadable JSON, or no python3:
+# "false". Off is the safe answer for all of them — a hook that guesses
+# "on" spends CPU maintaining an artifact for a project that never asked.
+#
+# This deliberately mirrors ``ProjectWiki._code_layer_enabled``. The two
+# have to agree: the compile DELETES code-graph.json when the layer is
+# off, so a hook that kept syncing on its own opinion would rewrite an
+# artifact the next compile removes, forever, and each side would look
+# correct in isolation.
+# --------------------------------------------------------------------
+code_layer_enabled() {
+  local project_root cfg
+  project_root=$(resolve_project_root)
+  cfg="${project_root}/.tesserae/config.json"
+  if [[ ! -f "$cfg" ]]; then
+    echo "false"
+    return 0
+  fi
+  python3 - "$cfg" 2>/dev/null <<'PY' || echo "false"
+import json, sys
+try:
+    cfg = json.load(open(sys.argv[1], encoding="utf-8"))
+    tools = cfg.get("external_tools") or []
+except Exception:
+    print("false"); raise SystemExit(0)
+for tool in tools:
+    if isinstance(tool, dict) and tool.get("id") == "codegraph":
+        print("false" if tool.get("enabled", True) is False else "true")
+        raise SystemExit(0)
+print("false")
+PY
+}
+
+# --------------------------------------------------------------------
 # read_plugin_setting <key> — parse the project's
 # .claude/tesserae.local.md frontmatter for one hooks.<key> value.
 # Recognises: hooks.session_start, hooks.session_end,
@@ -105,10 +143,12 @@ read_plugin_setting() {
   local default_value
   case "$key" in
     session_start|session_end|pretooluse_compile) default_value="true" ;;
-    # The CodeGraph adapter ships a fast, idempotent sync — opt-in by
-    # default so projects that use ``tesserae code sync`` get
-    # an always-fresh code-graph.json without per-project setup. Set
-    # ``sync_code_on_start: false`` in tesserae.local.md to disable.
+    # Both sync_code_* settings are opt-OUTs *within* an already-enabled
+    # code layer, not the switch that turns the layer on. Their callers
+    # check ``code_layer_enabled`` first, so "true" here means "sync
+    # freely IF this project asked for a code layer" — which is why a
+    # default of true is not a way to get code extraction you never
+    # requested. See ``code_layer_enabled`` above for the actual gate.
     sync_code_on_start) default_value="true" ;;
     # PostToolUse(Edit|Write|MultiEdit) re-runs ``tesserae project
     # sync-code`` after every edit, debounced to once every 30s.

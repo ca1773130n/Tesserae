@@ -145,18 +145,77 @@ def entry_point():
 '''
 
 
+def _enable_code_layer(wiki: ProjectWiki) -> ProjectWiki:
+    """Switch the opt-in code layer on for a fixture project.
+
+    The layer is OFF unless a project asks for it by name, and
+    ``source_kind="Repository"`` no longer implies it — that implicit trigger
+    is exactly what the opt-in replaced. Every integration test below is about
+    the cache sitting BEHIND the switch, so each one has to throw it first.
+    ``test_code_layer_is_off_without_the_opt_in`` covers the other half.
+    """
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["external_tools"] = [*(cfg.get("external_tools") or []), {"id": "codegraph"}]
+    wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    return wiki
+
+
 def _seed_repo_project(root: Path) -> ProjectWiki:
-    """Repository-kind project: one root-level .py + a README markdown."""
+    """Repository-kind project with the code layer switched on: one root-level
+    .py + a README markdown."""
     root.mkdir(parents=True, exist_ok=True)
     (root / "app.py").write_text(APP_PY, encoding="utf-8")
     (root / "README.md").write_text(
         "# cgcache\n\nFixture repo for the code-graph cache.\n", encoding="utf-8"
     )
-    return ProjectWiki.init(root, name="cgcache", source_kind="Repository", sources=["."])
+    return _enable_code_layer(
+        ProjectWiki.init(root, name="cgcache", source_kind="Repository", sources=["."])
+    )
 
 
 def _compile(wiki: ProjectWiki) -> dict:
     return wiki.compile(session_options=SessionExtractionOptions(enabled=False))
+
+
+def test_code_layer_is_off_without_the_opt_in(tmp_path: Path) -> None:
+    """A Repository-kind project compiles NO code layer until it asks for one.
+
+    This is the whole point of the switch, and it is asserted on the kind that
+    used to trigger the layer implicitly — ``Repository``. Everything else in
+    this module runs with the layer on, so without this test the default path
+    (the one almost every real project takes) would have no coverage at all.
+    """
+    root = tmp_path / "proj"
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "app.py").write_text(APP_PY, encoding="utf-8")
+    (root / "README.md").write_text("# cgcache\n\nNo code layer here.\n", encoding="utf-8")
+    wiki = ProjectWiki.init(root, name="cgcache", source_kind="Repository", sources=["."])
+
+    result = _compile(wiki)
+
+    # The branch did not run: no report, no cache file, no artifact.
+    assert result.get("code_graph_cache") is None
+    assert not wiki.paths.code_graph_cache.exists()
+    assert not wiki.paths.code_graph.exists()
+    # And nothing code-shaped reached the graph the agents actually read.
+    graph = json.loads(wiki.paths.graph.read_text(encoding="utf-8"))
+    assert not [n for n in graph["nodes"] if n.get("type") in {"SourceFile", "CodeSymbol"}]
+
+    # Flipping the switch on the SAME project turns it on — so it is the
+    # opt-in deciding, not anything about the project's kind or contents.
+    _enable_code_layer(wiki)
+    enabled = _compile(wiki)
+    assert enabled["code_graph_cache"]["reused"] is False
+    assert wiki.paths.code_graph.exists()
+
+    # ...and flipping it back off removes the artifact rather than leaving a
+    # stale snapshot of the repo behind to answer reads.
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["external_tools"] = [{"id": "codegraph", "enabled": False}]
+    wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    disabled = _compile(wiki)
+    assert disabled.get("code_graph_cache") is None
+    assert not wiki.paths.code_graph.exists()
 
 
 def test_second_compile_reuses_code_graph(tmp_path: Path) -> None:
@@ -195,7 +254,9 @@ def test_cache_parity_with_fresh_project(tmp_path: Path) -> None:
 
     # Fresh arm: identical final tree, single compile, no cache file.
     shutil.rmtree(wiki.root)
-    fresh = ProjectWiki.init(root, name="cgcache", source_kind="Repository", sources=["."])
+    fresh = _enable_code_layer(
+        ProjectWiki.init(root, name="cgcache", source_kind="Repository", sources=["."])
+    )
     assert not fresh.paths.code_graph_cache.exists()
     fresh_result = _compile(fresh)
     assert fresh_result["code_graph_cache"]["reused"] is False

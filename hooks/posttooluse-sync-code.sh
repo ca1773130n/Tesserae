@@ -21,7 +21,15 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_lib.sh
 . "${HERE}/_lib.sh"
 
-# Opt-out check (default: true).
+# The code layer is opt-in, and so is maintaining it. A project that never
+# asked for one must not pay for a background sync on every edit — this is
+# the gate, and it comes FIRST so the setting below can only ever narrow an
+# already-granted permission, never widen it into one.
+if [[ "$(code_layer_enabled)" != "true" ]]; then
+  exit 0
+fi
+
+# Opt-out within an enabled layer (default: true).
 if [[ "$(read_plugin_setting sync_code_on_edit)" != "true" ]]; then
   exit 0
 fi

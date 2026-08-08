@@ -1555,6 +1555,41 @@ def _handle_ingest(args: argparse.Namespace) -> int:
         return 0
 
 
+def _warn_if_code_layer_disabled(project_root: Path, output: Path) -> None:
+    """Say so when this command writes an artifact the next compile will delete.
+
+    Running ``tesserae code ingest``/``code sync`` by hand IS consent, so
+    neither command refuses. But with the layer opted out, ``_write_artifacts``
+    unlinks ``code-graph.json`` on the next compile — and a file that appears,
+    works, and then vanishes with nothing said reads as a bug in Tesserae
+    rather than as the setting doing exactly what it says.
+
+    Only warns for the default output path. Pointing ``--output`` somewhere
+    else puts the file outside the compile's reach, where the warning would be
+    false.
+    """
+    if output.resolve() != (project_root / ".tesserae" / "code-graph.json"):
+        return
+    config = project_root / ".tesserae" / "config.json"
+    try:
+        tools = json.loads(config.read_text(encoding="utf-8")).get("external_tools") or []
+    except (OSError, json.JSONDecodeError):
+        return
+    for tool in tools:
+        if isinstance(tool, dict) and tool.get("id") == "codegraph":
+            if tool.get("enabled", True) is not False:
+                return
+            break
+    print(
+        f"Warning: the code layer is not enabled for this project, so the next "
+        f"`tesserae compile` will DELETE {output}.\n"
+        f"         To keep it, add an external_tools entry to "
+        f"{config}:\n"
+        f'           {{"id": "codegraph"}}',
+        file=sys.stderr,
+    )
+
+
 def _handle_ingest_code(args: argparse.Namespace) -> int:
     if True:
         # Defer the import so the rest of the CLI does not pay the cost
@@ -1567,6 +1602,7 @@ def _handle_ingest_code(args: argparse.Namespace) -> int:
         result = extractor.extract(args.paths or None)
         output = Path(args.output) if args.output else (project_root / ".tesserae" / "code-graph.json")
         write_code_graph(result.graph, output)
+        _warn_if_code_layer_disabled(project_root, output)
         print(
             "Ingested code graph: "
             f"processed={result.processed_files} skipped_dirs={result.skipped_dirs} "
@@ -1601,6 +1637,7 @@ def _handle_sync_code(args: argparse.Namespace) -> int:
             return 2
         output = Path(args.output) if args.output else (project_root / ".tesserae" / "code-graph.json")
         result = write_code_graph_from_codegraph(db_path, output, project_root=project_root)
+        _warn_if_code_layer_disabled(project_root, output)
         print(
             "Synced code graph from CodeGraph: "
             f"nodes={result.nodes} edges={result.edges} "

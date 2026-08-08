@@ -13,6 +13,7 @@ we can observe the four interesting branches:
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import time
@@ -38,6 +39,13 @@ def fake_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Minimal graph.json so the hook's pre-check doesn't short-circuit.
     (project / ".tesserae" / "graph.json").write_text(
         '{"nodes": [], "edges": []}\n', encoding="utf-8"
+    )
+    # The code layer is opt-in, and the sync-code branch of this hook honours
+    # that gate, so the sync tests below have to switch it on.
+    # ``test_sync_code_silent_without_the_code_layer_opt_in`` removes it again.
+    (project / ".tesserae" / "config.json").write_text(
+        json.dumps({"name": "proj", "sources": [], "external_tools": [{"id": "codegraph"}]}),
+        encoding="utf-8",
     )
 
     # Stubbed tesserae binary — records every invocation.
@@ -150,6 +158,29 @@ def test_sync_code_skipped_when_json_is_fresh(fake_project):
 def test_sync_code_silent_when_codegraph_dir_missing(fake_project):
     proj = fake_project["project"]
     # No .codegraph/ at all.
+
+    result = _run_hook(fake_project["env"], proj)
+    assert result.returncode == 0
+    assert "syncing code-graph" not in result.stdout, result.stdout
+    time.sleep(0.3)
+    assert not fake_project["invocation_log"].exists()
+
+
+def test_sync_code_silent_without_the_code_layer_opt_in(fake_project):
+    """No code-layer opt-in → no sync at session start, DB present or not.
+
+    Same contract as the PostToolUse hook: a CodeGraph DB on disk is not the
+    project asking Tesserae to track it. Asserted here as well because these
+    are two separate hooks reading two separate settings, and the one that
+    fires at session start is the one a user never sees decide.
+    """
+    proj = fake_project["project"]
+    codegraph_dir = proj / ".codegraph"
+    codegraph_dir.mkdir()
+    (codegraph_dir / "codegraph.db").write_text("db", encoding="utf-8")
+    (proj / ".tesserae" / "config.json").write_text(
+        json.dumps({"name": "proj", "external_tools": []}), encoding="utf-8"
+    )
 
     result = _run_hook(fake_project["env"], proj)
     assert result.returncode == 0
