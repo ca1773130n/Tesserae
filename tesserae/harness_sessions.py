@@ -20,11 +20,22 @@ from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Non-text content blocks discarded by :func:`_content_to_text`, tallied by
-# block ``type``. Reset at the start of each :func:`discover_harness_sessions`
-# run and summarised at the end of it, so the number describes one discovery
-# rather than accumulating across an unknowable span of calls.
+# Content blocks with no text projection, tallied by block ``type``. Reset at
+# the start of each :func:`discover_harness_sessions` run and reported at the
+# end of it, so the number describes one discovery rather than accumulating
+# across an unknowable span of calls.
 _DROPPED_CONTENT_BLOCKS: Dict[str, int] = {}
+
+# How far into nested ``content`` lists the tally walks. Harness images sit at
+# depth 1 (inside a ``tool_result``) and the Anthropic content schema does not
+# nest a tool_result inside a tool_result, so 1 is the real-world maximum; a
+# scan of 150 recent transcripts found nothing deeper. The cap is set well
+# above that purely so a malformed or hand-edited transcript cannot make the
+# importer walk forever — termination must not depend on the input being
+# well-formed. Hitting it is itself counted (``<truncated>``) rather than
+# silently dropping the tail, which is the whole point of this tally.
+_MAX_CONTENT_DEPTH = 8
+_TRUNCATED_KEY = "<truncated>"
 
 
 def reset_dropped_content_blocks() -> None:
@@ -33,12 +44,79 @@ def reset_dropped_content_blocks() -> None:
 
 
 def dropped_content_block_counts() -> Dict[str, int]:
-    """Snapshot of non-text content blocks dropped, keyed by block ``type``.
+    """Snapshot of content blocks with no text projection, keyed by ``type``.
 
     A copy: callers measuring the multimodal gap must not be able to edit the
     tally they are reading.
     """
     return dict(_DROPPED_CONTENT_BLOCKS)
+
+
+def format_dropped_content_blocks() -> Optional[str]:
+    """One line naming what the last discovery could not represent, or None.
+
+    None when nothing was dropped — a summary printed unconditionally becomes
+    background noise, and an operator stops reading it.
+    """
+    dropped = dropped_content_block_counts()
+    if not dropped:
+        return None
+    histogram = ", ".join(f"{key}={dropped[key]}" for key in sorted(dropped))
+    return (
+        f"Dropped {sum(dropped.values())} content block(s) with no text "
+        f"projection: {histogram}"
+    )
+
+
+def _tally_dropped_blocks(content: object, depth: int = 0) -> None:
+    """Count every block in ``content`` that has no text projection, by type.
+
+    Recurses into a block's own ``content`` list, because that is where the
+    multimodal gap actually lives: harness images are attached INSIDE a
+    ``tool_result``, never at the top level of a message. A tally that stopped
+    at the ``tool_result`` counted it as one opaque drop and reported zero
+    images on a machine that had them.
+
+    A container is counted under its own type AND descended into. Both facts
+    are true and neither implies the other: a ``tool_result`` full of text is a
+    real drop (``_content_to_text`` returns nothing for it), and an image
+    inside it is a second, different one.
+    """
+    if not isinstance(content, list):
+        return
+    if depth > _MAX_CONTENT_DEPTH:
+        _DROPPED_CONTENT_BLOCKS[_TRUNCATED_KEY] = (
+            _DROPPED_CONTENT_BLOCKS.get(_TRUNCATED_KEY, 0) + 1
+        )
+        return
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        text = item.get("text") or item.get("input_text") or item.get("output_text")
+        if isinstance(text, str):
+            continue
+        kind = item.get("type")
+        key = kind if isinstance(kind, str) and kind else "<untyped>"
+        _DROPPED_CONTENT_BLOCKS[key] = _DROPPED_CONTENT_BLOCKS.get(key, 0) + 1
+        _tally_dropped_blocks(item.get("content"), depth + 1)
+
+
+def _tally_dropped_blocks_in_rows(rows: Sequence[Mapping[str, object]]) -> None:
+    """Tally one transcript, ONCE.
+
+    Deliberately not done inside :func:`_content_to_text`: that helper is
+    called an unpredictable number of times per transcript (activity, turns,
+    title/preview all re-flatten the same rows), so counting there multiplied
+    every block by the number of passes and the histogram measured passes
+    rather than content.
+    """
+    for row in rows:
+        message = row.get("message")
+        if isinstance(message, dict):
+            _tally_dropped_blocks(message.get("content"))
+        payload = row.get("payload")
+        if isinstance(payload, dict):
+            _tally_dropped_blocks(payload.get("content"))
 
 
 @dataclass(frozen=True)
@@ -712,13 +790,13 @@ def discover_harness_sessions(
     # ``image``/``document`` are the multimodal gap. Listing every type keeps
     # the measurement complete rather than shaping it with an allowlist that
     # would drift as harnesses add block types.
-    dropped = dropped_content_block_counts()
-    if dropped:
-        logger.info(
-            "session discovery: dropped %d content block(s) with no text projection (%s)",
-            sum(dropped.values()),
-            ", ".join(f"{key}={dropped[key]}" for key in sorted(dropped)),
-        )
+    #
+    # This log line is for `tesserae engine`, the only caller that configures
+    # logging. Every other entry point has to PRINT the same summary itself —
+    # see format_dropped_content_blocks() and its callers in cli.py.
+    summary = format_dropped_content_blocks()
+    if summary:
+        logger.info("session discovery: %s", summary)
     return sessions
 
 
@@ -1026,6 +1104,9 @@ def _parse_claude_session(project: Path, root: Path, path: Path) -> Optional[Har
     parsed = _parse_claude_rows(rows, project)
     if not parsed.project_match:
         return None
+    # Tallied here, after the project gate and once per transcript: only
+    # sessions this project actually imports count toward its multimodal gap.
+    _tally_dropped_blocks_in_rows(rows)
     session_id = parsed.session_id or path.stem
     timestamps = parsed.timestamps
     started_at = min(timestamps) if timestamps else ""
@@ -1129,6 +1210,7 @@ def _claude_subagent_summaries(
         rows = _parse_jsonl(path)
         if not rows or not _rows_match_project(rows, project):
             continue
+        _tally_dropped_blocks_in_rows(rows)
         timestamps = [v for row in rows if isinstance((v := row.get("timestamp")), str)]
         title, preview = _title_and_preview_from_claude(rows)
         tools, commands, files = _claude_activity(rows, project)
@@ -1161,6 +1243,7 @@ def _parse_codex_session(project: Path, root: Path, path: Path) -> Optional[Harn
     rows = _parse_jsonl(path)
     if not rows or not _rows_match_project(rows, project):
         return None
+    _tally_dropped_blocks_in_rows(rows)
     session_meta = next((r.get("payload") for r in rows if r.get("type") == "session_meta" and isinstance(r.get("payload"), dict)), {})
     session_id = str(session_meta.get("id") or path.stem) if isinstance(session_meta, dict) else path.stem
     timestamps = [v for row in rows if isinstance((v := row.get("timestamp")), str)]
@@ -1420,14 +1503,12 @@ def _title_and_preview(texts: Sequence[str]) -> Tuple[str, str]:
 
 
 def _content_to_text(content: object) -> str:
-    """Flatten a harness content payload to text, COUNTING what it cannot.
+    """Flatten a harness content payload to text.
 
-    Images, documents and other non-text blocks have no textual projection, so
-    they are still dropped — but dropping them silently made the size of the
-    multimodal gap unknowable. Tallying them by ``type`` turns "sessions with
-    screenshots lose the screenshot" from an invisible property of the importer
-    into a number an operator can read (see :func:`dropped_content_block_counts`
-    and the summary line at the end of :func:`discover_harness_sessions`).
+    PURE, and deliberately so. What it cannot represent — images, documents,
+    tool results — is counted by :func:`_tally_dropped_blocks_in_rows`, once
+    per transcript, because this helper runs over the same rows several times
+    per session and is therefore the wrong place to measure anything.
     """
     if isinstance(content, str):
         return content
@@ -1438,11 +1519,6 @@ def _content_to_text(content: object) -> str:
                 text = item.get("text") or item.get("input_text") or item.get("output_text")
                 if isinstance(text, str):
                     parts.append(text)
-                    continue
-                kind = item.get("type")
-                key = kind if isinstance(kind, str) and kind else "<untyped>"
-                _DROPPED_CONTENT_BLOCKS[key] = _DROPPED_CONTENT_BLOCKS.get(key, 0) + 1
-                logger.debug("session content: dropped a %s block (no text projection)", key)
         return "\n".join(parts)
     return ""
 

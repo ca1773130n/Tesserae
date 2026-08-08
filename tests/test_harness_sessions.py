@@ -751,109 +751,198 @@ def test_local_host_id_is_stable_and_overridable(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Non-text content blocks: counted, not silently discarded. Images and
-# documents attached to a session used to vanish inside _content_to_text with
-# no trace, so the size of the multimodal gap was unknowable.
+# Non-text content blocks: counted, and SAID OUT LOUD. Images attached to a
+# session used to vanish inside _content_to_text with no trace, so the size of
+# the multimodal gap was unknowable. Two things make it knowable: the tally has
+# to reach the blocks (harness images sit NESTED inside a tool_result, never at
+# the top level), and an operator has to be able to read the number from the
+# command they actually ran.
+#
+# Every test below drives a public entry point — `sessions discover` or
+# discover_harness_sessions() — so it fails on the old code because the
+# BEHAVIOUR is absent, not because a helper it imports is.
 # ---------------------------------------------------------------------------
 
 
-def test_content_to_text_counts_dropped_blocks_by_type():
-    from tesserae.harness_sessions import (
-        _content_to_text,
-        dropped_content_block_counts,
-        reset_dropped_content_blocks,
+def _transcript(root, project, blocks, name="s1.jsonl"):
+    """Write a one-row Claude transcript whose message carries ``blocks``."""
+    from tesserae import harness_sessions as hs
+
+    directory = root / "projects" / hs._claude_project_dir(project.resolve())
+    directory.mkdir(parents=True, exist_ok=True)
+    row = {
+        "type": "user",
+        "cwd": str(project.resolve()),
+        "timestamp": "2026-05-01T10:00:00Z",
+        "sessionId": name.split(".")[0],
+        "message": {"role": "user", "content": blocks},
+    }
+    path = directory / name
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    return path
+
+
+def _discover_output(tmp_path, blocks, capsys):
+    """Run `tesserae sessions discover` over a transcript and return stdout."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "data").mkdir()
+    (project / "data" / "seed.md").write_text(
+        "---\ntype: paper\n---\n# Seed\n\nx.\n", encoding="utf-8"
+    )
+    ProjectWiki.init(project, name="dropped_blocks")
+    root = tmp_path / "claude"
+    _transcript(root, project, blocks)
+    main(["sessions", "discover", "--project", str(project), "--root", str(root)])
+    return capsys.readouterr().out
+
+
+def test_sessions_discover_says_what_it_dropped(tmp_path, capsys):
+    """The count is only a measurement if the operator can read it.
+
+    `sessions discover` is not `tesserae engine`, so it never calls
+    logging.basicConfig — an INFO record from a library logger goes nowhere.
+    stdout, next to the counts this command already prints, is the channel.
+    """
+    out = _discover_output(
+        tmp_path,
+        [
+            {"type": "text", "text": "what is in this screenshot?"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png"}},
+        ],
+        capsys,
     )
 
-    reset_dropped_content_blocks()
-    content = [
-        {"type": "text", "text": "look at this"},
-        {"type": "image", "source": {"type": "base64", "media_type": "image/png"}},
-        {"type": "image", "source": {"type": "url", "url": "https://x/y.jpg"}},
-        {"type": "document", "source": {"type": "base64", "media_type": "application/pdf"}},
-    ]
-
-    assert _content_to_text(content) == "look at this"
-    assert dropped_content_block_counts() == {"image": 2, "document": 1}
+    assert "image=1" in out, out
+    assert "dropped" in out.lower(), out
 
 
-def test_content_to_text_counts_untyped_blocks_too():
-    from tesserae.harness_sessions import (
-        _content_to_text,
-        dropped_content_block_counts,
-        reset_dropped_content_blocks,
+def test_sessions_discover_counts_images_nested_inside_a_tool_result(tmp_path, capsys):
+    """Harness images live INSIDE tool_result["content"], never at the top level.
+
+    A scan of 150 recent transcripts under ~/.claude/projects and
+    ~/.claude-personal2/projects found nine image blocks and ZERO of them at the
+    top level. A tally that stops at the tool_result therefore reports the
+    multimodal gap as zero on a machine that has one.
+    """
+    out = _discover_output(
+        tmp_path,
+        [
+            {"type": "text", "text": "run the tool"},
+            {
+                "type": "tool_result",
+                "content": [
+                    {"type": "text", "text": "here is the render"},
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/png"}},
+                ],
+            },
+        ],
+        capsys,
     )
 
-    reset_dropped_content_blocks()
-    _content_to_text([{"source": {}}, "a bare string element"])
-    counts = dropped_content_block_counts()
-    assert counts.get("<untyped>") == 1
+    assert "image=1" in out, out
+    assert "tool_result=1" in out, out
 
 
-def test_content_to_text_does_not_count_blocks_it_kept():
-    from tesserae.harness_sessions import (
-        _content_to_text,
-        dropped_content_block_counts,
-        reset_dropped_content_blocks,
+def test_dropped_blocks_are_counted_once_per_discovery_not_once_per_pass(
+    tmp_path, capsys
+):
+    """_content_to_text runs over the same transcript several times (activity,
+    turns, title/preview). Tallying inside it multiplied every block by the
+    number of passes, so the histogram measured passes, not content."""
+    out = _discover_output(
+        tmp_path,
+        [
+            {"type": "text", "text": "one image, counted once"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png"}},
+        ],
+        capsys,
     )
 
-    reset_dropped_content_blocks()
-    assert _content_to_text([{"type": "text", "text": "kept"}]) == "kept"
-    assert _content_to_text("a plain string") == "a plain string"
-    assert dropped_content_block_counts() == {}
+    assert "image=1" in out, out
+    assert "image=2" not in out, out
 
 
-def test_dropped_content_block_counts_returns_a_snapshot():
-    """Callers must not be able to mutate the linter's own tally."""
-    from tesserae.harness_sessions import (
-        _content_to_text,
-        dropped_content_block_counts,
-        reset_dropped_content_blocks,
+def test_deeply_nested_content_terminates_and_says_it_was_truncated(tmp_path, capsys):
+    """A malformed transcript must not be able to hang the importer.
+
+    Real content nests one level (image inside tool_result). The walk is capped
+    well above that, and reaching the cap is itself reported rather than
+    silently dropping the tail — the same posture as the count itself.
+    """
+    block = {"type": "image", "source": {}}
+    for _ in range(400):
+        block = {"type": "tool_result", "content": [block]}
+
+    out = _discover_output(tmp_path, [{"type": "text", "text": "deep"}, block], capsys)
+
+    assert "<truncated>" in out, out
+
+
+def test_discover_reports_nothing_when_every_block_is_text(tmp_path, capsys):
+    """No drops, no line: the summary must not become constant noise."""
+    out = _discover_output(
+        tmp_path, [{"type": "text", "text": "plain prose only"}], capsys
     )
 
-    reset_dropped_content_blocks()
-    _content_to_text([{"type": "image"}])
-    snapshot = dropped_content_block_counts()
-    snapshot["image"] = 999
-    assert dropped_content_block_counts() == {"image": 1}
+    assert "dropped" not in out.lower(), out
 
 
-def test_discover_harness_sessions_logs_the_dropped_block_histogram(tmp_path, caplog):
-    """The count is only useful if an operator sees it: one INFO line per
-    discovery run naming each dropped block type."""
-    import logging
+def test_dropped_block_tally_does_not_accumulate_across_discoveries(tmp_path, capsys):
+    """The number describes ONE discovery. A tally that survived between runs
+    would grow without bound in the engine daemon, which discovers on a loop."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "data").mkdir()
+    (project / "data" / "seed.md").write_text(
+        "---\ntype: paper\n---\n# Seed\n\nx.\n", encoding="utf-8"
+    )
+    ProjectWiki.init(project, name="accumulate")
+    root = tmp_path / "claude"
+    _transcript(
+        root,
+        project,
+        [{"type": "text", "text": "hi"}, {"type": "image", "source": {"type": "base64"}}],
+    )
+    argv = ["sessions", "discover", "--project", str(project), "--root", str(root)]
 
+    main(argv)
+    first = capsys.readouterr().out
+    main(argv)
+    second = capsys.readouterr().out
+
+    assert "image=1" in first, first
+    assert "image=1" in second, second
+
+
+def test_dropped_content_block_counts_returns_a_snapshot(tmp_path):
+    """Callers reading the tally must not be able to edit it."""
     from tesserae import harness_sessions as hs
 
     project = tmp_path / "proj"
     project.mkdir()
     root = tmp_path / "claude"
-    (root / "projects" / hs._claude_project_dir(project.resolve())).mkdir(parents=True)
-    transcript = (
-        root / "projects" / hs._claude_project_dir(project.resolve()) / "s1.jsonl"
-    )
-    rows = [
-        {
-            "type": "user",
-            "cwd": str(project.resolve()),
-            "timestamp": "2026-05-01T10:00:00Z",
-            "sessionId": "s1",
-            "message": {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "what is in this screenshot?"},
-                    {"type": "image", "source": {"type": "base64", "media_type": "image/png"}},
-                ],
-            },
-        }
-    ]
-    transcript.write_text(
-        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
-    )
+    _transcript(root, project, [{"type": "image", "source": {}}])
 
-    with caplog.at_level(logging.INFO, logger="tesserae.harness_sessions"):
-        hs.discover_harness_sessions(project, roots=[root])
+    hs.discover_harness_sessions(project, roots=[root])
+    snapshot = hs.dropped_content_block_counts()
+    snapshot["image"] = 999
 
-    assert any(
-        "image" in rec.message and "dropped" in rec.message.lower()
-        for rec in caplog.records
-    ), [r.message for r in caplog.records]
+    assert hs.dropped_content_block_counts() == {"image": 1}
+
+
+def test_content_to_text_has_no_side_effects(tmp_path):
+    """Flattening is a pure function. It is called an unpredictable number of
+    times per transcript, so it is the wrong place to count anything."""
+    from tesserae import harness_sessions as hs
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    root = tmp_path / "claude"
+    _transcript(root, project, [{"type": "image", "source": {}}])
+    hs.discover_harness_sessions(project, roots=[root])
+    before = hs.dropped_content_block_counts()
+
+    hs._content_to_text([{"type": "image"}, {"type": "document"}])
+
+    assert hs.dropped_content_block_counts() == before
