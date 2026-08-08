@@ -4,6 +4,7 @@ from tesserae.ingest.fetch import is_url
 from tesserae.ingest.fetch import _slugify, _render_frontmatter
 from tesserae.ingest.fetch import fetch_to_source
 from tesserae.ingest.fetch import _arxiv_id_from_url
+from tesserae.ingest.fetch import UnsupportedSourceError
 
 
 class _FakeResponse:
@@ -155,13 +156,13 @@ def _httpx_response(url, body, headers):
     )
 
 
-def _fetch(monkeypatch, response, dest):
+def _fetch(monkeypatch, response, dest, url="https://arxiv.org/pdf/2310.11511v1"):
     monkeypatch.setattr(
         "tesserae.ingest.fetch._http_get",
         lambda u, timeout=None, follow_redirects=True, headers=None: response,
     )
     monkeypatch.setattr("tesserae.ingest.fetch._html_to_markdown", lambda html: html)
-    return fetch_to_source("https://arxiv.org/pdf/2310.11511v1", dest)
+    return fetch_to_source(url, dest)
 
 
 def test_fetch_refuses_a_declared_pdf(tmp_path, monkeypatch):
@@ -226,3 +227,70 @@ def test_fetch_accepts_utf8_text_with_multibyte_characters(tmp_path, monkeypatch
     path = _fetch(monkeypatch, response, tmp_path)
 
     assert "한국어" in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "opening",
+    [
+        "BM25 is a bag-of-words ranking function used by Lucene and Elastic.",
+        "BMW's retrieval pipeline indexes part numbers as opaque tokens.",
+        "RIFF codes are a lossless audio container's chunk headers.",
+    ],
+)
+def test_fetch_accepts_text_that_merely_starts_like_a_magic_number(
+    tmp_path, monkeypatch, opening
+):
+    """A two-byte "magic number" is a prefix of ordinary English.
+
+    ``BM`` (bmp) and ``RIFF`` (webp/wav) are short enough to match real prose,
+    and on an IR/RAG project "BM25" is a live opening word. Both formats always
+    carry NUL bytes in their first kilobyte — BMP has reserved NULs at offset 6
+    — so the NUL check below already refuses them and these prefixes only ever
+    cost false refusals.
+    """
+    url = "https://example.com/ranking"
+    body = (opening + "\n\nMore prose follows.\n").encode("utf-8")
+    response = _httpx_response(url, body, {"content-type": "text/markdown"})
+
+    path = _fetch(monkeypatch, response, tmp_path, url=url)
+
+    assert opening in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"BM\x8e\x02\x00\x00\x00\x00\x00\x00\x36\x00\x00\x00" + b"\x00" * 40,
+        b"RIFF\x24\x08\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00" + b"\x00" * 40,
+    ],
+    ids=["bmp", "riff"],
+)
+def test_fetch_still_refuses_real_bmp_and_riff_bodies(tmp_path, monkeypatch, body):
+    """Deleting the two short prefixes must not lose real detection: the header
+    of an actual BMP or RIFF file is full of NULs, which the NUL check sees."""
+    url = "https://example.com/image"
+    response = _httpx_response(url, body, {"content-type": "text/plain"})
+
+    with pytest.raises(UnsupportedSourceError):
+        _fetch(monkeypatch, response, tmp_path, url=url)
+
+    assert not list(tmp_path.glob("*.md"))
+
+
+@pytest.mark.parametrize("body", [b"", b"   \n\t\r\n  "], ids=["empty", "whitespace"])
+def test_fetch_refuses_a_200_with_an_empty_body(tmp_path, monkeypatch, body):
+    """A paywall, a JS-only page or a soft failure answers 200 with nothing.
+
+    Writing that produced a source file carrying only frontmatter and the
+    sha256 of the empty string — it compiles, reads as nothing, and reports
+    success: the same silent-success shape this branch removed for PDFs.
+    """
+    url = "https://paywalled.example.com/article/42"
+    response = _httpx_response(url, body, {"content-type": "text/html"})
+
+    with pytest.raises(UnsupportedSourceError) as exc:
+        _fetch(monkeypatch, response, tmp_path, url=url)
+
+    assert "empty" in str(exc.value).lower()
+    assert url in str(exc.value)
+    assert not list(tmp_path.glob("*.md"))

@@ -100,6 +100,15 @@ def _is_texty(content_type: str) -> bool:
 # Leading signatures of formats we would otherwise decode into mojibake. The
 # declared content-type is not enough on its own: a server can omit it, or get
 # it wrong, and either way the bytes are what we end up writing.
+#
+# Every entry must be long enough, or odd enough, that no English sentence
+# starts with it. ``BM`` (bmp) and ``RIFF`` (webp/wav) were here and failed that
+# test: they refused a text/markdown body opening "BM25 is a bag-of-words
+# ranking function...", which on an IR/RAG project is a live opening word, plus
+# "BMW's..." and "RIFF codes are...". Neither loses detection by being absent —
+# a real BMP has reserved NUL bytes at offset 6 and a real RIFF header is NUL-
+# padded, so the first-kilobyte NUL check below catches both. Pinned by
+# ``test_fetch_still_refuses_real_bmp_and_riff_bodies``.
 _BINARY_MAGIC = (
     b"%PDF-",            # PDF
     b"\x89PNG\r\n\x1a\n",  # PNG
@@ -108,8 +117,6 @@ _BINARY_MAGIC = (
     b"GIF89a",
     b"PK\x03\x04",       # zip, and everything built on it (docx, xlsx, pptx)
     b"\x1f\x8b",         # gzip
-    b"BM",               # bmp
-    b"RIFF",             # webp / wav
     b"\x00\x00\x01\x00",  # ico
     b"\xd0\xcf\x11\xe0",  # legacy MS Office (doc, xls, ppt)
     b"%!PS",             # postscript
@@ -137,10 +144,14 @@ def _response_bytes(response: object) -> bytes:
 def _looks_binary(body: bytes) -> bool:
     """True when ``body`` is bytes we must not decode as text.
 
-    Two tells, both conservative. A known magic number is decisive. Failing
-    that, a NUL byte in the first kilobyte: no real text/markdown source
-    contains one, while essentially every binary container does. Deliberately
-    NOT "contains non-ASCII" — that would reject every non-English source.
+    Two tells, both conservative, and NEITHER a guarantee. A known magic number
+    is decisive. Failing that, a NUL byte in the first kilobyte: no real
+    text/markdown source contains one, and most binary containers do — measured
+    on 1,293 local files that fail a utf-8 decode, this misses 18 of them
+    (1.4%), mostly Apple bplists and raw UUID blobs. Those are only reachable
+    when the server ALSO omits or mislabels its content-type, which is why the
+    residue is accepted rather than chased. Deliberately NOT "contains
+    non-ASCII" — that would reject every non-English source.
     """
     if not body:
         return False
@@ -218,6 +229,20 @@ def fetch_to_source(url: str, dest_dir: Path, *, title: Optional[str] = None) ->
         )
 
     raw = response.text
+    # A 200 carrying nothing is a failure that answered politely: a paywall, a
+    # JS-only page, or a soft error. Writing it produced a source file holding
+    # frontmatter and the sha256 of the empty string
+    # (e3b0c442...), which compiles cleanly, reads as nothing, and reports
+    # success — the same silent-success shape the binary refusal above removed.
+    # Checked on the DECODED body so a whitespace-only one is caught too.
+    if not raw.strip():
+        raise UnsupportedSourceError(
+            "tesserae ingest cannot read this URL — it answered 200 with an "
+            "empty body (a paywall, a JS-rendered page, or a soft failure "
+            "all look like this):\n"
+            f"  - {url}: Open it in a browser, save the rendered text as "
+            "markdown, then `tesserae ingest <file>.md`."
+        )
     if "html" in content_type:
         body = _html_to_markdown(raw)
     else:
