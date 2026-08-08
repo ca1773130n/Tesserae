@@ -247,6 +247,29 @@ def test_anchor_assignment_is_deterministic():
     assert assign_anchors(graph, sets) == assign_anchors(graph, sets)
 
 
+def test_overlapping_member_sets_never_produce_a_duplicate_anchor():
+    """The greedy pass gives "Concept:a0" to whichever set claims it first;
+    the LOSING set must fall back to an unclaimed member of its own (or "")
+    rather than to sorted(members)[0] unconditionally — that member is, by
+    construction, already claimed, and returning it anyway would let two
+    domains share one anchor, making them indistinguishable to succession."""
+    graph = _two_triangles_plus_orphan()
+    anchors = assign_anchors(graph, [["Concept:a0"], ["Concept:a0"]])
+    assert len(anchors) == 2
+    non_empty = [a for a in anchors if a]
+    assert len(set(non_empty)) == len(non_empty), "no two sets may share an anchor"
+
+
+def test_empty_member_set_gets_no_anchor_and_steals_none():
+    graph = _two_triangles_plus_orphan()
+    sets = [[], ["Concept:a0", "Concept:a1", "Concept:a2"]]
+    anchors = assign_anchors(graph, sets)
+    assert anchors[0] == "", "an empty set has no member to anchor on"
+    assert anchors[1] in sets[1]
+    non_empty = [a for a in anchors if a]
+    assert len(set(non_empty)) == len(non_empty)
+
+
 def test_slug_is_stable_and_deduped():
     taken: set[str] = set()
     first = slug_for("3D Gaussian Splatting", taken)

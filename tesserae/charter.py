@@ -14,6 +14,7 @@ See docs/superpowers/specs/2026-08-08-charter-expertise-org-design.md.
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -257,7 +258,27 @@ def assign_anchors(
             continue
         anchors[index] = member_id
         claimed.add(member_id)
-    return [anchors.get(i, sorted(m)[0] if m else "") for i, m in enumerate(member_sets)]
+
+    result: list[str] = []
+    for index, members in enumerate(member_sets):
+        if index in anchors:
+            result.append(anchors[index])
+            continue
+        # A set can reach here only if every one of its members lost every
+        # tie to another sibling during the greedy pass above (or the set is
+        # empty). ``sorted(members)[0]`` alone is NOT safe here: that member
+        # is, by construction, already in ``claimed`` by the sibling that won
+        # the tie, so returning it unconditionally would hand two domains the
+        # same anchor id — the exact identity collision this function exists
+        # to rule out, since two domains sharing an anchor become
+        # indistinguishable to succession. Search for a still-unclaimed
+        # member instead; if none exists, an empty string is a visible,
+        # checkable degradation, not a silent one.
+        candidate = next((mid for mid in sorted(members) if mid not in claimed), "")
+        if candidate:
+            claimed.add(candidate)
+        result.append(candidate)
+    return result
 
 
 def slug_for(name: str, taken: Set[str]) -> str:
@@ -276,8 +297,6 @@ def slug_for(name: str, taken: Set[str]) -> str:
         # rather than falling back to a counter that would move when
         # siblings are reordered — and the live graph has such names as
         # real division anchors.
-        import hashlib
-
         base = "domain-" + hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
     if base not in taken:
         return base
