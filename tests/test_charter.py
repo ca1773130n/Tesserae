@@ -226,3 +226,36 @@ def test_split_is_deterministic():
     graph = _two_fat_triangles()
     members = [n.id for n in graph.nodes]
     assert split(graph, members) == split(graph, members)
+
+
+from tesserae.charter import assign_anchors, slug_for
+
+
+def test_anchors_are_top_degree_and_never_shared_between_siblings():
+    graph = _two_triangles_plus_orphan()
+    a = ["Concept:a0", "Concept:a1", "Concept:a2"]
+    b = ["Concept:b0", "Concept:b1", "Concept:b2"]
+    anchors = assign_anchors(graph, [a, b])
+    assert len(anchors) == 2
+    assert len(set(anchors)) == 2, "siblings must not claim the same anchor"
+    assert anchors[0] in a and anchors[1] in b
+
+
+def test_anchor_assignment_is_deterministic():
+    graph = _two_triangles_plus_orphan()
+    sets = [["Concept:a0", "Concept:a1", "Concept:a2"], ["Concept:b0", "Concept:b1", "Concept:b2"]]
+    assert assign_anchors(graph, sets) == assign_anchors(graph, sets)
+
+
+def test_slug_is_stable_and_deduped():
+    taken: set[str] = set()
+    first = slug_for("3D Gaussian Splatting", taken)
+    taken.add(first)
+    assert first == "3d-gaussian-splatting"
+    second = slug_for("3D Gaussian Splatting", taken)
+    assert second == "3d-gaussian-splatting-2", "a collision must not overwrite"
+
+
+def test_slug_handles_non_ascii_without_collapsing_to_empty():
+    taken: set[str] = set()
+    assert slug_for("한 줄 요약", taken) != ""
