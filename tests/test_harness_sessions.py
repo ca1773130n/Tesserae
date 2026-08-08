@@ -748,3 +748,112 @@ def test_local_host_id_is_stable_and_overridable(tmp_path, monkeypatch):
 
     monkeypatch.setattr(hs, "_HOST_ID_CACHE", None, raising=False)
     assert hs.local_host_id() == first  # survives a fresh process
+
+
+# ---------------------------------------------------------------------------
+# Non-text content blocks: counted, not silently discarded. Images and
+# documents attached to a session used to vanish inside _content_to_text with
+# no trace, so the size of the multimodal gap was unknowable.
+# ---------------------------------------------------------------------------
+
+
+def test_content_to_text_counts_dropped_blocks_by_type():
+    from tesserae.harness_sessions import (
+        _content_to_text,
+        dropped_content_block_counts,
+        reset_dropped_content_blocks,
+    )
+
+    reset_dropped_content_blocks()
+    content = [
+        {"type": "text", "text": "look at this"},
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png"}},
+        {"type": "image", "source": {"type": "url", "url": "https://x/y.jpg"}},
+        {"type": "document", "source": {"type": "base64", "media_type": "application/pdf"}},
+    ]
+
+    assert _content_to_text(content) == "look at this"
+    assert dropped_content_block_counts() == {"image": 2, "document": 1}
+
+
+def test_content_to_text_counts_untyped_blocks_too():
+    from tesserae.harness_sessions import (
+        _content_to_text,
+        dropped_content_block_counts,
+        reset_dropped_content_blocks,
+    )
+
+    reset_dropped_content_blocks()
+    _content_to_text([{"source": {}}, "a bare string element"])
+    counts = dropped_content_block_counts()
+    assert counts.get("<untyped>") == 1
+
+
+def test_content_to_text_does_not_count_blocks_it_kept():
+    from tesserae.harness_sessions import (
+        _content_to_text,
+        dropped_content_block_counts,
+        reset_dropped_content_blocks,
+    )
+
+    reset_dropped_content_blocks()
+    assert _content_to_text([{"type": "text", "text": "kept"}]) == "kept"
+    assert _content_to_text("a plain string") == "a plain string"
+    assert dropped_content_block_counts() == {}
+
+
+def test_dropped_content_block_counts_returns_a_snapshot():
+    """Callers must not be able to mutate the linter's own tally."""
+    from tesserae.harness_sessions import (
+        _content_to_text,
+        dropped_content_block_counts,
+        reset_dropped_content_blocks,
+    )
+
+    reset_dropped_content_blocks()
+    _content_to_text([{"type": "image"}])
+    snapshot = dropped_content_block_counts()
+    snapshot["image"] = 999
+    assert dropped_content_block_counts() == {"image": 1}
+
+
+def test_discover_harness_sessions_logs_the_dropped_block_histogram(tmp_path, caplog):
+    """The count is only useful if an operator sees it: one INFO line per
+    discovery run naming each dropped block type."""
+    import logging
+
+    from tesserae import harness_sessions as hs
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    root = tmp_path / "claude"
+    (root / "projects" / hs._claude_project_dir(project.resolve())).mkdir(parents=True)
+    transcript = (
+        root / "projects" / hs._claude_project_dir(project.resolve()) / "s1.jsonl"
+    )
+    rows = [
+        {
+            "type": "user",
+            "cwd": str(project.resolve()),
+            "timestamp": "2026-05-01T10:00:00Z",
+            "sessionId": "s1",
+            "message": {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "what is in this screenshot?"},
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/png"}},
+                ],
+            },
+        }
+    ]
+    transcript.write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
+    )
+
+    with caplog.at_level(logging.INFO, logger="tesserae.harness_sessions"):
+        hs.discover_harness_sessions(project, roots=[root])
+
+    assert any(
+        "image" in rec.message and "dropped" in rec.message.lower()
+        for rec in caplog.records
+    ), [r.message for r in caplog.records]

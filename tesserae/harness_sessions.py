@@ -10,12 +10,35 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import sqlite3
 from dataclasses import asdict, dataclass, field, replace as replace_dc
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+
+logger = logging.getLogger(__name__)
+
+# Non-text content blocks discarded by :func:`_content_to_text`, tallied by
+# block ``type``. Reset at the start of each :func:`discover_harness_sessions`
+# run and summarised at the end of it, so the number describes one discovery
+# rather than accumulating across an unknowable span of calls.
+_DROPPED_CONTENT_BLOCKS: Dict[str, int] = {}
+
+
+def reset_dropped_content_blocks() -> None:
+    """Clear the dropped-block tally. Called once per discovery run."""
+    _DROPPED_CONTENT_BLOCKS.clear()
+
+
+def dropped_content_block_counts() -> Dict[str, int]:
+    """Snapshot of non-text content blocks dropped, keyed by block ``type``.
+
+    A copy: callers measuring the multimodal gap must not be able to edit the
+    tally they are reading.
+    """
+    return dict(_DROPPED_CONTENT_BLOCKS)
 
 
 @dataclass(frozen=True)
@@ -648,6 +671,7 @@ def discover_harness_sessions(
     into the generated pages; the path is stored as provenance only.
     """
 
+    reset_dropped_content_blocks()
     project = Path(project_root).resolve()
     selected = {h.lower() for h in (harnesses or ("claude-code", "codex"))}
     scan_roots = [Path(r).expanduser() for r in roots] if roots is not None else discover_harness_roots()
@@ -682,6 +706,19 @@ def discover_harness_sessions(
     # ingest our own extraction/synthesis calls as user sessions (self-capture).
     sessions = [s for s in sessions if not is_tesserae_internal_session(s)]
     sessions.sort(key=lambda s: (s.started_at or "", s.harness, s.slug), reverse=True)
+    # Say out loud what this discovery could not represent. The histogram is
+    # unfiltered on purpose: ``tool_use``/``tool_result``/``thinking`` blocks
+    # are structural drops handled elsewhere (``_claude_activity``), while
+    # ``image``/``document`` are the multimodal gap. Listing every type keeps
+    # the measurement complete rather than shaping it with an allowlist that
+    # would drift as harnesses add block types.
+    dropped = dropped_content_block_counts()
+    if dropped:
+        logger.info(
+            "session discovery: dropped %d content block(s) with no text projection (%s)",
+            sum(dropped.values()),
+            ", ".join(f"{key}={dropped[key]}" for key in sorted(dropped)),
+        )
     return sessions
 
 
@@ -1383,6 +1420,15 @@ def _title_and_preview(texts: Sequence[str]) -> Tuple[str, str]:
 
 
 def _content_to_text(content: object) -> str:
+    """Flatten a harness content payload to text, COUNTING what it cannot.
+
+    Images, documents and other non-text blocks have no textual projection, so
+    they are still dropped — but dropping them silently made the size of the
+    multimodal gap unknowable. Tallying them by ``type`` turns "sessions with
+    screenshots lose the screenshot" from an invisible property of the importer
+    into a number an operator can read (see :func:`dropped_content_block_counts`
+    and the summary line at the end of :func:`discover_harness_sessions`).
+    """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -1392,6 +1438,11 @@ def _content_to_text(content: object) -> str:
                 text = item.get("text") or item.get("input_text") or item.get("output_text")
                 if isinstance(text, str):
                     parts.append(text)
+                    continue
+                kind = item.get("type")
+                key = kind if isinstance(kind, str) and kind else "<untyped>"
+                _DROPPED_CONTENT_BLOCKS[key] = _DROPPED_CONTENT_BLOCKS.get(key, 0) + 1
+                logger.debug("session content: dropped a %s block (no text projection)", key)
         return "\n".join(parts)
     return ""
 
