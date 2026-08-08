@@ -124,6 +124,129 @@ def test_mcp_server_exposes_temporal_fact_search_and_timeline(tmp_path):
     assert timeline["events"][0]["valid_from"]
 
 
+def as_of_graph_path(tmp_path):
+    """A graph whose facts carry real validity intervals.
+
+    ``sample_graph_path`` projects only undated facts, so an ``as_of`` pivot
+    cannot exclude anything there. Here ``new supersedes old`` closes the old
+    finding's interval at 2026-03-01, and a third finding stays undated so the
+    ``undated_included`` counter has something to count.
+
+    Facts projected (all matching the query "splatting"):
+        discussed_in old      [2026-01-01, 2026-03-01)
+        discussed_in new      [2026-03-01, open)
+        discussed_in undated  [undated,    open)
+        supersedes   new      [2026-03-01, open)
+    """
+    old = ResearchNode(
+        id="SessionInsight:old",
+        name="old splatting finding",
+        type=ResearchNodeType.SESSION_INSIGHT,
+        description="old finding about splatting",
+        metadata={"first_seen_at": "2026-01-01"},
+    )
+    new = ResearchNode(
+        id="SessionInsight:new",
+        name="new splatting finding",
+        type=ResearchNodeType.SESSION_INSIGHT,
+        description="new finding about splatting",
+        metadata={"first_seen_at": "2026-03-01"},
+    )
+    undated = ResearchNode(
+        id="SessionInsight:undated",
+        name="undated splatting finding",
+        type=ResearchNodeType.SESSION_INSIGHT,
+        description="undated finding about splatting",
+    )
+    doc = ResearchNode(id="Paper:doc", name="Splatting Doc", type=ResearchNodeType.PAPER)
+    graph = ResearchGraph(
+        nodes=[old, new, undated, doc],
+        edges=[
+            ResearchEdge(source=old.id, target=doc.id, type="discussed_in"),
+            ResearchEdge(source=new.id, target=doc.id, type="discussed_in"),
+            ResearchEdge(source=undated.id, target=doc.id, type="discussed_in"),
+            ResearchEdge(source=new.id, target=old.id, type="supersedes"),
+        ],
+    )
+    path = tmp_path / "as_of_graph.json"
+    path.write_text(graph.to_json(indent=2), encoding="utf-8")
+    return path
+
+
+def test_search_facts_as_of_time_travels_and_reports_undated(tmp_path):
+    """``as_of`` filters to the facts live at the pivot, and says how many
+    of the survivors are undated — an agent must never get an "as of DATE"
+    answer that is mostly undated rows without being told."""
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+
+    everything = server.call_tool("search_facts", {"query": "splatting", "limit": 50})
+    at_february = server.call_tool(
+        "search_facts", {"query": "splatting", "limit": 50, "as_of": "2026-02-01"}
+    )
+
+    assert everything["total_matches"] == 4
+    assert "undated_included" not in everything  # no pivot ran, nothing to report
+    # Only the old finding was live in February; `new` had not started and the
+    # undated one is carried through by design.
+    assert at_february["total_matches"] == 2
+    assert {f["subject_id"] for f in at_february["facts"]} == {
+        "SessionInsight:old",
+        "SessionInsight:undated",
+    }
+    assert at_february["as_of"] == "2026-02-01"
+    assert at_february["undated_included"] == 1
+
+
+def test_timeline_as_of_time_travels_and_reports_undated(tmp_path):
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+
+    everything = server.call_tool("timeline", {"query": "splatting", "limit": 50})
+    at_february = server.call_tool(
+        "timeline", {"query": "splatting", "limit": 50, "as_of": "2026-02-01"}
+    )
+
+    assert len(everything["events"]) == 4
+    assert "undated_included" not in everything
+    assert {e["subject_id"] for e in at_february["events"]} == {
+        "SessionInsight:old",
+        "SessionInsight:undated",
+    }
+    assert at_february["as_of"] == "2026-02-01"
+    assert at_february["undated_included"] == 1
+
+
+@pytest.mark.parametrize("tool", ["search_facts", "timeline"])
+def test_as_of_unparseable_is_a_structured_error_not_a_crash(tmp_path, tool):
+    """``facts_as_of`` raises rather than silently answering over the whole
+    corpus; the dispatcher must turn that into a tool error, not a traceback
+    that a client cannot distinguish from a server fault."""
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+
+    result = server.call_tool(tool, {"query": "splatting", "as_of": "last tuesday"})
+
+    assert "error" in result
+    assert "last tuesday" in result["error"]
+    # Crucially NOT the full corpus dressed up as an as-of answer.
+    assert "facts" not in result and "events" not in result
+
+
+def test_search_facts_and_timeline_advertise_as_of():
+    by_name = {t["name"]: t for t in LLMWikiMCPServer().list_tools()}
+
+    facts_schema = by_name["search_facts"]["inputSchema"]
+    timeline_schema = by_name["timeline"]["inputSchema"]
+
+    # Both refuse unknown keys, so an unadvertised `as_of` is rejected at the
+    # schema boundary rather than silently ignored.
+    assert facts_schema["additionalProperties"] is False
+    assert timeline_schema["additionalProperties"] is False
+    assert facts_schema["properties"]["as_of"]["type"] == "string"
+    assert timeline_schema["properties"]["as_of"]["type"] == "string"
+    # timeline's query is optional and must stay that way.
+    assert facts_schema["required"] == ["query"]
+    assert "required" not in timeline_schema
+
+
 def test_json_rpc_notifications_do_not_emit_response():
     handler = MCPRequestHandler(LLMWikiMCPServer())
 

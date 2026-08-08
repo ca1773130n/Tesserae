@@ -17,6 +17,7 @@ import re
 import secrets
 import sys
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
@@ -44,7 +45,13 @@ from .research_graph import (
     is_public_research_node,
 )
 from .retrieval.ppr import personalized_pagerank
-from .temporal import TemporalFactProjector, search_facts, timeline
+from .temporal import (
+    TemporalFact,
+    TemporalFactProjector,
+    facts_as_of,
+    search_facts,
+    timeline,
+)
 from .verify import verify_claim
 from .wiki_projector import is_code_graph_node, kind_for_node
 from .wiki_store import WikiPageStore
@@ -281,6 +288,33 @@ def _budget_chars_arg(args: Mapping[str, Any]) -> int:
     """
     raw = args.get("budget_chars")
     return DEFAULT_BUDGET_CHARS if raw is None else int(raw)
+
+
+def _apply_as_of(
+    facts: List[TemporalFact], args: Mapping[str, Any]
+) -> Tuple[List[TemporalFact], Optional[str], int]:
+    """Apply the optional ``as_of`` bitemporal pivot to a projected fact list.
+
+    Returns ``(facts, as_of, undated_included)``. When no pivot was asked for,
+    ``as_of`` is None and the list comes back untouched — existing callers keep
+    their exact response shape.
+
+    ``undated_included`` is returned POSITIONALLY by ``temporal.facts_as_of``
+    and is the honesty half of the answer: coverage of validity intervals is
+    thin (contradicts_claim / invalidates are empty on real graphs, so every
+    boundary rides on ``supersedes``), and an agent must never receive an
+    "as of DATE" answer that is mostly undated rows without being told. Binding
+    it to ``_`` here would silently discard that.
+
+    Propagates ValueError on an unparseable pivot; callers turn it into a tool
+    error rather than answering over the whole corpus.
+    """
+    raw = args.get("as_of")
+    if raw is None or str(raw).strip() == "":
+        return facts, None, 0
+    as_of = str(raw).strip()
+    kept, undated_included = facts_as_of(facts, as_of)
+    return kept, as_of, undated_included
 
 
 DEFAULT_REGISTRY_PATH = Path.home() / ".tesserae" / "registry.json"
@@ -693,6 +727,7 @@ class LLMWikiMCPServer:
         project_prop = {"type": "string", "description": "Registered project name (see list_projects). Overridden by graph_path."}
         agent_prop = {"type": "string", "description": "Agent-scoped view: a worker key (own raw + distilled memory), a manager key (federated reports' distillates), or 'org' (all distilled artifacts). Requires a project root; see agents list / tesserae distill."}
         budget_chars_prop = {"type": "integer", "minimum": 0, "default": DEFAULT_BUDGET_CHARS, "description": "CTX-01 response budget in characters: each returned item is clamped to budget_chars/8 and overflow items are dropped behind one '+N more, cursor=K' continuation line. 0 = uncapped."}
+        as_of_prop = {"type": "string", "description": "Bitemporal time-travel pivot, ISO-8601 (e.g. '2026-03-01' or '2026-03-01T12:00:00Z'). Returns only the facts whose validity interval covers that instant: valid_from <= as_of < valid_to. Undated facts are included but counted back as 'undated_included' so a thin-coverage answer is never mistaken for a complete one. Unparseable values error rather than silently answering over the whole corpus."}
         return [
             {
                 "name": "schema",
@@ -965,6 +1000,7 @@ class LLMWikiMCPServer:
                         "query": {"type": "string", "description": "Whitespace-separated fact search terms."},
                         "current_only": {"type": "boolean", "default": False},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
+                        "as_of": as_of_prop,
                         "budget_chars": budget_chars_prop,
                     },
                     "required": ["query"],
@@ -981,6 +1017,7 @@ class LLMWikiMCPServer:
                         "project": project_prop, "agent": agent_prop,
                         "query": {"type": "string", "description": "Optional fact search terms."},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+                        "as_of": as_of_prop,
                         "budget_chars": budget_chars_prop,
                     },
                     "additionalProperties": False,
@@ -1423,6 +1460,66 @@ class LLMWikiMCPServer:
                                 "When true, include superseded / arbitration-losing "
                                 "nodes (losers of `supersedes` / `resolved_by` edges). "
                                 "Default false suppresses them."
+                            ),
+                        },
+                        "strategy": {
+                            "type": "string",
+                            "enum": ["default", "hierarchical"],
+                            "default": "default",
+                            "description": (
+                                "Traversal strategy. 'hierarchical' seeds search "
+                                "against the community summary layer and descends "
+                                "into the matched communities' member union instead "
+                                "of walking the flat graph. Requires a project root "
+                                "(the .tesserae/hierarchy.json sidecar). Falls back "
+                                "to the default path when no summary matches, rather "
+                                "than guessing."
+                            ),
+                        },
+                        "scope": {
+                            "type": "string",
+                            "description": (
+                                "Restrict the whole pipeline — seed search, PPR and "
+                                "the neighbourhood walk — to one community's members. "
+                                "Takes a community id (a graph_map card's scope_id, "
+                                "e.g. 'CommunitySummary:<hash>'); start from "
+                                "graph_map() and descend. Requires a project root."
+                            ),
+                        },
+                        "edge_type_weights": {
+                            "type": "object",
+                            "additionalProperties": {"type": "number", "minimum": 0},
+                            "description": (
+                                "Per-edge-type weight overrides for the PPR walk, "
+                                "MERGED ONTO the defaults — an unlisted type keeps "
+                                "its default weight (session-finding edges are "
+                                "pre-upweighted), it does not fall back to 1.0. "
+                                "Weight 0 DELETES that relation class from the walk "
+                                "entirely, severing multi-hop paths that route "
+                                "through it; use a small positive weight to rank a "
+                                "relation last while keeping it as a transit hop."
+                            ),
+                        },
+                        "tame_hubs": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Downweight provenance edges into hub nodes so a few "
+                                "high-degree nodes stop dominating the walk. "
+                                "Best-effort: works without a hierarchy sidecar."
+                            ),
+                        },
+                        "recency_weight": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 1.0,
+                            "default": 0.0,
+                            "description": (
+                                "Blend node freshness into the PPR ranking, 0 = pure "
+                                "relevance (default, keeps compiled artifacts "
+                                "byte-identical), 1 = freshness dominates. The pivot "
+                                "defaults to now; undated nodes are not treated as "
+                                "fresh."
                             ),
                         },
                     },
@@ -2250,7 +2347,17 @@ class LLMWikiMCPServer:
             )
         if name == "search_facts":
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
+            try:
+                facts, as_of, undated_included = _apply_as_of(facts, args)
+            except ValueError as exc:
+                # An unparseable pivot must NOT degrade into a whole-corpus
+                # answer wearing an "as of DATE" label (temporal.facts_as_of).
+                return {"error": str(exc)}
             result = search_facts(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 10)), current_only=bool(args.get("current_only", False)))
+            if as_of is not None:
+                # Report what actually ran, the way search_nodes reports `mode`.
+                result["as_of"] = as_of
+                result["undated_included"] = undated_included
             # CTX-01: per-fact truncation of evidence blocks (§5.3).
             result["facts"], continuation = _fit_payload_list(
                 result["facts"], _budget_chars_arg(args), text_field="evidence"
@@ -2260,7 +2367,14 @@ class LLMWikiMCPServer:
             return result
         if name == "timeline":
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
+            try:
+                facts, as_of, undated_included = _apply_as_of(facts, args)
+            except ValueError as exc:
+                return {"error": str(exc)}
             result = timeline(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 50)))
+            if as_of is not None:
+                result["as_of"] = as_of
+                result["undated_included"] = undated_included
             # CTX-01: per-fact truncation of evidence blocks (§5.3).
             result["events"], continuation = _fit_payload_list(
                 result["events"], _budget_chars_arg(args), text_field="evidence"
@@ -2436,17 +2550,64 @@ class LLMWikiMCPServer:
             budget = 32_000 if budget_arg is None else int(budget_arg)
             synthesize = bool(args.get("synthesize") or False)
             multi_pool = bool(args.get("multi_pool") or False)
-            bundle = compile_context(
-                graph,
-                project_root,
-                query=query,
-                seeds=seeds,
-                depth=depth,
-                budget=budget,
-                synthesize=synthesize,
-                multi_pool=multi_pool,
-                include_superseded=bool(args.get("include_superseded", False)),
+            # Retrieval knobs: built and tested in context_compiler, but until
+            # now unreachable through MCP. Unpack explicitly — this dispatcher
+            # never does **args, so a schema property without a matching kwarg
+            # here is a silent no-op that still validates and still returns a
+            # bundle.
+            strategy = str(args.get("strategy") or "default")
+            scope_arg = args.get("scope")
+            scope = str(scope_arg) if scope_arg else None
+            weights_arg = args.get("edge_type_weights")
+            edge_type_weights = (
+                {str(k): float(v) for k, v in weights_arg.items()}
+                if isinstance(weights_arg, Mapping)
+                else None
             )
+            tame_hubs = bool(args.get("tame_hubs", False))
+            recency_arg = args.get("recency_weight")
+            recency_weight = 0.0 if recency_arg is None else float(recency_arg)
+            # compile_context gates the whole recency block on
+            # ``recency_now is not None and recency_weight > 0``, so forwarding
+            # the weight alone would ship a knob that reports as having run and
+            # changes nothing. Supply the pivot the weight needs.
+            recency_now = (
+                datetime.now(timezone.utc) if recency_weight > 0 else None
+            )
+            try:
+                bundle = compile_context(
+                    graph,
+                    project_root,
+                    query=query,
+                    seeds=seeds,
+                    depth=depth,
+                    budget=budget,
+                    synthesize=synthesize,
+                    multi_pool=multi_pool,
+                    include_superseded=bool(args.get("include_superseded", False)),
+                    strategy=strategy,
+                    scope=scope,
+                    edge_type_weights=edge_type_weights,
+                    tame_hubs=tame_hubs,
+                    recency_now=recency_now,
+                    recency_weight=recency_weight,
+                )
+            except ValueError as exc:
+                # An unknown strategy/scope, or a scope with no hierarchy
+                # sidecar to resolve it against, is a bad request the caller
+                # can fix — answer it, don't fault the transport.
+                return {"error": str(exc)}
+            # Report which knobs actually ran, the way search_nodes reports
+            # `mode`: the bundle bytes stay idempotent, the settings that
+            # produced them are stated rather than buried.
+            knobs = {
+                "strategy": strategy,
+                "scope": scope,
+                "edge_type_weights": edge_type_weights,
+                "tame_hubs": tame_hubs,
+                "recency_weight": recency_weight,
+                "recency_now": recency_now.isoformat() if recency_now else None,
+            }
             # LRU: the nodes actually selected into the bundle count as reads.
             self._bump_nodes_access(project_root, bundle.selected_nodes)
             preview = int(args.get("preview") or 0)
@@ -2462,6 +2623,7 @@ class LLMWikiMCPServer:
                     "selected_node_ids": bundle.selected_nodes,
                     "char_budget_used": bundle.char_budget_used,
                     "synthesized": bundle.synthesized,
+                    "knobs": knobs,
                 }
             # preview disabled (or body already short): EXACT original shape,
             # body first — back-compat for byte/order-sensitive callers.
@@ -2471,6 +2633,7 @@ class LLMWikiMCPServer:
                 "selected_node_ids": bundle.selected_nodes,
                 "char_budget_used": bundle.char_budget_used,
                 "synthesized": bundle.synthesized,
+                "knobs": knobs,
             }
         if name == "get_handle":
             handle = str(args.get("handle") or "")
