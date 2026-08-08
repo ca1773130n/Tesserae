@@ -114,3 +114,60 @@ def test_domains_status_tolerates_a_cycle_in_child_slugs(tmp_path: Path, capsys)
     # not merely "the process didn't hang".
     assert out.count("a  (division, 1 members)") == 1
     assert out.count("b  (team, 1 members)") == 1
+
+
+def test_domains_status_marks_a_child_slug_that_names_no_domain(tmp_path: Path, capsys):
+    """MINOR: `_render` folded "already on this path" (a cycle) and "no such
+    domain" (corruption) into one silent `return`, so a charter in exactly the
+    Critical-1 state — a division erased by the intake write, its children left
+    behind naming a parent that no longer holds them — rendered as a perfectly
+    healthy tree. The dangling child simply did not appear.
+
+    A renderer whose job is to let an operator inspect the institution must
+    make corruption visible; a cycle is a legitimate stop, a missing domain is
+    a finding.
+    """
+    from tesserae.cli import main
+
+    (tmp_path / ".tesserae").mkdir(parents=True)
+    charter = {
+        "version": 1,
+        "reorg_seq": 0,
+        "domains": {
+            "alpha": {
+                "tier": 1, "own_altitude": "division", "parent_slug": None,
+                "child_slugs": ["vanished"], "anchor_id": "Concept:a",
+                "direct_member_ids": [], "member_count": 1, "reorg_seq": 0,
+                "status": "live", "transition": "founded", "unsplittable": False,
+            },
+        },
+        "member_index": {},
+    }
+    write_charter(tmp_path, charter)
+
+    rc = main(["domains", "status", "--project", str(tmp_path)])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "vanished" in out, "a dangling child must not render as a healthy tree"
+    assert "missing" in out.lower()
+
+
+def test_domains_status_reports_a_corrupt_charter_as_an_error(tmp_path: Path, capsys):
+    """IMPORTANT 3, at the CLI boundary: an unreadable charter must not be
+    reported with the reassuring "no charter yet" message an absent one gets,
+    and must not exit 0 — a caller scripting against this would treat a
+    corrupted institution as a project that simply had not been compiled."""
+    from tesserae.cli import main
+    from tesserae.charter import charter_path
+
+    path = charter_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"domains": ', encoding="utf-8")
+
+    rc = main(["domains", "status", "--project", str(tmp_path)])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert "no charter yet" not in (captured.out + captured.err).lower()
+    assert str(path) in (captured.out + captured.err)

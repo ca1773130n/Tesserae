@@ -248,7 +248,10 @@ def split(graph: ResearchGraph, member_ids: Sequence[str]) -> SplitResult:
 
 
 def assign_anchors(
-    graph: ResearchGraph, member_sets: Sequence[Sequence[str]]
+    graph: ResearchGraph,
+    member_sets: Sequence[Sequence[str]],
+    *,
+    claimed: Optional[set[str]] = None,
 ) -> list[str]:
     """Pick each domain's top-degree member, greedily, no two the same.
 
@@ -258,6 +261,30 @@ def assign_anchors(
     for ~72% of large scopes. Assignment is greedy in ``(-degree, id)`` order
     ACROSS siblings so two domains can never claim the same anchor — a
     collision would make two domains indistinguishable to succession.
+
+    ``claimed`` is that no-two-the-same guarantee widened from ONE CALL to the
+    WHOLE CHARTER, and it is not optional polish. Scoring uses GLOBAL
+    ``undirected_degrees`` rather than degree within the member set, so a
+    child domain re-picks whichever node is the highest-degree in the entire
+    graph — which is, by construction, the node its PARENT already anchored
+    on. ``build_charter`` calls this once for divisions and again per split
+    for that division's children, and per-call deduping cannot see across
+    those calls, so ancestor and descendant came out sharing one anchor on the
+    plan's own simplest split fixture: division ``a0`` and department ``a0-2``
+    both anchored ``Concept:a0``.
+
+    That collision is what made succession do the exact opposite of its job.
+    ``succeed`` matches a fresh domain to a prior one BY ANCHOR, so with two
+    domains behind one anchor only one could inherit: measured on an
+    UNCHANGED graph, every reorg retired a live division and renamed a live
+    department, compounding without bound
+    (``a0`` -> ``a0-2`` -> ``a0-2-2`` -> ...). An operator who pinned an agent
+    to a slug lost that attach path on the next ingest.
+
+    Pass the SAME set object through every call for one charter. It is read
+    (a member already claimed by an ancestor or a sibling is skipped, so the
+    domain falls to its next-highest-degree unclaimed member) and mutated in
+    place (every anchor handed out is recorded for later calls).
     """
     degrees = undirected_degrees(graph)
     ranked: list[tuple[int, int, str]] = []
@@ -267,7 +294,8 @@ def assign_anchors(
     ranked.sort(key=lambda row: (row[0], row[2]))
 
     anchors: dict[int, str] = {}
-    claimed: set[str] = set()
+    if claimed is None:
+        claimed = set()
     for _degree, index, member_id in ranked:
         if index in anchors or member_id in claimed:
             continue
@@ -279,11 +307,12 @@ def assign_anchors(
         if index in anchors:
             result.append(anchors[index])
             continue
-        # A set can reach here only if every one of its members lost every
-        # tie to another sibling during the greedy pass above (or the set is
-        # empty). ``sorted(members)[0]`` alone is NOT safe here: that member
-        # is, by construction, already in ``claimed`` by the sibling that won
-        # the tie, so returning it unconditionally would hand two domains the
+        # A set can reach here only if every one of its members was already
+        # claimed — by a sibling that won a tie in the greedy pass above, or
+        # by an ANCESTOR in an earlier call sharing this ``claimed`` set — or
+        # the set is empty. ``sorted(members)[0]`` alone is NOT safe here:
+        # that member is, by construction, already in ``claimed`` by whoever
+        # took it, so returning it unconditionally would hand two domains the
         # same anchor id — the exact identity collision this function exists
         # to rule out, since two domains sharing an anchor become
         # indistinguishable to succession. Search for a still-unclaimed
@@ -333,18 +362,53 @@ _SYNTHESIS_TYPES = frozenset(
 _INTAKE_SLUG = "intake"
 
 
+class CharterUnreadable(RuntimeError):
+    """A charter file exists but could not be parsed.
+
+    Distinct from "no charter", and that distinction is the whole reason this
+    class exists — see ``read_charter``.
+    """
+
+
 def charter_path(project_root: Path | str) -> Path:
     return Path(project_root) / ".tesserae" / "charter" / "charter.json"
 
 
 def read_charter(project_root: Path | str) -> Optional[dict]:
+    """The charter, or None if this project genuinely has none.
+
+    ABSENT and UNREADABLE are different conditions and must not collapse into
+    the same return value. Every caller reads None as "this project has no
+    charter yet" and proceeds to found one, which is correct for a project
+    below the one-read bound — ``.tesserae/charter/`` is never created for it.
+    Applied to a TRUNCATED or hand-mangled charter.json, the same None would
+    make the engine silently RE-FOUND the entire institution: every pinned
+    attach path broken, zero tombstones to explain where the old slugs went,
+    and no error anywhere to say a file needed fixing. Swallowing
+    JSONDecodeError here would therefore destroy exactly the stability this
+    module exists to provide, in the one situation where an operator most
+    needs to be told.
+    """
     path = charter_path(project_root)
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise CharterUnreadable(
+            f"charter at {path} exists but could not be read: {exc}. "
+            "Fix the file's permissions or delete it and recompile to re-found "
+            "the charter (which will mint new slugs, so prefer restoring it)."
+        ) from exc
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CharterUnreadable(
+            f"charter at {path} is not valid JSON: {exc}. "
+            "Restore it from version control if you can — deleting it and "
+            "recompiling re-founds the charter from scratch, which mints new "
+            "slugs and breaks every pinned attach path."
+        ) from exc
 
 
 def write_charter(project_root: Path | str, charter: dict) -> Path:
@@ -382,11 +446,35 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
     division_members = [
         sorted({mid for index in group for mid in clusters[index]}) for group in groups
     ]
-    anchors = assign_anchors(scoped, division_members)
+    # ONE claimed-anchor set for the WHOLE charter, threaded through every
+    # assign_anchors call including the recursive ones inside _emit. Deduping
+    # per call is not enough: assign_anchors scores on global degree, so a
+    # child re-picks the node its parent already anchored on, and two domains
+    # behind one anchor are indistinguishable to succeed(). See the
+    # assign_anchors docstring for the measured consequence — a reorg on an
+    # UNCHANGED graph retiring a live division and renaming a live department,
+    # every time, forever.
+    claimed_anchors: set[str] = set()
+    anchors = assign_anchors(scoped, division_members, claimed=claimed_anchors)
     by_id = {n.id: n for n in scoped.nodes}
 
     domains: dict[str, dict] = {}
-    taken: set[str] = set()
+    # ``intake`` is reserved BEFORE any domain slug is minted, so no division
+    # can ever take it. Without this, a division whose anchor node is NAMED
+    # "Intake" minted the base slug ``intake`` for itself and the intake write
+    # below then erased that division outright: measured on a seven-node
+    # fixture, six nodes ended up in zero domains while all six member_index
+    # entries still named ``intake``, a domain that did not hold them, and any
+    # children of the erased division survived orphaned on a parent_slug
+    # nothing claimed. That is CH-01 — the partition every other invariant
+    # rests on — silently void.
+    #
+    # Reserved unconditionally, not only when ``intake`` is non-empty: a
+    # conditional reservation would hand the slug to a division on a pass
+    # whose intake set happened to be empty, and the next ingest that produced
+    # a single unroutable node would collide all over again. The slug space
+    # has to be stable across reorgs, which is the whole point of this module.
+    taken: set[str] = {_INTAKE_SLUG}
     member_index: dict[str, str] = {}
 
     def _emit(members: Sequence[str], anchor_id: str, tier: int, parent: Optional[str]) -> str:
@@ -396,7 +484,12 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
         result = split(scoped, members)
         child_slugs: list[str] = []
         if result.children:
-            child_anchors = assign_anchors(scoped, [list(c) for c in result.children])
+            # Same claimed set as the divisions above, so a child cannot
+            # re-take its own parent's anchor (nor any ancestor's, nor any
+            # already-emitted domain's).
+            child_anchors = assign_anchors(
+                scoped, [list(c) for c in result.children], claimed=claimed_anchors
+            )
             for child_members, child_anchor in zip(result.children, child_anchors):
                 child_slugs.append(_emit(list(child_members), child_anchor, tier + 1, slug))
         domains[slug] = {
@@ -420,8 +513,30 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
         _emit(members, anchor, 1, None)
 
     if intake:
+        if _INTAKE_SLUG in domains:
+            # Unreachable while ``taken`` is seeded with _INTAKE_SLUG above,
+            # and stated as a raise rather than left implicit because the
+            # unguarded form of this write is the defect itself: it silently
+            # replaced a live division and voided the partition, and nothing
+            # downstream noticed. If the reservation ever regresses, this
+            # fails at the point of corruption instead of shipping a charter
+            # that lints clean and routes six nodes into nowhere.
+            raise RuntimeError(
+                f"charter slug {_INTAKE_SLUG!r} was minted for a real domain "
+                f"(anchor {domains[_INTAKE_SLUG].get('anchor_id')!r}); the "
+                "reservation in build_charter must run before any domain slug "
+                "is minted"
+            )
         domains[_INTAKE_SLUG] = {
             "tier": 1,
+            # Deliberately NOT routed through _altitude_for, which would
+            # return "division" for tier 1. Altitude is a render parameter,
+            # not a synonym for depth: it sets carry_quota and support_floor
+            # (spec section "Altitude controls exactly two knobs"), and a
+            # division's quota of 18 carried notes would TRUNCATE a domain
+            # whose brief is honestly a census of everything structure could
+            # not route. "team" is the unbounded-carry altitude, which is the
+            # only one that can render intake truthfully.
             "own_altitude": "team",
             "parent_slug": None,
             "child_slugs": [],
@@ -485,11 +600,27 @@ def succeed(prior: dict, fresh: dict) -> dict:
     # Only a LIVE prior domain can donate its slug — a domain already retired
     # by an earlier reorg must not be resurrected just because some fresh
     # domain's anchor happens to match its old one.
-    anchor_to_prior = {
-        entry["anchor_id"]: slug
-        for slug, entry in sorted(prior_domains.items())
-        if entry.get("status") == "live" and entry.get("anchor_id")
-    }
+    #
+    # Written as a loop rather than a dict comprehension because a
+    # comprehension is silently LAST-WINS on a duplicate key, and a duplicate
+    # anchor among live prior domains is a CORRUPT charter, not a detail to
+    # resolve by accident. build_charter can no longer produce one (anchors
+    # are now unique charter-wide), but charter.json is a file on disk that a
+    # bad hand-merge, or a charter written by the buggy build this fix
+    # replaces, can leave in exactly that state. Under last-wins, which of the
+    # two domains kept its slug and which was tombstoned depended on nothing
+    # but sort order.
+    #
+    # FIRST-WINS on sorted slug instead: deterministic, and the loser is not
+    # quietly ignored — it falls through to the tombstone pass below like any
+    # other prior domain no fresh domain inherited, so it is retired visibly
+    # with a readable slug rather than disappearing.
+    anchor_to_prior: dict[str, str] = {}
+    for slug, entry in sorted(prior_domains.items()):
+        anchor = entry.get("anchor_id")
+        if entry.get("status") != "live" or not anchor:
+            continue
+        anchor_to_prior.setdefault(anchor, slug)
     next_seq = int(prior.get("reorg_seq", 0)) + 1
 
     # Whether a fresh domain inherits is decided by ANCHOR MATCH ALONE, up
@@ -502,6 +633,30 @@ def succeed(prior: dict, fresh: dict) -> dict:
         slug: anchor_to_prior.get(entry.get("anchor_id") or "")
         for slug, entry in sorted(fresh_domains.items())
     }
+
+    # Intake is the ONE domain whose identity is not its anchor: it has none
+    # (``anchor_id: ""``), because it is a census of everything structure
+    # could not route rather than a subject with a hub. Matching it by anchor
+    # like every other domain matched it against nothing, so a reorg
+    # tombstoned the prior intake and re-founded the fresh one every single
+    # time — and since the live fresh domain already held the reserved slug,
+    # each tombstone was relocated by ``_claim``, so an UNCHANGED graph piled
+    # up ``intake-2``, ``intake-2-2``, ``intake-2-2-2`` … without bound. That
+    # is the same no-op-reorg churn this function exists to prevent, merely
+    # displaced into the tombstone space.
+    #
+    # Its identity is the RESERVED SLUG instead, which build_charter
+    # guarantees is unique and permanent (no domain may mint it). Matching on
+    # it is exact, not heuristic. This is deliberately conditional on the
+    # fresh charter still HAVING an intake domain: if a reorg leaves nothing
+    # unroutable, intake has genuinely gone away and must tombstone like
+    # anything else, so self-succession must not become immortality.
+    if (
+        _INTAKE_SLUG in fresh_domains
+        and prior_domains.get(_INTAKE_SLUG, {}).get("status") == "live"
+    ):
+        inherited_target[_INTAKE_SLUG] = _INTAKE_SLUG
+
     inherited_prior_slugs = {target for target in inherited_target.values() if target}
 
     domains: dict[str, dict] = {}
@@ -554,9 +709,30 @@ def succeed(prior: dict, fresh: dict) -> dict:
     # string.
     for slug, entry in sorted(fresh_domains.items()):
         target = rename[slug]
-        domains[target]["parent_slug"] = (
-            rename.get(entry["parent_slug"]) if entry.get("parent_slug") else None
-        )
+        parent = entry.get("parent_slug")
+        if parent:
+            # NOT rename.get(): a miss returns None, and None in this schema
+            # means "I am a root division". So an unmapped parent silently
+            # PROMOTED a child to the top of the institution — changing its
+            # altitude, and changing what an agent routing from root is shown
+            # — on input that was already corrupt. Every fresh slug is in
+            # ``rename`` by construction (both claim passes above register
+            # one), so a miss can only mean the fresh charter names a parent
+            # no domain in the same charter defines.
+            if parent not in rename:
+                raise ValueError(
+                    f"fresh charter domain {slug!r} names parent_slug "
+                    f"{parent!r}, which no domain in that charter defines; "
+                    "refusing to silently promote it to a root division"
+                )
+            domains[target]["parent_slug"] = rename[parent]
+        else:
+            domains[target]["parent_slug"] = None
+        # child_slugs deliberately keeps ``rename.get(child, child)``: an
+        # unmapped child is preserved VERBATIM rather than raising, because
+        # unlike a dangling parent it restructures nothing, and the renderer
+        # marks it (cli.py _render) so an operator sees the corruption instead
+        # of succession quietly dropping the evidence of it.
         domains[target]["child_slugs"] = sorted(
             rename.get(child, child) for child in entry.get("child_slugs", [])
         )

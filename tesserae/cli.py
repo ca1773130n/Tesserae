@@ -5453,9 +5453,18 @@ def _route_agents(rest: List[str]) -> int:
 
 # ----- domains (CHARTER: divisions/departments/teams over the graph) --------
 def _handle_domains_status(args: argparse.Namespace) -> int:
-    from .charter import read_charter
+    from .charter import CharterUnreadable, read_charter
 
-    charter = read_charter(args.project)
+    try:
+        charter = read_charter(args.project)
+    except CharterUnreadable as exc:
+        # A charter that exists but cannot be parsed is NOT the same as a
+        # project that has none, and must not borrow the reassuring message
+        # or the 0 exit code below: a script polling this would read a
+        # corrupted institution as one that had simply never been compiled.
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
     if charter is None:
         # A project below the one-read bound legitimately has no charter —
         # .tesserae/charter/ is never created for it. That is correct
@@ -5497,6 +5506,18 @@ def _handle_domains_status(args: argparse.Namespace) -> int:
         )
         seen_on_path = seen_on_path | {slug}
         for child in entry["child_slugs"]:
+            if child not in domains:
+                # A child_slug naming a domain the charter does not define is
+                # corruption, not a legitimate stop the way a cycle is, and
+                # folding both into one silent `return` made this renderer
+                # report a broken institution as a healthy tree: a charter in
+                # the state build_charter's intake-slug overwrite used to
+                # produce — a division erased, its departments left pointing
+                # at a parent that no longer held them — printed with the
+                # orphans simply absent. The operator's only view of the
+                # structure has to show the damage.
+                print(f"{'  ' * (depth + 1)}{child}  [MISSING — no such domain]")
+                continue
             _render(child, depth + 1, seen_on_path)
 
     for slug in roots:

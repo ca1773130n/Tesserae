@@ -1,6 +1,8 @@
 # tests/test_charter.py
 from __future__ import annotations
 
+import pytest
+
 from tesserae.charter import DOMAIN_MASS_CAP, DOMAIN_MASS_FLOOR, mass
 from tesserae.research_graph import ResearchNode, ResearchNodeType
 
@@ -150,8 +152,6 @@ def test_intake_is_empty_when_every_section_is_routed():
     assert members == ["Concept:lonely"]
 
 
-import pytest
-
 from tesserae.charter import SplitResult, induced_subgraph, split
 
 
@@ -173,6 +173,16 @@ def _two_fat_triangles() -> ResearchGraph:
             edges.append(ResearchEdge(source=f"Concept:b{i}", target=f"Concept:b{j}", type="shares_concept_with"))
     edges.append(ResearchEdge(source="Concept:a0", target="Concept:b0", type="shares_concept_with"))
     return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def _two_fat_triangles_plus_orphan() -> ResearchGraph:
+    """``_two_fat_triangles`` with an unroutable node, so the charter it
+    produces has BOTH a real split AND a non-empty intake domain."""
+    graph = _two_fat_triangles()
+    graph.nodes.append(
+        ResearchNode(id="Concept:lonely", name="Lonely", type=ResearchNodeType.CONCEPT)
+    )
+    return graph
 
 
 def test_induced_subgraph_keeps_only_internal_edges():
@@ -302,6 +312,159 @@ def test_build_charter_partitions_every_node_exactly_once():
     assert len(seen) == len(set(seen)), "a node may belong to exactly one domain"
 
 
+def _intake_named_division(filler: int) -> ResearchGraph:
+    """Two bridged triangles whose top-degree node is NAMED "Intake", plus one
+    orphan that genuinely belongs in intake.
+
+    The "Intake" name is what makes ``slug_for`` mint the base slug ``intake``
+    for that division — the same string ``_INTAKE_SLUG`` uses. ``Concept:a0``
+    wins the division anchor on degree 3, tied with ``Concept:z0`` and broken
+    by id, so the anchor is deterministically the node named "Intake".
+
+    ``filler`` selects WHICH HALF of the defect the fixture exhibits, and both
+    halves need their own fixture because neither shows the other:
+
+    * ``filler=0`` — the division stays under DOMAIN_MASS_CAP, so it is a LEAF
+      holding all six members directly. The intake write erases it and those
+      six members land in no domain at all: the CH-01 violation.
+    * ``filler=5_000`` — the division exceeds the cap and splits into two
+      departments, so it holds NO direct members and erasing it loses no
+      member. What it loses instead is the parent: both departments survive
+      pointing at a ``parent_slug`` the census domain never adopted.
+    """
+    def _n(nid: str, name: str) -> ResearchNode:
+        return ResearchNode(
+            id=nid, name=name, type=ResearchNodeType.CONCEPT, description="x" * filler
+        )
+
+    nodes = [
+        _n("Concept:a0", "Intake"), _n("Concept:a1", "B"), _n("Concept:a2", "C"),
+        _n("Concept:z0", "Z0"), _n("Concept:z1", "Z1"), _n("Concept:z2", "Z2"),
+        ResearchNode(id="Concept:lonely", name="Lonely", type=ResearchNodeType.CONCEPT),
+    ]
+    edges = [
+        ResearchEdge(source=a, target=b, type="shares_concept_with")
+        for a, b in [
+            ("Concept:a0", "Concept:a1"), ("Concept:a1", "Concept:a2"),
+            ("Concept:a0", "Concept:a2"),
+            ("Concept:z0", "Concept:z1"), ("Concept:z1", "Concept:z2"),
+            ("Concept:z0", "Concept:z2"),
+            ("Concept:a0", "Concept:z0"),
+        ]
+    ]
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_a_domain_can_never_mint_the_reserved_intake_slug():
+    """CRITICAL 1 regression. ``_INTAKE_SLUG`` was never added to ``taken``,
+    so a division whose anchor node is NAMED "Intake" minted the base slug
+    ``intake`` for itself, and the unguarded ``domains[_INTAKE_SLUG] = {...}``
+    write at the end of build_charter then ERASED that division outright.
+
+    Measured before the fix on this exact fixture: six of seven nodes ended up
+    in zero domains, and all six ``member_index`` entries pointed at ``intake``
+    — a domain that did not hold them. That is CH-01, the invariant the whole
+    structure rests on, silently void.
+
+    ``intake`` is reserved unconditionally, not only when the intake set is
+    non-empty: were it conditional, a graph whose intake set is empty on one
+    pass would hand ``intake`` to a division, and the very next ingest that
+    produced a single unroutable node would collide all over again.
+    """
+    charter = build_charter(_intake_named_division(filler=0))
+    from tesserae.charter import _INTAKE_SLUG
+
+    # The division named "Intake" must have yielded the reserved slug.
+    named_intake = [
+        slug for slug, e in charter["domains"].items()
+        if e["anchor_id"] == "Concept:a0"
+    ]
+    assert named_intake, "the division anchored on the node named 'Intake' must exist"
+    assert named_intake[0] != _INTAKE_SLUG
+
+    # The reserved slug belongs to the census domain and nothing else.
+    assert charter["domains"][_INTAKE_SLUG]["anchor_id"] == ""
+    assert charter["domains"][_INTAKE_SLUG]["direct_member_ids"] == ["Concept:lonely"]
+
+
+def test_intake_collision_still_partitions_every_node_exactly_once():
+    """CH-01 under the Critical-1 fixture, stated separately from the slug
+    assertion because the partition is the thing that actually broke."""
+    graph = _intake_named_division(filler=0)
+    charter = build_charter(graph)
+
+    seen: list[str] = []
+    for entry in charter["domains"].values():
+        seen.extend(entry["direct_member_ids"])
+    assert sorted(seen) == sorted(n.id for n in graph.nodes)
+    assert len(seen) == len(set(seen)), "a node may belong to exactly one domain"
+
+    # member_index must AGREE with direct_member_ids, not merely be populated.
+    for member_id, slug in charter["member_index"].items():
+        assert member_id in charter["domains"][slug]["direct_member_ids"], (
+            f"{member_id} maps to {slug} but that domain does not hold it"
+        )
+    assert set(charter["member_index"]) == {n.id for n in graph.nodes}
+
+
+def test_no_domain_is_left_pointing_at_an_erased_parent():
+    """The Critical-1 overwrite left the erased division's children alive with
+    ``parent_slug: "intake"`` — orphans hanging off a domain that never had
+    them. Every parent_slug and child_slug must name a domain that exists, and
+    every parent must actually claim the children that claim it."""
+    charter = build_charter(_intake_named_division(filler=5_000))
+    domains = charter["domains"]
+    assert any(e["parent_slug"] for e in domains.values()), (
+        "fixture must produce a parent/child pair or it proves nothing"
+    )
+    for slug, entry in domains.items():
+        parent = entry["parent_slug"]
+        if parent is not None:
+            assert parent in domains, f"{slug} names a parent {parent!r} that does not exist"
+            assert slug in domains[parent]["child_slugs"], (
+                f"{slug} claims parent {parent!r} which does not list it as a child"
+            )
+        for child in entry["child_slugs"]:
+            assert child in domains, f"{slug} names a child {child!r} that does not exist"
+
+
+def test_no_two_domains_in_one_charter_share_an_anchor():
+    """CRITICAL 2 regression, at the point where it originates.
+
+    ``assign_anchors`` scores on GLOBAL ``undirected_degrees`` and dedupes only
+    within ONE call, and build_charter calls it twice — once for divisions,
+    once per split for that division's children. So a child re-picked the very
+    node its parent had already anchored on: on this fixture division ``a0``
+    and department ``a0-2`` both anchored ``Concept:a0``.
+
+    Two domains sharing an anchor are indistinguishable to succession, which
+    is what turned a no-op reorg into permanent slug churn.
+    """
+    charter = build_charter(_two_fat_triangles())
+    assert len(charter["domains"]) >= 3, "fixture must actually split"
+
+    anchors = [e["anchor_id"] for e in charter["domains"].values() if e["anchor_id"]]
+    assert len(anchors) == len(set(anchors)), (
+        f"anchors must be unique across the WHOLE charter, got {sorted(anchors)}"
+    )
+
+    # And specifically: no descendant may re-take an ancestor's anchor.
+    domains = charter["domains"]
+    for slug, entry in domains.items():
+        parent = entry["parent_slug"]
+        while parent is not None:
+            assert domains[parent]["anchor_id"] != entry["anchor_id"] or not entry["anchor_id"]
+            parent = domains[parent]["parent_slug"]
+
+
+def test_a_child_that_loses_its_anchor_falls_to_its_next_highest_degree_member():
+    """The losing domain must fall to another member of ITS OWN set, not to ""
+    and not to a member of a sibling — an empty anchor cannot be succeeded."""
+    charter = build_charter(_two_fat_triangles())
+    for slug, entry in charter["domains"].items():
+        assert entry["anchor_id"], f"{slug} has no anchor, so succession cannot match it"
+
+
 def test_build_charter_excludes_synthesis_nodes_by_default():
     """Measured on the live graph, leaving these in makes roughly half the
     institution an org chart of Tesserae's own output: division anchors came
@@ -345,6 +508,32 @@ def test_charter_has_no_timestamps():
 
 def test_read_charter_returns_none_when_absent(tmp_path: Path):
     assert read_charter(tmp_path) is None
+
+
+def test_read_charter_raises_on_a_corrupt_file_instead_of_saying_no_charter(tmp_path: Path):
+    """IMPORTANT 3: absent and unreadable are DIFFERENT conditions.
+
+    Both used to return None, and every caller reads None as "this project has
+    no charter yet". Once succession is wired into the compile path, a
+    truncated or half-written charter.json would therefore make the engine
+    silently RE-FOUND the whole institution: every pinned attach path broken,
+    zero tombstones, no error anywhere. The one case that must stay None is a
+    project that legitimately has no charter file at all.
+    """
+    from tesserae.charter import CharterUnreadable
+
+    path = charter_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"domains": ', encoding="utf-8")  # truncated mid-write
+
+    with pytest.raises(CharterUnreadable) as excinfo:
+        read_charter(tmp_path)
+
+    message = str(excinfo.value)
+    assert str(path) in message, "the error must name the file the operator has to fix"
+    assert "recompil" in message.lower(), (
+        "the error must name a remedy, not just a failure"
+    )
 
 
 def _dense_fat_clique_bridged_to_peripheral() -> ResearchGraph:
@@ -461,9 +650,191 @@ def test_a_domain_whose_anchor_moved_gets_a_new_slug_and_the_old_is_tombstoned()
 
 
 def test_succession_is_deterministic():
+    """FIX-BEFORE-MERGE: this test used to run on two charters holding exactly
+    ONE domain each, which made it blind to Critical 2 — a charter with a
+    single domain has no parent/child pair, so it can never exhibit the
+    ancestor/descendant anchor collision that broke succession. It now runs on
+    a real SPLIT charter (a division with two departments) and asserts the
+    property that actually matters: reorganising an UNCHANGED charter is a
+    no-op.
+
+    Before the fix this failed outright: division ``a0`` and department
+    ``a0-2`` both anchored ``Concept:a0``, so ``anchor_to_prior`` kept only the
+    last of the two, the division was retired as though its subject had
+    vanished, and the department was renamed ``a0-2-2`` — on input that had not
+    changed at all.
+    """
+    charter = build_charter(_two_fat_triangles())
+
+    # Guard the fixture itself, so this test cannot quietly go blind again the
+    # way its single-domain predecessor did.
+    assert len(charter["domains"]) >= 3, "fixture must hold several domains"
+    assert any(e["parent_slug"] for e in charter["domains"].values()), (
+        "fixture must hold at least one parent/child pair"
+    )
+
+    assert succeed(charter, charter) == succeed(charter, charter)
+
+    merged = succeed(charter, charter)
+    retired = sorted(s for s, e in merged["domains"].items() if e["status"] == "retired")
+    assert retired == [], f"a no-op reorg retired {retired}"
+    assert set(merged["domains"]) == set(charter["domains"]), (
+        "a no-op reorg renamed a domain"
+    )
+    assert merged["member_index"] == charter["member_index"]
+    assert merged["reorg_seq"] == 1
+
+    for slug, entry in charter["domains"].items():
+        after = merged["domains"][slug]
+        assert after["anchor_id"] == entry["anchor_id"]
+        assert after["parent_slug"] == entry["parent_slug"]
+        assert after["child_slugs"] == entry["child_slugs"]
+        assert after["status"] == "live"
+        assert after["transition"] == "stable"
+
+
+def test_repeated_reorgs_on_an_unchanged_graph_never_churn_a_slug():
+    """The compounding form of Critical 2, and the reason the module exists.
+
+    Measured before the fix, on a graph that never changed:
+    ``a0 -> a0-2 -> a0-2-2 -> a0-2-2-2``, one live domain retired per reorg,
+    forever. An operator who pinned an agent to ``a0`` in a config lost that
+    attach path on the next ingest, which is precisely the failure a versioned
+    charter exists to prevent.
+    """
+    graph = _two_fat_triangles_plus_orphan()
+    charter = build_charter(graph)
+    baseline = {s for s, e in charter["domains"].items() if e["status"] == "live"}
+    assert len(baseline) >= 3
+    # The fixture must exercise intake too. Intake is the ONE domain with no
+    # anchor, so it is the one succession cannot match the ordinary way, and a
+    # fixture without it leaves that path untested — which is how this defect
+    # survived the first pass at Critical 2.
+    from tesserae.charter import _INTAKE_SLUG
+    assert _INTAKE_SLUG in baseline
+
+    current = charter
+    for reorg in range(1, 5):
+        current = succeed(current, build_charter(graph))
+        live = {s for s, e in current["domains"].items() if e["status"] == "live"}
+        retired = sorted(s for s, e in current["domains"].items() if e["status"] == "retired")
+        assert live == baseline, f"reorg {reorg} churned the live slugs to {sorted(live)}"
+        assert retired == [], f"reorg {reorg} retired {retired} on unchanged input"
+        # Tombstone churn counts as churn: the charter must not GROW on input
+        # that did not change.
+        assert set(current["domains"]) == set(charter["domains"]), (
+            f"reorg {reorg} added domains: "
+            f"{sorted(set(current['domains']) - set(charter['domains']))}"
+        )
+
+    assert current["member_index"] == charter["member_index"]
+
+
+def test_intake_succeeds_itself_because_its_identity_is_its_slug_not_an_anchor():
+    """Intake is the one domain with ``anchor_id: ""`` — it is a census of what
+    structure could not route, not a subject with a hub. Succession matches on
+    anchor, and an empty anchor matches nothing, so the prior intake was
+    tombstoned and the fresh one re-founded on EVERY reorg. Because the live
+    fresh domain already held the slug, each tombstone was relocated, and an
+    unchanged graph therefore accumulated ``intake-2``, ``intake-2-2``,
+    ``intake-2-2-2`` … without bound: the same no-op-reorg churn as Critical 2,
+    displaced into the tombstone space.
+
+    Intake's identity is the RESERVED SLUG, which build_charter guarantees is
+    unique and permanent, so that is what it must be matched on.
+    """
+    graph = _two_fat_triangles_plus_orphan()
+    charter = build_charter(graph)
+    from tesserae.charter import _INTAKE_SLUG
+
+    merged = succeed(charter, build_charter(graph))
+    assert merged["domains"][_INTAKE_SLUG]["status"] == "live"
+    assert merged["domains"][_INTAKE_SLUG]["transition"] == "stable"
+    assert [s for s in merged["domains"] if s.startswith("intake-")] == [], (
+        "intake must succeed itself, not spawn a relocated tombstone"
+    )
+
+
+def test_intake_is_still_tombstoned_when_nothing_is_unroutable_any_more():
+    """The converse of the rule above, so self-succession does not become
+    "intake is immortal": if a reorg leaves nothing unroutable, the fresh
+    charter has no intake domain and the prior one must retire like any other
+    domain whose subject went away."""
+    from tesserae.charter import _INTAKE_SLUG
+
+    prior = build_charter(_two_fat_triangles_plus_orphan())
+    assert _INTAKE_SLUG in prior["domains"]
+
+    fresh = build_charter(_two_fat_triangles())  # no orphan, so no intake
+    assert _INTAKE_SLUG not in fresh["domains"]
+
+    merged = succeed(prior, fresh)
+    assert merged["domains"][_INTAKE_SLUG]["status"] == "retired"
+
+
+def test_duplicate_anchors_among_prior_domains_are_resolved_first_wins_not_last_wins():
+    """``anchor_to_prior`` was a dict comprehension over the prior domains, so
+    two live prior domains sharing an anchor silently resolved LAST-WINS: which
+    domain kept its slug depended on nothing more than sort order, and the
+    other was tombstoned with no signal that the charter was corrupt.
+
+    build_charter can no longer produce such a charter, but charter.json is a
+    file on disk that a bad hand-merge or an older buggy build can leave in
+    exactly that state, so succession must resolve it DETERMINISTICALLY and
+    visibly rather than by accident: first-wins on sorted slug, and the loser
+    is tombstoned like any other unclaimed prior domain.
+    """
+    prior = {
+        "version": 1,
+        "reorg_seq": 3,
+        "domains": {
+            slug: {
+                "tier": 1, "own_altitude": "division", "parent_slug": None,
+                "child_slugs": [], "anchor_id": "Concept:hub",
+                "direct_member_ids": ["Concept:hub"], "member_count": 1,
+                "reorg_seq": 3, "status": "live", "transition": "stable",
+                "unsplittable": False,
+            }
+            for slug in ("aaa", "zzz")
+        },
+        "member_index": {"Concept:hub": "zzz"},
+    }
+    fresh = _charter_with("whatever", "Concept:hub", ["Concept:hub", "Concept:new"])
+    merged = succeed(prior, fresh)
+
+    live = {slug: e for slug, e in merged["domains"].items() if e["status"] == "live"}
+    assert set(live) == {"aaa"}, "first-wins on sorted slug, deterministically"
+    assert live["aaa"]["transition"] == "stable"
+    assert merged["domains"]["zzz"]["status"] == "retired"
+
+    # And it must be stable across runs, not a coincidence of dict ordering.
+    assert succeed(prior, fresh) == merged
+
+
+def test_a_fresh_domain_naming_an_unknown_parent_is_refused_not_promoted_to_root():
+    """IMPORTANT 4: pass 2 used ``rename.get(entry["parent_slug"])``, and a
+    miss yields None — which in this schema means "I am a root division". So a
+    fresh charter whose child named a parent that did not exist did not fail;
+    it silently promoted that child to the top of the institution, changing
+    both its altitude and what an agent routing from root would be shown."""
     prior = _charter_with("alpha", "Concept:hub", ["Concept:hub"])
-    fresh = _charter_with("beta", "Concept:hub", ["Concept:hub", "Concept:y"])
-    assert succeed(prior, fresh) == succeed(prior, fresh)
+    fresh = {
+        "version": 1,
+        "reorg_seq": 0,
+        "domains": {
+            "child": {
+                "tier": 2, "own_altitude": "team", "parent_slug": "ghost",
+                "child_slugs": [], "anchor_id": "Concept:hub",
+                "direct_member_ids": ["Concept:hub"], "member_count": 1,
+                "reorg_seq": 0, "status": "live", "transition": "founded",
+                "unsplittable": False,
+            },
+        },
+        "member_index": {"Concept:hub": "child"},
+    }
+    with pytest.raises(ValueError) as excinfo:
+        succeed(prior, fresh)
+    assert "ghost" in str(excinfo.value)
 
 
 def test_a_slug_reused_by_an_unrelated_fresh_domain_does_not_shield_the_old_one_from_tombstoning():
