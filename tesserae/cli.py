@@ -5451,6 +5451,106 @@ def _route_agents(rest: List[str]) -> int:
     return _resolve_handler(args._handler)(args)
 
 
+# ----- domains (CHARTER: divisions/departments/teams over the graph) --------
+def _handle_domains_status(args: argparse.Namespace) -> int:
+    from .charter import CharterUnreadable, read_charter
+
+    try:
+        charter = read_charter(args.project)
+    except CharterUnreadable as exc:
+        # A charter that exists but cannot be parsed is NOT the same as a
+        # project that has none, and must not borrow the reassuring message
+        # or the 0 exit code below: a script polling this would read a
+        # corrupted institution as one that had simply never been compiled.
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if charter is None:
+        # A project below the one-read bound legitimately has no charter —
+        # .tesserae/charter/ is never created for it. That is correct
+        # behaviour, not a failure, so this prints to stdout and exits 0
+        # rather than looking like an error a caller should retry or alert on.
+        print(
+            "no charter yet — the project is below the one-read bound, or has "
+            "not been compiled since the charter pass landed."
+        )
+        return 0
+    if getattr(args, "as_json", False):
+        # --json must emit ONLY JSON on stdout: a caller does
+        # json.loads(capsys.readouterr().out), so no other print may share
+        # this branch.
+        print(json.dumps(charter, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+
+    domains = charter["domains"]
+    roots = sorted(
+        slug for slug, e in domains.items()
+        if e["parent_slug"] is None and e["status"] == "live"
+    )
+
+    def _render(slug: str, depth: int, seen_on_path: frozenset[str]) -> None:
+        # The charter is a tree by construction, but charter.json is a
+        # hand-editable file on disk — a corrupted or manually patched
+        # child_slugs entry could introduce a cycle. Without this guard a
+        # cycle would recurse without bound (RecursionError at best, a hung
+        # CLI at worst) purely from rendering user-editable JSON, which is
+        # the same failure class this feature's split() already had to be
+        # hardened against for its own recursion (see charter.py:233-247).
+        if slug in seen_on_path or slug not in domains:
+            return
+        entry = domains[slug]
+        flag = "  [unsplittable]" if entry.get("unsplittable") else ""
+        print(
+            f"{'  ' * depth}{slug}  ({entry['own_altitude']}, "
+            f"{entry['member_count']} members){flag}"
+        )
+        seen_on_path = seen_on_path | {slug}
+        for child in entry["child_slugs"]:
+            if child not in domains:
+                # A child_slug naming a domain the charter does not define is
+                # corruption, not a legitimate stop the way a cycle is, and
+                # folding both into one silent `return` made this renderer
+                # report a broken institution as a healthy tree: a charter in
+                # the state build_charter's intake-slug overwrite used to
+                # produce — a division erased, its departments left pointing
+                # at a parent that no longer held them — printed with the
+                # orphans simply absent. The operator's only view of the
+                # structure has to show the damage.
+                print(f"{'  ' * (depth + 1)}{child}  [MISSING — no such domain]")
+                continue
+            _render(child, depth + 1, seen_on_path)
+
+    for slug in roots:
+        _render(slug, 0, frozenset())
+    retired = sum(1 for e in domains.values() if e["status"] == "retired")
+    print(f"\nreorg_seq={charter['reorg_seq']}  live={len(roots)} root(s)  retired={retired}")
+    return 0
+
+
+def _build_domains_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae domains",
+        description="Inspect the chartered domain structure (divisions, departments, teams).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae domains status\n"
+            "  tesserae domains status --json\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="domains_command", required=True)
+    p_status = sub.add_parser("status", help="Print the chartered domain tree.")
+    p_status.add_argument("--project", default=".", help="Project root directory; defaults to the current directory")
+    p_status.add_argument("--json", dest="as_json", action="store_true", help="Emit the charter payload as JSON.")
+    p_status.set_defaults(_handler="_handle_domains_status")
+    return parser
+
+
+def _route_domains(rest: List[str]) -> int:
+    args = _build_domains_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
 # ----- sources (compile scope: local + global) ------------------------------
 def _normalize_source(project_root: Path, raw: str):
     """Map a user-given path to its stored form + resolved location + kind.
@@ -6650,6 +6750,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "setup": _route_setup,
     "projects": _route_projects,
     "agents": _route_agents,
+    "domains": _route_domains,
     "sources": _route_sources,
     "federation": _route_federation,
     "integrations": _route_integrations,
