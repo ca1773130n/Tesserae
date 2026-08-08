@@ -293,6 +293,90 @@ def _resolve(cwd, home):
     return r.stdout.strip(), r.returncode
 
 
+CODE_LAYER_CONFIGS = [
+    ({}, False, "no external_tools key at all"),
+    ({"external_tools": []}, False, "empty tool list"),
+    ({"external_tools": [{"id": "raganything"}]}, False, "a different tool only"),
+    ({"external_tools": [{"id": "codegraph"}]}, True, "bare entry means enabled"),
+    ({"external_tools": [{"id": "codegraph", "enabled": True}]}, True, "explicit true"),
+    ({"external_tools": [{"id": "codegraph", "enabled": False}]}, False, "explicit false"),
+    (
+        {"external_tools": [{"id": "raganything"}, {"id": "codegraph"}]},
+        True,
+        "codegraph after another tool",
+    ),
+    ({"external_tools": ["not-a-dict"]}, False, "junk entry is not a crash"),
+    ({"external_tools": None}, False, "null tool list"),
+]
+
+
+@pytest.mark.parametrize("config, expected, why", CODE_LAYER_CONFIGS)
+def test_code_layer_gate_agrees_between_bash_and_python(tmp_path, config, expected, why):
+    """``_lib.sh:code_layer_enabled`` must answer exactly as
+    ``ProjectWiki._code_layer_enabled``.
+
+    The opt-in rule is implemented twice, in two languages, because the compile
+    is Python and the hooks are bash. Each carries a comment pointing at the
+    other, which is worth nothing on its own: comments do not fail. If the two
+    drift, a hook maintains a code-graph.json that the next compile deletes,
+    forever — and read in isolation each side looks perfectly correct, so
+    nothing surfaces the disagreement.
+
+    This is the same guard-shape as the mcp.md/list_tools() test: pin the two
+    representations to each other rather than trusting them to be kept in step
+    by whoever edits one of them next.
+    """
+    from tesserae.project import ProjectWiki
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / ".tesserae").mkdir()
+    (project / ".tesserae" / "config.json").write_text(json.dumps(config), encoding="utf-8")
+
+    r = subprocess.run(
+        ["bash", "-c", f'source "{HOOKS}/_lib.sh"; code_layer_enabled'],
+        cwd=str(project),
+        capture_output=True,
+        text=True,
+        env={"HOME": str(tmp_path / "home"), "PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+    )
+    bash_says = r.stdout.strip()
+    assert bash_says in {"true", "false"}, (
+        f"bash gate emitted {bash_says!r} (stderr: {r.stderr!r}) for {why}"
+    )
+
+    python_says = ProjectWiki._code_layer_enabled(
+        ProjectWiki.__new__(ProjectWiki), dict(config)
+    )
+
+    assert (bash_says == "true") == python_says == expected, (
+        f"gate disagreement on {why}: bash={bash_says} python={python_says} "
+        f"expected={expected}"
+    )
+
+
+def test_code_layer_gate_is_false_when_config_is_absent_or_corrupt(tmp_path):
+    """Every way of failing to read the config means OFF, not a crash.
+
+    Off is the only safe default here: a hook that guessed "on" would spend CPU
+    maintaining a layer for a project that never asked, which is the exact
+    behaviour the opt-in exists to stop.
+    """
+    project = tmp_path / "proj"
+    (project / ".tesserae").mkdir(parents=True)
+    env = {"HOME": str(tmp_path / "home"), "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+    cmd = ["bash", "-c", f'source "{HOOKS}/_lib.sh"; code_layer_enabled']
+
+    # No config.json.
+    r = subprocess.run(cmd, cwd=str(project), capture_output=True, text=True, env=env)
+    assert r.stdout.strip() == "false", r.stderr
+
+    # Truncated / non-JSON config.
+    (project / ".tesserae" / "config.json").write_text("{not json", encoding="utf-8")
+    r = subprocess.run(cmd, cwd=str(project), capture_output=True, text=True, env=env)
+    assert r.stdout.strip() == "false", r.stderr
+
+
 def test_resolve_project_root_refuses_home(tmp_path):
     home = tmp_path / "home"
     (home / ".tesserae").mkdir(parents=True)
