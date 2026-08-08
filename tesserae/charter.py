@@ -13,10 +13,12 @@ See docs/superpowers/specs/2026-08-08-charter-expertise-org-design.md.
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Sequence, Set
+from pathlib import Path
+from typing import Optional, Sequence, Set
 
 from .agent_distill import _render_member_block
 from .community_summaries import detect_communities
@@ -283,3 +285,137 @@ def slug_for(name: str, taken: Set[str]) -> str:
     while f"{base}-{suffix}" in taken:
         suffix += 1
     return f"{base}-{suffix}"
+
+
+#: Node types that are Tesserae's OWN output rather than knowledge it ingested.
+#: Excluded by default: measured on the live graph, leaving them in made
+#: division 3's anchor "Project Pulse", division 2's "한 줄 요약", and four of
+#: the 3DGS division's top eight departments "Daily Digest — <date>" pages —
+#: roughly half the institution describing the tool instead of the subject.
+_SYNTHESIS_TYPES = frozenset(
+    {ResearchNodeType.SYNTHESIS, ResearchNodeType.COMMUNITY_SUMMARY}
+)
+
+_INTAKE_SLUG = "intake"
+
+
+def charter_path(project_root: Path | str) -> Path:
+    return Path(project_root) / ".tesserae" / "charter" / "charter.json"
+
+
+def read_charter(project_root: Path | str) -> Optional[dict]:
+    path = charter_path(project_root)
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def write_charter(project_root: Path | str, charter: dict) -> Path:
+    """Persist with sorted keys and no timestamps, through the atomic publish."""
+    from .project import _publish_atomically
+
+    path = charter_path(project_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _publish_atomically(
+        path, json.dumps(charter, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    )
+    return path
+
+
+def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> dict:
+    """Derive the full institution from the research graph.
+
+    Founding pass only: ``reorg_seq`` is 0 and every domain is ``founded``.
+    Succession against a prior charter is Task 8.
+    """
+    scoped = ResearchGraph(
+        nodes=[
+            n for n in graph.nodes
+            if not (exclude_synthesis and n.type in _SYNTHESIS_TYPES)
+        ],
+        edges=list(graph.edges),
+    )
+    keep = {n.id for n in scoped.nodes}
+    scoped.edges = [e for e in scoped.edges if e.source in keep and e.target in keep]
+
+    clusters, _dropped = sections(scoped)
+    groups = divisions(scoped, clusters)
+    intake = intake_members(scoped, clusters, groups)
+
+    division_members = [
+        sorted({mid for index in group for mid in clusters[index]}) for group in groups
+    ]
+    anchors = assign_anchors(scoped, division_members)
+    by_id = {n.id: n for n in scoped.nodes}
+
+    domains: dict[str, dict] = {}
+    taken: set[str] = set()
+    member_index: dict[str, str] = {}
+
+    def _emit(members: Sequence[str], anchor_id: str, tier: int, parent: Optional[str]) -> str:
+        anchor_name = by_id[anchor_id].name if anchor_id in by_id else anchor_id
+        slug = slug_for(anchor_name, taken)
+        taken.add(slug)
+        result = split(scoped, members)
+        child_slugs: list[str] = []
+        if result.children:
+            child_anchors = assign_anchors(scoped, [list(c) for c in result.children])
+            for child_members, child_anchor in zip(result.children, child_anchors):
+                child_slugs.append(_emit(list(child_members), child_anchor, tier + 1, slug))
+        domains[slug] = {
+            "tier": tier,
+            "own_altitude": _altitude_for(tier, len(members)),
+            "parent_slug": parent,
+            "child_slugs": sorted(child_slugs),
+            "anchor_id": anchor_id,
+            "direct_member_ids": sorted(result.direct),
+            "member_count": len(members),
+            "reorg_seq": 0,
+            "status": "live",
+            "transition": "founded",
+            "unsplittable": result.stalled,
+        }
+        for mid in result.direct:
+            member_index[mid] = slug
+        return slug
+
+    for members, anchor in zip(division_members, anchors):
+        _emit(members, anchor, 1, None)
+
+    if intake:
+        domains[_INTAKE_SLUG] = {
+            "tier": 1,
+            "own_altitude": "team",
+            "parent_slug": None,
+            "child_slugs": [],
+            "anchor_id": "",
+            "direct_member_ids": sorted(intake),
+            "member_count": len(intake),
+            "reorg_seq": 0,
+            "status": "live",
+            "transition": "founded",
+            "unsplittable": False,
+        }
+        for mid in intake:
+            member_index[mid] = _INTAKE_SLUG
+
+    return {
+        "version": 1,
+        "reorg_seq": 0,
+        "domains": domains,
+        "member_index": member_index,
+    }
+
+
+def _altitude_for(tier: int, member_count: int) -> str:
+    """Depth maps to altitude, clamped by size so a label means the same thing
+    across branches — without the clamp a depth-2 domain of 60 members and one
+    of 700 would both read as 'department'."""
+    if tier == 1:
+        return "division"
+    if tier == 2 and member_count >= 100:
+        return "department"
+    return "team"

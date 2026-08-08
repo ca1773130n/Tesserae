@@ -259,3 +259,66 @@ def test_slug_is_stable_and_deduped():
 def test_slug_handles_non_ascii_without_collapsing_to_empty():
     taken: set[str] = set()
     assert slug_for("한 줄 요약", taken) != ""
+
+
+import json
+from pathlib import Path
+
+from tesserae.charter import build_charter, charter_path, read_charter, write_charter
+
+
+def test_build_charter_partitions_every_node_exactly_once():
+    """CH-01, the invariant the whole structure rests on."""
+    graph = _two_triangles_plus_orphan()
+    charter = build_charter(graph)
+
+    seen: list[str] = []
+    for entry in charter["domains"].values():
+        seen.extend(entry["direct_member_ids"])
+    assert sorted(seen) == sorted(n.id for n in graph.nodes)
+    assert len(seen) == len(set(seen)), "a node may belong to exactly one domain"
+
+
+def test_build_charter_excludes_synthesis_nodes_by_default():
+    """Measured on the live graph, leaving these in makes roughly half the
+    institution an org chart of Tesserae's own output: division anchors came
+    out as 'Project Pulse' and '한 줄 요약'."""
+    graph = _two_triangles_plus_orphan()
+    graph.nodes.append(
+        ResearchNode(id="Synthesis:pulse", name="Project Pulse", type=ResearchNodeType.SYNTHESIS)
+    )
+    charter = build_charter(graph)
+    everyone = {
+        mid for e in charter["domains"].values() for mid in e["direct_member_ids"]
+    }
+    assert "Synthesis:pulse" not in everyone
+
+    kept = build_charter(graph, exclude_synthesis=False)
+    everyone_kept = {
+        mid for e in kept["domains"].values() for mid in e["direct_member_ids"]
+    }
+    assert "Synthesis:pulse" in everyone_kept
+
+
+def test_charter_round_trips_and_is_byte_stable(tmp_path: Path):
+    graph = _two_triangles_plus_orphan()
+    charter = build_charter(graph)
+    path = write_charter(tmp_path, charter)
+    assert path == charter_path(tmp_path)
+    assert read_charter(tmp_path) == charter
+
+    first = path.read_bytes()
+    write_charter(tmp_path, build_charter(graph))
+    assert path.read_bytes() == first, "same input must produce identical bytes"
+
+
+def test_charter_has_no_timestamps():
+    """A wall-clock field would break byte-idempotence on every rebuild."""
+    charter = build_charter(_two_triangles_plus_orphan())
+    blob = json.dumps(charter)
+    assert "timestamp" not in blob and "generated_at" not in blob
+    assert charter["reorg_seq"] == 0
+
+
+def test_read_charter_returns_none_when_absent(tmp_path: Path):
+    assert read_charter(tmp_path) is None
