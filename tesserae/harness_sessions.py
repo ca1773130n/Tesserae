@@ -20,12 +20,6 @@ from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Content blocks with no text projection, tallied by block ``type``. Reset at
-# the start of each :func:`discover_harness_sessions` run and reported at the
-# end of it, so the number describes one discovery rather than accumulating
-# across an unknowable span of calls.
-_DROPPED_CONTENT_BLOCKS: Dict[str, int] = {}
-
 # How far into nested ``content`` lists the tally walks. Harness images sit at
 # depth 1 (inside a ``tool_result``) and the Anthropic content schema does not
 # nest a tool_result inside a tool_result, so 1 is the real-world maximum; a
@@ -38,27 +32,54 @@ _MAX_CONTENT_DEPTH = 8
 _TRUNCATED_KEY = "<truncated>"
 
 
-def reset_dropped_content_blocks() -> None:
-    """Clear the dropped-block tally. Called once per discovery run."""
-    _DROPPED_CONTENT_BLOCKS.clear()
+class HarnessDiscovery(List["HarnessSession"]):
+    """The sessions one discovery found, plus what it could NOT represent.
 
+    The tally travels with the result it describes. It used to be a module
+    global, cleared at the start of a run and read at the end of it, which is
+    only correct while exactly one discovery is ever in flight — and it is not:
+    ``tesserae refresh --jobs N`` dispatches projects into a ThreadPoolExecutor
+    inside ONE process (``multiproject.run_across_projects``). Two projects
+    then shared one dict, and depending on which thread cleared it last, either
+    a project with no images reported another project's three, or a project
+    WITH three reported none. The second is precisely the silent multimodal gap
+    this measurement exists to expose.
 
-def dropped_content_block_counts() -> Dict[str, int]:
-    """Snapshot of content blocks with no text projection, keyed by ``type``.
-
-    A copy: callers measuring the multimodal gap must not be able to edit the
-    tally they are reading.
+    A ``list`` subclass rather than a tuple or a new dataclass because ~20 call
+    sites already treat the return of :func:`discover_harness_sessions` as the
+    list of sessions and only two of them want the tally. Read it through
+    :func:`dropped_content_blocks`, which also copes with the plain ``list``
+    that test doubles return.
     """
-    return dict(_DROPPED_CONTENT_BLOCKS)
+
+    def __init__(
+        self,
+        sessions: Iterable["HarnessSession"] = (),
+        dropped: Optional[Mapping[str, int]] = None,
+    ) -> None:
+        super().__init__(sessions)
+        self.dropped_content_blocks: Dict[str, int] = dict(dropped or {})
 
 
-def format_dropped_content_blocks() -> Optional[str]:
-    """One line naming what the last discovery could not represent, or None.
+def dropped_content_blocks(sessions: object) -> Dict[str, int]:
+    """Content blocks a discovery could not represent, keyed by block ``type``.
+
+    A copy, so a caller measuring the multimodal gap cannot edit the tally it
+    is reading. ``{}`` for a plain list — a stubbed discovery measured nothing,
+    which is not the same as "measured zero", but the only honest thing to
+    report for a result that carries no measurement is nothing at all.
+    """
+    value = getattr(sessions, "dropped_content_blocks", None)
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def format_dropped_content_blocks(sessions: object) -> Optional[str]:
+    """One line naming what ``sessions``' discovery could not represent, or None.
 
     None when nothing was dropped — a summary printed unconditionally becomes
     background noise, and an operator stops reading it.
     """
-    dropped = dropped_content_block_counts()
+    dropped = dropped_content_blocks(sessions)
     if not dropped:
         return None
     histogram = ", ".join(f"{key}={dropped[key]}" for key in sorted(dropped))
@@ -68,7 +89,9 @@ def format_dropped_content_blocks() -> Optional[str]:
     )
 
 
-def _tally_dropped_blocks(content: object, depth: int = 0) -> None:
+def _tally_dropped_blocks(
+    content: object, dropped: Dict[str, int], depth: int = 0
+) -> None:
     """Count every block in ``content`` that has no text projection, by type.
 
     Recurses into a block's own ``content`` list, because that is where the
@@ -85,9 +108,7 @@ def _tally_dropped_blocks(content: object, depth: int = 0) -> None:
     if not isinstance(content, list):
         return
     if depth > _MAX_CONTENT_DEPTH:
-        _DROPPED_CONTENT_BLOCKS[_TRUNCATED_KEY] = (
-            _DROPPED_CONTENT_BLOCKS.get(_TRUNCATED_KEY, 0) + 1
-        )
+        dropped[_TRUNCATED_KEY] = dropped.get(_TRUNCATED_KEY, 0) + 1
         return
     for item in content:
         if not isinstance(item, dict):
@@ -97,12 +118,21 @@ def _tally_dropped_blocks(content: object, depth: int = 0) -> None:
             continue
         kind = item.get("type")
         key = kind if isinstance(kind, str) and kind else "<untyped>"
-        _DROPPED_CONTENT_BLOCKS[key] = _DROPPED_CONTENT_BLOCKS.get(key, 0) + 1
-        _tally_dropped_blocks(item.get("content"), depth + 1)
+        dropped[key] = dropped.get(key, 0) + 1
+        _tally_dropped_blocks(item.get("content"), dropped, depth + 1)
 
 
-def _tally_dropped_blocks_in_rows(rows: Sequence[Mapping[str, object]]) -> None:
-    """Tally one transcript, ONCE.
+def _tally_dropped_blocks_in_rows(
+    rows: Sequence[Mapping[str, object]], dropped: Optional[Dict[str, int]]
+) -> None:
+    """Tally one transcript, ONCE, into the caller's own accumulator.
+
+    ``dropped`` is None for callers that are not measuring — notably
+    ``engine/session_tail.py``, which re-parses transcripts on every poll cycle
+    and neither resets nor reads a tally. Threading the accumulator instead of
+    writing to module state is what stops that loop growing a count forever,
+    and stops its ``threading.Thread`` (daemon.py) mutating a dict a
+    ``refresh --jobs`` worker is reading.
 
     Deliberately not done inside :func:`_content_to_text`: that helper is
     called an unpredictable number of times per transcript (activity, turns,
@@ -110,13 +140,15 @@ def _tally_dropped_blocks_in_rows(rows: Sequence[Mapping[str, object]]) -> None:
     every block by the number of passes and the histogram measured passes
     rather than content.
     """
+    if dropped is None:
+        return
     for row in rows:
         message = row.get("message")
         if isinstance(message, dict):
-            _tally_dropped_blocks(message.get("content"))
+            _tally_dropped_blocks(message.get("content"), dropped)
         payload = row.get("payload")
         if isinstance(payload, dict):
-            _tally_dropped_blocks(payload.get("content"))
+            _tally_dropped_blocks(payload.get("content"), dropped)
 
 
 @dataclass(frozen=True)
@@ -740,8 +772,13 @@ def discover_harness_sessions(
     project_root: str | Path,
     roots: Optional[Sequence[str | Path]] = None,
     harnesses: Optional[Sequence[str]] = None,
-) -> List[HarnessSession]:
+) -> HarnessDiscovery:
     """Discover local Claude Code / Codex JSONL sessions for ``project_root``.
+
+    Returns a :class:`HarnessDiscovery` — a list of sessions that ALSO carries
+    what this scan could not represent, readable via
+    :func:`dropped_content_blocks` / :func:`format_dropped_content_blocks`.
+    Callers that only want the sessions can keep treating it as a list.
 
     Discovery is intentionally project-scoped: a transcript must carry a strong
     cwd/workdir signal equal to the project root, or live in Claude Code's
@@ -749,7 +786,9 @@ def discover_harness_sessions(
     into the generated pages; the path is stored as provenance only.
     """
 
-    reset_dropped_content_blocks()
+    # Local to this call, so two discoveries running at once in the same
+    # process (``refresh --jobs N``) cannot see each other's counts.
+    dropped: Dict[str, int] = {}
     project = Path(project_root).resolve()
     selected = {h.lower() for h in (harnesses or ("claude-code", "codex"))}
     scan_roots = [Path(r).expanduser() for r in roots] if roots is not None else discover_harness_roots()
@@ -768,12 +807,16 @@ def discover_harness_sessions(
                 continue
             seen_roots.add(root_key)
             if _root_supports_claude(root) and "claude-code" in selected:
-                for session in _discover_claude_sessions(project, root, scan_cache):
+                for session in _discover_claude_sessions(
+                    project, root, scan_cache, dropped
+                ):
                     if session.id not in seen:
                         seen.add(session.id)
                         sessions.append(session)
             if _root_supports_codex(root) and "codex" in selected:
-                for session in _discover_codex_sessions(project, root, scan_cache):
+                for session in _discover_codex_sessions(
+                    project, root, scan_cache, dropped
+                ):
                     if session.id not in seen:
                         seen.add(session.id)
                         sessions.append(session)
@@ -794,10 +837,11 @@ def discover_harness_sessions(
     # This log line is for `tesserae engine`, the only caller that configures
     # logging. Every other entry point has to PRINT the same summary itself —
     # see format_dropped_content_blocks() and its callers in cli.py.
-    summary = format_dropped_content_blocks()
+    result = HarnessDiscovery(sessions, dropped)
+    summary = format_dropped_content_blocks(result)
     if summary:
         logger.info("session discovery: %s", summary)
-    return sessions
+    return result
 
 
 def _is_claude_subagent_transcript(path: Path) -> bool:
@@ -805,7 +849,10 @@ def _is_claude_subagent_transcript(path: Path) -> bool:
 
 
 def _discover_claude_sessions(
-    project: Path, root: Path, scan_cache: Optional["_ScanCache"] = None
+    project: Path,
+    root: Path,
+    scan_cache: Optional["_ScanCache"] = None,
+    dropped: Optional[Dict[str, int]] = None,
 ) -> List[HarnessSession]:
     project_dir = root / "projects" / _claude_project_dir(project)
     candidates: set[Path] = set()
@@ -830,11 +877,18 @@ def _discover_claude_sessions(
     history = root / "history.jsonl"
     if history.exists():
         candidates.add(history)
-    return [s for p in sorted(candidates) if (s := _parse_claude_session(project, root, p))]
+    return [
+        s
+        for p in sorted(candidates)
+        if (s := _parse_claude_session(project, root, p, dropped=dropped))
+    ]
 
 
 def _discover_codex_sessions(
-    project: Path, root: Path, scan_cache: Optional["_ScanCache"] = None
+    project: Path,
+    root: Path,
+    scan_cache: Optional["_ScanCache"] = None,
+    dropped: Optional[Dict[str, int]] = None,
 ) -> List[HarnessSession]:
     sessions_dir = root / "sessions"
     if not sessions_dir.exists():
@@ -843,7 +897,8 @@ def _discover_codex_sessions(
     return [
         s
         for p in sorted(sessions_dir.rglob("*.jsonl"))
-        if _mentions_project(p, markers, scan_cache) and (s := _parse_codex_session(project, root, p))
+        if _mentions_project(p, markers, scan_cache)
+        and (s := _parse_codex_session(project, root, p, dropped=dropped))
     ]
 
 
@@ -1097,7 +1152,12 @@ def _parse_claude_rows(rows: Sequence[Mapping[str, object]], project: Path) -> _
     )
 
 
-def _parse_claude_session(project: Path, root: Path, path: Path) -> Optional[HarnessSession]:
+def _parse_claude_session(
+    project: Path,
+    root: Path,
+    path: Path,
+    dropped: Optional[Dict[str, int]] = None,
+) -> Optional[HarnessSession]:
     rows = _parse_jsonl(path)
     if not rows:
         return None
@@ -1106,7 +1166,8 @@ def _parse_claude_session(project: Path, root: Path, path: Path) -> Optional[Har
         return None
     # Tallied here, after the project gate and once per transcript: only
     # sessions this project actually imports count toward its multimodal gap.
-    _tally_dropped_blocks_in_rows(rows)
+    # ``dropped`` is None when the caller is not measuring (engine/session_tail).
+    _tally_dropped_blocks_in_rows(rows, dropped)
     session_id = parsed.session_id or path.stem
     timestamps = parsed.timestamps
     started_at = min(timestamps) if timestamps else ""
@@ -1118,7 +1179,7 @@ def _parse_claude_session(project: Path, root: Path, path: Path) -> Optional[Har
     model = parsed.model
     slug = safe_slug(title or session_id)
     subagents = _claude_subagent_summaries(
-        project, root, path, session_id, _claude_subagent_types(rows)
+        project, root, path, session_id, _claude_subagent_types(rows), dropped=dropped
     )
     metadata: Dict[str, object] = {"config_root": str(root), "transcript": str(path), "turns": _claude_turns(rows)}
     if subagents:
@@ -1201,6 +1262,7 @@ def _claude_subagent_summaries(
     parent_path: Path,
     parent_session_id: str,
     subagent_types: Optional[Mapping[str, str]] = None,
+    dropped: Optional[Dict[str, int]] = None,
 ) -> List[Dict[str, object]]:
     subagents_dir = parent_path.with_suffix("") / "subagents"
     if not subagents_dir.exists():
@@ -1210,7 +1272,7 @@ def _claude_subagent_summaries(
         rows = _parse_jsonl(path)
         if not rows or not _rows_match_project(rows, project):
             continue
-        _tally_dropped_blocks_in_rows(rows)
+        _tally_dropped_blocks_in_rows(rows, dropped)
         timestamps = [v for row in rows if isinstance((v := row.get("timestamp")), str)]
         title, preview = _title_and_preview_from_claude(rows)
         tools, commands, files = _claude_activity(rows, project)
@@ -1239,11 +1301,16 @@ def _claude_subagent_summaries(
     return sorted(summaries, key=lambda item: str(item.get("started_at") or ""))
 
 
-def _parse_codex_session(project: Path, root: Path, path: Path) -> Optional[HarnessSession]:
+def _parse_codex_session(
+    project: Path,
+    root: Path,
+    path: Path,
+    dropped: Optional[Dict[str, int]] = None,
+) -> Optional[HarnessSession]:
     rows = _parse_jsonl(path)
     if not rows or not _rows_match_project(rows, project):
         return None
-    _tally_dropped_blocks_in_rows(rows)
+    _tally_dropped_blocks_in_rows(rows, dropped)
     session_meta = next((r.get("payload") for r in rows if r.get("type") == "session_meta" and isinstance(r.get("payload"), dict)), {})
     session_id = str(session_meta.get("id") or path.stem) if isinstance(session_meta, dict) else path.stem
     timestamps = [v for row in rows if isinstance((v := row.get("timestamp")), str)]

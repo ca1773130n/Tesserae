@@ -2183,7 +2183,7 @@ def _handle_refresh_one(args: argparse.Namespace) -> int:
         sessions = hs.discover_harness_sessions(wiki.project_root, roots=roots)
         # Same reason as `sessions discover`: refresh never configures logging,
         # so the histogram has to be printed to be seen at all.
-        dropped_summary = hs.format_dropped_content_blocks()
+        dropped_summary = hs.format_dropped_content_blocks(sessions)
         if dropped_summary:
             print(f"  {dropped_summary}")
         store = hs.HarnessSessionStore(wiki.paths.harness_sessions)
@@ -2445,7 +2445,7 @@ def _handle_sessions(args: argparse.Namespace) -> int:
             # `tesserae engine`, so an INFO record from harness_sessions goes
             # nowhere here. stdout is where this command already reports its
             # counts, and the drop histogram is one of them.
-            dropped_summary = format_dropped_content_blocks()
+            dropped_summary = format_dropped_content_blocks(sessions)
             if dropped_summary:
                 print(f"  {dropped_summary}")
             for harness, count in sorted(Counter(session.harness for session in sessions).items()):
