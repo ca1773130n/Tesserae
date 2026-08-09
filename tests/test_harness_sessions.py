@@ -1402,11 +1402,7 @@ def test_a_non_boolean_is_error_is_not_recorded_as_a_failure():
 def test_a_session_never_stores_more_than_the_error_cap(tmp_path):
     """``errors`` is serialized into every stored record, so it is bounded on
     both axes. Neither bound was asserted anywhere."""
-    from tesserae.harness_sessions import (
-        _ERROR_TEXT_LIMIT,
-        _MAX_SESSION_ERRORS,
-        _errors_from_turns,
-    )
+    from tesserae.harness_sessions import _errors_from_turns
 
     turns = [
         {
@@ -1415,10 +1411,12 @@ def test_a_session_never_stores_more_than_the_error_cap(tmp_path):
             "text": "x" * 5000,
             "exit_code": 1,
         }
-    ] * (_MAX_SESSION_ERRORS + 25)
+    ] * 75
     errors = _errors_from_turns(turns)
-    assert len(errors) == _MAX_SESSION_ERRORS
-    assert all(len(e) <= len("shell exited 1: ") + _ERROR_TEXT_LIMIT for e in errors)
+    # Literal bounds, deliberately: asserting against the constants would make
+    # the test agree with whatever the constants say and bound nothing.
+    assert len(errors) <= 50
+    assert max(len(e) for e in errors) <= 250, "one result must not carry 5 KB"
 
 
 def test_a_recorded_error_does_not_publish_the_operators_home_directory():
