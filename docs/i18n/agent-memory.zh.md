@@ -83,7 +83,7 @@ tesserae agents drill SessionInsight:abc123 --agent claude-code:me:reviewer
 - **管理者密钥** → 仅报告 L1 工件的联合。原始发现永远不会向上泄露。
 - **`org`** → 所有蒸馏工件，零配置。
 
-支持工具：`agents show` / `agent_view_explain`(成员 + `distilled_through` 陈旧水位标——每份报告的专业知识有多旧)，以及 `agents drill` / `drill_down`(将蒸馏笔记的 `member_refs` 解析回原始 L0 证据，状态为"活跃/已更改/已吸收/已消失"——每个调用均被审计记录)。`compile_context --multi-pool` 为蒸馏笔记和专业知识档案预留预算插槽，并在输出中标记陈旧或回退质量的知识。
+支持工具：`agents show` / `agent_view_explain`(成员 + `distilled_through` 陈旧水位标——每份报告的专业知识有多旧)，以及 `agents drill` / `drill_down`(将蒸馏笔记的 `member_refs` 解析回原始 L0 证据，状态为"活跃/已更改/已吸收/已消失"——每个调用均被审计记录)。`compile_context --multi-pool` 为蒸馏笔记和专业知识档案预留预算插槽，并在输出中标记陈旧或回退质量的知识。 只有生产者真正创建的节点才能占用插槽——蒸馏流程、会话事件流程，或代理自己的 `graph_write`——因此仅由文档抽取填充的类型，其池会保持为空；CLI 和 `knobs.pool_reservations` 都会指出哪些池什么也没返回。
 
 ## 增长循环
 

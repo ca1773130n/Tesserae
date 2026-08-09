@@ -83,7 +83,7 @@ tesserae agents drill SessionInsight:abc123 --agent claude-code:me:reviewer
 - **관리자 키** → 보고서 L1 아티팩트의 연합만. 원본 발견은 절대 위로 누출되지 않습니다.
 - **`org`** → 모든 증류된 아티팩트, 제로 구성.
 
-지원 도구: `agents show` / `agent_view_explain`(멤버 + `distilled_through` 낡음 워터마크 — 각 보고서의 전문성이 얼마나 오래되었는지), 그리고 `agents drill` / `drill_down`(증류된 노트의 `member_refs`를 원본 L0 증거로 다시 해석하세요. 살아있음/변경됨/흡수됨/없음 상태 — 모든 호출 감사 로깅). `compile_context --multi-pool`은 증류된 노트와 전문성 프로필을 위해 예산 슬롯을 예약하고 출력에서 낡거나 폴백 품질 지식에 레이블을 지정합니다.
+지원 도구: `agents show` / `agent_view_explain`(멤버 + `distilled_through` 낡음 워터마크 — 각 보고서의 전문성이 얼마나 오래되었는지), 그리고 `agents drill` / `drill_down`(증류된 노트의 `member_refs`를 원본 L0 증거로 다시 해석하세요. 살아있음/변경됨/흡수됨/없음 상태 — 모든 호출 감사 로깅). `compile_context --multi-pool`은 증류된 노트와 전문성 프로필을 위해 예산 슬롯을 예약하고 출력에서 낡거나 폴백 품질 지식에 레이블을 지정합니다. 슬롯을 차지할 수 있는 것은 생산자가 실제로 만든 노드뿐입니다(증류 패스, 세션 이벤트 패스, 또는 에이전트 자신의 `graph_write`). 따라서 문서 추출로만 채워진 타입의 풀은 비어 있는 채로 남으며, CLI와 `knobs.pool_reservations` 모두 아무것도 반환하지 않은 풀을 알려줍니다.
 
 ## 성장 루프
 

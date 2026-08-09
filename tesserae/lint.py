@@ -31,7 +31,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Set, Tuple
 
 
 # --------------------------------------------------------------------------- types
@@ -305,6 +305,7 @@ class WikiLinter:
         findings.extend(self._check_code_graph_staleness(nodes_by_id))
         findings.extend(self._check_agent_metadata_allowlist(nodes_by_id))
         findings.extend(self._check_agent_forget_ledger())
+        findings.extend(self._check_procedural_pools(nodes_by_id, edges))
         findings.extend(self._check_undistilled_backlog(nodes_by_id, edges))
         findings.extend(self._check_reasoning_edge_ratio(edges))
         findings.extend(self._check_interval_coverage(nodes_by_id, edges))
@@ -985,6 +986,117 @@ class WikiLinter:
                 "project. A path outside every root a Session node declares "
                 "is undated by design — it is not this project's ingest "
                 "layout, so no segment of it names its observation day."
+            ),
+        )
+
+    def _check_procedural_pools(
+        self, nodes_by_id: Dict[str, dict], edges: List[dict]
+    ) -> Iterable[LintFinding]:
+        """How much of each producer-owned type a pool can actually serve.
+
+        ``compile_context(multi_pool=True)`` reserves a budget slot per
+        procedural pool, and since roadmap step 4 only a node carrying producer
+        provenance can take one. Document extraction mints the same type names,
+        so a graph can hold hundreds of ``Event`` nodes — conference deadlines,
+        typically — and still have a pool that reserves nothing. That is the
+        correct outcome and an invisible one: the caller sees procedural memory
+        working. This states the ratio instead.
+
+        Two counts, not one, because a census alone reports the WORST pool as
+        the best. Reservation picks from the PPR neighbourhood of the query's
+        seeds, so a producer-made node with no edges at all is not in any
+        neighbourhood it did not seed itself — a type whose only real members
+        are isolated reads as fully populated while being unservable. Hence
+        ``reachable/producer-made/total``, reachable first. ("Reachable" here is
+        has-at-least-one-edge. An isolated node can still be returned as a
+        direct hybrid-search hit; what it cannot be is *reserved*, which is what
+        this probe is about.)
+
+        INFO, always, with no threshold — the posture ``INTERVAL_COVERAGE``
+        already ships. ``compile --strict`` maps warnings to exit 1, and the
+        projects that trip this are exactly the ones whose producers have never
+        run: a documentation corpus with no agent sessions has nothing to fix in
+        the graph in front of it. A gate whose remedy is "record some sessions"
+        is not a gate, it is a broken build. Silent when the graph has no nodes
+        of these types at all — there is no pool to misread.
+        """
+        from .research_graph import PROCEDURAL_POOL_TYPES, has_producer_provenance
+
+        pool_values = sorted(item.value for item in PROCEDURAL_POOL_TYPES)
+        made: Dict[str, int] = {value: 0 for value in pool_values}
+        total: Dict[str, int] = {value: 0 for value in pool_values}
+        reachable: Dict[str, int] = {value: 0 for value in pool_values}
+        incident: Set[str] = set()
+        for edge in edges:
+            incident.add(str(edge.get("source") or ""))
+            incident.add(str(edge.get("target") or ""))
+        for node_id, node in nodes_by_id.items():
+            type_value = str(node.get("type") or "")
+            if type_value not in total:
+                continue
+            total[type_value] += 1
+            if not has_producer_provenance(type_value, node.get("metadata") or {}):
+                continue
+            made[type_value] += 1
+            if node_id in incident:
+                reachable[type_value] += 1
+
+        populated = [value for value in pool_values if total[value]]
+        if not populated:
+            return
+
+        histogram = ", ".join(
+            f"{value}={reachable[value]}/{made[value]}/{total[value]}"
+            for value in populated
+        )
+        unearned = [value for value in populated if made[value] == 0]
+        # Real members, every one of them isolated: the pool the census would
+        # have called healthiest and the one that can never be served.
+        unreachable = [
+            value
+            for value in populated
+            if made[value] and reachable[value] == 0
+        ]
+        all_total = sum(total[value] for value in populated)
+        all_made = sum(made[value] for value in populated)
+        all_reachable = sum(reachable[value] for value in populated)
+        yield LintFinding(
+            severity="info",
+            code="PROCEDURAL_POOLS",
+            message=(
+                f"{all_made} of {all_total} nodes on producer-owned types were "
+                f"made by their producer, {all_reachable} of those carry an edge "
+                f"and can be reserved (reachable/producer-made/total: "
+                f"{histogram})."
+                + (
+                    f" {', '.join(unearned)} hold only document extractions, so "
+                    f"multi_pool reserves nothing for them."
+                    if unearned
+                    else ""
+                )
+                + (
+                    f" {', '.join(unreachable)} hold real producer output that is "
+                    f"unreachable — every member has degree 0, so no query "
+                    f"neighbourhood contains one and the pool cannot be served."
+                    if unreachable
+                    else ""
+                )
+            ),
+            suggested_fix=(
+                "A node earns a reserved procedural slot by provenance, not by "
+                "type: metadata['extractor'] naming a producer pass, producer "
+                "provenance (member_ids / member_refs / lineage_key / "
+                "distill_quality / distilled_through / agent_write_id), or "
+                "metadata['agent'] on an ExpertiseProfile. A wholly unearned "
+                "pool means the type is populated only by document extraction — "
+                "the vocabulary is offered to the extraction LLM by "
+                "EXTRACTABLE_NODE_TYPES, so a call-for-papers becomes an Event; "
+                "run the producer (the session-event pass, distillation, or "
+                "graph_write) to fill it. An unreachable pool is a different "
+                "problem: the producer ran but wired no edges, so link its "
+                "output into the graph. Neither is a failure to fix before "
+                "shipping — these nodes stay reachable through search_nodes / "
+                "graph_map / node_context, which do not apply this rule."
             ),
         )
 

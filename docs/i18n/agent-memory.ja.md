@@ -83,7 +83,7 @@ tesserae agents drill SessionInsight:abc123 --agent claude-code:me:reviewer
 - **マネージャー キー** → レポート L1 成果物のフェデレーション のみ。生の検索結果は上方に漏洩しません。
 - **`org`** → すべての蒸留された成果物、ゼロ構成。
 
-サポート ツール: `agents show` / `agent_view_explain`(メンバー + `distilled_through` 陳旧ウォーターマーク——各レポートの専門知識がどのくらい古いか)、および `agents drill` / `drill_down`(蒸留されたメモの `member_refs` を生 L0 証拠に解決して、生きている/変更された/吸収された/消失したステータスを取得——すべての呼び出しは監査ログに記録されます)。`compile_context --multi-pool` は蒸留されたメモと専門知識プロファイル用にバジェット スロットを予約し、出力内の古いまたはフォールバック品質の知識にラベルを付けます。
+サポート ツール: `agents show` / `agent_view_explain`(メンバー + `distilled_through` 陳旧ウォーターマーク——各レポートの専門知識がどのくらい古いか)、および `agents drill` / `drill_down`(蒸留されたメモの `member_refs` を生 L0 証拠に解決して、生きている/変更された/吸収された/消失したステータスを取得——すべての呼び出しは監査ログに記録されます)。`compile_context --multi-pool` は蒸留されたメモと専門知識プロファイル用にバジェット スロットを予約し、出力内の古いまたはフォールバック品質の知識にラベルを付けます。 スロットを取れるのはプロデューサーが実際に作成したノードだけです(蒸留パス、セッション イベント パス、またはエージェント自身の `graph_write`)。そのため、ドキュメント抽出だけで埋まった型のプールは空のままになり、CLI と `knobs.pool_reservations` の両方が何も返さなかったプールを示します。
 
 ## 成長ループ
 

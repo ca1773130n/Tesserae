@@ -1173,3 +1173,149 @@ def test_lint_interval_coverage_matches_the_temporal_projector_exactly(
     assert f"{undated} of {len(facts)} facts" in finding.message
     for key in sorted(basis):
         assert f"{key}={basis[key]}" in finding.message
+
+
+def test_lint_procedural_pools_reports_document_extractions(tmp_path: Path) -> None:
+    """A pool that looks populated but can reserve nothing must say so.
+
+    ``Runbook``/``Gotcha``/``Event``/``DistilledNote``/``ExpertiseProfile`` are
+    producer-owned, but document extraction may mint the same type names — a
+    conference deadline lands typed ``Event``. Since roadmap step 4 those nodes
+    can no longer take a reserved procedural slot, so a graph can hold hundreds
+    of Event nodes and still have an empty Event pool. Unreported, that reads
+    as working procedural memory.
+    """
+    graph = {
+        "nodes": [
+            _node("e1", "Event", "CVPR 2026"),
+            _node("e2", "Event", "3DV2027"),
+            _node("e3", "Event", "3rd Joint EgoVis Workshop"),
+            _node(
+                "rb1",
+                "Runbook",
+                "Runbook: release",
+                metadata={
+                    "extractor": "memory.distill.run_distillation_pass",
+                    "member_ids": ["f1", "f2"],
+                },
+            ),
+        ],
+        "edges": [],
+    }
+    project = _scaffold(tmp_path, graph=graph)
+    report = WikiLinter(project).run()
+
+    matches = [f for f in report.findings if f.code == "PROCEDURAL_POOLS"]
+    assert len(matches) == 1, f"expected one PROCEDURAL_POOLS finding; got {matches}"
+    finding = matches[0]
+    # Info, not warning: see
+    # ``test_lint_procedural_pools_does_not_gate_strict_on_an_unfillable_pool``
+    # — the projects this trips on cannot act on the remedy.
+    assert finding.severity == "info"
+    # reachable/producer-made/total. Nothing has edges here, so even the real
+    # Runbook is unreachable — which the histogram says out loud.
+    assert "Event=0/0/3" in finding.message, finding.message
+    assert "Runbook=0/1/1" in finding.message, finding.message
+
+
+def test_lint_procedural_pools_does_not_gate_strict_on_an_unfillable_pool(
+    tmp_path: Path,
+) -> None:
+    """``compile --strict`` must not fail a project for never running a producer.
+
+    The projects this probe trips on are exactly the ones whose procedural
+    producers have never run — a documentation corpus with no sessions, say.
+    The remedy on offer is "run the producer", which for them means "record
+    agent sessions", not a fix they can apply to the graph in front of them.
+    ``compile --strict`` maps warnings to exit 1, so a warning here breaks
+    those builds over a condition they cannot act on.
+
+    This is the posture INTERVAL_COVERAGE already ships with: report the
+    number, at ``info``, with no threshold.
+    """
+    graph = {
+        "nodes": [
+            _node("e1", "Event", "CVPR 2026"),
+            _node("e2", "Event", "3DV 2027"),
+        ],
+        "edges": [],
+    }
+    report = WikiLinter(_scaffold(tmp_path, graph=graph)).run()
+
+    matches = [f for f in report.findings if f.code == "PROCEDURAL_POOLS"]
+    assert len(matches) == 1, f"expected one PROCEDURAL_POOLS finding; got {matches}"
+    assert matches[0].severity == "info", (
+        "an unfillable pool is a statistic about which producers have run, "
+        "not a defect the tripping project can act on"
+    )
+    assert not report.has_warnings() and not report.has_errors(), (
+        "a graph whose only flaw is an unfilled procedural pool must leave "
+        f"`compile --strict` green; got {[(f.code, f.severity) for f in report.findings]}"
+    )
+
+
+def test_lint_procedural_pools_reports_reachability_not_just_census(
+    tmp_path: Path,
+) -> None:
+    """A pool nothing can retrieve from is not a healthy pool.
+
+    Reservation only ever picks from the PPR neighbourhood of the seeds, so a
+    producer-made node with no edges is unreachable in every query — it can
+    never take the slot it is counted for. A census that says
+    ``ExpertiseProfile=5/5`` reports the one pool that cannot be served as the
+    healthiest one in the graph.
+    """
+    profiles = [
+        _node(
+            f"p{i}",
+            "ExpertiseProfile",
+            f"Expertise: agent-{i}",
+            metadata={"agent": f"claude-code:acct:agent-{i}"},
+        )
+        for i in range(5)
+    ]
+    runbook = _node(
+        "rb1",
+        "Runbook",
+        "Runbook: release",
+        metadata={
+            "extractor": "memory.distill.run_distillation_pass",
+            "member_ids": ["f1"],
+        },
+    )
+    finding = _node("f1", "SessionInsight", "cut the release from CI")
+    # A LINKED document extraction, so "reachable" cannot be counted for a node
+    # that is not producer-made. Without it every document extraction in this
+    # fixture is isolated, and a mutant that counts reachability BEFORE the
+    # provenance check still passes — it can only ever report reachable=0 for
+    # them by accident of the fixture. With this node present such a mutant
+    # reports Event=1/0/1, which is self-contradictory (reachable > made).
+    doc_event = _node("de1", "Event", "CVPR 2026")
+    graph = {
+        "nodes": profiles + [runbook, finding, doc_event],
+        "edges": [
+            {"source": "rb1", "target": "f1", "type": "derived_from"},
+            {"source": "de1", "target": "f1", "type": "mentions"},
+        ],
+    }
+    report = WikiLinter(_scaffold(tmp_path, graph=graph)).run()
+
+    matches = [f for f in report.findings if f.code == "PROCEDURAL_POOLS"]
+    assert len(matches) == 1, f"expected one PROCEDURAL_POOLS finding; got {matches}"
+    message = matches[0].message
+    assert "ExpertiseProfile=0/5/5" in message, (
+        "the histogram must lead with how many producer-made nodes are "
+        f"reachable at all; got {message}"
+    )
+    assert "Runbook=1/1/1" in message, message
+    # The linked document extraction is reachable but NOT producer-made, so it
+    # must count only in the total. reachable > made is incoherent and is what a
+    # mutant that hoists the reachability tally above the provenance check emits.
+    assert "Event=0/0/1" in message, (
+        "a reachable node that no producer made must not be counted as reachable "
+        f"for the pool; got {message}"
+    )
+    assert "ExpertiseProfile" in (matches[0].suggested_fix or "") + message, message
+    assert "unreachable" in message.lower(), (
+        f"an isolated pool must be named as unservable; got {message}"
+    )

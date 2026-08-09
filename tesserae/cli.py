@@ -2342,6 +2342,22 @@ def _handle_context(args: argparse.Namespace) -> int:
     )
     # LRU: the nodes selected into the bundle count as reads (sidecar only).
     _bump_read_access(wiki.project_root, bundle.selected_nodes)
+    # --multi-pool reserves a budget slot per procedural pool, and those pools
+    # are producer-scoped: on a project whose Runbook/Event nodes are all
+    # document extractions — or which records no sessions — every pool is
+    # legitimately empty and the bundle is identical to the single-pool one.
+    # The MCP surface reports that in ``knobs.pool_reservations``; without this
+    # the CLI told the operator nothing, which is the silent story that field
+    # was added to end. stderr, because stdout is the bundle and gets piped.
+    if bundle.pool_reservations is not None:
+        _pool_report = ", ".join(
+            f"{pool}: empty"
+            if entry is None
+            else f"{pool}: {entry['node_id']}"
+            + ("" if entry.get("delivered") else " (reserved, dropped by budget)")
+            for pool, entry in bundle.pool_reservations.items()
+        )
+        print(f"multi-pool reservation — {_pool_report}", file=sys.stderr)
     if args.output:
         Path(args.output).write_text(bundle.body, encoding="utf-8")
         print(

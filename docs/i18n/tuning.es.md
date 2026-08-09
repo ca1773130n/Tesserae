@@ -108,6 +108,7 @@ llamada. Déjalo sin establecer a menos que estés alcanzando límites de contex
 | `TESSERAE_ENABLE_LLM_PASSES` | desactivado | Pasadas de enriquecimiento LLM opcionales más allá de la extracción |
 | `TESSERAE_AGENT_DISTILL` | desactivado | Artefactos de pericia L1 por agente (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | desactivado | Nodos de memoria destilada Runbook/Gotcha |
+| `TESSERAE_SESSION_EVENT_PASS` | **activado** | Nodos `Event` por turno a partir de las transcripciones de sesión. Sin LLM y determinista byte a byte, pero un nodo por cada turno significativo: considerable en un corpus largo. `false`/`0`/`no`/`off` lo desactiva |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | activado | Vincula ideas de sesión a símbolos de código |
 | `TESSERAE_SUPERSEDE_PASS` | activado | Aristas `superseded_by` entre reclamaciones revisadas |
 | `TESSERAE_PROMPT_SIGNATURES` | desactivado | Registra firmas de indicación para detección de deriva |

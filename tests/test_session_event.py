@@ -248,3 +248,143 @@ def test_rerun_is_byte_identical():
     enriched = extract_events(session, findings=[finding], json_client=_StubClient())
     assert [n.id for n in enriched[0]] == [n.id for n in first[0]]
     assert _dump(enriched[0], enriched[1])[1] == _dump(*first)[1]  # edges identical
+
+
+# --------------------------------------------------------------------------
+# Gate (roadmap step 4): the Event pass owns its own switch
+# --------------------------------------------------------------------------
+
+
+def test_event_pass_gate_is_default_on_with_config_and_env_opt_out():
+    """Default-on, opt-out by config or env, env wins.
+
+    Separate from ``distillation_enabled`` on purpose: that gate guards an LLM
+    pass and is default-OFF, while this one guards a deterministic template
+    pass. Sharing it meant the LLM-free layer could not be had on its own.
+    """
+    from tesserae.memory.distill import distillation_enabled
+    from tesserae.session_event import event_pass_enabled
+
+    assert event_pass_enabled(cfg=None, env={}) is True
+    assert event_pass_enabled(cfg={"session_events": {"enabled": False}}, env={}) is False
+    assert event_pass_enabled(cfg={"session_events": {"enabled": "off"}}, env={}) is False
+    # env overrides config, both directions
+    assert event_pass_enabled(
+        cfg={"session_events": {"enabled": False}},
+        env={"TESSERAE_SESSION_EVENT_PASS": "1"},
+    ) is True
+    assert event_pass_enabled(
+        cfg=None, env={"TESSERAE_SESSION_EVENT_PASS": "no"}
+    ) is False
+
+    # The two gates are genuinely independent: the flag that runs the LLM
+    # distillation must not be what decides whether Events get minted.
+    assert distillation_enabled(cfg=None, env={}) is False
+    assert event_pass_enabled(cfg=None, env={}) is True
+
+
+# --------------------------------------------------------------------------
+# Default-on means whatever this pass writes ships in every graph.json
+# --------------------------------------------------------------------------
+
+
+def test_minted_events_never_publish_an_absolute_home_path():
+    """No ``/Users/<name>/`` in anything this pass writes.
+
+    The Event pass is default-on for every session-bearing project, and what it
+    mints is serialized into ``graph.json``, projected into the vault markdown
+    and exported to any static site. Transcript text is full of absolute paths,
+    so a template built straight from the turn ships the operator's home
+    directory — and their account name — into all three.
+
+    ``tesserae.okf`` already refuses to emit a raw ``/Users/...`` for exactly
+    this reason (§6.2, via ``temporal.relative_source_path``). This pass has to
+    agree with that rule rather than be the one producer exempt from it.
+    """
+    home_path = "/Users/somebody/Developer/Projects/Demo/tesserae/lint.py"
+    session = _session(
+        [
+            {
+                "role": "assistant",
+                "timestamp": "2026-06-13T10:00:02Z",
+                "text": f"Patching {home_path} to fix the ordering bug.",
+            },
+            {
+                "role": "tool",
+                "name": "Edit",
+                "timestamp": "2026-06-13T10:00:03Z",
+                "text": f"applied 2 edits to {home_path}",
+            },
+            {
+                "role": "tool",
+                "name": "Bash",
+                "timestamp": "2026-06-13T10:00:04Z",
+                "text": "ran /home/ci-runner/work/build.sh",
+            },
+        ]
+    )
+
+    nodes, _edges = extract_events(session)
+    assert nodes, "fixture must mint events"
+
+    leaked = [
+        (node.id, field, value)
+        for node in nodes
+        for field, value in (
+            ("name", node.name),
+            ("description", node.description),
+            ("metadata.action", str((node.metadata or {}).get("action") or "")),
+        )
+        if "/Users/" in value or "/home/" in value
+    ]
+    assert not leaked, f"absolute home paths published into graph.json: {leaked}"
+
+    # Redaction must not silence the event: the path is replaced, not dropped.
+    assert any("lint.py" in node.description for node in nodes), (
+        "the file under discussion should still be identifiable"
+    )
+
+
+def test_home_path_redaction_does_not_depend_on_who_runs_the_compile():
+    """Redacted, and redacted the same way on every machine.
+
+    Two assertions, and both are load-bearing. The redaction has to happen —
+    that is the leak. And it has to be a pure function of the text: the obvious
+    implementation, ``os.path.expanduser`` or stripping ``$HOME``, makes the
+    minted bytes depend on whose machine ran the compile, which would break the
+    byte-idempotence this pass's default-on posture rests on and would leave
+    another operator's home directory in the graph untouched.
+    """
+    import os
+
+    session = _session(
+        [
+            {
+                "role": "tool",
+                "name": "Read",
+                "timestamp": "2026-06-13T10:00:03Z",
+                "text": "read /Users/someone-else/notes/plan.md",
+            }
+        ]
+    )
+    first = extract_events(session)
+    assert first[0], "fixture must mint an event"
+    assert "~/notes/plan.md" in first[0][0].description, (
+        f"the home prefix must be replaced, not kept: {first[0][0].description!r}"
+    )
+
+    old_home = os.environ.get("HOME")
+    try:
+        # Under a HOME that MATCHES the path, an expanduser-based redaction
+        # would produce different bytes than the run above.
+        os.environ["HOME"] = "/Users/someone-else"
+        second = extract_events(session)
+    finally:
+        if old_home is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = old_home
+
+    assert [(n.id, n.name, n.description) for n in first[0]] == [
+        (n.id, n.name, n.description) for n in second[0]
+    ]

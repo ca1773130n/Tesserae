@@ -117,6 +117,7 @@ export TESSERAE_LLM_CACHE=0   # всегда переспрашивать
 | `TESSERAE_ENABLE_LLM_PASSES` | выключено | Опциональные проходы обогащения LLM сверх извлечения |
 | `TESSERAE_AGENT_DISTILL` | выключено | Артефакты L1 знаний на агента (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | выключено | Узлы дистиллированной памяти Runbook/Gotcha |
+| `TESSERAE_SESSION_EVENT_PASS` | **включено** | Узлы `Event` для каждого хода из стенограмм сессий. Без LLM и побайтово детерминировано, но по одному узлу на каждый значимый ход — заметный объём на длинном корпусе. Отключается через `false`/`0`/`no`/`off` |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | включено | Связывает insights сеанса с символами кода |
 | `TESSERAE_SUPERSEDE_PASS` | включено | Рёбра `superseded_by` между исправленными утверждениями |
 | `TESSERAE_PROMPT_SIGNATURES` | выключено | Записывает подписи промптов для обнаружения дрейфа |

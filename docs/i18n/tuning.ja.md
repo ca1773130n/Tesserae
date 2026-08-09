@@ -119,6 +119,7 @@ export TESSERAE_LLM_CACHE=0   # 常に再度質問
 | `TESSERAE_ENABLE_LLM_PASSES` | オフ | 抽出以外のオプションの LLM 拡張パス |
 | `TESSERAE_AGENT_DISTILL` | オフ | エージェントごとの L1 専門知識アーティファクト（`tesserae distill`） |
 | `TESSERAE_RUNBOOK_DISTILLATION` | オフ | Runbook/Gotcha 蒸留メモリノード |
+| `TESSERAE_SESSION_EVENT_PASS` | **オン** | セッショントランスクリプトからターンごとに生成する `Event` ノード。LLM を使わずバイト単位で決定的ですが、有意なターンごとに 1 ノード — 長いコーパスでは規模が大きくなります。`false`/`0`/`no`/`off` で無効化 |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | オン | セッション洞察をコードシンボルにリンク |
 | `TESSERAE_SUPERSEDE_PASS` | オン | 修正されたクレーム間の `superseded_by` エッジ |
 | `TESSERAE_PROMPT_SIGNATURES` | オフ | ドリフト検出のためのプロンプトシグネチャの記録 |

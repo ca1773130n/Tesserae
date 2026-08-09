@@ -103,6 +103,7 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 | `TESSERAE_ENABLE_LLM_PASSES` | 关闭 | 提取之外的可选 LLM 增强通道 |
 | `TESSERAE_AGENT_DISTILL` | 关闭 | 每个代理 L1 专业知识工件（`tesserae distill`） |
 | `TESSERAE_RUNBOOK_DISTILLATION` | 关闭 | Runbook/Gotcha 蒸馏内存节点 |
+| `TESSERAE_SESSION_EVENT_PASS` | **打开** | 从会话记录生成的逐轮 `Event` 节点。不调用 LLM，字节级确定性，但每个有效轮次生成一个节点——语料库较长时规模可观。`false`/`0`/`no`/`off` 可禁用 |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | 打开 | 将会话洞察链接到代码符号 |
 | `TESSERAE_SUPERSEDE_PASS` | 打开 | 修订声明之间的 `superseded_by` 边 |
 | `TESSERAE_PROMPT_SIGNATURES` | 关闭 | 记录提示签名以进行漂移检测 |

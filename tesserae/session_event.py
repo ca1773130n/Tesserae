@@ -12,15 +12,24 @@ session can be replayed in order.
 Conventions inherited from the rest of ``tesserae`` (mirrors
 ``tesserae.memory.supersede`` / ``tesserae.community_summaries``):
 
-* **LLM-optional, degrade-never-raise.** An :class:`~tesserae.llm_json.LLMJsonClient`
-  ONLY enriches each event's one-line state-change description. On ANY failure
-  — or when no client is supplied — a deterministic template derived from the
-  turn is used instead. This function NEVER raises on bad input or LLM errors.
+* **LLM-FREE, degrade-never-raise.** No field is enriched by a model. The
+  ``json_client`` parameter is accepted for API symmetry with the other memory
+  passes and is never used — see ``extract_events``. This function NEVER raises
+  on bad input. (An earlier version of this paragraph described the client as
+  enriching the one-line state-change description; it never did, and the pass
+  being default-on for session-bearing projects now rests on it not doing so.)
 * **Byte-idempotent.** Every minted node id / body / ``first_seen_at`` is
   content-derived. No ``datetime.now()``, no RNG, stable turn-order traversal.
   A rerun produces byte-identical nodes and edges (the project's known
-  byte-idempotence blind spot — see the memory note). The LLM only touches the
-  human-readable ``description``; node *identity* never depends on it.
+  byte-idempotence blind spot — see the memory note). Measured over a
+  481-session corpus: two runs agree byte for byte, and so does a run given a
+  client that raises on any attribute access.
+* **No home directories.** Turn text is copied into node names and
+  descriptions, and those are serialized into ``graph.json`` and every
+  projection of it. ``/Users/<name>`` and ``/home/<name>`` are rewritten to
+  ``~`` first — the same refusal :mod:`tesserae.okf` makes in §6.2 — by a rule
+  that reads only the text, never ``$HOME``, so the bytes do not depend on
+  which machine compiled them. See ``_redact_home_paths``.
 * **Additive.** ``extract_events`` only mints new nodes/edges; it mutates
   nothing. An empty / ``None`` session, or a session with no significant turns,
   returns ``([], [])``.
@@ -29,6 +38,8 @@ Conventions inherited from the rest of ``tesserae`` (mirrors
 from __future__ import annotations
 
 import logging
+import os
+import re
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .research_graph import (
@@ -57,6 +68,48 @@ _ACTION_ROLES = frozenset({"assistant", "tool"})
 # Minimum stripped-text length for an assistant turn to count as a substantive
 # action (shorter ones are acknowledgements / chatter). Tool turns bypass this.
 _MIN_ASSISTANT_ACTION_LEN = 16
+
+#: Falsy spellings shared with the other pass gates.
+_FALSY = {"0", "false", "no", "off"}
+
+
+def event_pass_enabled(
+    cfg: Optional[dict] = None,
+    env: Optional[Mapping[str, str]] = None,
+) -> bool:
+    """Decide whether to mint Event nodes from session turns. DEFAULT-ON.
+
+    Opt-OUT, in the shape of ``memory.supersede.supersede_pass_enabled``:
+    ``TESSERAE_SESSION_EVENT_PASS`` or ``cfg["session_events"]["enabled"]``
+    disables the pass when set to a falsy spelling; env wins over config.
+
+    This pass had NO switch of its own until roadmap step 4 — it shared
+    ``distillation_enabled`` with the LLM Runbook/Gotcha distillation, so the
+    only way to get these deterministic, template-only nodes was to also buy an
+    LLM pass with a disk cache and non-deterministic output. They are different
+    kinds of thing and now have different switches. Default-on is safe for
+    exactly the reason the LLM pass's default-off is necessary: every field
+    here, description included, is derived from the turn with no LLM, no
+    wall-clock and no RNG, so a rerun over unchanged sessions is byte-identical.
+
+    Default-on is not free, and the cost is volume rather than correctness: the
+    pass mints one node per significant turn, monotonically, for every session
+    a project ever records. On a 481-session corpus that measured 10,824 Event
+    nodes (+23% of graph size, +33.7% of rendered mass). Hence the opt-out.
+    """
+    env = env if env is not None else os.environ
+    raw = (env.get("TESSERAE_SESSION_EVENT_PASS") or "").strip().lower()
+    if raw:
+        return raw not in _FALSY
+
+    section = (cfg or {}).get("session_events")
+    if isinstance(section, Mapping):
+        flag = section.get("enabled")
+        if isinstance(flag, str):
+            return flag.strip().lower() not in _FALSY
+        if flag is not None:
+            return bool(flag)
+    return True
 
 
 def extract_events(
@@ -213,6 +266,37 @@ def _actor(turn: Mapping[str, object]) -> str:
     return role or "agent"
 
 
+#: A POSIX home directory and the account name that identifies its owner.
+#: Deliberately anchored on the two literal roots rather than on ``$HOME``:
+#: this pass mints bytes that go into ``graph.json``, so the rule has to be a
+#: pure function of the text. Keying on the running user's home would make the
+#: output depend on WHO compiled — breaking byte-idempotence across machines —
+#: and would leave a second operator's home directory untouched.
+_HOME_PATH = re.compile(r"/(?:Users|home)/[^/\s]+")
+
+
+def _redact_home_paths(text: str) -> str:
+    """Replace ``/Users/<name>`` / ``/home/<name>`` with ``~``.
+
+    The Event pass is default-on for every session-bearing project and what it
+    mints is serialized into ``graph.json``, projected into the vault markdown
+    and exported to any static site. Transcript text is full of absolute paths,
+    so an unredacted template ships the operator's home directory — and their
+    account name — into all three, on by default.
+
+    :mod:`tesserae.okf` already refuses to emit a raw ``/Users/...`` for this
+    exact reason (§6.2, via :func:`tesserae.temporal.relative_source_path`);
+    this keeps the one producer that writes free-form transcript text in
+    agreement with that rule. The path is REPLACED, not dropped: which file a
+    turn touched is the point of the event, only whose machine it was on is not.
+
+    Applied before truncation and before the id seed is built, so no minted
+    field — name, description or ``metadata['action']`` — can carry a home
+    path, and the id is a hash of the redacted text.
+    """
+    return _HOME_PATH.sub("~", text)
+
+
 def _action(turn: Mapping[str, object]) -> str:
     """A short, deterministic label for the transition.
 
@@ -222,7 +306,7 @@ def _action(turn: Mapping[str, object]) -> str:
     """
     role = str(turn.get("role") or "").lower()
     tool_name = str(turn.get("name") or "").strip()
-    text = str(turn.get("text") or "").strip()
+    text = _redact_home_paths(str(turn.get("text") or "").strip())
     if role == "tool" and tool_name:
         return tool_name
     if text:
@@ -237,7 +321,7 @@ def _event_name(turn_id: int, actor: str, action: str) -> str:
 def _template_description(turn: Mapping[str, object], actor: str, action: str) -> str:
     """Deterministic one-line state-change description (the always-safe path)."""
     tool_name = str(turn.get("name") or "").strip()
-    text = str(turn.get("text") or "").strip()
+    text = _redact_home_paths(str(turn.get("text") or "").strip())
     if str(turn.get("role") or "").lower() == "tool" and tool_name:
         detail = truncate(text, 120) if text else ""
         if detail:

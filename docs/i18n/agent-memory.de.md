@@ -87,7 +87,7 @@ In **MCP** akzeptiert jedes Graphlesewerkzeug dasselbe `agent=`. In beiden Fäll
 - **Manager-Schlüssel** → eine Vereinigung nur von L1-Artefakten der Berichte. Rohe Erkenntnisse lecken niemals nach oben.
 - **`org`** → alle destillierten Artefakte, Nullkonfiguration.
 
-Hilfswerkzeuge: `agents show` / `agent_view_explain`(Mitglieder + `distilled_through` Veralterungswasserzeichen — wie alt die Fachkompetenz jedes Berichts ist) und `agents drill` / `drill_down`(Auflösen von `member_refs` destillierter Notizen zurück zu rohen L0-Evidenzen mit Status Lebendig/Geändert/Absorbiert/Weg — jeder Aufruf wird überprüft). `compile_context --multi-pool` reserviert Budgetplätze für destillierte Notizen und Fachkompetenzprofile und kennzeichnet veraltetes oder Fallback-Qualitätswissen in der Ausgabe.
+Hilfswerkzeuge: `agents show` / `agent_view_explain`(Mitglieder + `distilled_through` Veralterungswasserzeichen — wie alt die Fachkompetenz jedes Berichts ist) und `agents drill` / `drill_down`(Auflösen von `member_refs` destillierter Notizen zurück zu rohen L0-Evidenzen mit Status Lebendig/Geändert/Absorbiert/Weg — jeder Aufruf wird überprüft). `compile_context --multi-pool` reserviert Budgetplätze für destillierte Notizen und Fachkompetenzprofile und kennzeichnet veraltetes oder Fallback-Qualitätswissen in der Ausgabe. Einen Platz kann nur ein Knoten belegen, den ein Produzent tatsächlich erzeugt hat — die Destillationsdurchläufe, der session-event-Durchlauf oder das eigene `graph_write` eines Agenten —, sodass ein Pool, dessen Typ nur durch Dokumentextraktion gefüllt ist, leer bleibt; sowohl die CLI als auch `knobs.pool_reservations` nennen die Pools, die nichts zurückgegeben haben.
 
 ## Die Wachstumsschleife
 

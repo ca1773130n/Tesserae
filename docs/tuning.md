@@ -116,6 +116,7 @@ unless you are hitting context limits.
 | `TESSERAE_ENABLE_LLM_PASSES` | off | Optional LLM enrichment passes beyond extraction |
 | `TESSERAE_AGENT_DISTILL` | off | Per-agent L1 expertise artifacts (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | off | Runbook/Gotcha distilled-memory nodes |
+| `TESSERAE_SESSION_EVENT_PASS` | **on** | Per-turn `Event` nodes from session transcripts. LLM-free and byte-deterministic, but one node per significant turn — sizeable on a long corpus. `false`/`0`/`no`/`off` disables |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | on | Links session insights to code symbols |
 | `TESSERAE_SUPERSEDE_PASS` | on | `superseded_by` edges between revised claims |
 | `TESSERAE_PROMPT_SIGNATURES` | off | Records prompt signatures for drift detection |

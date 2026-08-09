@@ -135,12 +135,24 @@ def test_merge_session_graph_threads_guidance_into_extractor(tmp_path, monkeypat
 
     import tesserae.harness_sessions as hs
 
+    class _StubSession:
+        """The minimum a session must look like to get past the guards.
+
+        A bare ``object()`` used to be enough; since the Event pass runs by
+        default for session-bearing projects it also reads ``id`` /
+        ``metadata``. Kept transcript-less (no ``turns``), so the Event pass
+        mints nothing and this test still isolates guidance threading.
+        """
+
+        id = "stub-session"
+        metadata: dict = {}
+
     class _Store:
         def __init__(self, *_a, **_k):
             pass
 
         def list_sessions(self):
-            return [object()]
+            return [_StubSession()]
 
     monkeypatch.setattr(hs, "HarnessSessionStore", _Store)
     monkeypatch.setattr(hs, "session_matches_project", lambda s, root: True)

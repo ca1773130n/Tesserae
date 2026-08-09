@@ -33,7 +33,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set
+from typing import (Any, Callable, Dict, List, Mapping, Optional, Sequence,
+                    Set, Tuple)
 
 from .graph_filters import superseded_ids
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
@@ -125,6 +126,41 @@ class ContextBundle:
     synthesized: bool = False
     char_budget_used: int = 0
     char_budget_total: int = 0
+    #: What each procedural pool reserved, when reservation ran. Pool type value
+    #: -> ``None`` when no producer-made node of that type was in the
+    #: neighbourhood, else ``{"node_id": str, "delivered": bool}``.
+    #:
+    #: ``delivered`` is not decoration. Reservation moves its pick to the front
+    #: of the budget walk, but the walk still stops at the budget, so a reserved
+    #: node can be dropped after being reserved. Reporting that pool as served
+    #: would be the very defect this field exists to expose, relocated into the
+    #: reporting: the caller reads procedural memory as delivered when nothing
+    #: from that pool reached the bundle.
+    #:
+    #: ``None`` for the WHOLE field means one thing only: reservation never ran
+    #: because ``multi_pool`` was off. Whenever ``multi_pool=True`` this is a
+    #: dict keyed by every pool — including on the empty-seed early return,
+    #: which used to return ``None`` and give that value a second meaning.
+    pool_reservations: Optional[Dict[str, Optional[Dict[str, object]]]] = None
+
+
+def _pool_order() -> Tuple[ResearchNodeType, ...]:
+    """The procedural pools, in reservation order, from their one declaration.
+
+    Read through a function rather than imported at module scope so the single
+    source of truth stays ``research_graph`` at call time — importing the tuple
+    once here would freeze a copy and re-create the duplicate this removes.
+    """
+    from .research_graph import PROCEDURAL_POOL_ORDER
+
+    return PROCEDURAL_POOL_ORDER
+
+
+def _empty_pool_reservations() -> Dict[str, Optional[Dict[str, object]]]:
+    """Every pool, reserving nothing — the shape ``multi_pool=True`` always
+    returns, so ``pool_reservations is None`` means only "reservation never
+    ran"."""
+    return {pool.value: None for pool in _pool_order()}
 
 
 def _fetch_body(node: ResearchNode, store: Optional[WikiPageStore]) -> str:
@@ -533,6 +569,11 @@ def compile_context(
             synthesized=False,
             char_budget_used=0,
             char_budget_total=budget,
+            # The caller asked about the pools, so answer about the pools: every
+            # one empty. Returning ``None`` here would give that value a second,
+            # undocumented meaning ("multi_pool was on but the query resolved to
+            # nothing") on top of its documented one ("multi_pool was off").
+            pool_reservations=_empty_pool_reservations() if multi_pool else None,
         )
 
     # --- Step 2: PPR expansion, bounded to the depth-hop neighbourhood -------
@@ -595,18 +636,16 @@ def compile_context(
     # top in-neighbourhood node of each pool from the FULL PPR ranking (so a
     # relevant distilled node below the raw cap is still surfaced) and move it to
     # the front of ``ranked``. Off by default -> default path untouched.
+    pool_reservations: Optional[Dict[str, Optional[Dict[str, object]]]] = None
     if multi_pool:
-        from .research_graph import ResearchNodeType
+        from .research_graph import has_producer_provenance
 
-        _pools = (
-            ResearchNodeType.RUNBOOK,
-            ResearchNodeType.GOTCHA,
-            ResearchNodeType.EVENT,
-            # Agent-layer pools (spec §9): distilled knowledge and the per-agent
-            # capability card get budget even when raw findings crowd the window.
-            ResearchNodeType.DISTILLED_NOTE,
-            ResearchNodeType.EXPERTISE_PROFILE,
-        )
+        # ONE declaration of what the pools are, in ``research_graph``. A second
+        # literal list here could disagree with it silently: a type added to the
+        # vocabulary's pool set would get no slot, one removed would keep one.
+        # Agent-layer pools (spec §9) — distilled knowledge and the per-agent
+        # capability card — are in that list for the same reason as the rest.
+        _pools = _pool_order()
         _in_nb_ranked = [
             (nid, sc)
             for nid, sc in full_ranked
@@ -614,6 +653,7 @@ def compile_context(
         ]
         _reserved: List[tuple] = []
         _reserved_ids: set = set()
+        pool_reservations = _empty_pool_reservations()
         for _pool in _pools:
             # Within a pool, a fallback-quality distillate (structural stand-in
             # for a failed LLM call) loses its slot to any llm-quality sibling
@@ -624,6 +664,15 @@ def compile_context(
                 _n = node_index.get(_nid)
                 if _n is None or _n.type != _pool or _nid in _reserved_ids:
                     continue
+                # A reserved procedural slot is earned by PROVENANCE, not by
+                # type. These five type names are also mintable by document
+                # extraction, so without this the top-ranked 'Event' in the
+                # neighbourhood may be a conference deadline — and reservation
+                # is additive, so it would be promoted to the FRONT of the
+                # budget walk from anywhere in the neighbourhood, evicting the
+                # finding that actually earned the slot.
+                if not has_producer_provenance(_n.type, _n.metadata):
+                    continue
                 if str(_n.metadata.get("distill_quality") or "") == "fallback":
                     if _fallback_pick is None:
                         _fallback_pick = (_nid, _sc)
@@ -631,10 +680,20 @@ def compile_context(
                 _fallback_pick = None
                 _reserved.append((_nid, _sc))
                 _reserved_ids.add(_nid)
+                # ``delivered`` is settled after the budget walk below, not here
+                # — reservation is a claim on a slot, not proof of one.
+                pool_reservations[_pool.value] = {
+                    "node_id": _nid,
+                    "delivered": False,
+                }
                 break  # one per pool
             if _fallback_pick is not None:
                 _reserved.append(_fallback_pick)
                 _reserved_ids.add(_fallback_pick[0])
+                pool_reservations[_pool.value] = {
+                    "node_id": _fallback_pick[0],
+                    "delivered": False,
+                }
         if _reserved:
             ranked = _reserved + [r for r in ranked if r[0] not in _reserved_ids]
             ranked_nodes = [nid for nid, _ in ranked]
@@ -663,6 +722,18 @@ def compile_context(
             break
         selected.append((node, body))
         chars_used += len(body)
+
+    # Reservation buys a place at the FRONT of the walk above, not a place in
+    # the bundle: the walk still stops at the budget, so with several pools
+    # reserving, the later ones can be dropped after being reserved. Settle the
+    # report against what was actually selected — a pool reported as served
+    # when nothing from it was delivered is the same silent story the field
+    # exists to end.
+    if pool_reservations is not None:
+        _delivered_ids = {node.id for node, _b in selected}
+        for _entry in pool_reservations.values():
+            if _entry is not None:
+                _entry["delivered"] = _entry["node_id"] in _delivered_ids
 
     # --- Step 4: assemble cited markdown ------------------------------------
     sections: List[str] = [f"# Context: {query}\n"]
@@ -745,4 +816,5 @@ def compile_context(
         synthesized=synthesized,
         char_budget_used=chars_used,
         char_budget_total=budget,
+        pool_reservations=pool_reservations,
     )
