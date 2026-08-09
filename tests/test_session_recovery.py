@@ -12,6 +12,7 @@ the 103-transcript corpus at roughly 30% hand-verified precision).
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -149,16 +150,31 @@ def test_document_extraction_drops_an_llm_asserted_causal_edge():
     assert [e.type for e in graph.edges] == ["uses"]
 
 
+def _semantic_edge_types_literal() -> str:
+    """The body of the ``SEMANTIC_EDGE_TYPES`` object, and nothing else.
+
+    Scoped rather than searched for across the whole blob: ``recovers: 1``
+    appearing ANYWHERE in 1,000 lines of JS — in a weights table, a comment, an
+    unrelated map — would satisfy a whole-blob substring while ``edgeClassOf()``
+    still rendered the only causal edge in the graph as a faint structural line.
+    """
+    from tesserae.site import js as site_js
+
+    start = site_js.JS_GRAPH.index("var SEMANTIC_EDGE_TYPES = {")
+    end = site_js.JS_GRAPH.index("};", start)
+    return site_js.JS_GRAPH[start:end]
+
+
 def test_every_hand_maintained_edge_list_knows_the_causal_types():
     """One source of truth, enforced where the code cannot derive it."""
     from tesserae.lint import _REASONING_EDGE_TYPES
     from tesserae.retrieval.ppr import DEFAULT_EDGE_TYPE_WEIGHTS
-    from tesserae.site import js as site_js
 
     assert CAUSAL_EDGE_TYPES <= _REASONING_EDGE_TYPES
     assert CAUSAL_EDGE_TYPES <= set(DEFAULT_EDGE_TYPE_WEIGHTS)
+    literal = _semantic_edge_types_literal()
     for edge_type in CAUSAL_EDGE_TYPES:
-        assert f"{edge_type}: 1" in site_js.JS_GRAPH, (
+        assert re.search(rf"\b{re.escape(edge_type)}\s*:\s*1\b", literal), (
             f"{edge_type} missing from SEMANTIC_EDGE_TYPES — edgeClassOf() would "
             "render the only causal edge in the graph as a faint structural line"
         )
