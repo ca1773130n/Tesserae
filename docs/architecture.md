@@ -81,9 +81,15 @@ query / seeds
         retrieval.ppr.personalized_pagerank ranks the depth-bounded k-hop neighbourhood;
         empty result (disconnected seeds) → fall back to seed order (bundle is never empty)
      │
+     ▼  2b. Procedural reservation (earned, not granted)
+        one slot per procedural pool, in PROCEDURAL_POOL_ORDER: Runbook, Gotcha, Event,
+        DistilledNote, ExpertiseProfile. A slot goes to the top-ranked node of that type
+        that carries PRODUCER provenance — not merely the type name
+     │
      ▼  3. Budget-bound selection
-        walk PPR order, include each node's cited body until the next would overflow
-        `budget` chars (budget <= 0 = uncapped; over-budget marker on a word boundary)
+        walk PPR order (reserved nodes first), include each node's cited body until the
+        next would overflow `budget` chars (budget <= 0 = uncapped; over-budget marker
+        on a word boundary)
      │
      ▼  4. Cited markdown assembly
         one section per selected node + a trailing `## Citations` block.
@@ -99,6 +105,18 @@ query / seeds
 ```
 
 Defaults: `depth=2`, `budget=32000`. The deterministic assembly (steps 1–4) is the contract; LLM synthesis is purely additive. The same pipeline backs the `project context` CLI command, the `compile_context` MCP tool, and the topic-scoped export slices (`slice_export_context_for_topic`, topic-scoped `llms.txt`).
+
+**Why the procedural slot is earned by provenance.** The five procedural types
+name what an agent did, learned to do, and is good at — but document extraction
+is allowed to mint them too, so an LLM reading a call-for-papers legitimately
+mints a typed `Event` called "CVPR 2026". Reservation is *additive*: it
+promotes a node from anywhere in the neighbourhood to the front of the budget
+walk. Reserving on type alone would therefore let a conference deadline evict
+the session finding that actually earned the slot. `has_producer_provenance`
+is what separates the two, and a reservation is a claim on a slot, not proof of
+one — `delivered` is settled after the budget walk, so the caller can tell
+"procedural memory was reserved" from "procedural memory arrived". The
+`PROCEDURAL_POOLS` lint code reports the gap.
 
 ## Module map
 
@@ -264,6 +282,32 @@ site/
   manifest.json               sha256 + size for every emitted file
 ```
 
+## The charter
+
+Community detection **proposes** a domain vocabulary; the charter
+([`tesserae/charter.py`](../tesserae/charter.py)) **owns** it between explicit
+reorgs. The split exists because detection is deterministic but not stable:
+identical input reproduces all 1,649 communities exactly, yet a single 15-node
+document moves ~29% of members between communities and drops large communities
+to Jaccard 0.39–0.60. Anything keyed on community membership therefore takes a
+near-total cache miss per ingest — and this corpus ingests daily.
+
+So the charter pins the institution: sections are detected, collapsed into a
+quotient graph (one node per section, one `part_of` edge per cross-section L0
+edge), and split into divisions → departments → teams **by sub-community, never
+by size**. Each domain's anchor is its top-degree member, picked greedily so no
+two domains share one, and the human-facing slug is minted once from that anchor
+and pinned. Across a reorg, `succeed` carries slugs forward by matching on
+anchor, so a stable name survives a reshuffle of the members under it. Every
+node lands in exactly one domain: `intake_members` catches the dropped
+singletons and edge-isolated sections that detection would otherwise silently
+lose.
+
+`tesserae domains status [--json]` prints the tree. **Status:** the module and
+its CLI verb ship and are covered by tests, but `compile` does not yet write a
+charter — until it does, the command reports "no charter yet" and exits 0,
+which is the honest answer for a project below the one-read bound as well.
+
 ## What's deliberately excluded
 
 The redesign drew an explicit line: code-class and code-function nodes stay in `graph.json` (so MCP and Graphiti consumers still see them) but never get HTML pages, never appear in `search-index.json`, and never appear in the navigation. That's the user-facing contract — the wiki is a document-first knowledge base, not a function browser.
@@ -311,6 +355,7 @@ The redesign aims for **byte-identical output across two consecutive `project co
 2. **Wiki layer writes** are idempotent at the body level. `WikiPageStore.write_page` reads the existing file, strips frontmatter, sha256s the body, and short-circuits if the new body hashes the same — even if the new frontmatter has a different `generated_at` timestamp. This is the key trick that keeps git diffs tight on rebuild.
 3. **Synthesis output** carries a `content_hash: sha256-…` in its frontmatter. The body hash is computed without `generated_at` so repeated compiles on the same graph produce the same hash, and `Synthesis` nodes carry the same `content_hash` in graph metadata.
 4. **Site rendering** wipes `site/` at the start of `write_site`, then writes deterministically: routes are sorted, dictionaries dumped with `sort_keys=True`, `manifest.json` walked via `sorted(rglob("*"))`. Two runs produce byte-identical files including the manifest.
+5. **Node dates are source-derived.** A node's `first_seen_at` comes from the path its source was ingested under — not from wall-clock at compile time. A clock reading would make every rerun a diff, which is why the naive version of this defeats point 1. The same rule keeps the `Event` pass byte-idempotent: every minted id, body and date is content-derived, verified over a 481-session corpus.
 
 This is verified by `tests/test_site_pages.py` and the end-to-end smoke in `tests/test_project_e2e_redesign.py` (compile twice, diff sites, expect zero file deltas).
 

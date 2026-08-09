@@ -9,6 +9,29 @@ Tesserae is a **context engine** running on three pillars: (1) session monitorin
 
 Status legend: ✅ shipped · ⚠ in-progress / partial.
 
+> **Reading order.** The sections below are milestones, newest first. Versions
+> between v0.12.0 and v0.28.7 are not restated here — their per-release detail
+> lives in [`docs/release-notes/`](release-notes/), which is the authoritative
+> changelog. This map covers the shape of the system, not every commit.
+
+## Cognitive memory & scope — v0.29.0 → v0.30.0 (August 2026)
+
+The cycle that made the graph *know what happened*, not just what was written:
+outcomes survive ingest, one causal edge is derived from them, and the
+degradations that used to be silent now say so.
+
+| Feature | Status | Source | Notes |
+|---|---|---|---|
+| Code layer opt-in | ✅ | `cli.py`, [`tesserae/code_graph.py`](../tesserae/code_graph.py) | `compile` no longer ingests code symbols by default. On a large repo they outnumbered everything else and crowded retrieval; `tesserae code ingest` still wires CodeGraph in deliberately. See [ingest](ingest.md). |
+| Unhidden retrieval surface | ✅ | [`tesserae/mcp_server.py`](../tesserae/mcp_server.py) | The bitemporal and view-selective parameters were built and tested but unreachable over MCP. `search_facts` now takes `as_of` (answer as of a past date) alongside `current_only` — **refused together**, they are different clocks — and reports `undated_included` so a caller knows how much of the answer carries no date. |
+| Loud degradations | ✅ | [`tesserae/lint.py`](../tesserae/lint.py), [`tesserae/ingest/fetch.py`](../tesserae/ingest/fetch.py), [`tesserae/ingest/orchestrator.py`](../tesserae/ingest/orchestrator.py) | Three silent failures made explicit: binary ingest that produced nothing, undated interval coverage (`INTERVAL_COVERAGE`), and dropped non-text content. Silence read as success; it no longer does. |
+| Source-derived `first_seen_at` | ✅ | [`tesserae/temporal.py`](../tesserae/temporal.py), [`tesserae/session_graph.py`](../tesserae/session_graph.py) | A node is dated from the path its source was ingested under, not from wall-clock at compile time — so a rerun dates it identically and byte-idempotence survives. |
+| Procedural retrieval pool | ✅ | [`tesserae/context_compiler.py`](../tesserae/context_compiler.py), [`tesserae/research_graph.py`](../tesserae/research_graph.py) | `context` reserves a slot for procedural memory — what was run, and what came of it — **earned by provenance**, not granted by default. `PROCEDURAL_POOLS` lint reports when the slot cannot be filled honestly. |
+| Tool results are turns | ✅ | [`tesserae/session_event.py`](../tesserae/session_event.py), [`tesserae/harness_sessions.py`](../tesserae/harness_sessions.py) | Exit codes and error flags survive ingest and land on `Event` nodes. The graph can tell a command that failed from one that merely ran. Home directories are redacted on the way in. |
+| The `recovers` edge | ✅ | [`tesserae/session_recovery.py`](../tesserae/session_recovery.py) | The one causal edge: 'this succeeded after that failed', derived from two **observed** outcomes in one session that agree on tool, program family, working directory and operand. `CAUSAL_EDGE_TYPES` is deliberately one element wide. See [session history](session-history.md#the-recovers-edge). |
+| Chartered domain structure | ⚠ | [`tesserae/charter.py`](../tesserae/charter.py), `cli.py` | Community detection *proposes* a domain vocabulary; the charter *owns* it between explicit reorgs, because detection is deterministic but not stable (a single 15-node document moves ~29% of members). `tesserae domains status` reads it. **Not yet produced by `compile`** — the command reports "no charter yet" until that lands. |
+| Multi-host shared disk | ✅ | [`tesserae/harness_sessions.py`](../tesserae/harness_sessions.py) | `TESSERAE_HOST_ID` scopes prune/overwrite by *who wrote a record*, so N servers on one shared disk stop deleting each other's session history. See [session history](session-history.md). |
+
 ## Cross-project & UX — v0.11.0 (June 2026)
 
 | Feature | Status | Source | Notes |

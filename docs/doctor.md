@@ -153,6 +153,39 @@ Same convention as `tesserae lint`:
 | `1` | warnings present |
 | `2` | errors present |
 
+## `tesserae lint` — the finding codes
+
+`doctor` runs lint's trivially-fixable subset; `tesserae lint` runs the whole
+set and is where the detail lives. Every finding carries a stable code, so you
+can grep a report or gate CI on one. `--severity {info,warning,error}` sets the
+floor for the **exit code** — findings below it are still reported.
+
+| Code | Severity | What it means |
+|---|---|---|
+| `AGENT_METADATA_KEY` | error | An agent node carries a metadata key outside the controlled set. The only error-level code; a malformed agent breaks scoped views. |
+| `ORPHAN_PAPER` | warning | A Paper with no outgoing edges and nothing but `mentioned_in` coming in — ingested, never connected. |
+| `MISSING_IMPLEMENTED_IN` | warning | A Paper and a Repository share an `arxiv_id` but no `implemented_in` edge joins them. `--fix-trivial` adds it. |
+| `STALE_CITATION` | warning | A wiki page links to a page that does not exist. |
+| `DANGLING_HTML_LINK` | warning | Generated HTML points at a file that isn't there. |
+| `GRAPH_WIKI_DRIFT` | warning | The graph and the wiki disagree — a public node with no page, or a page with no node. |
+| `CONTRADICTING_CLAIMS` | warning · info | Two claims contradicted each other; reports how it was resolved. |
+| `REASONING_EDGE_RATIO` | warning | Too few edges carry reasoning. A graph of bare `mentions` is a search index, not a knowledge base. |
+| `SYNTHESIS_GHOST_INPUT` | warning | Synthesis frontmatter cites a node id that no longer exists. `--fix-trivial` prunes it. |
+| `AGENT_FORGET_LEDGER` | warning | The last distill demoted findings — the ledger of what an agent stopped surfacing. |
+| `INTERVAL_COVERAGE` | info | *How many facts carry no `valid_from`* and therefore sort last in any temporal answer. Previously silent; now stated as a percentage. |
+| `LINT_PROBE_FAILED` | info | `INTERVAL_COVERAGE` could not run because the graph would not load — the check abstaining, said out loud rather than passing by default. |
+| `PROCEDURAL_POOLS` | info | How much of the producer-owned procedural layer was actually minted. The reserved procedural retrieval slot is earned by provenance; this reports when it can't be filled honestly. |
+| `AGENT_UNDISTILLED_BACKLOG` | info | An agent has accumulated scope findings well past its distill watermark. |
+| `LOW_TITLE_QUALITY` | info | A Paper's title looks like a filename or a fragment rather than a title. |
+| `SUGGESTED_MERGE` | info | Several Repository nodes share a `github_repo` URL — merge candidates, never merged automatically. |
+| `STALE_BUILD_HISTORY` | info | A build-history entry older than 90 days. |
+| `CODE_GRAPH_BEHIND` · `CODE_GRAPH_HEAD_UNRESOLVED` · `CODE_GRAPH_STALE_FILE` | info | The opt-in code layer is out of step with `HEAD` — compiled at an older commit, at a commit git can no longer resolve, or over files that have since changed. |
+| `CLAIM_SUPPORT_SKIPPED` · `CLAIM_SUPPORT_SUMMARY` | info | Results of the opt-in `--verify-claims` pass: what was sampled and how it scored, or why it did not run. |
+
+`--fix-trivial` applies only the safe repairs (`MISSING_IMPLEMENTED_IN`,
+`SYNTHESIS_GHOST_INPUT`). Everything else is reported for a human to judge.
+`--verify-claims` is opt-in, needs an LLM backend, and costs one batched call.
+
 ## Report artifacts
 
 Every run writes both report forms into the workspace:
