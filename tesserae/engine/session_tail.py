@@ -341,18 +341,26 @@ class SessionTailer:
     # ------------------------------------------------------------------ #
 
     def _read_new_complete_lines(
-        self, path: Path, offset: int
+        self, path: Path, offset: int, end: Optional[int] = None
     ) -> tuple[List[str], int]:
         """Read from ``offset`` to EOF; return complete lines + new byte offset.
 
         A trailing fragment with no ``\\n`` is a half-written line — it is dropped
         and the offset is NOT advanced past it, so it is re-read next tick once
         its newline lands (03-RESEARCH Pitfall 1).
+
+        ``end`` bounds the read at a byte offset already known to sit on a line
+        boundary. :meth:`_rows_through` uses it to re-read the prefix of a file
+        WITHOUT racing the writer: bytes that landed since the batch was read
+        must not leak into it, or turns from a later batch would be emitted as
+        part of this one and then emitted again next tick.
         """
         try:
             with path.open("rb") as handle:
                 handle.seek(offset)
-                chunk = handle.read()
+                chunk = (
+                    handle.read() if end is None else handle.read(max(0, end - offset))
+                )
         except OSError:
             return [], offset
         if not chunk:
@@ -367,6 +375,24 @@ class SessionTailer:
         text = complete.decode("utf-8", errors="ignore")
         lines = [ln for ln in text.split("\n") if ln.strip()]
         return lines, new_offset
+
+    def _rows_through(self, path: Path, end: int) -> List[dict]:
+        """Every complete row from the START of the file through ``end`` bytes.
+
+        Parsed QUIETLY — no unknown-type or unparseable-line warnings — because
+        this re-reads bytes the tick already warned about; :meth:`_parse_lines`
+        owns that reporting for the delta.
+        """
+        lines, _ = self._read_new_complete_lines(path, 0, end=end)
+        rows: List[dict] = []
+        for line in lines:
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict):
+                rows.append(obj)
+        return rows
 
     # ------------------------------------------------------------------ #
     # Tick                                                                #
@@ -438,12 +464,35 @@ class SessionTailer:
         # tailer's own thread, and nothing here reads a drop tally. Passing one
         # would make the count grow for the lifetime of `tesserae engine` and
         # describe an unbounded span of polls rather than one discovery.
+        #
+        # The turns are parsed from every complete row THROUGH this batch, not
+        # from the batch alone. A tool result names only the id of the call it
+        # answers, so a batch that contains the result but not the invocation
+        # cannot resolve the name and emits a generic "tool" / "function_call".
+        # That is the common case, not an edge one: a call and its result are
+        # written seconds apart and the poll interval falls between them.
+        # ``on_chunk_turns`` then persists the wrong attribution under a
+        # uniqueness key a later backfill will not replace, so the activity
+        # summary stays mislabelled for good.
+        #
+        # The delta is taken off the TAIL of that parse rather than off
+        # ``session.metadata["turns"]``: the session is parsed from the raw
+        # file, which may carry a half-written trailing line this tick has
+        # deliberately not consumed, and slicing that list would emit a turn
+        # whose bytes are not yet accounted for by the offset.
+        rows_through = new_rows if offset <= 0 else self._rows_through(path, new_offset)
         if harness == "claude":
             session = _parse_claude_session(self.project_root, self._root_for(path), path)
-            new_turns = _claude_turns(new_rows)
+            turns_through = _claude_turns(rows_through)
+            delta_len = len(_claude_turns(new_rows))
         else:
             session = _parse_codex_session(self.project_root, self._root_for(path), path)
-            new_turns = _codex_turns(new_rows)
+            turns_through = _codex_turns(rows_through)
+            delta_len = len(_codex_turns(new_rows))
+        # Turn production is row-local in COUNT — a row contributes the same
+        # number of turns parsed alone or in context — so the last ``delta_len``
+        # entries are exactly this batch's, now with names resolved.
+        new_turns = turns_through[len(turns_through) - delta_len:] if delta_len else []
         if session is None:
             # File doesn't (yet) match the project — advance offset so we don't
             # re-scan the same complete bytes forever, but emit nothing.
