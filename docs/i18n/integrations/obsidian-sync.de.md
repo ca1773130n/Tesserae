@@ -160,4 +160,4 @@ Dies waren die offenen Fragen zur Designzeit; die ausgelieferte Tier-1–2-Imple
 
 ## Wie sich das in `obsidian.md` zeigt
 
-Der nutzergerichtete Guide bleibt fokussiert auf „du kannst den Vault lesen und abfragen" und verlinkt dann für die Round-Trip-Geschichte hierher, mit einer einzeiligen Zusammenfassung: „Felder in Obsidian bearbeiten, sie überleben das Recompile. Siehe [obsidian-sync.md](obsidian-sync.md) für das vollständige Modell."
+Der nutzergerichtete Guide bleibt fokussiert auf „du kannst den Vault lesen und abfragen" und verlinkt dann für die Round-Trip-Geschichte hierher, mit einer einzeiligen Zusammenfassung: „Felder in Obsidian bearbeiten, sie überleben das Recompile. Siehe [obsidian-sync.md](obsidian-sync.de.md) für das vollständige Modell."

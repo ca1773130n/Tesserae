@@ -55,7 +55,7 @@ La destilación es **opcional**: configure `TESSERAE_AGENT_DISTILL=1` (o `{"agen
 No tiene que recordar destilación. Como un cerebro que consolida la memoria durante el descanso, el demonio siempre activado `tesserae engine` se consolida por sí solo cada vez que un proyecto entra en **inactividad**(sin ediciones o sesiones durante unos minutos), más un techo periódico para que un proyecto continuamente ocupado aún se consolide. Cada ejecución realiza tres operaciones: **comprime y olvida** (el pase de destilación a continuación), permite que el conocimiento no recuperado **se desvanezca por desuso**(la descomposición LRU anterior) y **descubre nuevas conexiones** entre lo que sobrevive. El paso de destilación envuelve exactamente el activador `maybe_distill_on_refresh` descrito anteriormente — el mismo gate de aceptación, marca de agua por agente y verificaciones de presión de memoria — por lo que el ciclo es una operación sin cambios a menos que `TESSERAE_AGENT_DISTILL` esté establecido, se ejecute bajo la puerta de compilación y no perturbe artefactos deterministas.
 
 Comportamiento completo, banderas CLI(`--consolidate-idle` / `--consolidate-every` / `--consolidate-check`) y notas de flota:
-[docs/engine-consolidation.md](engine-consolidation.md).
+[docs/engine-consolidation.md](engine-consolidation.es.md).
 
 ## Olvido — nunca eliminación
 
@@ -67,7 +67,7 @@ Comportamiento completo, banderas CLI(`--consolidate-idle` / `--consolidate-ever
 ## Conexiones descubiertas
 
 Más allá de la compresión y el olvido, la consolidación también **descubre nuevas conexiones** entre notas destiladas — entre agentes dentro del proyecto, no solo dentro de un agente. Incrusta notas y vincula pares cercanos como aristas `shares_concept_with` (llevando un marcador `federation_semantic`). El descubrimiento está **cerrado por incorporación** — se ejecuta solo cuando hay un backend de incrustación real configurado y omite el código hash — por lo que nunca fabrica enlaces espurios. Los bordes se escriben en una superposición de **sidecar acumulativa** bajo `.tesserae`, *nunca* en `graph.json`, y se fusionan en memoria en tiempo de consulta/PPR/lectura de federación (exactamente como la superposición de vista de alcance). Cada ciclo de consolidación deduplica y extiende lo que encontraron ciclos anteriores. Véase
-[docs/engine-consolidation.md](engine-consolidation.md) para la operación de ciclo de sueño que la ejecuta.
+[docs/engine-consolidation.md](engine-consolidation.es.md) para la operación de ciclo de sueño que la ejecuta.
 
 ## Lectura de una vista de alcance
 

@@ -81,6 +81,11 @@ query / seeds
         retrieval.ppr.personalized_pagerank rankt die tiefenbegrenzte k-Hop-Nachbarschaft;
         leeres Ergebnis (unverbundene Seeds) → Rückfall auf die Seed-Reihenfolge (Bundle nie leer)
      │
+     ▼  2b. Prozedurale Reservierung (verdient, nicht gewährt)
+        ein Platz je Pool, in der Reihenfolge von PROCEDURAL_POOL_ORDER: Runbook, Gotcha,
+        Event, DistilledNote, ExpertiseProfile. Der Platz geht an den höchstplatzierten
+        Knoten dieses Typs mit PRODUZENTEN-Provenienz — nicht bloß an den Typnamen
+     │
      ▼  3. Budgetbegrenzte Auswahl
         PPR-Reihenfolge durchlaufen, jeden zitierten Knoten-Body aufnehmen, bis der nächste Body
         `budget` Zeichen überschreiten würde (budget <= 0 = unbegrenzt; Überlaufmarker an Wortgrenze)
@@ -99,6 +104,21 @@ query / seeds
 ```
 
 Standardwerte: `depth=2`, `budget=32000`. Der deterministische Zusammenbau (Schritte 1–4) ist der Vertrag; die LLM-Synthese ist rein additiv. Dieselbe Pipeline trägt den CLI-Befehl `project context`, das MCP-Werkzeug `compile_context` und die themenbezogenen Export-Slices (`slice_export_context_for_topic`, themenbezogene `llms.txt`).
+
+**Warum der prozedurale Platz durch Provenienz verdient wird.** Die fünf
+prozeduralen Typen benennen, was ein Agent getan, gelernt und worin er gut ist —
+doch auch die Dokumentextraktion darf sie erzeugen, sodass ein LLM beim Lesen
+eines Call for Papers völlig legitim ein typisiertes `Event` namens „CVPR 2026"
+erzeugt. Die Reservierung ist *additiv*: Sie hebt einen Knoten von irgendwo aus
+der Nachbarschaft an den Anfang des Budgetdurchlaufs. Eine Reservierung allein
+nach Typ ließe deshalb eine Konferenzdeadline jenen Sitzungsbefund verdrängen,
+der den Platz tatsächlich verdient hat. Getrennt werden beide durch
+`has_producer_provenance`, und eine Reservierung ist ein Anspruch auf einen
+Platz, nicht der Beweis dafür: `delivered` entscheidet sich erst nach dem
+Budgetdurchlauf, sodass die aufrufende Seite „prozedurales Gedächtnis wurde
+reserviert" von „prozedurales Gedächtnis kam an" unterscheiden kann. Der
+Lint-Code `PROCEDURAL_POOLS` meldet die Lücke.
+
 
 ## Modul-Karte
 
@@ -264,6 +284,36 @@ site/
   manifest.json               sha256 + size for every emitted file
 ```
 
+## Die Charta
+
+Die Community-Erkennung **schlägt** ein Domänenvokabular vor; die Charta
+([`tesserae/charter.py`](../../tesserae/charter.py)) **besitzt** es zwischen
+ausdrücklichen Reorganisationen. Diese Trennung existiert, weil die Erkennung
+zwar deterministisch, aber nicht stabil ist: Identische Eingaben reproduzieren
+alle 1.649 Communities exakt, doch ein einziges Dokument mit 15 Knoten verschiebt
+rund 29 % der Mitglieder zwischen Communities und drückt große Communities auf
+einen Jaccard von 0,39–0,60. Alles, was auf Community-Zugehörigkeit schlüsselt,
+erleidet damit pro Aufnahme einen nahezu vollständigen Cache-Miss — und dieses
+Korpus nimmt täglich auf.
+
+Also fixiert die Charta die Institution: Abschnitte werden erkannt, zu einem
+Quotientengraphen zusammengefaltet (ein Knoten je Abschnitt, eine `part_of`-Kante
+je abschnittsübergreifender L0-Kante) und **nach Sub-Community, nie nach Größe**
+in Bereiche → Abteilungen → Teams zerlegt. Der Anker jeder Domäne ist ihr
+Mitglied mit dem höchsten Grad, gierig gewählt, sodass keine zwei Domänen
+denselben teilen; der für Menschen sichtbare Slug wird einmal aus diesem Anker
+geprägt und festgehalten. Über eine Reorganisation hinweg trägt `succeed` die
+Slugs weiter, indem es über den Anker zuordnet — ein stabiler Name überlebt also
+das Durchmischen der Mitglieder darunter. Jeder Knoten landet in genau einer
+Domäne: `intake_members` fängt die verworfenen Singletons und kantenisolierten
+Abschnitte auf, die die Erkennung sonst stillschweigend verlöre.
+
+`tesserae domains status [--json]` gibt den Baum aus. **Stand:** Das Modul und
+sein CLI-Verb sind ausgeliefert und durch Tests abgedeckt, doch `compile`
+schreibt noch keine Charta — bis dahin meldet der Befehl „no charter yet" und
+endet mit 0, was auch für ein Projekt unterhalb der Ein-Lesevorgang-Schwelle die
+ehrliche Antwort ist.
+
 ## Was bewusst ausgeschlossen ist
 
 Das Redesign hat eine klare Linie gezogen: Code-Class- und Code-Function-Knoten bleiben in `graph.json` (damit MCP- und Graphiti-Consumer sie weiterhin sehen), bekommen aber nie HTML-Seiten, tauchen nie in `search-index.json` auf und erscheinen nie in der Navigation. Das ist der Vertrag nach außen — das Wiki ist eine dokument-zentrierte Wissensdatenbank, kein Function-Browser.
@@ -283,6 +333,7 @@ Das Redesign zielt auf **byte-identischen Output über zwei aufeinanderfolgende 
 2. **Wiki-Layer-Writes** sind auf Body-Ebene idempotent. `WikiPageStore.write_page` liest die existierende Datei, entfernt Frontmatter, sha256t den Body und kurzschließt, wenn der neue Body denselben Hash ergibt — auch wenn das neue Frontmatter einen anderen `generated_at`-Timestamp hat. Das ist der Schlüsseltrick, der git-Diffs beim Rebuild eng hält.
 3. **Synthesis-Output** trägt einen `content_hash: sha256-…` im Frontmatter. Der Body-Hash wird ohne `generated_at` berechnet, sodass wiederholte Compiles auf demselben Graph denselben Hash erzeugen, und `Synthesis`-Knoten tragen denselben `content_hash` in den Graph-Metadaten.
 4. **Site-Rendering** löscht `site/` zu Beginn von `write_site` und schreibt dann deterministisch: Routen sind sortiert, Dicts werden mit `sort_keys=True` gedumpt, `manifest.json` läuft über `sorted(rglob("*"))`. Zwei Läufe erzeugen byte-identische Dateien inklusive Manifest.
+5. **Knotendaten sind quellenabgeleitet.** Das `first_seen_at` eines Knotens stammt aus dem Pfad, unter dem seine Quelle aufgenommen wurde, nicht aus der Wanduhr zur Kompilierzeit. Eine Uhrzeit zu lesen machte jeden erneuten Lauf zu einem Diff — genau deshalb zerstört die naive Variante dieses Punkts Punkt 1. Dieselbe Regel hält den `Event`-Lauf byteweise idempotent: Jede erzeugte ID, jeder Text und jedes Datum ist inhaltsabgeleitet, verifiziert über ein Korpus von 481 Sitzungen.
 
 Das wird durch `tests/test_site_pages.py` und den End-to-End-Smoke in `tests/test_project_e2e_redesign.py` verifiziert (zweimal compilen, Sites diffen, null Deltas erwarten).
 

@@ -147,6 +147,41 @@ tesserae doctor migrate-code-scope --apply    # 実際に削除する
 | `1` | 警告あり |
 | `2` | エラーあり |
 
+## `tesserae lint` — 検出コード一覧
+
+`doctor` は lint のうち簡単に自動修正できる部分だけを実行します。全体を実行
+するのは `tesserae lint` で、詳細はここにあります。すべての検出結果は安定した
+コードを持つので、レポートを grep したり、特定のコードで CI をゲートしたり
+できます。`--severity {info,warning,error}` が定めるのは**終了コード**の下限で、
+それより下の検出も報告はされます。
+
+| コード | 深刻度 | 意味 |
+|---|---|---|
+| `AGENT_METADATA_KEY` | error | エージェントノードが管理された集合の外のメタデータキーを持っています。唯一の error 級コードで、不正なエージェントはスコープ付きビューを壊します。 |
+| `ORPHAN_PAPER` | warning | 出ていくエッジがなく、入ってくるのは `mentioned_in` だけの Paper — 取り込まれたが一度も接続されていません。 |
+| `MISSING_IMPLEMENTED_IN` | warning | Paper と Repository が `arxiv_id` を共有しているのに `implemented_in` エッジが両者を結んでいません。`--fix-trivial` が追加します。 |
+| `STALE_CITATION` | warning | Wiki ページが存在しないページへリンクしています。 |
+| `DANGLING_HTML_LINK` | warning | 生成された HTML が存在しないファイルを指しています。 |
+| `GRAPH_WIKI_DRIFT` | warning | グラフと Wiki が食い違っています — ページのない公開ノード、あるいはノードのないページ。 |
+| `CONTRADICTING_CLAIMS` | warning · info | 二つの主張が矛盾しました。どう解決されたかを報告します。 |
+| `REASONING_EDGE_RATIO` | warning | 推論を担うエッジが少なすぎます。裸の `mentions` ばかりのグラフは知識ベースではなく検索インデックスです。 |
+| `SYNTHESIS_GHOST_INPUT` | warning | 統合ページの frontmatter が、もう存在しないノード id を引用しています。`--fix-trivial` が取り除きます。 |
+| `AGENT_FORGET_LEDGER` | warning | 直近の distill が検出結果を降格させました — そのエージェントが何を表に出さなくなったかの台帳です。 |
+| `INTERVAL_COVERAGE` | info | *`valid_from` を持たないファクトがどれだけあるか* — 時間的な回答では最後に並ぶものです。以前は黙っていましたが、いまは割合として明言します。 |
+| `LINT_PROBE_FAILED` | info | グラフを読み込めず `INTERVAL_COVERAGE` が実行できませんでした — 検査が棄権したことを、既定で合格扱いにせず声に出して伝えます。 |
+| `PROCEDURAL_POOLS` | info | プロデューサー所有の手続き層が実際にどれだけ生成されたか。予約された手続き的検索枠は来歴によって獲得されるもので、本項はそれを正直に埋められない場合を報告します。 |
+| `AGENT_UNDISTILLED_BACKLOG` | info | あるエージェントが distill の基準時点をはるかに超えてスコープ内の検出結果を溜め込んでいます。 |
+| `LOW_TITLE_QUALITY` | info | Paper のタイトルが、題名というよりファイル名や断片のように見えます。 |
+| `SUGGESTED_MERGE` | info | 複数の Repository ノードが同じ `github_repo` URL を共有しています — 併合候補であり、自動併合はしません。 |
+| `STALE_BUILD_HISTORY` | info | 90 日より古いビルド履歴のエントリ。 |
+| `CODE_GRAPH_BEHIND` · `CODE_GRAPH_HEAD_UNRESOLVED` · `CODE_GRAPH_STALE_FILE` | info | オプトインのコードレイヤーが `HEAD` とずれています — より古いコミットでコンパイルされた、git がもう解決できないコミットである、あるいはその後変更されたファイルの上でコンパイルされた。 |
+| `CLAIM_SUPPORT_SKIPPED` · `CLAIM_SUPPORT_SUMMARY` | info | オプトインの `--verify-claims` パスの結果: 何をサンプリングしどう採点されたか、あるいはなぜ実行されなかったか。 |
+
+`--fix-trivial` が適用するのは安全な修復（`MISSING_IMPLEMENTED_IN`,
+`SYNTHESIS_GHOST_INPUT`）だけです。ほかは人間が判断できるよう報告のみ行います。
+`--verify-claims` はオプトインで、LLM バックエンドを必要とし、バッチ呼び出し
+1 回分のコストがかかります。
+
 ## レポート成果物
 
 毎回の実行で、両方の形式のレポートがワークスペースに書き込まれます:

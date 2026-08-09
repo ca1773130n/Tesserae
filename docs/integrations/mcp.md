@@ -110,7 +110,11 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 | Tool | Purpose |
 |---|---|
 | `ask` | Natural-language Q&A. Omit `scope` and a smart router picks the target across your registered projects (federated fallback) and reroutes across consecutive questions (pass `conversation_id` to isolate a thread). Explicit `scope`: `current` (one project), `all-registered` (one answer per project), `federated` (ONE merged, cross-referenced answer; `semantic` on by default). Plus `backend`, `top_k`, `scope_aliases`, `claude_config_dir` |
-| `list_projects` / `register_project` / `unregister_project` | Multi-project registry control (no privileged "active" project) |
+| `query` | Raw retrieval, no LLM — mirrors `tesserae query`. `backend='wiki'` (default) is deterministic BM25/semantic search over the compiled wiki, returning ranked hits with excerpts; `backend='raganything'` queries the optional multimodal RAG index when the project has it enabled. Use `ask` for a synthesized, cited answer |
+| `ingest` | Ingest raw web/text content (e.g. a browser clip) into the resolved project's knowledge graph |
+| `list_projects` | List the registered projects |
+| `register_project` | Add a project to the registry |
+| `unregister_project` | Remove a project from the registry (no privileged "active" project exists) |
 
 **Guided setup**
 

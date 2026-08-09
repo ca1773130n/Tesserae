@@ -106,7 +106,7 @@ A node id has the shape ``Type:slug:hash``.
 ```
 
 Der volle Block sind ~500 Tokens. Siehe
-[`tesserae/llm_synthesis.py`](../tesserae/llm_synthesis.py) für den
+[`tesserae/llm_synthesis.py`](../../tesserae/llm_synthesis.py) für den
 kanonischen Text. Jede Byte-Änderung dort invalidiert den Prompt-Cache für
 jede nachfolgende Seite in einem Lauf, weshalb der Regel-Text bewusst eingefroren ist.
 

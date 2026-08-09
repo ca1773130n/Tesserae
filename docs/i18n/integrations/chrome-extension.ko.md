@@ -70,7 +70,7 @@ python3 -m tesserae serve --project /path/to/project --port 8765
 
 `tesserae serve`는 정적 사이트 **및** 동일한 출처에 두 개의 JSON 경로를 노출합니다:
 
-- `POST /api/ask`  — 질문 답변 ([mcp.md](mcp.md) 참조)
+- `POST /api/ask`  — 질문 답변 ([mcp.md](mcp.ko.md) 참조)
 - `POST /api/clip` — 웹 클립 수집 (이 기능)
 
 탐색하는 동안 실행 상태로 유지합니다. 각 클립은 `/api/clip`을 누릅니다.
@@ -133,7 +133,7 @@ JSON 본문으로 `POST /api/clip`:
 | `tags`    | 아니요 | 전면 물질 태그. |
 | `tldr`    | 아니요 | 기본값 `true`. |
 
-**활성** 프로젝트(`activate_project`로 해석하거나 `project` 전달)로 수집하고 동일한 `{status, path, tldr, node_count, edge_count}` 보고서를 반환합니다. MCP 설정은 [mcp.md](mcp.md)를 참조하세요.
+**활성** 프로젝트(`activate_project`로 해석하거나 `project` 전달)로 수집하고 동일한 `{status, path, tldr, node_count, edge_count}` 보고서를 반환합니다. MCP 설정은 [mcp.md](mcp.ko.md)를 참조하세요.
 
 ---
 

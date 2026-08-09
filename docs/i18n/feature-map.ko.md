@@ -9,6 +9,29 @@ Tesserae는 세 개의 기둥 위에서 동작하는 **컨텍스트 엔진**입�
 
 상태 범례: ✅ 출시됨 · ⚠ 진행 중 / 부분적.
 
+> **읽는 순서.** 아래 섹션들은 마일스톤이며 최신순입니다. v0.12.0에서
+> v0.28.7 사이의 버전은 여기서 다시 서술하지 않습니다 — 릴리스별 상세는
+> 권위 있는 변경 이력인 [`docs/release-notes/`](../release-notes/)에 있습니다.
+> 이 맵은 모든 커밋이 아니라 시스템의 형태를 다룹니다.
+
+## 인지 메모리와 범위 — v0.29.0 → v0.30.0 (2026년 8월)
+
+그래프가 무엇이 쓰였는지만이 아니라 *무슨 일이 일어났는지*를 알게 만든
+사이클입니다: 결과가 수집을 살아남고, 그로부터 인과 엣지 하나가 도출되며,
+조용하던 저하가 이제 소리를 냅니다.
+
+| 기능 | 상태 | 소스 | 비고 |
+|---|---|---|---|
+| 코드 계층 선택제 | ✅ | `cli.py`, [`tesserae/code_graph.py`](../../tesserae/code_graph.py) | `compile`은 더 이상 기본적으로 코드 심볼을 수집하지 않습니다. 큰 저장소에서 코드 심볼은 다른 모든 것보다 많아 검색을 밀어냈습니다. `tesserae code ingest`로 CodeGraph를 의도적으로 연결할 수 있습니다. [ingest](ingest.ko.md) 참고. |
+| 감춰졌던 검색 표면 공개 | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | 이중 시간(bitemporal)과 뷰 선택 매개변수는 구현과 테스트가 끝났는데도 MCP로 닿을 수 없었습니다. 이제 `search_facts`가 `current_only`와 함께 `as_of`(과거 시점 기준 응답)를 받습니다 — 서로 다른 시계이므로 **동시 사용은 거부**되며, `undated_included`가 받은 결과 중 날짜가 없는 것이 얼마나 되는지 보고합니다. |
+| 소리 내는 저하 | ✅ | [`tesserae/lint.py`](../../tesserae/lint.py), [`tesserae/ingest/fetch.py`](../../tesserae/ingest/fetch.py), [`tesserae/ingest/orchestrator.py`](../../tesserae/ingest/orchestrator.py) | 세 가지 조용한 실패를 명시적으로 만들었습니다: 아무것도 만들어내지 못한 바이너리 수집, 날짜 없는 구간 커버리지(`INTERVAL_COVERAGE`), 버려진 비텍스트 콘텐츠. 침묵이 성공으로 읽혔지만, 이제는 아닙니다. |
+| 소스에서 파생된 `first_seen_at` | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py), [`tesserae/session_graph.py`](../../tesserae/session_graph.py) | 노드의 날짜는 컴파일 시점의 벽시계가 아니라 그 소스가 수집된 경로에서 옵니다 — 그래서 재실행해도 날짜가 같고 바이트 멱등성이 살아남습니다. |
+| 절차적 검색 풀 | ✅ | [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py), [`tesserae/research_graph.py`](../../tesserae/research_graph.py) | `context`가 절차적 메모리 — 무엇을 실행했고 결과가 무엇이었는지 — 를 위한 슬롯을 예약하되, 기본 제공이 아니라 **출처로 획득**하게 합니다. `PROCEDURAL_POOLS` lint가 그 슬롯을 정직하게 채울 수 없을 때 보고합니다. |
+| 도구 결과는 하나의 턴 | ✅ | [`tesserae/session_event.py`](../../tesserae/session_event.py), [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | 종료 코드와 오류 플래그가 수집을 살아남아 `Event` 노드에 새겨집니다. 그래프가 실패한 명령과 그저 실행된 명령을 구별할 수 있습니다. 홈 디렉터리는 들어오는 길에 가려집니다. |
+| `recovers` 엣지 | ✅ | [`tesserae/session_recovery.py`](../../tesserae/session_recovery.py) | 유일한 인과 엣지: '저것이 실패한 뒤 이것이 성공했다'를, 도구·프로그램 계열·작업 디렉터리·피연산자가 일치하는 한 세션 안의 두 **관측된** 결과에서 도출합니다. `CAUSAL_EDGE_TYPES`는 의도적으로 원소 하나입니다. [세션 이력](session-history.ko.md) 참고. |
+| 헌장에 따른 도메인 구조 | ⚠ | [`tesserae/charter.py`](../../tesserae/charter.py), `cli.py` | 커뮤니티 탐지는 도메인 어휘를 *제안*하고, 헌장이 명시적 개편 사이에서 그것을 *소유*합니다. 탐지는 결정적이지만 안정적이지 않기 때문입니다(15개 노드짜리 문서 하나가 구성원의 약 29%를 옮깁니다). `tesserae domains status`가 읽습니다. **아직 `compile`이 생성하지 않습니다** — 그때까지 이 명령은 "no charter yet"을 보고합니다. |
+| 공유 디스크 다중 호스트 | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | `TESSERAE_HOST_ID`가 *누가 레코드를 썼는지*로 prune/덮어쓰기 범위를 정해, 하나의 공유 디스크를 쓰는 N대의 서버가 서로의 세션 이력을 지우지 않게 합니다. [세션 이력](session-history.ko.md) 참고. |
+
 ## 크로스 프로젝트 & UX — v0.11.0 (2026년 6월)
 
 | 기능 | 상태 | 소스 | 비고 |

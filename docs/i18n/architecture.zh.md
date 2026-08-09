@@ -81,6 +81,11 @@ query / seeds
         retrieval.ppr.personalized_pagerank ranks the depth-bounded k-hop neighbourhood;
         empty result (disconnected seeds) → fall back to seed order (bundle is never empty)
      │
+     ▼  2b. 过程性预留（靠挣得，而非默认给予）
+        按 PROCEDURAL_POOL_ORDER 顺序，每个池一个槽位：Runbook、Gotcha、Event、
+        DistilledNote、ExpertiseProfile。槽位归该类型中排名最高、且带有生产者
+        provenance 的节点——仅有类型名不算
+     │
      ▼  3. Budget-bound selection
         walk PPR order, include each node's cited body until the next would overflow
         `budget` chars (budget <= 0 = uncapped; over-budget marker on a word boundary)
@@ -99,6 +104,16 @@ query / seeds
 ```
 
 默认值：`depth=2`、`budget=32000`。确定性的组装（步骤 1–4）是契约；LLM 合成纯属附加。同一条流水线支撑 `project context` CLI 命令、`compile_context` MCP 工具，以及按主题切片的导出（`slice_export_context_for_topic`，主题作用域的 `llms.txt`）。
+
+**为什么过程性槽位要靠 provenance 挣得。** 这五种过程性类型描述的是一个智能体做过
+什么、学会了做什么、擅长什么——但文档抽取同样被允许铸造它们，所以一个读征稿启事的
+LLM 会名正言顺地铸造出名为 "CVPR 2026" 的 `Event`。预留是*加性的*：它会把邻域中任
+意位置的节点提到预算遍历的最前面。因此仅凭类型预留，会让一个会议截止日期挤掉真正
+挣得该槽位的会话发现。区分二者的正是 `has_producer_provenance`；而预留只是对槽位
+的主张，不是它被兑现的证明——`delivered` 在预算遍历之后才敲定，于是调用方能区分
+"过程性记忆被预留了"和"过程性记忆真的到位了"。`PROCEDURAL_POOLS` lint 代码会报告
+这中间的落差。
+
 
 ## 模块地图
 
@@ -264,6 +279,27 @@ site/
   manifest.json               sha256 + size for every emitted file
 ```
 
+## 章程
+
+社区检测**提议**一套领域词汇，而章程
+（[`tesserae/charter.py`](../../tesserae/charter.py)）在两次显式重组之间**拥有**
+它。这一分工之所以存在，是因为检测虽然确定，却并不稳定：相同输入能精确重现全部
+1,649 个社区，然而仅仅一篇 15 个节点的文档就会让约 29% 的成员在社区之间迁移，并
+把大社区的 Jaccard 拉低到 0.39–0.60。于是任何以社区归属为键的东西，每次摄取都要
+承受近乎全量的缓存失效——而这个语料库每天都在摄取。
+
+因此章程把这套建制钉住：先检测出各个 section，折叠成商图（每个 section 一个节点，
+每条跨 section 的 L0 边一条 `part_of` 边），再**按子社区而非按规模**切分为部门 →
+处 → 组。每个领域的锚点是其度数最高的成员，以贪心方式挑选，保证没有两个领域共用
+同一个锚点；面向人的 slug 由该锚点铸造一次并就此钉死。跨越一次重组时，`succeed`
+按锚点把 slug 承接下去，于是即便下面的成员被重新洗牌，稳定的名字依然存续。每个节
+点恰好落入一个领域：`intake_members` 会兜住那些被丢弃的孤立点和边上孤立的
+section——若无此项，检测会悄悄把它们弄丢。
+
+`tesserae domains status [--json]` 打印这棵树。**状态：** 该模块及其 CLI 动词已经
+随版本发布并有测试覆盖，但 `compile` 目前尚未写出章程；在那之前，该命令会报告
+"no charter yet" 并以 0 退出——对于低于单次读取阈值的项目，这同样是诚实的答案。
+
 ## 刻意排除的内容
 
 重设计划下了一条明确的线：code-class 和 code-function 节点留在 `graph.json` 中（因此 MCP 和 Graphiti 消费者仍然看得到它们），但永远不会获得 HTML 页面，永远不会出现在 `search-index.json` 中，也永远不会出现在导航里。这就是面向用户的契约——wiki 是文档优先的知识库，不是函数浏览器。
@@ -283,6 +319,7 @@ site/
 2. **Wiki 层写入**在正文级别幂等。`WikiPageStore.write_page` 读取现有文件、剥离 frontmatter、对正文做 sha256，如果新正文哈希相同就短路——即使新 frontmatter 带着不同的 `generated_at` 时间戳。这是让重建时 git diff 保持紧凑的关键技巧。
 3. **Synthesis 输出**在 frontmatter 中携带 `content_hash: sha256-…`。正文哈希的计算不含 `generated_at`，因此对同一图谱的重复编译产生相同哈希，且 `Synthesis` 节点在图谱元数据中携带同样的 `content_hash`。
 4. **站点渲染**在 `write_site` 开始时擦除 `site/`，然后确定性地写入：路由排序、字典以 `sort_keys=True` 输出、`manifest.json` 通过 `sorted(rglob("*"))` 遍历。两次运行产生逐字节相同的文件，包括 manifest。
+5. **节点的日期由来源派生。** 节点的 `first_seen_at` 来自其来源被摄取时所在的路径，而不是编译时的挂钟时间。读时钟会让每次重跑都产生 diff，这正是本条的天真写法会摧毁第 1 条的原因。同一规则让 `Event` 流程保持逐字节幂等：铸造出的每个 id、正文和日期都由内容派生，并已在一个 481 场会话的语料上验证。
 
 这由 `tests/test_site_pages.py` 和 `tests/test_project_e2e_redesign.py` 中的端到端冒烟测试验证（编译两次、diff 两个站点、期望零文件差异）。
 

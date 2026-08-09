@@ -64,6 +64,7 @@ tesserae projects mcp-config
 
 | Tool | 用途 |
 |---|---|
+| `graph_map` | **ここから始めてください。** グラフ階層の予算付きマップ — Descent の入口です。スコープなしで呼ぶとルートのカード集合（件数、上位ハブ、最も粗いコミュニティごとに 1 枚）、`scope='<カードの scope_id>'` はデンドログラムを 1 段降り、`org:root` はエージェント組織ツリーをたどります。検索語を当てずにエージェントの位置を定めます |
 | `schema` | 管理された node、edge、wiki-kind の語彙 |
 | `graph_summary` | アクティブなプロジェクトの node + edge 数と種別分布 |
 | `search_nodes` | 公開グラフ node を `query`、`type`/`types`、`kind`、`limit`、ハイブリッド `mode`/`weights` でフィルタ。`include_superseded` で廃止済み node も表示 |
@@ -74,6 +75,9 @@ tesserae projects mcp-config
 | `graph_ppr` | 1 つ以上の `seed_node_id` をシードとするパーソナライズド PageRank で最も関連性の高い top-K node を返す。`alpha`、`directed`、`edge_type_weights` を調整可能 |
 | `wiki_page` | ある node のコンパイル済み markdown ページ本文と、それが参照する内部リンク |
 | `raw_source` | 元のソース markdown（16 KB を上限としてキャップ） |
+| `verify_claim` | トリプルを 1 つだけグラフに対して検証します — 完全一致の照会で、LLM もあいまい一致もランキング結果もありません。`{verdict, reason, triple, citation, provenance, advisory}` を返し、`verdict` は `SUPPORTED`（エッジが存在し、**その証拠が文書の逐語スパン**である）、`PRESENT_UNEVIDENCED`、または拒否です。手元に散文しかないときは `search_nodes` → `verify_claim` とつなげてください |
+| `doctor_run` | ヘルスチェックを実行し、レポートを JSON（`findings`, `exit_code` 0/1/2）で返します。**常に読み取り専用** — 修正が MCP 経由で走ることはありません。修復は CLI の `tesserae doctor --fix` を使ってください |
+| `doctor_report` | `.tesserae/doctor-report.md` の内容（64 KB を上限としてキャップ）。`tesserae doctor` を実行するまでは空です |
 | `lint_report` | 直近のコンパイル時 lint 結果（64 KB を上限としてキャップ） |
 
 **オンデマンドコンテキストコンパイラ**（Phase 7）
@@ -81,23 +85,38 @@ tesserae projects mcp-config
 | Tool | 用途 |
 |---|---|
 | `compile_context` | `query` または明示的な `seeds` に対して、調整された**引用付き**コンテキスト文書をコンパイル。深さ制限付きサブグラフ（`depth`、1–10、既定 2）を走査し、PPR でランキングして文字 `budget`（既定 32000、`0` で無制限）を埋める。既定は決定論的で、`synthesize: true` で LLM が書く叙述型 "topic" スライスを生成。`body`、`citations`、`selected_node_ids`、`char_budget_used` を返す |
+| `get_handle` | 以前に `handle` として返された大きなペイロード（例: `preview` 付きの `compile_context`）をスライス（`offset`, `limit`）で取得します — すべてをコンテキストに流し込むのではなく、必要な分だけ後から取り寄せます |
 | `list_communities` | 後コンパイルパスが生成した `COMMUNITY_SUMMARY` node をメンバー数順に列挙（`min_size`、`limit`）。`node_context` で `summarizes` edge をたどってメンバーへ回帰 |
 | `fresh_insights` | エビングハウス式の減衰スコア（新しく・最もアクセスされた順）でランキングされたセッション発見。廃止された近似重複は除外。任意で `kind`、`limit`、`include_superseded` |
 
-**セッションメモリ**（[sessions.md](sessions.md) 参照）
+**セッションメモリ**（[sessions.md](sessions.ja.md) 参照）
 
 | Tool | 用途 |
 |---|---|
 | `list_sessions` | アクティブなプロジェクトのセッションエンベロープ（id、started_at、title、files_touched、発見数）。`since`、`limit` |
 | `find_session_findings` | `discussed_in` / `references` を介して `node_id` にリンクされた全セッション発見。`kinds`（insight / decision / question / todo / hypothesis / takeaway）でフィルタ可能 |
 | `find_code_symbol_mentions` | セッション発見を、それが言及する `CodeFunction`/`CodeClass`/`CodeMethod` シンボルへ展開（オプトインの insight↔symbol リンクパスが生成する `discusses` edge を使用）。コードレイヤーはオプトインです。`codegraph` の `external_tools` エントリがなければ、何も返しません |
+| `activity_summary` | 登録済みプロジェクト横断の日次 / 週次ダイジェスト — セッション、発見、git コミット、PR、取り込んだ文書。それぞれ**自身の**タイムスタンプで窓を切り、セッションの `started_at` は決して使いません。決定的なマークダウンを描画し、無効化しない限り LLM による語りを先頭に付けます |
+| `query_decisions` | 期間内の登録済みプロジェクト横断の決定: Claude Code の `AskUserQuestion` から決定的に解析した明示的な**人間**の選択（質問と選ばれた選択肢）に加え、会話から掘り出したエージェントの決定 |
+
+**エージェントメモリと書き戻し**（[agent-memory.ja.md](../agent-memory.ja.md) を参照）
+
+| ツール | 用途 |
+|---|---|
+| `agent_view_explain` | エージェントスコープのビューを*読み込まずに*説明します: 解決モード（worker / manager / org）、メンバーエージェント、各 L1 アーティファクトのパスとノード数、そして `distilled_through` の鮮度ウォーターマーク |
+| `drill_down` | 蒸留物の `member_ref` を元の L0 ノードへ解決します — 蒸留された可視性を越える、マネージャーの明示的で監査記録の残るエスカレーションです。状態は `alive` / `changed` / `absorbed` / `gone` を返し、呼び出しはすべてサイドカーに記録されます |
+| `graph_write` | 型付きノードとエッジをグラフへ直接書き込みます — マークダウンも抽出パスもありません。追記専用のオーバーレイに積まれ、コンパイルのプロデューサーとして再生されるため、**再コンパイルを生き延びます**。厳格です: 未知の型、証拠のないエッジ、このペイロード外のエンドポイントはいずれも拒否されます |
 
 **Q&A とレジストリ**
 
 | Tool | 用途 |
 |---|---|
 | `ask` | 設定されたメモリバックエンド（raganything、cognee、またはコンパイル済み wiki）経由の自然言語 Q&A。`backend`、`top_k`。`scope`/`scope_aliases` で複数 vault へのファンアウト。多アカウントルーティング用の `claude_config_dir` |
-| `list_projects` / `register_project` / `activate_project` / `unregister_project` | マルチプロジェクトレジストリの制御 |
+| `query` | LLM を使わない生の検索 — `tesserae query` と同じです。`backend='wiki'`（既定）はコンパイル済み Wiki に対する決定的な BM25 / セマンティック検索で、抜粋付きのランク結果を返します。`backend='raganything'` は、プロジェクトが有効化していればオプションのマルチモーダル RAG インデックスに問い合わせます。統合された出典付きの回答が欲しいときは `ask` を使ってください |
+| `ingest` | 生の Web / テキストコンテンツ（例: ブラウザのクリップ）を、解決されたプロジェクトの知識グラフへ取り込みます |
+| `list_projects` | 登録済みプロジェクトの一覧 |
+| `register_project` | レジストリにプロジェクトを追加 |
+| `unregister_project` | レジストリからプロジェクトを削除（特権的な「アクティブ」プロジェクトは存在しません） |
 
 **ガイド付きセットアップ**
 

@@ -81,6 +81,11 @@ query / seeds
         retrieval.ppr.personalized_pagerank ranks the depth-bounded k-hop neighbourhood;
         empty result (disconnected seeds) → fall back to seed order (bundle is never empty)
      │
+     ▼  2b. 手続き的予約（与えられるのではなく獲得される）
+        PROCEDURAL_POOL_ORDER の順にプールごと 1 枠: Runbook, Gotcha, Event,
+        DistilledNote, ExpertiseProfile。枠は、その型で最上位かつプロデューサーの
+        provenance を持つノードに与えられる — 型名だけでは足りない
+     │
      ▼  3. Budget-bound selection
         walk PPR order, include each node's cited body until the next would overflow
         `budget` chars (budget <= 0 = uncapped; over-budget marker on a word boundary)
@@ -99,6 +104,18 @@ query / seeds
 ```
 
 既定値: `depth=2`、`budget=32000`。決定的なアセンブリ（ステップ 1–4）が契約であり、LLM 合成は純粋に加算的です。同じパイプラインが `project context` CLI コマンド、`compile_context` MCP ツール、トピックスコープのエクスポートスライス（`slice_export_context_for_topic`、トピックスコープの `llms.txt`）を支えています。
+
+**手続き的な枠が provenance によって獲得される理由。** 五つの手続き的型は、
+エージェントが何をしたか、何をできるようになったか、何が得意かを名指します — が、
+文書抽出にもそれらを生成することが許されているため、投稿募集を読んだ LLM が
+「CVPR 2026」という型付き `Event` を正当に作ります。予約は*加算的*です: 近傍の
+どこにあってもノードを予算ウォークの先頭へ引き上げます。したがって型だけで予約
+すると、学会の締切がその枠を実際に獲得したセッションの発見を追い出しかねません。
+両者を分けるのが `has_producer_provenance` であり、予約は枠に対する主張であって
+その証明ではありません — `delivered` は予算ウォークのあとで確定するので、呼び出し
+側は「手続き的記憶が予約された」と「手続き的記憶が届いた」を区別できます。
+`PROCEDURAL_POOLS` lint コードがその差を報告します。
+
 
 ## モジュールマップ
 
@@ -264,6 +281,32 @@ site/
   manifest.json               sha256 + size for every emitted file
 ```
 
+## 憲章
+
+コミュニティ検出はドメイン語彙を**提案**し、憲章
+（[`tesserae/charter.py`](../../tesserae/charter.py)）は明示的な再編のあいだ、
+それを**所有**します。この分担があるのは、検出が決定的ではあっても安定では
+ないからです: 同じ入力は 1,649 のコミュニティすべてを正確に再現しますが、
+15 ノードの文書ひとつでメンバーの約 29% がコミュニティ間を移動し、大きな
+コミュニティの Jaccard は 0.39〜0.60 まで落ちます。したがってコミュニティ所属を
+キーにするものはすべて、取り込みのたびにほぼ全面的なキャッシュミスを被ります —
+そしてこのコーパスは毎日取り込みます。
+
+そこで憲章が制度を固定します: セクションを検出し、商グラフ（セクションごとに
+1 ノード、セクション間の L0 エッジごとに 1 本の `part_of` エッジ）へ畳み、
+**規模ではなくサブコミュニティによって**部門 → 部 → チームへ分割します。各
+ドメインのアンカーは次数最大のメンバーで、二つのドメインが同じものを共有しない
+よう貪欲に選ばれ、人が目にするスラッグはそのアンカーから一度だけ作られて固定
+されます。再編をまたぐときは `succeed` がアンカー一致でスラッグを引き継ぐので、
+その下のメンバーが入れ替わっても安定した名前は生き残ります。すべてのノードは
+ちょうど一つのドメインに収まります: `intake_members` が、検出なら黙って失って
+いたはずの捨てられた単独ノードとエッジ的に孤立したセクションを受け止めます。
+
+`tesserae domains status [--json]` がツリーを表示します。**状態:** モジュールと
+CLI の動詞は出荷済みでテストにも覆われていますが、`compile` はまだ憲章を書きま
+せん — それまでこのコマンドは "no charter yet" と報告して 0 で終了します。これは
+一読分の下限を下回るプロジェクトにとっても正直な答えです。
+
 ## 意図的に除外されているもの
 
 再設計は明示的な線を引きました: コードクラスとコード関数のノードは `graph.json` に留まります（そのため MCP と Graphiti のコンシューマーからは引き続き見えます）が、HTML ページを持つことはなく、`search-index.json` に現れることもなく、ナビゲーションに現れることもありません。これがユーザー向けの契約です — この wiki はドキュメントファーストのナレッジベースであり、関数ブラウザではありません。
@@ -283,6 +326,7 @@ site/
 2. **wiki レイヤーの書き込み**はボディレベルで冪等です。`WikiPageStore.write_page` は既存ファイルを読み、frontmatter を剥がし、ボディを sha256 し、新しいボディが同じハッシュになる場合は — 新しい frontmatter の `generated_at` タイムスタンプが違っていても — ショートサーキットします。これが再ビルド時の git 差分を小さく保つ鍵となるトリックです。
 3. **統合（synthesis）出力**は frontmatter に `content_hash: sha256-…` を持ちます。ボディハッシュは `generated_at` 抜きで計算されるため、同じグラフに対する繰り返しのコンパイルは同じハッシュを生み、`Synthesis` ノードはグラフメタデータに同じ `content_hash` を持ちます。
 4. **サイトレンダリング**は `write_site` の最初に `site/` を消去し、その後決定的に書き込みます: ルートはソートされ、辞書は `sort_keys=True` でダンプされ、`manifest.json` は `sorted(rglob("*"))` で走査されます。2 回の実行はマニフェストを含めてバイト単位に同一なファイルを生みます。
+5. **ノードの日付はソース由来です。** ノードの `first_seen_at` は、そのソースが取り込まれたパスから決まり、コンパイル時の壁時計からは決まりません。時計を読めば再実行のたびに差分が出るため、これを素朴に実装すると 1 番が壊れます。同じ規則が `Event` パスをバイト冪等に保ちます: 生成されるあらゆる id・本文・日付が内容から導かれ、481 セッションのコーパスで検証済みです。
 
 これは `tests/test_site_pages.py` と、`tests/test_project_e2e_redesign.py` のエンドツーエンドスモーク（2 回コンパイルし、サイトを diff し、ファイル差分ゼロを期待する）で検証されています。
 

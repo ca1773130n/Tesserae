@@ -9,6 +9,28 @@ Tesserae 是一个运行在三大支柱上的**上下文引擎**：(1) 会话监
 
 状态图例：✅ 已交付 · ⚠ 进行中 / 部分。
 
+> **阅读顺序。** 下面各节按里程碑排列，最新在前。v0.12.0 到 v0.28.7 之间的版本
+> 不在此重述——逐版本的细节在
+> [`docs/release-notes/`](../release-notes/)，那才是权威的变更日志。这份地图讲的
+> 是系统的形态，而不是每一次提交。
+
+## 认知记忆与作用域 —— v0.29.0 → v0.30.0（2026 年 8 月）
+
+这一轮让图谱知道*发生了什么*，而不只是被写下了什么：结果挺过摄取，一条因果边由
+它们推导而来，而那些原本沉默的降级如今会出声。
+
+| 特性 | 状态 | 源码 | 说明 |
+|---|---|---|---|
+| 代码层改为可选 | ✅ | `cli.py`、[`tesserae/code_graph.py`](../../tesserae/code_graph.py) | `compile` 不再默认摄取代码符号。在大型仓库中它们的数量压过其他一切并挤占检索；`tesserae code ingest` 仍可主动接入 CodeGraph。见 [ingest](ingest.zh.md)。 |
+| 揭开被隐藏的检索面 | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | 双时态与视图选择参数早已实现并有测试，却在 MCP 上无法触达。现在 `search_facts` 除 `current_only` 外还接受 `as_of`（按过去某个日期作答）——二者**不可同时传入**，它们是不同的时钟——并通过 `undated_included` 报告返回结果里有多少条没有日期。 |
+| 让降级出声 | ✅ | [`tesserae/lint.py`](../../tesserae/lint.py)、[`tesserae/ingest/fetch.py`](../../tesserae/ingest/fetch.py)、[`tesserae/ingest/orchestrator.py`](../../tesserae/ingest/orchestrator.py) | 三种沉默的失败被显式化：产出为空的二进制摄取、无日期的区间覆盖（`INTERVAL_COVERAGE`）、被丢弃的非文本内容。沉默曾被读作成功，如今不再。 |
+| 由来源派生的 `first_seen_at` | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py)、[`tesserae/session_graph.py`](../../tesserae/session_graph.py) | 节点的日期取自其来源被摄取时所在的路径，而非编译时的挂钟——于是重跑得到相同日期，逐字节幂等得以保全。 |
+| 过程性检索池 | ✅ | [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py)、[`tesserae/research_graph.py`](../../tesserae/research_graph.py) | `context` 为过程性记忆——运行了什么、结果如何——预留一个槽位，而这个槽位**靠出处挣得**，不是默认奉送。当它无法被诚实填满时，`PROCEDURAL_POOLS` lint 会报告。 |
+| 工具结果也是轮次 | ✅ | [`tesserae/session_event.py`](../../tesserae/session_event.py)、[`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | 退出码与错误标志挺过摄取并落到 `Event` 节点上。图谱因而能区分失败的命令与仅仅运行过的命令。主目录在进入时被遮蔽。 |
+| `recovers` 边 | ✅ | [`tesserae/session_recovery.py`](../../tesserae/session_recovery.py) | 唯一的因果边：“在那次失败之后这次成功了”，由同一会话中两个**被观测到**的结果推导，二者须在工具、程序家族、工作目录与操作对象上一致。`CAUSAL_EDGE_TYPES` 刻意只有一个成员。见[会话历史](session-history.zh.md)。 |
+| 章程化的领域结构 | ⚠ | [`tesserae/charter.py`](../../tesserae/charter.py)、`cli.py` | 社区检测*提议*一套领域词汇，章程在两次显式重组之间*拥有*它——因为检测虽确定却不稳定（一篇 15 个节点的文档就会挪动约 29% 的成员）。`tesserae domains status` 读取它。**目前 `compile` 尚未生成**——在那之前该命令报告 "no charter yet"。 |
+| 共享磁盘上的多主机 | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | `TESSERAE_HOST_ID` 按*是谁写下了这条记录*来限定 prune 与覆盖，于是共用一块磁盘的 N 台服务器不再互相删除会话历史。见[会话历史](session-history.zh.md)。 |
+
 ## 跨项目与 UX — v0.11.0（2026 年 6 月）
 
 | 功能 | 状态 | 源码 | 备注 |

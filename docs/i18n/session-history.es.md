@@ -49,6 +49,53 @@ transcripts de harness por su cuenta.
 
 Los registros de sesión importados son artefactos locales del proyecto. Revísalos antes de publicar un sitio público, especialmente si tus transcripts pueden incluir secretos, rutas privadas, datos de clientes o código no publicado.
 
+El texto de un turno se copia en nombres y descripciones de nodos, y estos se
+serializan en `graph.json` y en cada proyección suya, así que **los directorios
+personales se redactan a la entrada**. `/Users/<nombre>` y `/home/<nombre>` nunca
+llegan al grafo, lo cual importa porque una ruta es el único dato personal que
+aparece en casi cada transcripción sin que nadie lo pretendiera.
+
+## En qué se convierte un turno de sesión
+
+Por cada transición *significativa* de una sesión —una llamada a herramienta o
+una acción sustantiva del asistente, no charla— la pasada `Event`, que no usa
+LLM, acuña exactamente un nodo con `{turn_id, actor, action, breve cambio de
+estado}` y enlaza eventos consecutivos con aristas `precedes`, de modo que el
+estado dinámico de una sesión puede reproducirse en orden. La pasada nunca llama
+a un modelo, nunca lanza excepción ante una entrada mala y es idempotente a
+nivel de bytes: cada id, cuerpo y `first_seen_at` acuñado deriva del contenido,
+así que una reejecución produce nodos y aristas idénticos.
+
+**El resultado de una herramienta es un turno.** Los códigos de salida y las
+banderas de error sobreviven a la ingesta y aterrizan en el nodo `Event`, así
+que el grafo distingue un comando que *falló* de otro que simplemente se
+ejecutó. Antes de esto, un agente que leía su propia historia veía que había
+ejecutado `pytest` y no tenía idea de si la suite había pasado: esa es la
+diferencia entre un registro y una memoria.
+
+### La arista `recovers`
+
+A partir de dos resultados **observados** en una misma sesión, Tesserae deriva
+la única arista causal de su vocabulario: una llamada a herramienta que informó
+de un fallo, y una llamada posterior —misma herramienta, misma familia de
+programa, mismo directorio de trabajo, mismo operando, sin ningún éxito
+observado sobre ese operando en medio— que informó de éxito. El `Event` que
+tiene éxito es el origen; el que falló, el destino. Ambos ids de turno se nombran
+en la evidencia, y `metadata["basis"]` nombra cada dimensión en la que ambas
+llamadas debían coincidir.
+
+`CAUSAL_EDGE_TYPES` tiene exactamente un miembro, y es deliberado. Un repaso de
+cuatro sistemas punteros de memoria de agentes encontró que ninguno deriva una
+arista causal: dos infieren su vínculo más fuerte de la co-ocurrencia, uno acepta
+la palabra de un LLM sobre un vocabulario abierto de etiquetas de relación sin
+verificación alguna, y otro no tiene aristas. El fallo que esta estrechez existe
+para evitar es publicar un `caused_by` que en realidad es un `happened_near`: en
+un grafo ambos son indistinguibles, y el equivocado se lee como evidencia.
+
+El ancla es el **operando**, no el comando, porque los comandos varían en
+aspectos que no importan (opciones, orden) mientras que aquello sobre lo que se
+actúa es lo que un reintento está reintentando de verdad.
+
 ## Descubrir e importar sesiones locales
 
 Desde la raíz del proyecto:

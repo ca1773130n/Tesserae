@@ -115,6 +115,39 @@ tesserae doctor migrate-code-scope --apply    # 真正删除
 | `1` | 存在警告 |
 | `2` | 存在错误 |
 
+## `tesserae lint` —— 发现代码一览
+
+`doctor` 只运行 lint 中可安全自动修复的那部分；`tesserae lint` 运行全部，细节
+也在这里。每条发现都带一个稳定的代码，因此你可以 grep 报告，或让 CI 针对某个
+代码卡门槛。`--severity {info,warning,error}` 设定的是**退出码**的门槛——低于
+它的发现仍会被报告。
+
+| 代码 | 级别 | 含义 |
+|---|---|---|
+| `AGENT_METADATA_KEY` | error | 某个 agent 节点带有受控集合之外的元数据键。唯一的 error 级代码；格式错误的 agent 会破坏作用域视图。 |
+| `ORPHAN_PAPER` | warning | 一篇 Paper 没有任何出边，入边也只有 `mentioned_in`——被摄取了，却从未被连接。 |
+| `MISSING_IMPLEMENTED_IN` | warning | Paper 与 Repository 共享同一个 `arxiv_id`，却没有 `implemented_in` 边连接二者。`--fix-trivial` 会补上。 |
+| `STALE_CITATION` | warning | 维基页面链接到一个并不存在的页面。 |
+| `DANGLING_HTML_LINK` | warning | 生成的 HTML 指向了不存在的文件。 |
+| `GRAPH_WIKI_DRIFT` | warning | 图谱与维基不一致——有公开节点却无页面，或有页面却无节点。 |
+| `CONTRADICTING_CLAIMS` | warning · info | 两条主张互相矛盾；报告是如何解决的。 |
+| `REASONING_EDGE_RATIO` | warning | 承载推理的边太少。只有裸 `mentions` 的图谱是搜索索引，不是知识库。 |
+| `SYNTHESIS_GHOST_INPUT` | warning | 综合页的 frontmatter 引用了已不存在的节点 id。`--fix-trivial` 会清理。 |
+| `AGENT_FORGET_LEDGER` | warning | 上一次 distill 降级了一批发现——记录某个 agent 不再呈现哪些内容的账本。 |
+| `INTERVAL_COVERAGE` | info | *有多少事实没有 `valid_from`*，因而在任何时间性回答里都排在最后。以前它是沉默的，现在以百分比明说。 |
+| `LINT_PROBE_FAILED` | info | 因为图谱无法加载，`INTERVAL_COVERAGE` 没能运行——检查弃权这件事被明说出来，而不是默认当作通过。 |
+| `PROCEDURAL_POOLS` | info | 由生产者拥有的过程性层实际生成了多少。预留的过程性检索槽位是靠出处挣来的；本项报告它无法被诚实填满的情况。 |
+| `AGENT_UNDISTILLED_BACKLOG` | info | 某个 agent 积压的作用域发现已远超其 distill 水位线。 |
+| `LOW_TITLE_QUALITY` | info | 某篇 Paper 的标题更像文件名或残缺片段，而不像标题。 |
+| `SUGGESTED_MERGE` | info | 多个 Repository 节点共享同一个 `github_repo` URL——是合并候选，但绝不自动合并。 |
+| `STALE_BUILD_HISTORY` | info | 超过 90 天的构建历史条目。 |
+| `CODE_GRAPH_BEHIND` · `CODE_GRAPH_HEAD_UNRESOLVED` · `CODE_GRAPH_STALE_FILE` | info | 可选的代码层与 `HEAD` 脱节——编译于更早的提交、编译于 git 已无法解析的提交，或所依据的文件此后已被改动。 |
+| `CLAIM_SUPPORT_SKIPPED` · `CLAIM_SUPPORT_SUMMARY` | info | 可选 `--verify-claims` 流程的结果：抽样了什么、得分如何，或它为何没有运行。 |
+
+`--fix-trivial` 只应用安全修复（`MISSING_IMPLEMENTED_IN`、
+`SYNTHESIS_GHOST_INPUT`）。其余只做报告，交由人来判断。`--verify-claims` 需要
+显式开启，依赖 LLM 后端，代价是一次批量调用。
+
 ## 报告产物
 
 每次运行都会把两种形式的报告写入工作区：

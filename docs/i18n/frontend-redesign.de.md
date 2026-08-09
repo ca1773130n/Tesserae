@@ -307,7 +307,7 @@ Die interaktive Graph-Ansicht ist ein 3D-Force-Layout (3d-force-graph + Three.js
 - Drag → Orbit (3D) oder Pan (2D).
 - 2D/3D-Toggle oben rechts.
 
-Das in die Seite eingebettete Payload ist auf `MAX_GRAPH_NODES = 1500` gedeckelt (siehe [`pages.py`](../tesserae/site/pages.py)). Der volle Graph ist immer unter `/graph.json` für Tooling verfügbar. Code-Graph-Knoten (`CodeClass`, `CodeFunction`, `Dependency`, …) werden by design aus der Visualisierung gefiltert.
+Das in die Seite eingebettete Payload ist auf `MAX_GRAPH_NODES = 1500` gedeckelt (siehe [`pages.py`](../../tesserae/site/pages.py)). Der volle Graph ist immer unter `/graph.json` für Tooling verfügbar. Code-Graph-Knoten (`CodeClass`, `CodeFunction`, `Dependency`, …) werden by design aus der Visualisierung gefiltert.
 
 **Verwandte Routen.** Jede Wiki-Seite verlinkt in eine fokussierte Subgraph-View.
 

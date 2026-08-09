@@ -49,6 +49,56 @@ Harness-Transkript-Verzeichnisse.
 
 Importierte Session-Records sind lokale Projekt-Artefakte. Prüfe sie, bevor du eine öffentliche Site publizierst, besonders wenn deine Transkripte Secrets, private Pfade, Kundendaten oder unveröffentlichten Code enthalten könnten.
 
+Der Text eines Zugs wird in Knotennamen und -beschreibungen kopiert, und diese
+werden nach `graph.json` und in jede seiner Projektionen serialisiert — deshalb
+werden **Home-Verzeichnisse schon beim Hereinkommen geschwärzt**.
+`/Users/<name>` und `/home/<name>` erreichen den Graphen nie, und das zählt,
+weil ein Pfad genau jene personenbezogene Angabe ist, die in nahezu jedem
+Transkript auftaucht, ohne dass es jemand beabsichtigt hätte.
+
+## Was aus einem Zug einer Sitzung wird
+
+Für jeden *signifikanten* Übergang in einer Sitzung — einen Werkzeugaufruf oder
+eine substanzielle Assistenzhandlung, kein Geplauder — erzeugt der LLM-freie
+`Event`-Lauf genau einen Knoten mit `{turn_id, actor, action, kurze
+Zustandsänderung}` und verbindet aufeinanderfolgende Ereignisse mit
+`precedes`-Kanten, sodass der dynamische Zustand einer Sitzung der Reihe nach
+abgespielt werden kann. Der Lauf ruft nie ein Modell auf, wirft bei schlechter
+Eingabe nie eine Ausnahme und ist byteweise idempotent: Jede erzeugte ID, jeder
+Text und jedes `first_seen_at` ist inhaltsabgeleitet, ein erneuter Lauf liefert
+also identische Knoten und Kanten.
+
+**Ein Werkzeugergebnis ist ein Zug.** Exit-Codes und Fehler-Flags überleben die
+Aufnahme und landen auf dem `Event`-Knoten, sodass der Graph einen Befehl, der
+*fehlschlug*, von einem unterscheiden kann, der bloß lief. Vorher sah ein Agent
+beim Lesen der eigenen Historie, dass er `pytest` ausgeführt hatte, und wusste
+nicht, ob die Suite bestand — genau das ist der Unterschied zwischen einem
+Protokoll und einem Gedächtnis.
+
+### Die `recovers`-Kante
+
+Aus zwei **beobachteten** Ergebnissen einer einzigen Sitzung leitet Tesserae die
+einzige kausale Kante seines Vokabulars ab: ein Werkzeugaufruf, der einen
+Fehlschlag meldete, und ein späterer Aufruf — dasselbe Werkzeug, dieselbe
+Programmfamilie, dasselbe Arbeitsverzeichnis, derselbe Operand, ohne dass
+dazwischen ein Erfolg auf diesem Operanden beobachtet wurde — der Erfolg
+meldete. Das erfolgreiche `Event` ist die Quelle, das fehlgeschlagene das Ziel;
+beide Zug-IDs stehen im Beleg, und `metadata["basis"]` benennt jede Dimension,
+in der die beiden Aufrufe übereinstimmen mussten.
+
+`CAUSAL_EDGE_TYPES` hat genau ein Element, und das ist Absicht. Eine Sichtung
+von vier führenden Agent-Gedächtnissystemen ergab, dass keines eine kausale
+Kante ableitet: Zwei schließen ihre stärkste Verbindung aus gemeinsamem
+Auftreten, eines nimmt einem LLM ein offenes Vokabular an Beziehungslabels ohne
+jede Prüfung ab, und eines hat gar keine Kanten. Der Fehlschlag, den diese Enge
+verhindern soll, ist ein ausgeliefertes `caused_by`, das in Wahrheit ein
+`happened_near` ist — im Graphen sind die beiden nicht zu unterscheiden, und das
+falsche wird als Beleg gelesen.
+
+Der Anker ist der **Operand**, nicht das Kommando: Kommandos variieren in dem,
+was keine Rolle spielt (Flags, Reihenfolge), während das, worauf gewirkt wird,
+genau das ist, was ein Wiederholungsversuch tatsächlich wiederholt.
+
 ## Lokale Sessions discovern und importieren
 
 Vom Projekt-Root:

@@ -110,6 +110,7 @@ Laissez non défini sauf si vous frappez les limites de contexte.
 | `TESSERAE_LLM_PROVIDER` | `claude` | `codex`, `claude`, `anthropic`, `custom` |
 | `TESSERAE_LLM_MODEL` | spécifique au fournisseur | Limité par fournisseur pour qu'un modèle de type claude n'atterrisse jamais sur le chemin codex |
 | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | L'extraction structurée ne nécessite pas le `xhigh` que vous pourriez définir pour un travail interactif — `xhigh` rend une compilation multi-documents plusieurs fois plus lente |
+| `TESSERAE_CLAUDE_CONFIG_DIRS` | — | Répertoires de configuration Claude séparés par `os.pathsep`, dans l'ordre de rotation — le canal d'environnement pour un `--claude-config-dir` répété. Seule une liste *configurée* fait autorité ; le `CLAUDE_CONFIG_DIR` ambiant délibérément pas, car s'y épingler réduit la rotation multi-comptes à un seul compte |
 
 `tesserae config status` affiche le serveur résolu et le vérifie pour vérifier qu'il répond.
 

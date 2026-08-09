@@ -9,6 +9,29 @@ Tesserae は 3 つの柱で動く**コンテキストエンジン**です: (1) �
 
 ステータス凡例: ✅ 出荷済み · ⚠ 進行中 / 部分的。
 
+> **読む順序。** 以下の節はマイルストーンで、新しいものが先です。v0.12.0 から
+> v0.28.7 のあいだのバージョンはここでは再掲しません — リリースごとの詳細は
+> 権威ある変更履歴である [`docs/release-notes/`](../release-notes/) にあります。
+> このマップが扱うのはシステムの形であって、すべてのコミットではありません。
+
+## 認知メモリとスコープ — v0.29.0 → v0.30.0（2026 年 8 月）
+
+グラフに、何が書かれたかだけでなく*何が起きたか*を知らせたサイクルです: 結果が
+取り込みを生き延び、そこから因果エッジが一本導かれ、これまで黙っていた劣化が
+声を上げるようになりました。
+
+| 機能 | 状態 | ソース | 備考 |
+|---|---|---|---|
+| コードレイヤーのオプトイン化 | ✅ | `cli.py`, [`tesserae/code_graph.py`](../../tesserae/code_graph.py) | `compile` は既定でコードシンボルを取り込まなくなりました。大きなリポジトリでは他のすべてを数で圧倒し、検索を押しのけていたためです。`tesserae code ingest` で CodeGraph を意図的に接続できます。[ingest](ingest.ja.md) を参照。 |
+| 隠れていた検索面の開放 | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | バイテンポラルおよびビュー選択のパラメータは実装もテストも済んでいたのに、MCP からは届きませんでした。`search_facts` は `current_only` に加えて `as_of`（過去の時点での回答）を受け取ります — 異なる時計なので**同時指定は拒否**され、`undated_included` が返された行のうち日付を持たないものの数を報告します。 |
+| 劣化を声に出す | ✅ | [`tesserae/lint.py`](../../tesserae/lint.py), [`tesserae/ingest/fetch.py`](../../tesserae/ingest/fetch.py), [`tesserae/ingest/orchestrator.py`](../../tesserae/ingest/orchestrator.py) | 三つの沈黙した失敗を明示化しました: 何も生まなかったバイナリ取り込み、日付のない区間カバレッジ（`INTERVAL_COVERAGE`）、捨てられた非テキストコンテンツ。沈黙が成功と読まれていましたが、もう読まれません。 |
+| ソース由来の `first_seen_at` | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py), [`tesserae/session_graph.py`](../../tesserae/session_graph.py) | ノードの日付は、コンパイル時の壁時計ではなく、そのソースが取り込まれたパスから決まります — 再実行でも同じ日付になり、バイト冪等性が保たれます。 |
+| 手続き的検索プール | ✅ | [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py), [`tesserae/research_graph.py`](../../tesserae/research_graph.py) | `context` は手続き的記憶 — 何を実行し、どうなったか — のための枠を予約しますが、それは既定で与えられるものではなく**来歴によって獲得**されます。枠を正直に埋められないときは `PROCEDURAL_POOLS` lint が報告します。 |
+| ツール結果はターン | ✅ | [`tesserae/session_event.py`](../../tesserae/session_event.py), [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | 終了コードとエラーフラグが取り込みを生き延び、`Event` ノードに刻まれます。グラフは失敗したコマンドと単に実行されただけのコマンドを区別できます。ホームディレクトリは入口で伏せられます。 |
+| `recovers` エッジ | ✅ | [`tesserae/session_recovery.py`](../../tesserae/session_recovery.py) | 唯一の因果エッジ:「あれが失敗したあとにこれが成功した」を、ツール・プログラム系統・作業ディレクトリ・オペランドが一致する一つのセッション内の二つの**観測された**結果から導きます。`CAUSAL_EDGE_TYPES` は意図的に要素一つです。[セッション履歴](session-history.ja.md) を参照。 |
+| 憲章によるドメイン構造 | ⚠ | [`tesserae/charter.py`](../../tesserae/charter.py), `cli.py` | コミュニティ検出はドメイン語彙を*提案*し、憲章が明示的な再編のあいだそれを*所有*します。検出は決定的でも安定ではないからです（15 ノードの文書ひとつでメンバーの約 29% が動きます）。`tesserae domains status` がそれを読みます。**まだ `compile` は生成しません** — それまでこのコマンドは "no charter yet" と報告します。 |
+| 共有ディスク上のマルチホスト | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | `TESSERAE_HOST_ID` が*誰がそのレコードを書いたか*で prune と上書きの範囲を定め、一つの共有ディスクを使う N 台のサーバーが互いのセッション履歴を消し合うのをやめさせます。[セッション履歴](session-history.ja.md) を参照。 |
+
 ## クロスプロジェクト & UX — v0.11.0（2026 年 6 月）
 
 | 機能 | ステータス | ソース | 備考 |

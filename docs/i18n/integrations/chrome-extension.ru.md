@@ -90,7 +90,7 @@ python3 -m tesserae serve --project /path/to/project --port 8765
 `tesserae serve` предоставляет статический сайт **плюс** два JSON-маршрута на
 одном и том же источнике:
 
-- `POST /api/ask`  — ответы на вопросы (см. [mcp.md](mcp.md))
+- `POST /api/ask`  — ответы на вопросы (см. [mcp.md](mcp.ru.md))
 - `POST /api/clip` — поглощение веб-клипов (эта функция)
 
 Оставьте его работающим во время просмотра; каждый клип попадает на `/api/clip`.
@@ -168,7 +168,7 @@ python3 -m tesserae serve --project /path/to/project --port 8765
 
 Он поглощает в **активный проект** (разрешить с помощью `activate_project` или
 передать `project`) и возвращает тот же отчет `{status, path, tldr, node_count,
-edge_count}`. Смотрите [mcp.md](mcp.md) для настройки MCP.
+edge_count}`. Смотрите [mcp.md](mcp.ru.md) для настройки MCP.
 
 ---
 

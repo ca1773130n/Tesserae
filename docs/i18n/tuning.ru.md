@@ -104,6 +104,7 @@ export TESSERAE_LLM_CACHE=0   # всегда переспрашивать
 | `TESSERAE_LLM_PROVIDER` | `claude` | `codex`, `claude`, `anthropic`, `custom` |
 | `TESSERAE_LLM_MODEL` | зависит от провайдера | Ограничено провайдером, чтобы claude-совместимая модель никогда не попала на codex путь |
 | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | Структурированное извлечение не требует `xhigh`, который вы можете установить для интерактивной работы — `xhigh` делает multi-document compile в несколько раз медленнее |
+| `TESSERAE_CLAUDE_CONFIG_DIRS` | — | Разделённый `os.pathsep` список каталогов конфигурации Claude в порядке ротации — канал переменной окружения для повторяющегося `--claude-config-dir`. Авторитетен только *заданный* список; окружающий `CLAUDE_CONFIG_DIR` намеренно нет, потому что привязка к нему схлопывает ротацию нескольких аккаунтов до одного |
 
 `tesserae config status` выводит полученный бэкэнд и проверяет его доступность.
 

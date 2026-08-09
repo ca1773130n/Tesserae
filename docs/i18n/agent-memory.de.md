@@ -56,7 +56,7 @@ Destillation ist **optional**: Stellen Sie `TESSERAE_AGENT_DISTILL=1` ein (oder 
 Sie müssen sich nicht an die Destillation erinnern. Wie ein Gehirn, das Erinnerungen im Ruhezustand konsolidiert, konsolidiert der ständig aktivierte `tesserae engine`-Daemon sich selbst, wenn ein Projekt **untätig** ist (wenige Minuten ohne Bearbeitungen oder Sitzungen), plus eine periodische Obergrenze, damit ein ständig beschäftigtes Projekt immer noch konsolidiert. Jeder Durchlauf führt drei Vorgänge durch: **komprimiert und vergisst** (der Destillationsdurchgang unten), lässt nicht abgerufenes Wissen **durch Nichtgebrauch verblassen** (LRU-Zerfall oben) und **entdeckt neue Verbindungen** zwischen dem, was überlebt. Der Destillationsschritt verpackt genau den oben beschriebenen `maybe_distill_on_refresh`-Auslöser — dasselbe Opt-In-Gate, Pro-Agent-Wasserzeichen und Speicherdruckprüfungen — daher ist der Zyklus ein No-Op, es sei denn, `TESSERAE_AGENT_DISTILL` ist gesetzt, läuft unter dem Kompilierungs-Gate und beeinträchtigt nicht die deterministischen Artefakte.
 
 Vollständiges Verhalten, CLI-Flags(`--consolidate-idle` / `--consolidate-every` / `--consolidate-check`) und Flottennotizen:
-[docs/engine-consolidation.md](engine-consolidation.md).
+[docs/engine-consolidation.md](engine-consolidation.de.md).
 
 ## Vergessen — keine Löschung
 
@@ -68,7 +68,7 @@ Vollständiges Verhalten, CLI-Flags(`--consolidate-idle` / `--consolidate-every`
 ## Entdeckte Verbindungen
 
 Über die Komprimierung und das Vergessen hinaus **entdeckt die Konsolidierung auch neue Verbindungen** zwischen destillierten Notizen——zwischen Agenten innerhalb des Projekts, nicht nur innerhalb eines Agenten. Es bettet Notizen ein und verknüpft nahe Paare als `shares_concept_with` Kanten (mit einem `federation_semantic` Marker). Die Entdeckung ist **durch Einbettung gated** — sie läuft nur, wenn ein echtes Einbettungs-Backend konfiguriert ist und überspringt den Hash-Stub — daher produziert sie nie falsche Links. Kanten werden in eine kumulative **Sidecar-Überlagerung** unter `.tesserae` geschrieben, *niemals* in `graph.json`, und werden zum Zeitpunkt der Abfrage/PPR/Verbund-Lesart im Speicher zusammengeführt (genau wie die Bereichsansicht-Überlagerung). Jeder Konsolidierungszyklus dedupliziert gegen und erweitert das, was frühere Zyklen gefunden haben. Siehe
-[docs/engine-consolidation.md](engine-consolidation.md) für den Schlafzyklus-Betrieb, der ihn ausführt.
+[docs/engine-consolidation.md](engine-consolidation.de.md) für den Schlafzyklus-Betrieb, der ihn ausführt.
 
 ## Lesen einer Bereichsansicht
 

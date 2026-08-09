@@ -81,6 +81,11 @@ query / seeds
         retrieval.ppr.personalized_pagerank ranks the depth-bounded k-hop neighbourhood;
         empty result (disconnected seeds) → fall back to seed order (bundle is never empty)
      │
+     ▼  2b. Réservation procédurale (méritée, non octroyée)
+        une place par pool, dans l'ordre de PROCEDURAL_POOL_ORDER : Runbook, Gotcha, Event,
+        DistilledNote, ExpertiseProfile. La place revient au nœud le mieux classé de ce type
+        qui porte une provenance de PRODUCTEUR — pas au simple nom de type
+     │
      ▼  3. Budget-bound selection
         walk PPR order, include each node's cited body until the next would overflow
         `budget` chars (budget <= 0 = uncapped; over-budget marker on a word boundary)
@@ -99,6 +104,21 @@ query / seeds
 ```
 
 Défauts : `depth=2`, `budget=32000`. L’assemblage déterministe (étapes 1–4) est le contrat ; la synthèse LLM est purement additive. Le même pipeline sous-tend la commande CLI `project context`, l’outil MCP `compile_context` et les tranches d’export ciblées par topic (`slice_export_context_for_topic`, `llms.txt` ciblé par topic).
+
+**Pourquoi la place procédurale se mérite par la provenance.** Les cinq types
+procéduraux nomment ce qu'un agent a fait, a appris à faire et sait bien faire —
+mais l'extraction documentaire a elle aussi le droit de les créer, si bien qu'un
+LLM lisant un appel à communications crée légitimement un `Event` typé nommé
+« CVPR 2026 ». La réservation est *additive* : elle promeut un nœud depuis
+n'importe où dans le voisinage jusqu'en tête du parcours budgété. Réserver sur le
+seul type laisserait donc une date limite de conférence évincer le constat de
+session qui a réellement mérité la place. Ce qui sépare les deux, c'est
+`has_producer_provenance` ; et une réservation est une revendication de place, pas
+la preuve qu'elle a été honorée : `delivered` n'est tranché qu'après le parcours
+budgété, de sorte que l'appelant distingue « de la mémoire procédurale a été
+réservée » de « de la mémoire procédurale est arrivée ». Le code de lint
+`PROCEDURAL_POOLS` signale l'écart.
+
 
 ## Carte des modules
 
@@ -264,6 +284,36 @@ site/
   manifest.json               sha256 + size for every emitted file
 ```
 
+## La charte
+
+La détection de communautés **propose** un vocabulaire de domaines ; la charte
+([`tesserae/charter.py`](../../tesserae/charter.py)) le **possède** entre deux
+réorganisations explicites. Cette séparation existe parce que la détection est
+déterministe mais pas stable : une entrée identique reproduit exactement les
+1 649 communautés, et pourtant un seul document de 15 nœuds déplace environ 29 %
+des membres d'une communauté à l'autre et fait chuter les grandes communautés à
+un Jaccard de 0,39–0,60. Tout ce qui s'indexe sur l'appartenance à une communauté
+subit donc un défaut de cache quasi total à chaque ingestion — et ce corpus
+ingère quotidiennement.
+
+La charte fige donc l'institution : les sections sont détectées, repliées en un
+graphe quotient (un nœud par section, une arête `part_of` par arête L0
+inter-sections), puis découpées en divisions → départements → équipes **par
+sous-communauté, jamais par taille**. L'ancre de chaque domaine est son membre de
+plus haut degré, choisi gloutonnement pour que deux domaines n'en partagent
+jamais une seule ; le slug destiné aux humains est frappé une fois à partir de
+cette ancre, puis épinglé. Au fil d'une réorganisation, `succeed` reporte les
+slugs en appariant les ancres, si bien qu'un nom stable survit au brassage des
+membres qui se trouvent dessous. Chaque nœud atterrit dans exactement un domaine :
+`intake_members` rattrape les singletons écartés et les sections isolées côté
+arêtes que la détection perdrait sinon en silence.
+
+`tesserae domains status [--json]` affiche l'arbre. **État :** le module et son
+verbe CLI sont livrés et couverts par des tests, mais `compile` n'écrit pas
+encore de charte ; d'ici là, la commande renvoie « no charter yet » et sort avec
+0, ce qui est aussi la réponse honnête pour un projet sous le seuil d'une seule
+lecture.
+
 ## Ce qui est délibérément exclu
 
 La refonte a tracé une ligne explicite : les nœuds code-class et code-function restent dans `graph.json` (pour que les consommateurs MCP et Graphiti les voient toujours) mais n’obtiennent jamais de pages HTML, n’apparaissent jamais dans `search-index.json` et n’apparaissent jamais dans la navigation. C’est le contrat côté utilisateur — le wiki est une base de connaissances orientée documents, pas un navigateur de fonctions.
@@ -283,6 +333,7 @@ La refonte vise une **sortie octet-pour-octet identique sur deux exécutions con
 2. **Les écritures de la couche wiki** sont idempotentes au niveau du corps. `WikiPageStore.write_page` lit le fichier existant, retire le frontmatter, calcule le sha256 du corps et court-circuite si le nouveau corps hache pareil — même si le nouveau frontmatter a un horodatage `generated_at` différent. C’est l’astuce clé qui garde les diffs git serrés à la reconstruction.
 3. **La sortie de synthèse** porte un `content_hash: sha256-…` dans son frontmatter. Le hash du corps est calculé sans `generated_at`, si bien que des compilations répétées sur le même graphe produisent le même hash, et les nœuds `Synthesis` portent le même `content_hash` dans les métadonnées du graphe.
 4. **Le rendu du site** efface `site/` au début de `write_site`, puis écrit de façon déterministe : les routes sont triées, les dictionnaires sérialisés avec `sort_keys=True`, `manifest.json` parcouru via `sorted(rglob("*"))`. Deux exécutions produisent des fichiers octet-identiques, manifest compris.
+5. **Les dates des nœuds dérivent de la source.** Le `first_seen_at` d'un nœud vient du chemin sous lequel sa source a été ingérée, et non de l'horloge au moment de la compilation. Lire l'horloge ferait de chaque réexécution un diff, et c'est précisément pourquoi la version naïve de ce point ruine le point 1. La même règle garde la passe `Event` idempotente à l'octet près : chaque id, corps et date produits dérivent du contenu, vérifié sur un corpus de 481 sessions.
 
 C’est vérifié par `tests/test_site_pages.py` et le smoke de bout en bout de `tests/test_project_e2e_redesign.py` (compiler deux fois, différencier les sites, attendre zéro delta de fichiers).
 

@@ -81,6 +81,11 @@ query / seeds
         retrieval.ppr.personalized_pagerank ranks the depth-bounded k-hop neighbourhood;
         empty result (disconnected seeds) → fall back to seed order (bundle is never empty)
      │
+     ▼  2b. Reserva procedimental (ganada, no concedida)
+        un hueco por pool, en el orden de PROCEDURAL_POOL_ORDER: Runbook, Gotcha, Event,
+        DistilledNote, ExpertiseProfile. El hueco va al nodo mejor clasificado de ese tipo
+        que lleve procedencia de PRODUCTOR, no al que solo tenga el nombre del tipo
+     │
      ▼  3. Budget-bound selection
         walk PPR order, include each node's cited body until the next would overflow
         `budget` chars (budget <= 0 = uncapped; over-budget marker on a word boundary)
@@ -99,6 +104,20 @@ query / seeds
 ```
 
 Defaults: `depth=2`, `budget=32000`. El ensamblado determinista (pasos 1–4) es el contrato; la síntesis LLM es puramente aditiva. El mismo pipeline respalda el comando CLI `project context`, la herramienta MCP `compile_context` y los slices de export acotados por topic (`slice_export_context_for_topic`, `llms.txt` acotado por topic).
+
+**Por qué el hueco procedimental se gana con procedencia.** Los cinco tipos
+procedimentales nombran lo que un agente hizo, aprendió a hacer y se le da bien,
+pero la extracción documental también puede acuñarlos: un LLM que lee una
+convocatoria de artículos acuña legítimamente un `Event` tipado llamado "CVPR
+2026". La reserva es *aditiva*: promueve un nodo desde cualquier punto del
+vecindario al frente del recorrido presupuestado. Reservar solo por tipo dejaría,
+por tanto, que una fecha límite de congreso desalojara al hallazgo de sesión que
+sí se ganó el hueco. Lo que separa ambos casos es `has_producer_provenance`, y una
+reserva es una pretensión sobre un hueco, no la prueba de haberlo ocupado:
+`delivered` se resuelve después del recorrido presupuestado, de modo que quien
+llama distingue "se reservó memoria procedimental" de "llegó memoria
+procedimental". El código de lint `PROCEDURAL_POOLS` informa de esa diferencia.
+
 
 ## Mapa de módulos
 
@@ -264,6 +283,36 @@ site/
   manifest.json               sha256 + size for every emitted file
 ```
 
+## La carta fundacional
+
+La detección de comunidades **propone** un vocabulario de dominios; la carta
+([`tesserae/charter.py`](../../tesserae/charter.py)) lo **posee** entre
+reorganizaciones explícitas. Esa separación existe porque la detección es
+determinista pero no estable: una entrada idéntica reproduce exactamente las
+1.649 comunidades, y sin embargo un solo documento de 15 nodos mueve cerca del
+29 % de los miembros entre comunidades y hunde las comunidades grandes a un
+Jaccard de 0,39–0,60. Por tanto, todo lo que se indexe por pertenencia a una
+comunidad sufre un fallo de caché casi total en cada ingesta, y este corpus
+ingiere a diario.
+
+Así que la carta fija la institución: se detectan secciones, se colapsan en un
+grafo cociente (un nodo por sección, una arista `part_of` por cada arista L0
+entre secciones) y se dividen en divisiones → departamentos → equipos **por
+subcomunidad, nunca por tamaño**. El ancla de cada dominio es su miembro de mayor
+grado, elegido con avidez de modo que dos dominios nunca compartan una; el slug
+de cara al humano se acuña una sola vez a partir de esa ancla y queda fijado. A
+través de una reorganización, `succeed` arrastra los slugs emparejando por ancla,
+de modo que un nombre estable sobrevive a la barajada de los miembros que hay
+debajo. Cada nodo cae en exactamente un dominio: `intake_members` recoge los
+singletons descartados y las secciones aisladas por aristas que, de otro modo, la
+detección perdería en silencio.
+
+`tesserae domains status [--json]` imprime el árbol. **Estado:** el módulo y su
+verbo de CLI se publican y están cubiertos por pruebas, pero `compile` todavía no
+escribe una carta; hasta que lo haga, el comando informa "no charter yet" y sale
+con 0, que es también la respuesta honesta para un proyecto por debajo del umbral
+de una lectura.
+
 ## Qué queda deliberadamente excluido
 
 El rediseño trazó una línea explícita: los nodos code-class y code-function se quedan en `graph.json` (para que los consumidores MCP y Graphiti sigan viéndolos) pero nunca reciben páginas HTML, nunca aparecen en `search-index.json` y nunca aparecen en la navegación. Ese es el contrato de cara al usuario — la wiki es una base de conocimiento document-first, no un navegador de funciones.
@@ -283,6 +332,7 @@ El rediseño apunta a **salida byte-idéntica entre dos ejecuciones consecutivas
 2. **Las escrituras de la capa wiki** son idempotentes a nivel de cuerpo. `WikiPageStore.write_page` lee el archivo existente, quita el frontmatter, hace sha256 del cuerpo y cortocircuita si el nuevo cuerpo hashea igual — incluso si el nuevo frontmatter tiene un timestamp `generated_at` distinto. Ese es el truco clave que mantiene los diffs de git compactos al reconstruir.
 3. **La salida de síntesis** lleva un `content_hash: sha256-…` en su frontmatter. El hash del cuerpo se computa sin `generated_at`, así que compilaciones repetidas sobre el mismo grafo producen el mismo hash, y los nodos `Synthesis` llevan el mismo `content_hash` en los metadatos del grafo.
 4. **El renderizado del sitio** borra `site/` al inicio de `write_site`, y luego escribe de forma determinista: las rutas se ordenan, los diccionarios se vuelcan con `sort_keys=True`, `manifest.json` se recorre vía `sorted(rglob("*"))`. Dos ejecuciones producen archivos byte-idénticos incluido el manifest.
+5. **Las fechas de los nodos derivan de la fuente.** El `first_seen_at` de un nodo procede de la ruta bajo la que se ingirió su fuente, no del reloj de pared en el momento de compilar. Leer el reloj convertiría cada reejecución en un diff, que es justo por lo que la versión ingenua de esto derrota al punto 1. La misma regla mantiene la pasada `Event` idempotente a nivel de bytes: cada id, cuerpo y fecha acuñados derivan del contenido, verificado sobre un corpus de 481 sesiones.
 
 Esto lo verifican `tests/test_site_pages.py` y el humo end-to-end en `tests/test_project_e2e_redesign.py` (compilar dos veces, diff de los sitios, esperar cero deltas de archivos).
 

@@ -81,6 +81,11 @@ query / seeds
         retrieval.ppr.personalized_pagerank ranks the depth-bounded k-hop neighbourhood;
         empty result (disconnected seeds) → fall back to seed order (bundle is never empty)
      │
+     ▼  2b. 절차적 예약 (부여가 아니라 획득)
+        PROCEDURAL_POOL_ORDER 순서로 풀당 슬롯 하나: Runbook, Gotcha, Event,
+        DistilledNote, ExpertiseProfile. 슬롯은 그 타입에서 가장 높은 순위이면서
+        생산자 provenance를 지닌 노드에게 갑니다 — 타입 이름만으로는 안 됩니다
+     │
      ▼  3. Budget-bound selection
         walk PPR order, include each node's cited body until the next would overflow
         `budget` chars (budget <= 0 = uncapped; over-budget marker on a word boundary)
@@ -99,6 +104,18 @@ query / seeds
 ```
 
 기본값: `depth=2`, `budget=32000`. 결정적 조립(1–4단계)이 계약이고; LLM 합성은 순수하게 부가적입니다. 같은 파이프라인이 `project context` CLI 명령, `compile_context` MCP 도구, 토픽 범위 export 슬라이스(`slice_export_context_for_topic`, 토픽 범위 `llms.txt`)를 뒷받침합니다.
+
+**절차적 슬롯이 provenance로 획득되는 이유.** 다섯 개의 절차적 타입은 에이전트가
+무엇을 했고, 무엇을 하는 법을 배웠고, 무엇을 잘하는지를 가리킵니다 — 그런데 문서
+추출도 그 타입들을 만들 수 있어서, 논문 모집 공고를 읽은 LLM이 "CVPR 2026"이라는
+`Event`를 정당하게 만들어 냅니다. 예약은 *가산적*입니다: 이웃 어디에 있든 노드를
+예산 워크의 맨 앞으로 승격시킵니다. 따라서 타입만으로 예약하면 학회 마감일이
+실제로 그 슬롯을 획득한 세션 발견을 밀어낼 수 있습니다. 둘을 가르는 것이
+`has_producer_provenance`이며, 예약은 슬롯에 대한 주장일 뿐 그 증거가 아닙니다 —
+`delivered`는 예산 워크 이후에 결정되므로 호출자는 "절차적 메모리가 예약되었다"와
+"절차적 메모리가 도착했다"를 구별할 수 있습니다. `PROCEDURAL_POOLS` lint 코드가 그
+격차를 보고합니다.
+
 
 ## 모듈 맵
 
@@ -264,6 +281,30 @@ site/
   manifest.json               sha256 + size for every emitted file
 ```
 
+## 헌장
+
+커뮤니티 탐지는 도메인 어휘를 **제안**하고, 헌장
+([`tesserae/charter.py`](../../tesserae/charter.py))은 명시적 개편 사이에서 그것을
+**소유**합니다. 이 분리가 존재하는 이유는 탐지가 결정적이지만 안정적이지는 않기
+때문입니다: 동일한 입력은 1,649개 커뮤니티를 정확히 재현하지만, 15개 노드짜리
+문서 하나가 구성원의 약 29%를 커뮤니티 사이로 옮기고, 큰 커뮤니티의 Jaccard를
+0.39–0.60으로 떨어뜨립니다. 그래서 커뮤니티 소속을 키로 삼는 모든 것은 수집마다
+사실상 전면 캐시 미스를 겪습니다 — 그리고 이 코퍼스는 매일 수집합니다.
+
+그래서 헌장이 제도를 고정합니다: 섹션을 탐지하고, 몫 그래프(섹션당 노드 하나,
+섹션 간 L0 엣지당 `part_of` 엣지 하나)로 접은 뒤, **크기가 아니라 하위
+커뮤니티로** 부문 → 부서 → 팀으로 나눕니다. 각 도메인의 앵커는 차수가 가장 높은
+구성원이며, 어떤 두 도메인도 같은 앵커를 갖지 않도록 탐욕적으로 고릅니다. 사람이
+보는 슬러그는 그 앵커에서 한 번 만들어져 고정됩니다. 개편이 일어나면 `succeed`가
+앵커를 기준으로 슬러그를 이어받으므로, 아래의 구성원이 뒤섞여도 이름은 살아
+남습니다. 모든 노드는 정확히 하나의 도메인에 들어갑니다: `intake_members`가
+탐지라면 조용히 잃었을 버려진 싱글턴과 엣지가 고립된 섹션을 붙잡습니다.
+
+`tesserae domains status [--json]`이 트리를 출력합니다. **상태:** 모듈과 CLI
+동사는 제공되며 테스트로 덮여 있지만, `compile`은 아직 헌장을 쓰지 않습니다 —
+그때까지 이 명령은 "no charter yet"을 보고하고 0으로 종료하는데, 한 번 읽기
+경계 아래의 프로젝트에 대해서도 그것이 정직한 답이기 때문입니다.
+
 ## 의도적으로 제외된 것
 
 리디자인은 명시적인 선을 그었습니다: 코드 클래스와 코드 함수 노드는 `graph.json`에 남지만(따라서 MCP와 Graphiti 소비자는 여전히 볼 수 있음) HTML 페이지를 절대 얻지 않고, `search-index.json`에 절대 나타나지 않으며, 내비게이션에도 절대 나타나지 않습니다. 그것이 사용자 대상 계약입니다 — 위키는 문서 우선 지식 베이스이지 함수 브라우저가 아닙니다.
@@ -283,6 +324,7 @@ site/
 2. **위키 레이어 쓰기**는 본문 수준에서 멱등적입니다. `WikiPageStore.write_page`는 기존 파일을 읽고, frontmatter를 벗겨내고, 본문을 sha256 해싱하고, 새 본문이 같은 해시라면 — 새 frontmatter의 `generated_at` timestamp가 다르더라도 — 바로 반환합니다. 이것이 재빌드에서 git diff를 좁게 유지하는 핵심 트릭입니다.
 3. **Synthesis 출력**은 frontmatter에 `content_hash: sha256-…`를 담습니다. 본문 해시는 `generated_at` 없이 계산되므로 같은 그래프에서 반복 compile해도 같은 해시가 나오고, `Synthesis` 노드는 그래프 메타데이터에 같은 `content_hash`를 담습니다.
 4. **사이트 렌더링**은 `write_site` 시작 시 `site/`를 삭제한 뒤 결정적으로 기록합니다: 라우트는 정렬되고, 딕셔너리는 `sort_keys=True`로 덤프되며, `manifest.json`은 `sorted(rglob("*"))`로 순회됩니다. 두 실행이 manifest를 포함해 바이트 단위로 동일한 파일을 생산합니다.
+5. **노드의 날짜는 소스에서 파생됩니다.** 노드의 `first_seen_at`은 컴파일 시점의 벽시계가 아니라, 그 소스가 수집된 경로에서 나옵니다. 시계를 읽으면 매 재실행이 diff가 되므로, 이 항목의 순진한 버전은 1번을 무너뜨립니다. 같은 규칙이 `Event` 패스를 바이트 멱등으로 유지합니다: 생성되는 모든 id, 본문, 날짜가 내용에서 파생되며, 481개 세션 코퍼스에서 검증되었습니다.
 
 이는 `tests/test_site_pages.py`와 `tests/test_project_e2e_redesign.py`의 엔드투엔드 스모크(두 번 compile, 사이트 diff, 파일 델타 0 기대)로 검증됩니다.
 

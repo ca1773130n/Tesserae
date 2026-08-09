@@ -8,11 +8,13 @@
 ## 명령 개요
 
 CLI는 그룹화되어 있습니다: 최상위에 몇 가지 일상 동사, 그리고 나머지를 위한
-그룹(`sessions`, `vault`, `export`, `code`, `config`, `projects`,
+그룹(`sessions`, `vault`, `export`, `code`, `config`, `projects`, `agents`, `domains`,
 `integrations`, `lab`)이 있습니다. 전체 트리를 보려면 `tesserae --help`를
 실행하세요:
 
 ```text
+tesserae 0.30.0 — a context engine
+
 usage: tesserae <command> [options]
 
 EVERYDAY
@@ -25,25 +27,30 @@ EVERYDAY
   status        Node/edge counts, last compile, vault state
 
 AUTOMATION
-  engine        Refresh daemon: watch sessions/sources, coalesced recompiles
+  engine        Refresh daemon: watch sessions/sources, coalesced recompiles, idle 'sleep' consolidation
   refresh       One-shot: import sessions + compile + sync vault
   research      Autonomous research mode: investigate a query
+  distill       Per-agent L1 expertise artifacts (opt-in: TESSERAE_AGENT_DISTILL)
 
 ANALYSIS
   query         raw retrieval: BM25/semantic + explicit backends
+  graph-map     Budgeted Descent navigation (the graph_map tool as a CLI verb; JSON out)
+  verify-claim  Does the graph license this triple? Deterministic verdict, JSON out
   lint          Graph lint report (--fix-trivial, --severity, --json)
   doctor        Health checks: init/graph/registry/staleness/locks (--fix = safe repairs only)
   summary       Daily/weekly activity digest (sessions, findings, commits, PRs, docs)
   decisions     Decisions across projects + time (human AskUserQuestion + agent)
 
 GROUPS
-  sessions      import | discover | list | chunk-backfill — agent session history
+  sessions      import | discover | list — agent session history
   vault         sync | sync-all | set-root | export | prune — Obsidian projection
   export        harness | graphiti | site — artifact exports
   code          ingest | sync — CodeGraph ⇄ project graph (hook-invoked)
   setup         Machine-wide setup: LLM defaults + optional deps (interactive by default)
   config        llm | deps | show | status | clip-token — LLM backend defaults + resolved view & liveness ping
   projects      register | list | unregister | mcp-config — registry
+  agents        init | list | tree | show | drill | set-parent | rename — role-grade agent org registry
+  domains       status — chartered domain tree (divisions/departments/teams)
   sources       add | list | remove — manage compile source dirs (local & global)
   federation    status | explain — inspect cross-project federation
   integrations  refresh raganything
