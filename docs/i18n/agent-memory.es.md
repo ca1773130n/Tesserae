@@ -86,7 +86,7 @@ En **MCP**, cada herramienta de lectura de gráfico acepta el mismo `agent=`. En
 - **clave de gerente** → una federación de solo artefactos L1 de informes. Los hallazgos sin procesar nunca se filtran hacia arriba.
 - **`org`** → todos los artefactos destilados, configuración cero.
 
-Herramientas de apoyo: `agents show` / `agent_view_explain`(miembros + marca de agua antigüedad `distilled_through` — qué edad tiene la experiencia de cada informe) y `agents drill` / `drill_down`(resolver `member_refs` de nota destilada a evidencia L0 sin procesar con estado vivo/cambiado/absorbido/desaparecido — cada llamada se registra en auditoría). `compile_context --multi-pool` reserva espacios de presupuesto para notas destiladas y perfiles de experiencia y etiqueta conocimiento obsoleto o de calidad de reserva en la salida.
+Herramientas de apoyo: `agents show` / `agent_view_explain`(miembros + marca de agua antigüedad `distilled_through` — qué edad tiene la experiencia de cada informe) y `agents drill` / `drill_down`(resolver `member_refs` de nota destilada a evidencia L0 sin procesar con estado vivo/cambiado/absorbido/desaparecido — cada llamada se registra en auditoría). `compile_context --multi-pool` reserva espacios de presupuesto para notas destiladas y perfiles de experiencia y etiqueta conocimiento obsoleto o de calidad de reserva en la salida. Solo un nodo que un productor realmente creó puede ocupar un espacio —los pases de destilación, el pase session-event o el propio `graph_write` de un agente—, así que un grupo cuyo tipo solo está poblado por extracción de documentos queda vacío, y tanto la CLI como `knobs.pool_reservations` nombran los grupos que no devolvieron nada.
 
 ## El ciclo de crecimiento
 

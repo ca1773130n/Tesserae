@@ -65,3 +65,42 @@ def test_context_deterministic(tmp_path, capsys):
     second = capsys.readouterr().out
     assert first == second
     assert first.startswith("# Context:")
+
+
+def test_context_multi_pool_reports_the_pools_on_stderr(tmp_path, capsys):
+    """An operator at a terminal must be able to see whether reservation worked.
+
+    ``--multi-pool`` reserves a budget slot per procedural pool, and those
+    pools are producer-scoped: on a project whose Runbook/Event nodes are all
+    document extractions — or which has no sessions at all — every pool comes
+    back empty and the bundle is byte-identical to the single-pool one. The MCP
+    surface reports that in ``knobs.pool_reservations``; the CLI printed only
+    the body, so the same silent story the field was added to remove was still
+    being told to every command-line caller.
+
+    On stderr, because stdout is the bundle and gets piped into files.
+    """
+    project = _compiled_project(tmp_path, capsys)
+
+    # Without the flag no reservation runs, so there is nothing to report and
+    # the report must not appear — the fix must not add unconditional noise.
+    assert main(["context", "Gaussian Splatting", "--project", str(project)]) == 0
+    assert "pool" not in capsys.readouterr().err.lower()
+
+    rc = main([
+        "context", "Gaussian Splatting",
+        "--project", str(project), "--multi-pool",
+    ])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out.startswith("# Context:"), (
+        "the reservation report must not contaminate the bundle on stdout"
+    )
+    assert "pool" in captured.err.lower(), (
+        f"--multi-pool must say what the pools returned; stderr was "
+        f"{captured.err!r}"
+    )
+    # This project has no procedural producer output at all, so every pool is
+    # empty — and the operator has to be told that, by name.
+    assert "Runbook" in captured.err, captured.err
+    assert "empty" in captured.err.lower(), captured.err

@@ -86,7 +86,7 @@ En **MCP**, chaque outil de lecture de graphe accepte le même `agent=`. Dans le
 - **clé de gestionnaire** → une fédération des seuls artefacts L1 des rapports. Les résultats bruts ne fuient jamais vers le haut.
 - **`org`** → tous les artefacts distillés, configuration zéro.
 
-Outils d'assistance : `agents show` / `agent_view_explain`(membres + filigrane `distilled_through` de l'ancienneté — quelle ancienneté l'expertise de chaque rapport a), et `agents drill` / `drill_down`(résoudre `member_refs` de note distillée en preuve brute L0 avec le statut vivant/modifié/absorbé/disparu — chaque appel est enregistré dans le journal d'audit). `compile_context --multi-pool` réserve des emplacements de budget pour les notes distillées et les profils d'expertise et étiquette les connaissances obsolètes ou de qualité de secours dans la sortie.
+Outils d'assistance : `agents show` / `agent_view_explain`(membres + filigrane `distilled_through` de l'ancienneté — quelle ancienneté l'expertise de chaque rapport a), et `agents drill` / `drill_down`(résoudre `member_refs` de note distillée en preuve brute L0 avec le statut vivant/modifié/absorbé/disparu — chaque appel est enregistré dans le journal d'audit). `compile_context --multi-pool` réserve des emplacements de budget pour les notes distillées et les profils d'expertise et étiquette les connaissances obsolètes ou de qualité de secours dans la sortie. Seul un nœud réellement créé par un producteur peut prendre un emplacement — les passes de distillation, la passe session-event ou le `graph_write` d'un agent — de sorte qu'un pool dont le type n'est peuplé que par l'extraction documentaire reste vide, et la CLI comme `knobs.pool_reservations` nomment les pools qui n'ont rien renvoyé.
 
 ## La boucle de croissance
 

@@ -157,7 +157,11 @@ back to raw L0 evidence with
 alive / changed / absorbed / gone status — every call audit-logged).
 `compile_context --multi-pool` reserves budget slots for distilled notes and
 expertise profiles and labels stale or fallback-quality knowledge in the
-output.
+output. Only a node a producer actually made can take a slot — the
+distillation passes, the session-event pass, or an agent's own
+`graph_write` — so a pool whose type is populated only by document
+extraction stays empty, and both the CLI and `knobs.pool_reservations`
+name the pools that returned nothing.
 
 ## The growth loop
 
