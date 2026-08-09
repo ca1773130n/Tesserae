@@ -379,7 +379,14 @@ class SessionGraphExtractor:
                 "session_id": session_id_str,
                 "extractor": "session-llm",
                 "turn_ids": list(f.turn_ids),
-                "content_hash": _short_hash(f.body),
+                # The REDACTED body, the same one the id seed and the node name
+                # use. Hashing the raw body instead gave two operators the same
+                # node id and a different ``content_hash``, so graph.json
+                # differed byte for byte across machines and
+                # ``agent_distill._node_content_hash`` — which PREFERS this
+                # stamp over a hash of the name — read an unchanged node as
+                # changed and invalidated the distillate under it.
+                "content_hash": _short_hash(body),
             }
             first_seen_at = _finding_first_seen_at(f, turn_timestamps) or (
                 str(session_started_at) if session_started_at else ""
