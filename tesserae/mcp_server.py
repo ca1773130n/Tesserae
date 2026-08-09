@@ -1496,7 +1496,12 @@ class LLMWikiMCPServer:
                                 "AgentRunbook multi-pool retrieval: decompose the "
                                 "query into sub-queries and reserve budget slots for "
                                 "the most relevant Runbook / Gotcha / Event "
-                                "distilled-memory nodes. Default false = single-pool."
+                                "distilled-memory nodes. Only nodes actually made by "
+                                "one of those producers qualify — a document "
+                                "extraction that merely landed on the type name does "
+                                "not — so pools are often empty; `knobs."
+                                "pool_reservations` reports what each one found. "
+                                "Default false = single-pool."
                             ),
                         },
                         "preview": {
@@ -2683,6 +2688,13 @@ class LLMWikiMCPServer:
                 "tame_hubs": tame_hubs,
                 "recency_weight": recency_weight,
                 "recency_now": recency_now.isoformat() if recency_now else None,
+                # Procedural pools are producer-scoped, so they are legitimately
+                # empty on a graph whose Runbook/Gotcha/Event nodes are all
+                # document extractions. Report both facts: whether reservation
+                # ran at all, and what each pool found. Without them a caller
+                # cannot tell an empty pool from a pass that never ran.
+                "multi_pool": multi_pool,
+                "pool_reservations": bundle.pool_reservations,
             }
             # LRU: the nodes actually selected into the bundle count as reads.
             self._bump_nodes_access(project_root, bundle.selected_nodes)

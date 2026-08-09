@@ -125,6 +125,13 @@ class ContextBundle:
     synthesized: bool = False
     char_budget_used: int = 0
     char_budget_total: int = 0
+    #: What each procedural pool reserved, when reservation ran: pool type value
+    #: -> reserved node id, or None for a pool with no producer-made node in the
+    #: neighbourhood. ``None`` for the whole field means reservation never ran
+    #: (``multi_pool=False``). The distinction is the point: producer-scoped
+    #: pools are legitimately empty on most graphs, and an empty pool that looks
+    #: like a working one is a silent degradation.
+    pool_reservations: Optional[Dict[str, Optional[str]]] = None
 
 
 def _fetch_body(node: ResearchNode, store: Optional[WikiPageStore]) -> str:
@@ -595,8 +602,9 @@ def compile_context(
     # top in-neighbourhood node of each pool from the FULL PPR ranking (so a
     # relevant distilled node below the raw cap is still surfaced) and move it to
     # the front of ``ranked``. Off by default -> default path untouched.
+    pool_reservations: Optional[Dict[str, Optional[str]]] = None
     if multi_pool:
-        from .research_graph import ResearchNodeType
+        from .research_graph import ResearchNodeType, has_producer_provenance
 
         _pools = (
             ResearchNodeType.RUNBOOK,
@@ -614,6 +622,7 @@ def compile_context(
         ]
         _reserved: List[tuple] = []
         _reserved_ids: set = set()
+        pool_reservations = {_pool.value: None for _pool in _pools}
         for _pool in _pools:
             # Within a pool, a fallback-quality distillate (structural stand-in
             # for a failed LLM call) loses its slot to any llm-quality sibling
@@ -624,6 +633,15 @@ def compile_context(
                 _n = node_index.get(_nid)
                 if _n is None or _n.type != _pool or _nid in _reserved_ids:
                     continue
+                # A reserved procedural slot is earned by PROVENANCE, not by
+                # type. These five type names are also mintable by document
+                # extraction, so without this the top-ranked 'Event' in the
+                # neighbourhood may be a conference deadline — and reservation
+                # is additive, so it would be promoted to the FRONT of the
+                # budget walk from anywhere in the neighbourhood, evicting the
+                # finding that actually earned the slot.
+                if not has_producer_provenance(_n.type, _n.metadata):
+                    continue
                 if str(_n.metadata.get("distill_quality") or "") == "fallback":
                     if _fallback_pick is None:
                         _fallback_pick = (_nid, _sc)
@@ -631,10 +649,12 @@ def compile_context(
                 _fallback_pick = None
                 _reserved.append((_nid, _sc))
                 _reserved_ids.add(_nid)
+                pool_reservations[_pool.value] = _nid
                 break  # one per pool
             if _fallback_pick is not None:
                 _reserved.append(_fallback_pick)
                 _reserved_ids.add(_fallback_pick[0])
+                pool_reservations[_pool.value] = _fallback_pick[0]
         if _reserved:
             ranked = _reserved + [r for r in ranked if r[0] not in _reserved_ids]
             ranked_nodes = [nid for nid, _ in ranked]
@@ -745,4 +765,5 @@ def compile_context(
         synthesized=synthesized,
         char_budget_used=chars_used,
         char_budget_total=budget,
+        pool_reservations=pool_reservations,
     )

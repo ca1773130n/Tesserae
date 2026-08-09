@@ -276,6 +276,85 @@ AGENT_LAYER_TYPES: Set[ResearchNodeType] = {
     ResearchNodeType.EXPERTISE_PROFILE,
 }
 
+
+# ---------------------------------------------------------------------------
+# Producer-owned types
+# ---------------------------------------------------------------------------
+#
+# These five types are PROCEDURAL MEMORY: what an agent did, what it learned to
+# do, and who is good at it. Each one has exactly one producer —
+# ``session_event`` for Event, ``memory.distill`` and ``agent_distill`` for the
+# rest — but document extraction is also allowed to mint them
+# (``EXTRACTABLE_NODE_TYPES`` interpolates the whole vocabulary into the
+# extraction prompt), so an LLM reading a call-for-papers can and does mint
+# 'CVPR 2026' typed ``Event``. Sharing a type name with a producer is not the
+# same as being procedural knowledge.
+PROCEDURAL_POOL_TYPES: Set[ResearchNodeType] = {
+    ResearchNodeType.RUNBOOK,
+    ResearchNodeType.GOTCHA,
+    ResearchNodeType.EVENT,
+    ResearchNodeType.DISTILLED_NOTE,
+    ResearchNodeType.EXPERTISE_PROFILE,
+}
+
+#: ``metadata['extractor']`` values stamped by a procedural producer. Read off
+#: the writers, not off a spec: ``session_event.py`` stamps 'session-event',
+#: ``memory/distill.py`` stamps its own dotted pass name.
+PRODUCER_EXTRACTORS: Set[str] = {
+    "session-event",
+    "memory.distill.run_distillation_pass",
+}
+
+#: Metadata keys no document extraction produces, each written by a distill
+#: pass: ``member_ids`` by ``memory.distill``, the rest by ``agent_distill``.
+_DISTILL_PROVENANCE_KEYS: Tuple[str, ...] = (
+    "member_ids",
+    "member_refs",
+    "lineage_key",
+    "distill_quality",
+    "distilled_through",
+)
+
+
+def has_producer_provenance(
+    node_type: "ResearchNodeType | str", metadata: Optional[Mapping] = None
+) -> bool:
+    """True when this node was made by the producer that owns its type.
+
+    Accepts a ``ResearchNodeType`` or its string value plus a metadata mapping,
+    so both the typed retrieval path and the linter's raw-payload path can ask
+    the same question of the same rule.
+
+    This mirrors, on the RETRIEVAL side, the rule ``federation.merge_identity``
+    already enforces on the IDENTITY side: a Runbook/Gotcha/DistilledNote needs
+    distill provenance and an ExpertiseProfile needs ``metadata['agent']``
+    before federation will give it a merge identity at all. Retrieval was the
+    credulous layer — it admitted anything wearing the type name.
+
+    Non-pool types are not producer-owned and answer True: the predicate exists
+    to guard the five procedural pools, not to gate the rest of the graph.
+
+    LIMIT, stated because it is load-bearing: node metadata on the document
+    path comes straight from the extraction LLM's JSON (llm_extractor.py:148),
+    so these keys are forgeable in principle. Nothing in the prompt advertises
+    them, and federation already trusts ``lineage_key`` at the same grade, so
+    this buys the same assurance the identity layer runs on — no more.
+    """
+    type_value = node_type.value if isinstance(node_type, ResearchNodeType) else str(node_type)
+    if type_value not in {item.value for item in PROCEDURAL_POOL_TYPES}:
+        return True
+    md = metadata or {}
+    if str(md.get("extractor") or "") in PRODUCER_EXTRACTORS:
+        return True
+    if any(md.get(key) not in (None, "", [], {}) for key in _DISTILL_PROVENANCE_KEYS):
+        return True
+    # An ExpertiseProfile is a per-agent capability card; ``agent`` is the key
+    # federation.py:105 makes its identity out of. A paper's author list minted
+    # as an ExpertiseProfile carries no agent.
+    if type_value == ResearchNodeType.EXPERTISE_PROFILE.value:
+        return bool(str(md.get("agent") or "").strip())
+    return False
+
 # Code-graph symbol types. The aggressive same-type dedup pass keys on
 # the casefolded, punctuation-stripped display name — which is wrong
 # for code symbols: a project routinely has two modules each defining

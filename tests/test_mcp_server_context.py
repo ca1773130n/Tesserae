@@ -373,6 +373,10 @@ def test_compile_context_reports_which_knobs_ran(tmp_path):
         "tame_hubs": False,
         "recency_weight": 0.0,
         "recency_now": None,
+        # Exact-dict on purpose: a knob that runs but is not reported is the
+        # bug this test exists to catch, so a new one must land here too.
+        "multi_pool": False,
+        "pool_reservations": None,
     }
     assert tuned["knobs"]["tame_hubs"] is True
     assert tuned["knobs"]["edge_type_weights"] == {"uses": 0.5}
@@ -422,3 +426,39 @@ def test_compile_context_scope_without_a_project_root_is_a_tool_error(tmp_path):
 
     assert "error" in result
     assert "body" not in result
+
+
+def test_compile_context_reports_whether_the_procedural_pools_ran(tmp_path):
+    """An empty procedural pool must not look like a working one.
+
+    Producer-scoped reservation (roadmap step 4) means the Runbook / Gotcha /
+    Event / DistilledNote / ExpertiseProfile pools legitimately come back empty
+    on a graph whose only such nodes are document extractions. A caller that
+    cannot tell "reservation ran and found nothing" from "reservation never
+    ran" is being told a silent story about its own procedural memory — the
+    class of degradation step 2 existed to remove.
+    """
+    graph_path, _ = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    args = {"seeds": ["Paper:focal"], "query": "focal paper method", "depth": 2}
+    off = server.call_tool("compile_context", dict(args))
+    on = server.call_tool("compile_context", dict(args, multi_pool=True))
+
+    assert off["knobs"].get("multi_pool") is False, (
+        "the knobs report must say whether pool reservation ran; "
+        f"got {off['knobs']}"
+    )
+    assert off["knobs"].get("pool_reservations") is None, (
+        "no reservation ran, so there is nothing to report per pool"
+    )
+    assert on["knobs"].get("multi_pool") is True
+    # This graph holds no producer-made procedural node at all, so every pool
+    # is legitimately empty — and says so, pool by pool.
+    assert on["knobs"].get("pool_reservations") == {
+        "Runbook": None,
+        "Gotcha": None,
+        "Event": None,
+        "DistilledNote": None,
+        "ExpertiseProfile": None,
+    }, f"got {on['knobs'].get('pool_reservations')!r}"
