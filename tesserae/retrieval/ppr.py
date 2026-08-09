@@ -27,7 +27,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
-from tesserae.research_graph import ResearchGraph
+from tesserae.research_graph import CAUSAL_EDGE_TYPES, ResearchGraph
 
 
 # Edge types Tesserae emits that carry session-memory provenance.
@@ -62,6 +62,14 @@ DEFAULT_EDGE_TYPE_WEIGHTS: Dict[str, float] = {
     "synthesizes": 1.25,
     "summarizes": 1.25,
 }
+
+# The causal layer walks ABOVE the assertion layer. A ``recovers`` edge is the
+# only edge in the vocabulary derived from two OBSERVED outcomes rather than
+# from text, and "the thing that fixed this" is the most retrievable fact a
+# session leaves behind — so it must not walk at the unlisted default of 1.0,
+# below even ``references``. Derived from ``CAUSAL_EDGE_TYPES`` so the weight
+# is not something the next causal type has to remember to ask for.
+DEFAULT_EDGE_TYPE_WEIGHTS.update({edge_type: 2.0 for edge_type in CAUSAL_EDGE_TYPES})
 
 # Edge classes that carry provenance/bookkeeping ("where did this come
 # from") rather than semantic relatedness. Under ``tame_hubs`` they are

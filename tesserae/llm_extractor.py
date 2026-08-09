@@ -18,6 +18,7 @@ from typing import Callable, Dict, List, Mapping, Optional, Sequence
 from .llm_json import _note_failure, last_failure_kind
 from .research_graph import (
     ALLOWED_EDGE_TYPES,
+    EXTRACTABLE_EDGE_TYPES,
     ALLOWED_NODE_TYPES,
     EXTRACTABLE_NODE_TYPES,
     ResearchEdge,
@@ -177,10 +178,16 @@ def graph_from_llm_payload(payload: Mapping[str, object], source_path: Optional[
         if not isinstance(raw_edge, Mapping):
             raise GraphJSONValidationError("Every edge must be an object")
         edge_type = str(raw_edge.get("type", "")).strip()
-        if edge_type not in ALLOWED_EDGE_TYPES:
+        if edge_type not in EXTRACTABLE_EDGE_TYPES:
             # ponytail: the LLM occasionally hallucinates an edge type outside the
             # 55-type vocab (e.g. 'used_by', the inverse of 'uses'). Skip the bad
             # edge — one hallucination must not abort a whole multi-doc compile.
+            #
+            # EXTRACTABLE, not ALLOWED: the causal layer is producer-owned and a
+            # model reading a document may not assert one, even though the type
+            # is real and the graph will happily store it. The prompt below never
+            # offers these types; this is the enforcement, because a prompt is a
+            # request and a filter is a rule.
             dropped_edges += 1
             continue
         source_ref = str(raw_edge.get("source", "")).strip()
@@ -507,7 +514,7 @@ Allowed node types:
 {json.dumps(sorted(EXTRACTABLE_NODE_TYPES), ensure_ascii=False)}
 
 Allowed edge types:
-{json.dumps(sorted(ALLOWED_EDGE_TYPES), ensure_ascii=False)}
+{json.dumps(sorted(EXTRACTABLE_EDGE_TYPES), ensure_ascii=False)}
 
 Forbidden node/edge labels: Entity, software, technique, domain, topic, technology, feature, related_to.
 Map them to controlled research types instead.

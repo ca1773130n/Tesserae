@@ -50,6 +50,7 @@ from .locking import compile_lock
 from .research_graph import (
     AGENT_LAYER_TYPES,
     ALLOWED_EDGE_TYPES,
+    CAUSAL_EDGE_TYPES,
     ALLOWED_NODE_TYPES,
     CODE_SYMBOL_TYPES,
     DISTILLED_MEMORY_TYPES,
@@ -106,6 +107,15 @@ DENIED_NODE_TYPES: frozenset = frozenset(
         ResearchNodeType.EVENT.value,
     }
 )
+
+# Edge types an agent may NOT assert, for the same reason as the node types
+# above: another producer owns them. The causal layer is derived by
+# :mod:`tesserae.session_recovery` from an observed failure and an observed
+# success in the same session; an agent asserting one is asserting a causal
+# claim it did not observe, and the graph cannot tell the two apart afterwards.
+# Derived from ``CAUSAL_EDGE_TYPES`` rather than spelled out, so the next causal
+# type is denied the day it is added to the vocabulary.
+DENIED_EDGE_TYPES: frozenset = frozenset(CAUSAL_EDGE_TYPES)
 
 # Node types ``_merge_same_type_aliased_duplicates`` deliberately EXEMPTS from
 # aggressive same-name dedup (``research_graph.py``: session findings, Event,
@@ -253,6 +263,13 @@ def validate_write(payload: Mapping[str, Any], agent_key: str) -> ValidatedWrite
         if not isinstance(raw, Mapping):
             raise GraphJSONValidationError("graph_write: every edge must be an object")
         edge_type = str(raw.get("type") or "").strip()
+        if edge_type in DENIED_EDGE_TYPES:
+            raise GraphJSONValidationError(
+                f"graph_write: {edge_type!r} is producer-owned and cannot be "
+                "asserted by an agent. A causal edge is derived from an observed "
+                "failure followed by an observed success in the same session "
+                "(tesserae.session_recovery), never claimed"
+            )
         if edge_type not in ALLOWED_EDGE_TYPES:
             raise GraphJSONValidationError(
                 f"graph_write: unsupported edge type: {edge_type!r}. Unlike the "

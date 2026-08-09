@@ -498,6 +498,35 @@ VERIFIED_PAPER_TITLE_QUALITIES: Set[str] = {
     TitleQuality.REFERENCE_CONTEXT.value,
 }
 
+#: Edge types that assert CAUSATION between two OBSERVED events — not topical
+#: relatedness, not temporal succession, not co-occurrence. This is the whole
+#: causal vocabulary and it is deliberately one entry long.
+#:
+#: THE ONE SOURCE OF TRUTH for "which edges are causal". Everything that has to
+#: treat a causal edge differently derives from this name: ``ALLOWED_EDGE_TYPES``
+#: below, ``EXTRACTABLE_EDGE_TYPES``, ``agent_write.DENIED_EDGE_TYPES``,
+#: ``lint._REASONING_EDGE_TYPES`` and ``retrieval.ppr.DEFAULT_EDGE_TYPE_WEIGHTS``.
+#: The one place that CANNOT derive from it — the ``SEMANTIC_EDGE_TYPES`` object
+#: literal inside the site's JS blob — is pinned by a test instead, so drift
+#: fails loudly rather than silently rendering the only causal edge in the graph
+#: as a faint structural line.
+#:
+#: WHY only ``recovers``, and why it is producer-owned:
+#: A causal edge is the emptiest and most load-bearing rung of the ladder, and
+#: it is also the easiest one to fake. A survey of four leading agent-memory
+#: systems found that none of them derives a causal edge: two infer their
+#: strongest link from co-occurrence, one takes an LLM's word for an open
+#: vocabulary of relation labels, one has no edges at all. It is easy to ship a
+#: ``caused_by`` that is really ``happened_near``, and it looks just as
+#: authoritative in the graph — worse than a wrong node, because structure is
+#: read as evidence. So ``recovers`` is derived ONLY by
+#: :mod:`tesserae.session_recovery`, from an observed failure followed by an
+#: observed success on the same tool AND the same operand, and no LLM path may
+#: mint one. ``caused_by`` / ``blocked_by`` are deliberately absent: measurement
+#: on 103 real transcripts justified neither (see the module docstring of
+#: ``session_recovery``).
+CAUSAL_EDGE_TYPES: FrozenSet[str] = frozenset({"recovers"})
+
 ALLOWED_EDGE_TYPES: Set[str] = {
     "is_a",
     "part_of",
@@ -605,7 +634,21 @@ ALLOWED_EDGE_TYPES: Set[str] = {
     # ``derived_from`` edge above — deliberately no ``distills_to``.
     "performed_by",
     "reports_to",
-}
+} | set(CAUSAL_EDGE_TYPES)
+
+#: What the DOCUMENT-EXTRACTION LLM may assert. Everything except the causal
+#: layer.
+#:
+#: There is an ``EXTRACTABLE_NODE_TYPES`` gate on the node side and there was no
+#: edge-side equivalent, so adding a type to ``ALLOWED_EDGE_TYPES`` used to open
+#: two ungated LLM write paths at once: the extraction prompt interpolates the
+#: sorted set verbatim, and ``graph_write`` admits anything in it. That is
+#: exactly how the Event layer went wrong — all 226 Event nodes in the live
+#: graph were minted by document extraction and none by the session producer
+#: that owns them. A causal edge asserted by a model reading a paper would be
+#: indistinguishable, in the graph, from one derived from an observed failure
+#: and an observed success; the whole value of ``recovers`` is that it is not.
+EXTRACTABLE_EDGE_TYPES: FrozenSet[str] = frozenset(ALLOWED_EDGE_TYPES) - CAUSAL_EDGE_TYPES
 
 
 @dataclass(frozen=True)
