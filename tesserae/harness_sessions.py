@@ -1488,7 +1488,25 @@ def _redact_text(text: str) -> str:
 
 
 def _turn_text(text: str, limit: int = 2400) -> str:
-    clean = _redact_text(text.strip())
+    """The stored form of one turn's text: redacted, then truncated.
+
+    Home paths are redacted HERE — at the single gate every minted turn passes
+    through — and not at any of the five places that later copy this text. The
+    copies (the Session display name, the subagent run name, the structural
+    decision, the LLM finding body, ``errors``) each redact too, but they are
+    copies: ``metadata["turns"]`` is itself serialized by
+    :meth:`HarnessSession.to_dict` into every record in the session store,
+    rendered by the site's session page, and forwarded verbatim to the
+    extracting model. Redacting only what is copied out leaves the operator's
+    account name in the original, which is the larger surface and the one
+    written by a plain ``tesserae sessions discover`` with no LLM involved.
+
+    Order matters: redaction runs BEFORE the cap, so a home path that straddles
+    the truncation point cannot survive as a fragment, and the cap counts the
+    bytes actually stored. ``redact_home_paths`` is idempotent (``~`` contains
+    no second root to match), so the later copies re-applying it are harmless.
+    """
+    clean = redact_home_paths(_redact_text(text.strip()))
     if len(clean) <= limit:
         return clean
     return clean[:limit].rstrip() + "…"
