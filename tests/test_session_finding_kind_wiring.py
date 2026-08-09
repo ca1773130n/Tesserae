@@ -17,6 +17,8 @@ what makes it fail today for ``failure`` rather than passing on a technicality.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from tesserae.research_graph import ResearchNodeType
 from tesserae.session_graph import _KIND_TO_NODE_TYPE
 from tesserae.session_graph_llm import ALLOWED_FINDING_KINDS
@@ -80,3 +82,46 @@ def test_every_finding_node_type_routes_to_the_session_feedback_extractor():
 
     missing = sorted(_node_type_values() - set(_SESSION_TYPES))
     assert not missing, f"finding types misrouted to doc_graph feedback: {missing}"
+
+
+def test_no_finding_kind_is_offered_to_the_model_as_a_citable_document():
+    """The EIGHTH table, and the one the seventh kind was missed in.
+
+    ``_build_doc_id_context`` hands the model a list of node ids it is allowed
+    to cite as references. A session finding is not a document, and offering one
+    is silent in the worst direction: the model cites a ``SessionFailure`` as
+    though a document said so. The exclusion is asserted for every finding type
+    rather than for the six that happened to be listed."""
+    from tesserae.research_graph import ResearchGraph, ResearchNode
+    from tesserae.session_graph import SessionGraphExtractor
+
+    doc_graph = ResearchGraph(
+        nodes=[
+            ResearchNode(
+                id=f"{value}:x{i}",
+                name=f"finding {i}",
+                type=ResearchNodeType(value),
+                description="a finding, not a document",
+            )
+            for i, value in enumerate(sorted(_node_type_values()))
+        ]
+        + [
+            ResearchNode(
+                id="Paper:real",
+                name="a real document",
+                type=ResearchNodeType.PAPER,
+                description="a document",
+            )
+        ],
+        edges=[],
+    )
+    extractor = SessionGraphExtractor(
+        project_root=Path("/tmp/demo"),
+        cache_dir=Path("/tmp/demo/.tesserae/session_findings"),
+        doc_graph=doc_graph,
+        sessions=[],
+    )
+    offered = {node_id for node_id, _name in extractor._build_doc_id_context()}
+    leaked = sorted(i for i in offered if not i.startswith("Paper:"))
+    assert not leaked, f"finding types offered to the model as citable docs: {leaked}"
+    assert "Paper:real" in offered, "a real document must still be offered"

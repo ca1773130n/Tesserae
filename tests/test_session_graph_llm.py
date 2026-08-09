@@ -287,3 +287,63 @@ def test_a_still_unknown_kind_is_still_dropped():
         )
         is None
     )
+
+
+# ---------------------------------------------------------------------------
+# The capture and its consumer
+# ---------------------------------------------------------------------------
+
+
+def _outcome_session(result: dict):
+    from pathlib import Path
+
+    from tesserae.harness_sessions import HarnessSession
+
+    return HarnessSession(
+        id="sess-outcome",
+        slug="sess-outcome",
+        harness="codex",
+        agent_label="Codex",
+        project_name="demo",
+        project_root=str(Path("/tmp/demo").resolve()),
+        started_at="2026-08-09T10:00:00Z",
+        metadata={
+            "turns": [
+                {"role": "user", "timestamp": "", "text": "run the suite"},
+                {
+                    "role": "tool",
+                    "timestamp": "",
+                    "name": "shell",
+                    "text": '{"command": "pytest"}',
+                },
+                {"role": "tool_result", "timestamp": "", "name": "shell", **result},
+            ]
+        },
+    )
+
+
+def test_the_model_can_tell_a_failed_run_from_a_successful_one():
+    """``failure`` was added to the prompt as a kind the model may emit, but the
+    only signal that a run failed is a TYPED field (``exit_code`` / ``is_error``)
+    and the payload the model is shown is ``{role, text}`` exactly. Without the
+    outcome in the text, the sole producer of ``SessionFailure`` cannot see the
+    thing this branch captured."""
+    from tesserae.session_graph import _normalised_turns
+
+    failed = _normalised_turns(_outcome_session({"text": "1 failed", "exit_code": 1}))
+    passed = _normalised_turns(_outcome_session({"text": "1 passed", "exit_code": 0}))
+    failed_result = failed[2]["text"]
+    passed_result = passed[2]["text"]
+    assert failed_result != passed_result
+    assert "1" in failed_result and "exit" in failed_result.lower()
+    assert "0" in passed_result and "exit" in passed_result.lower()
+
+
+def test_a_result_that_reported_nothing_does_not_read_to_the_model_as_success():
+    """Absence of ``is_error`` on a Claude result is not a pass — the key is
+    simply omitted for most tools. The rendered marker says so out loud."""
+    from tesserae.session_graph import _normalised_turns
+
+    silent = _normalised_turns(_outcome_session({"text": "some output"}))[2]["text"]
+    assert "no outcome" in silent
+    assert "success" not in silent

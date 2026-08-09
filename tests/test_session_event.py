@@ -454,13 +454,34 @@ def test_an_is_error_flag_stamps_status_without_inventing_an_exit_code():
     assert "exit_code" not in result.metadata
 
 
-def test_an_outcome_with_no_signal_is_left_unstamped_not_called_a_pass():
-    """is_error is omitted for every non-Bash tool (measured: present on 41.3%
-    of Claude results). Reading its absence as success is the false claim."""
+def test_an_outcome_with_no_signal_says_so_rather_than_saying_nothing():
+    """The tri-state, stated. ``is_error`` is omitted for every non-Bash tool
+    (measured: present on 431 of 1,044 Claude results, 41.3%) and 54 of the
+    1,286 Codex results carry no exit line, so "no outcome" is a large, real
+    state. Leaving the key out lets the reader supply a default, and the default
+    a reader supplies is "fine"."""
     nodes = _events(_tool_pair({}))
     result = next(n for n in nodes if n.metadata.get("actor") == "tool_result")
-    assert "status" not in result.metadata
+    assert result.metadata["status"] == "unreported"
+    assert result.metadata["status"] != "ok"
     assert "exit_code" not in result.metadata
+
+
+def test_a_boolean_is_not_read_as_an_exit_code():
+    """``True`` is an ``int`` in Python, so an unguarded check reads a flag as
+    "exited 1" — an outcome manufactured out of a type confusion."""
+    nodes = _events(_tool_pair({"exit_code": True}))
+    result = next(n for n in nodes if n.metadata.get("actor") == "tool_result")
+    assert "exit_code" not in result.metadata
+    assert result.metadata["status"] == "unreported"
+
+
+def test_a_non_boolean_is_error_is_not_read_as_a_failure():
+    """A harness that one day sends the STRING "false" must record no signal,
+    not a failure — and certainly not a success."""
+    nodes = _events(_tool_pair({"is_error": "false"}))
+    result = next(n for n in nodes if n.metadata.get("actor") == "tool_result")
+    assert result.metadata["status"] == "unreported"
 
 
 def test_a_tool_result_event_does_not_collide_with_its_invocation_event():
@@ -515,3 +536,125 @@ def test_a_tool_result_event_is_home_path_redacted_like_every_other_event():
     result = next(n for n in nodes if n.metadata.get("actor") == "tool_result")
     assert "/Users/rivka" not in result.description
     assert "~/proj/tests/test_x.py" in result.description
+
+
+# ---------------------------------------------------------------------------
+# The finding <-> Event index space
+#
+# ``derived_from`` is the edge this whole layer exists to create, and it is
+# resolved by ONE number: the position of a turn in ``metadata["turns"]``. Two
+# modules count that list independently, so these tests assert they agree.
+# ---------------------------------------------------------------------------
+
+
+def _mixed_turns() -> List[dict]:
+    """A conversation whose fourth turn is a tool_result with NO text.
+
+    Image-only Claude results flatten to ``""`` — 13 such turns across the 103
+    readable transcripts in the ingest corpus, and 0 before tool results were
+    captured at all. This is the first producer that can mint one.
+    """
+    return [
+        {"role": "user", "timestamp": "2026-08-09T10:00:00Z", "text": "fix the parser"},
+        {
+            "role": "assistant",
+            "timestamp": "2026-08-09T10:00:01Z",
+            "text": "I will read the parser and find the trailing-comma bug.",
+        },
+        {
+            "role": "tool",
+            "timestamp": "2026-08-09T10:00:02Z",
+            "name": "Read",
+            "text": '{"file_path": "parser.py"}',
+        },
+        {
+            "role": "tool_result",
+            "timestamp": "2026-08-09T10:00:03Z",
+            "name": "Read",
+            "text": "",
+        },
+        {
+            "role": "assistant",
+            "timestamp": "2026-08-09T10:00:04Z",
+            "text": "The parser drops a trailing comma in the header row.",
+        },
+    ]
+
+
+def _finding(turn_ids: List[int]) -> ResearchNode:
+    return ResearchNode(
+        id="finding-1",
+        name="the parser drops a trailing comma",
+        type=ResearchNodeType.SESSION_INSIGHT,
+        metadata={"turn_ids": turn_ids},
+    )
+
+
+def test_a_finding_is_wired_to_the_event_for_the_turn_it_actually_cites():
+    """The BEHAVIOUR: a finding that cites the closing assistant turn must be
+    linked to that turn's Event, not to the text-less tool_result before it.
+
+    The cited index is taken from ``_normalised_turns`` — the sequence the
+    extracting model is shown and numbers its ``turn_ids`` against — so the test
+    asks the question the graph asks, rather than hard-coding an index that
+    would be true of only one of the two spaces.
+    """
+    from tesserae.session_graph import _normalised_turns
+
+    session = _session(_mixed_turns())
+    payload = _normalised_turns(session)
+    cited = next(
+        i for i, t in enumerate(payload) if t["text"].startswith("The parser drops")
+    )
+    nodes, edges = extract_events(session, findings=[_finding([cited])])
+    by_id = {n.id: n for n in nodes}
+    targets = [by_id[e.target] for e in edges if e.type == DERIVED_FROM_EDGE]
+    assert [t.metadata["action"] for t in targets] == [
+        "The parser drops a trailing comma in the header row."
+    ]
+
+
+def test_every_event_turn_id_indexes_the_turn_the_model_was_shown():
+    """Totality, not one example: EVERY Event's ``turn_id`` must address the
+    same turn in the model's view of the transcript. One drifting entry silently
+    re-points every finding after it."""
+    from tesserae.session_graph import _normalised_turns
+
+    session = _session(_mixed_turns())
+    payload = _normalised_turns(session)
+    nodes, _ = extract_events(session)
+    assert nodes
+    for node in nodes:
+        turn_id = node.metadata["turn_id"]
+        assert 0 <= turn_id < len(payload), f"turn_id {turn_id} is off the end"
+        assert payload[turn_id]["role"] == node.metadata["actor"]
+
+
+def test_capturing_tool_results_does_not_renumber_the_events_already_minted():
+    """Event ids are positional, so inserting a turn renumbers everything after
+    it. Measured on the ingest corpus, seeding the id on the raw turn index made
+    1,741 of 3,213 existing Event ids (54.2%) change — every ``derived_from``,
+    citation and pinned reference to them broken, silently."""
+    conversation = [t for t in _mixed_turns() if t["role"] != "tool_result"]
+    before = {n.id for n in _events(conversation)}
+    after = {n.id for n in _events(_mixed_turns())}
+    assert before, "the conversation alone must still mint events"
+    assert before <= after, (
+        "capturing tool results renumbered events that already existed: "
+        f"{sorted(before - after)}"
+    )
+
+
+def test_a_tool_result_event_id_does_not_collide_with_a_conversation_turns():
+    """The two id-seed spaces share one namespace, so the result key has to be
+    distinguishable from a plain ordinal rather than merely unlikely."""
+    turns = _mixed_turns() + [
+        {
+            "role": "tool_result",
+            "timestamp": "2026-08-09T10:00:05Z",
+            "name": "Read",
+            "text": "second result in the same run",
+        }
+    ]
+    nodes = _events(turns)
+    assert len({n.id for n in nodes}) == len(nodes)

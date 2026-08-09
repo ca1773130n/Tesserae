@@ -44,11 +44,12 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple
+from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Set, Tuple
 
 from .harness_sessions import HarnessSession, session_matches_project
 from .llm_json import LLMJsonClient
 from .research_graph import (
+    SESSION_FINDING_TYPES,
     ResearchEdge,
     ResearchGraph,
     ResearchGraphBuilder,
@@ -57,6 +58,7 @@ from .research_graph import (
     stable_id,
 )
 from .redaction import redact_home_paths
+from .session_event import OUTCOME_ERROR, OUTCOME_OK, turn_outcome
 from .session_graph_llm import Finding, extract_with_llm
 from .session_graph_path_index import DocPathIndex
 from .session_graph_structural import extract_structural
@@ -181,20 +183,21 @@ class SessionGraphExtractor:
         return True
 
     def _build_doc_id_context(self) -> List[Tuple[str, str]]:
-        """Top-N doc node ids passed to the LLM as legal reference targets."""
+        """Top-N doc node ids passed to the LLM as legal reference targets.
+
+        A session finding is not a document, so it may not be offered as one to
+        cite. The exclusion is DERIVED from ``SESSION_FINDING_TYPES`` rather than
+        re-listed: this was the eighth hand-maintained table a new finding kind
+        has to be added to, it was the one the ``failure`` kind was missed in,
+        and a miss here is silent in the worst direction — the model is handed a
+        ``SessionFailure`` id and cites it as though a document said so.
+        """
         from .research_graph import is_public_research_node
 
+        excluded = SESSION_FINDING_TYPES | {ResearchNodeType.SESSION}
         ctx: List[Tuple[str, str]] = []
         for node in self.doc_graph.nodes:
-            if node.type in {
-                ResearchNodeType.SESSION,
-                ResearchNodeType.SESSION_INSIGHT,
-                ResearchNodeType.SESSION_DECISION,
-                ResearchNodeType.SESSION_QUESTION,
-                ResearchNodeType.SESSION_TODO,
-                ResearchNodeType.SESSION_HYPOTHESIS,
-                ResearchNodeType.SESSION_TAKEAWAY,
-            }:
+            if node.type in excluded:
                 continue
             if not is_public_research_node(node):
                 continue
@@ -627,25 +630,71 @@ def _finding_first_seen_at(
 
 
 def _iter_normalised_turns(session: HarnessSession) -> Iterator[Tuple[dict, str]]:
-    """Yield ``({role, text}, timestamp)`` for each usable turn, in order.
+    """Yield ``({role, text}, timestamp)`` for each turn, in order, ONE PER TURN.
 
-    ONE filter for both projections below. ``turn_ids`` on a finding index the
-    FILTERED sequence (empty-text turns are dropped), so a timestamp lookup
-    built from any other traversal would silently mis-date findings the moment
-    a corpus contains a text-less turn. Deriving both from this generator makes
-    the two index spaces the same by construction rather than by luck.
+    This generator DEFINES the transcript index space. A finding's ``turn_ids``
+    are positions in it, ``session_event`` resolves ``derived_from`` by the same
+    positions, and ``_turn_timestamps`` dates findings by them. So it yields one
+    entry for every entry of ``session.metadata["turns"]`` — including a
+    text-less one, and including a non-dict one — because the alternative is an
+    index space that silently shifts relative to the list everything else counts.
+
+    It used to drop text-less turns, which was invisible while nothing minted
+    one: measured over the 103 readable transcripts in the ingest corpus, the
+    turn producers minted 0 of them before tool results were captured and 13
+    after (image-only Claude results flatten to ""). Each of those would have
+    shifted every later finding one turn to the left, attaching it to the
+    neighbouring Event — a provenance edge that reads as evidence and points at
+    the wrong thing.
+
+    A text-less turn still renders as an empty payload rather than being
+    skipped, so it costs the model an index and nothing else.
     """
     raw = session.metadata.get("turns") if session.metadata else None
     if not isinstance(raw, list):
         return
     for turn in raw:
         if not isinstance(turn, dict):
+            # Still occupies an index: ``session_event`` enumerates the SAME
+            # list and cannot skip it without the two spaces diverging.
+            yield {"role": "", "text": ""}, ""
             continue
         role = str(turn.get("role") or "").lower()
-        text = str(turn.get("text") or "").strip()
-        if not text:
-            continue
-        yield {"role": role, "text": text}, str(turn.get("timestamp") or "").strip()
+        yield (
+            {"role": role, "text": _model_turn_text(turn)},
+            str(turn.get("timestamp") or "").strip(),
+        )
+
+
+def _model_turn_text(turn: Mapping[str, object]) -> str:
+    """The turn text the extracting model sees, outcome included.
+
+    A tool result's outcome lives in TYPED fields (``exit_code``, ``is_error``)
+    that :func:`_normalised_turns` does not carry — its payload is ``{role,
+    text}`` exactly, because those dicts are hashed verbatim as the extraction
+    cache key. So without this, the ``failure`` finding kind was added to the
+    prompt with no way for the model to tell a failed run from a successful
+    one: the capture landed in ``Event.metadata`` and the only consumer that
+    can mint a ``SessionFailure`` never saw it.
+
+    Rendering the outcome INTO the text is what connects them, and it keeps the
+    payload shape (and therefore the cache key) unchanged. The marker states the
+    tri-state the same way :func:`tesserae.session_event.turn_outcome` does:
+    an unreported outcome says so rather than being left to read as success.
+    """
+    text = str(turn.get("text") or "").strip()
+    outcome = turn_outcome(turn)
+    if not outcome:
+        return text
+    if "exit_code" in outcome:
+        marker = f"[exit {outcome['exit_code']}]"
+    elif outcome.get("status") == OUTCOME_ERROR:
+        marker = "[tool reported an error]"
+    elif outcome.get("status") == OUTCOME_OK:
+        marker = "[tool reported success]"
+    else:
+        marker = "[tool reported no outcome]"
+    return f"{marker} {text}".strip()
 
 
 def _normalised_turns(session: HarnessSession) -> List[dict]:

@@ -132,7 +132,9 @@ def extract_events(
     transcript turns they were extracted from — a ``derived_from`` edge is
     emitted from each finding to every Event minted at one of its turn ids
     (matched by turn id). This is the "integrated into session-finding nodes"
-    requirement.
+    requirement. Both sides index ``session.metadata["turns"]`` positionally and
+    that is the ONLY thing making the match correct — see
+    :func:`_significant_turns`.
 
     ``json_client`` is accepted for API symmetry with the other memory passes
     but is currently UNUSED: every Event field — including the ``description``,
@@ -162,12 +164,13 @@ def extract_events(
     events_by_turn: Dict[int, List[str]] = {}
     prev_event_id: Optional[str] = None
 
-    for turn_id, turn in turns:
+    for turn_id, seed_key, turn in turns:
         actor = _actor(turn)
         action = _action(turn)
-        # Node identity is a content hash of (session_id, turn_id, action) —
+        # Node identity is a content hash of (session_id, seed_key, action) —
         # stable, no wall-clock / RNG. ``stable_id`` already sha1's the seed.
-        id_seed = f"{session_id}|{turn_id}|{action}"
+        # ``seed_key``, NOT ``turn_id``: see :func:`_significant_turns`.
+        id_seed = f"{session_id}|{seed_key}|{action}"
         node_id = stable_id(ResearchNodeType.EVENT.value, id_seed)
         # The Event ``description`` is fully DETERMINISTIC (template only). It is
         # serialized into graph.json, so it must not depend on a non-cached LLM
@@ -188,9 +191,9 @@ def extract_events(
         tool_name = str(turn.get("name") or "").strip()
         if tool_name:
             metadata["tool"] = tool_name
-        # The OUTCOME of the transition, stamped only where one genuinely
-        # exists. See :func:`_outcome` for why silence is the honest default.
-        metadata.update(_outcome(turn))
+        # The OUTCOME of the transition. See :func:`turn_outcome` for why only
+        # a tool result gets one and why "nothing was reported" is said aloud.
+        metadata.update(turn_outcome(turn))
         # ``first_seen_at`` derives from the turn / session timestamp ONLY —
         # never ``datetime.now()`` — so graph.json stays byte-stable.
         if timestamp:
@@ -225,25 +228,59 @@ def extract_events(
 # ---------------------------------------------------------------------------
 
 
-def _significant_turns(session: object) -> List[Tuple[int, Mapping[str, object]]]:
-    """Return ``[(turn_id, turn), ...]`` for significant transitions.
+def _significant_turns(
+    session: object,
+) -> List[Tuple[int, str, Mapping[str, object]]]:
+    """Return ``[(turn_id, seed_key, turn), ...]`` for significant transitions.
 
-    ``turn_id`` is the 0-based index of the turn in the ORIGINAL
-    ``session.metadata["turns"]`` list — the same indexing scheme session
-    findings use for their ``turn_ids`` — so finding↔event matching lines up.
-    Pure chatter (empty turns, user/system messages, trivially short assistant
-    acknowledgements) is skipped, but the original index is preserved.
+    TWO positional keys, because they answer two different questions and
+    conflating them is what broke this pass when tool results arrived.
+
+    ``turn_id`` is the 0-based index of the turn in ``session.metadata["turns"]``
+    — the index space a finding's ``turn_ids`` refer to. That space is defined
+    by :func:`tesserae.session_graph._iter_normalised_turns`, which is what
+    renders the transcript for the extracting model; it yields one entry per
+    entry of ``metadata["turns"]``, so the two spaces are the same list.
+    ``derived_from`` is resolved by this number, so if it drifts by even one,
+    a finding is attached to a DIFFERENT turn's Event and the graph publishes a
+    provenance edge that reads as evidence and is not.
+
+    ``seed_key`` is the positional component of the node id, and it deliberately
+    is NOT ``turn_id``: it counts only turns that are not tool results, so it
+    equals the ``turn_id`` this pass used before results were ingested at all.
+    Inserting a turn renumbers every turn after it, and the id seed carries the
+    number, so a positional id churns under insertion by construction —
+    measured on the ingest corpus, keying the id on ``turn_id`` moved 1,741 of
+    3,213 existing Event ids (54.2%), and every ``derived_from``, citation and
+    pinned reference to those ids would have broken silently. Counting past the
+    inserted role instead keeps all 3,213. A tool result — which has no
+    pre-existing id to preserve — is keyed ``<n>r<k>``: ``n`` conversation turns
+    precede it and it is the ``k``-th result in the run after them.
+
+    Pure chatter (user/system messages, trivially short assistant
+    acknowledgements) is skipped, but both keys are preserved.
     """
     metadata = getattr(session, "metadata", None)
     raw = metadata.get("turns") if isinstance(metadata, Mapping) else None
     if not isinstance(raw, list):
         return []
 
-    out: List[Tuple[int, Mapping[str, object]]] = []
+    out: List[Tuple[int, str, Mapping[str, object]]] = []
+    conversation_ordinal = 0
+    result_run = 0
     for turn_id, turn in enumerate(raw):
+        role = (
+            str(turn.get("role") or "").lower() if isinstance(turn, Mapping) else ""
+        )
+        if role == "tool_result":
+            seed_key = f"{conversation_ordinal}r{result_run}"
+            result_run += 1
+        else:
+            seed_key = str(conversation_ordinal)
+            conversation_ordinal += 1
+            result_run = 0
         if not isinstance(turn, Mapping):
             continue
-        role = str(turn.get("role") or "").lower()
         if role not in _ACTION_ROLES:
             continue
         text = str(turn.get("text") or "").strip()
@@ -257,7 +294,7 @@ def _significant_turns(session: object) -> List[Tuple[int, Mapping[str, object]]
         else:  # assistant
             if len(text) < _MIN_ASSISTANT_ACTION_LEN:
                 continue
-        out.append((turn_id, turn))
+        out.append((turn_id, seed_key, turn))
     return out
 
 
@@ -271,37 +308,59 @@ def _actor(turn: Mapping[str, object]) -> str:
     return role or "agent"
 
 
-def _outcome(turn: Mapping[str, object]) -> Dict[str, object]:
+#: The three things a tool result can say about how it went, and they are
+#: exhaustive. ``unreported`` is a VALUE, not a missing key: a result that
+#: carried no outcome signal is a real, common, and materially different state
+#: from one that succeeded, and 54 of the 1,286 Codex results on the ingest
+#: corpus (apply_patch, MCP tools) plus every ``is_error``-less Claude result
+#: are in it. Leaving the key out lets a reader supply the default themselves,
+#: and the default a reader supplies is "fine".
+OUTCOME_OK = "ok"
+OUTCOME_ERROR = "error"
+OUTCOME_UNREPORTED = "unreported"
+
+
+def turn_outcome(turn: Mapping[str, object]) -> Dict[str, object]:
     """The ``{status, exit_code}`` stamps a turn has EARNED, and no others.
 
-    ``tesserae.verify`` states its own ceiling in source: "this tool can say a
-    document says so, never this ran and passed", and names this as the missing
-    link. So the point of these two keys is to let a later pass promote a
-    finding on a *zero exit code* — which makes over-claiming the one failure
-    mode that matters. Three rules, in order:
+    Only a ``tool_result`` turn can carry an outcome — it is the only turn that
+    IS one. Every other role returns ``{}``, so an Event minted from an ordinary
+    turn keeps the metadata it had before outcomes existed, byte for byte.
 
-    * an ``exit_code`` is stamped only where the harness reported one. Measured
-      on the ingest corpus: 95.8% of Codex ``function_call_output`` payloads
-      carry a literal ``Process exited with code N`` line; **no** Claude tool
-      result carries an exit code anywhere — not in the ``tool_result`` block
-      and not in the row-level ``toolUseResult`` sibling. Any promotion on a
-      zero exit code therefore fires on Codex-derived Events only.
-    * ``is_error`` gives a status without an exit code. Claude sets it on 41.3%
-      of results and true on 3.5%.
-    * the ABSENCE of ``is_error`` is not success. It is simply omitted for every
-      non-Bash tool, so a turn carrying neither signal is stamped with NEITHER
-      key — its metadata stays byte-identical to what this pass minted before
-      outcomes existed, and a reader gets silence instead of a false pass.
+    For a tool result the answer is a TRI-STATE and it is always stated:
+
+    * ``exit_code`` is stamped only where the harness reported one, and
+      ``status`` follows it. Measured on the ingest corpus: 1,232 of 1,286
+      Codex ``function_call_output`` payloads (95.8%) carry a
+      ``Process exited with code N`` header; **no** Claude tool result carries
+      an exit code anywhere — not in the ``tool_result`` block and not in the
+      row-level ``toolUseResult`` sibling. "This ran and exited N" is a
+      Codex-only claim.
+    * ``is_error`` gives a status without an exit code. Claude sets the key on
+      431 of its 1,044 results (41.3%) and sets it TRUE on 37 (3.5%).
+    * neither signal is ``unreported`` — said out loud, never implied by
+      omission. The absence of ``is_error`` on a Claude result is not success:
+      the key is simply omitted for most tools, so the 613 results without it
+      include every failure those tools had no way to report.
+
+    A non-``bool`` ``is_error`` and a ``bool`` ``exit_code`` are BOTH treated as
+    no signal. ``True`` is an ``int`` in Python, so an unguarded exit-code check
+    reads a flag as "exited 1"; a truthy-but-not-bool ``is_error`` (the string
+    ``"false"``, say) reads as a failure. Both would manufacture an outcome out
+    of a type confusion, which is the one thing this function must never do.
     """
-    out: Dict[str, object] = {}
+    if str(turn.get("role") or "").lower() != "tool_result":
+        return {}
     exit_code = turn.get("exit_code")
     is_error = turn.get("is_error")
     if isinstance(exit_code, int) and not isinstance(exit_code, bool):
-        out["exit_code"] = exit_code
-        out["status"] = "ok" if exit_code == 0 else "error"
-    elif isinstance(is_error, bool):
-        out["status"] = "error" if is_error else "ok"
-    return out
+        return {
+            "exit_code": exit_code,
+            "status": OUTCOME_OK if exit_code == 0 else OUTCOME_ERROR,
+        }
+    if isinstance(is_error, bool):
+        return {"status": OUTCOME_ERROR if is_error else OUTCOME_OK}
+    return {"status": OUTCOME_UNREPORTED}
 
 
 def _action(turn: Mapping[str, object]) -> str:
@@ -335,14 +394,15 @@ def _template_description(turn: Mapping[str, object], actor: str, action: str) -
         # invocation's is, so a 2 MB tool result renders no larger a block than
         # any other Event and charter.mass() stays a function of Event COUNT.
         detail = truncate(text, 120)
-        outcome = _outcome(turn)
+        outcome = turn_outcome(turn)
         if "exit_code" in outcome:
             verb = f"{tool_name} exited {outcome['exit_code']}"
-        elif outcome.get("status") == "error":
+        elif outcome.get("status") == OUTCOME_ERROR:
             verb = f"{tool_name} failed"
-        elif outcome.get("status") == "ok":
+        elif outcome.get("status") == OUTCOME_OK:
             verb = f"{tool_name} succeeded"
         else:
+            # ``unreported`` — "returned", never "succeeded".
             verb = f"{tool_name} returned"
         return f"{verb}: {detail}" if detail else verb
     if role == "tool" and tool_name:
