@@ -37,6 +37,7 @@ from typing import Callable, Dict, List, Optional, Sequence
 
 from ..harness_sessions import (
     HarnessSession,
+    _TURN_LIMIT_BACKSTOP,
     _claude_project_dir,
     _claude_turns,
     _codex_turns,
@@ -492,7 +493,28 @@ class SessionTailer:
         # Turn production is row-local in COUNT — a row contributes the same
         # number of turns parsed alone or in context — so the last ``delta_len``
         # entries are exactly this batch's, now with names resolved.
-        new_turns = turns_through[len(turns_through) - delta_len:] if delta_len else []
+        #
+        # EXCEPT when the prefix parse saturates. Both parsers ``break`` at
+        # ``_TURN_LIMIT_BACKSTOP``, and a saturated ``turns_through`` stops
+        # growing — so the tail slice would return the SAME trailing turns on
+        # every subsequent tick, duplicating them forever and never emitting the
+        # rows that actually arrived. Reproduced at a simulated backstop of 5:
+        # three ticks emitted 'done A' three times and 'done B' never.
+        # Fall back to the delta parse there: it loses the cross-batch tool-name
+        # resolution this block exists for, which is strictly better than a
+        # stuck tail.
+        #
+        # Not reachable on any observed corpus — across the 49 live transcripts
+        # over 3 MB the maximum is 3,532 turns (28x headroom), and at the highest
+        # observed density a file would need ~436 MB to reach the backstop
+        # against a 43 MB observed maximum. Guarded anyway because the failure is
+        # silent, unbounded, and the check is one comparison.
+        if delta_len and len(turns_through) < _TURN_LIMIT_BACKSTOP:
+            new_turns = turns_through[len(turns_through) - delta_len:]
+        elif delta_len:
+            new_turns = _claude_turns(new_rows) if harness == "claude" else _codex_turns(new_rows)
+        else:
+            new_turns = []
         if session is None:
             # File doesn't (yet) match the project — advance offset so we don't
             # re-scan the same complete bytes forever, but emit nothing.
