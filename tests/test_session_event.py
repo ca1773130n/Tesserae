@@ -667,3 +667,84 @@ def test_two_results_from_one_parallel_tool_call_get_distinct_ids():
     assert len(results) == 2
     assert results[0].id != results[1].id
     assert len({n.id for n in nodes}) == len(nodes)
+
+
+def test_a_result_free_record_keys_events_exactly_as_the_old_pass_did():
+    """The preservation claim, checked against the OLD RULE rather than against
+    this pass's agreement with itself.
+
+    ``test_capturing_tool_results_does_not_renumber_the_events_already_minted``
+    compares this pass to this pass — result-free list vs full list — so it
+    holds for any seed that is a pure function of the conversation turns,
+    including one that had never matched what shipped. The shipped rule was
+    literally ``f"{session_id}|{enumerate_index}|{action}"`` over
+    ``metadata["turns"]``, and every Event id in every existing graph is that
+    hash. So the seed is recomputed here from that literal and compared.
+
+    This is the invariant the whole two-key design rests on: for a turn list
+    with no ``tool_result`` entries — which is EVERY record any shipped version
+    could produce, measured 0 of 481 in the live store — the new positional key
+    equals the old index, entry for entry, including the non-dict ones.
+    """
+    from tesserae.research_graph import ResearchNodeType, stable_id
+    from tesserae.session_event import _action
+
+    turns = [t for t in _mixed_turns() if t["role"] != "tool_result"]
+    turns.insert(2, "not a dict at all")  # still occupies an index
+
+    session = _session(turns)
+    minted = {n.id for n in extract_events(session)[0]}
+    old_rule = {
+        stable_id(ResearchNodeType.EVENT.value, f"sess-evt|{i}|{_action(turn)}")
+        for i, turn in enumerate(turns)
+        if isinstance(turn, dict)
+    }
+    assert minted, "the conversation must still mint events"
+    assert minted <= old_rule, (
+        "ids that no previous compile could have minted: "
+        f"{sorted(minted - old_rule)}"
+    )
+
+
+def test_a_record_that_already_carried_results_is_keyed_by_the_new_rule():
+    """A DECLARED boundary, not an accident — pinned so nobody moves it without
+    re-measuring.
+
+    A record whose stored turns ALREADY contain ``tool_result`` entries is keyed
+    by the conversation ordinal, which skips them; the old rule counted them.
+    Measured by re-parsing the 182 live transcripts whose files still exist and
+    feeding the result-bearing records to both rules: 4,793 of 6,229 Event ids
+    (76.9%) differ.
+
+    That is accepted rather than fixed because the two populations cannot both
+    be preserved — the old index and the conversation ordinal disagree by
+    construction the moment a result exists — and only one population is real.
+    No shipped version mints a ``tool_result`` turn (0 of 481 live records carry
+    one), so the churning population is records from a foreign producer or a
+    newer host, while the population preserved is the whole existing corpus:
+    3,213 Event ids, 0 churned. Keying on the raw index instead would trade 0
+    for 1,741.
+    """
+    turns = [
+        {"role": "user", "timestamp": "2026-08-09T10:00:00Z", "text": "run it"},
+        {"role": "tool", "timestamp": "2026-08-09T10:00:01Z", "name": "Bash", "text": "pytest"},
+        {"role": "tool_result", "timestamp": "2026-08-09T10:00:02Z", "name": "Bash", "text": "ok"},
+        {
+            "role": "assistant",
+            "timestamp": "2026-08-09T10:00:03Z",
+            "text": "The suite passes now, so the fix is confirmed.",
+        },
+    ]
+    nodes = _events(turns)
+    after_the_result = next(
+        n for n in nodes if n.metadata["actor"] == "assistant"
+    )
+    # Index 3 in the list; conversation ordinal 2, because the result is not a
+    # conversation turn. The old rule would have said 3.
+    assert after_the_result.metadata["turn_id"] == 3
+    from tesserae.research_graph import ResearchNodeType, stable_id
+
+    assert after_the_result.id == stable_id(
+        ResearchNodeType.EVENT.value,
+        f"sess-evt|2|{after_the_result.metadata['action']}",
+    )
