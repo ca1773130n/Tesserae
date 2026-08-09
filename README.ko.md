@@ -1,274 +1,347 @@
+<div align="center">
+
 # Tesserae
 
-<p align="center">
-  <img src="docs/assets/tesserae-graph-view.png" alt="개념, 논문, 저장소, 합성, 엔티티가 포커스 노드 주변에 클러스터된 Tesserae 그래프 뷰" width="100%" />
-</p>
+**코딩 에이전트를 위한 컨텍스트 엔진.**
 
-<p align="center">
-  <a href="./README.md">English</a> ·
-  <a href="./README.zh.md">中文</a> ·
-  <a href="./README.ja.md">日本語</a> ·
-  <a href="./README.ru.md">Русский</a> ·
-  <a href="./README.es.md">Español</a> ·
-  <a href="./README.fr.md">Français</a> ·
-  <a href="./README.de.md">Deutsch</a>
-</p>
+프로젝트 — 코드, 문서, 그리고 당신의 에이전트 세션 — 를 타입이 지정된
+자기 개선 지식 그래프로 바꾸고, 에이전트에게 필요한 컨텍스트를 정확히
+컴파일해 전달합니다. 근거가 있고, 출처가 달려 있으며, 필요할 때 바로.
 
-> 프로젝트에 대한 자기 개선 지식 베이스를 유지하고, 에이전트가 바로 사용할 수 있는 컨텍스트를 온디맨드로 컴파일하는 컨텍스트 엔진입니다.
+[![PyPI](https://img.shields.io/pypi/v/tesserae?logo=pypi&logoColor=white&label=PyPI&color=2563eb)](https://pypi.org/project/tesserae/)
+[![npm](https://img.shields.io/npm/v/%40jokerized%2Ftesserae?logo=npm&label=npm&color=cb3837)](https://www.npmjs.com/package/@jokerized/tesserae)
+[![Python](https://img.shields.io/pypi/pyversions/tesserae?logo=python&logoColor=white)](https://pypi.org/project/tesserae/)
+[![CI](https://img.shields.io/github/actions/workflow/status/ca1773130n/Tesserae/tests.yml?branch=main&logo=githubactions&logoColor=white&label=CI)](https://github.com/ca1773130n/Tesserae/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-<p align="center">
-  <img src="docs/screencasts/showcase.gif" alt="세 단계 스크린캐스트: tesserae init → compile → ask, 135개 문서 데모 코퍼스로 녹화" width="100%" />
-</p>
+[라이브 데모](https://ca1773130n.github.io/Tesserae) ·
+[빠른 시작](#빠른-시작) ·
+[문서](docs/) ·
+[에이전트 메모리](docs/i18n/agent-memory.ko.md) ·
+[MCP 설정](docs/i18n/integrations/mcp.ko.md) ·
+[튜닝](docs/i18n/tuning.ko.md) ·
+[릴리스 노트](docs/release-notes/)
 
-<p align="center">
-  <a href="https://ca1773130n.github.io/Tesserae">라이브 데모</a> ·
-  <a href="docs/">문서</a> ·
-  <a href="docs/release-notes/">릴리스 노트</a> ·
-  <a href="docs/integrations/mcp.md">MCP 설정</a> ·
-  <a href="docs/tuning.md">튜닝</a> ·
-  <a href="docs/integrations/obsidian.md">Obsidian 내보내기</a>
-</p>
+[English](./README.md) · [中文](./README.zh.md) · [日本語](./README.ja.md) · [Русский](./README.ru.md) · [Español](./README.es.md) · [Français](./README.fr.md) · [Deutsch](./README.de.md)
 
-## 무엇인가요
+</div>
 
-마크다운, 소스 코드, 그리고 선택적으로 PDF/Office 문서/이미지가 담긴 디렉터리를 Tesserae에 지정하세요. 그러면 프로젝트의 **타입이 지정된 지식 그래프**를 재구성하고 최신 상태로 유지하므로, 에이전트는 항상 출처가 명시된 근거 있는 컨텍스트를 사용할 수 있습니다. 세 가지 기둥 위에서 작동합니다:
+---
 
-1. **세션 모니터링** — Claude Code / Codex 대화가 발생하는 즉시 1급 그래프 노드(결정, 인사이트, 질문, TODO)로 포착됩니다.
-2. **자율적 수집** — 감독형 엔진이 소스와 세션을 감시하고, 버스트를 합치며, 재컴파일합니다. 자기 개선 사이드카가 반복되는 발견을 강화하고 오래된 것을 대체합니다.
-3. **온디맨드 컨텍스트** — 컨텍스트 컴파일러가 임의의 쿼리 또는 시드 노드에 대해 인용이 달린 맞춤 컨텍스트 문서를 조립합니다(문자 예산 내에서 Personalized PageRank 확장). 모든 에이전트에 붙여넣을 수 있습니다.
+## 문제
 
-타입이 지정된 그래프, Obsidian 보관소, 정적 사이트는 하나의 지식 베이스의 *프로젝션*입니다. 모든 것이 로컬에서 실행되며, 호스팅 서비스가 아닌 빌드 단계이자 라이브 엔진입니다.
+에이전트는 당신이 건네준 컨텍스트만큼만 똑똑합니다. 그래서 파일을 붙여넣고,
+지난주에 이미 내린 결정을 다시 설명하고, 같은 함정을 세 번째로 다시
+발견하는 걸 지켜보게 됩니다 — 대화가 끝나는 순간 에이전트가 배운 모든 것이
+증발했고, 디스크 위의 무엇도 당신의 프로젝트가 실제로 어떻게 맞물리는지
+모르기 때문입니다.
+
+Tesserae는 그 빠진 계층입니다. 소스를 읽는 **동시에** 에이전트 세션을
+지켜보고, 항상 최신인 타입 지정 지식 그래프를 재구성하며, 에이전트에게
+필요한 조각만을 정확히 — 출처가 된 파일이나 대화까지 인용해서 — 제공합니다.
+전부 당신의 기계에서 돌아갑니다. 호스팅 서비스가 아니라 빌드 단계이자 라이브
+엔진이고, 일반적인 경로에는 **API 키가 필요 없습니다**.
+
+```mermaid
+flowchart LR
+    S["코드 · 문서 · PDF<br/>에이전트 세션 · 웹 클립"]
+    E(("Tesserae<br/>엔진"))
+    G["타입 지정 지식 그래프<br/>(진실의 원천)"]
+    O1["온디맨드 인용 컨텍스트"]
+    O2["에이전트용 MCP 서버"]
+    O3["Obsidian 보관소"]
+    O4["정적 사이트 + 그래프 뷰"]
+
+    S --> E --> G
+    G --> O1 & O2 & O3 & O4
+    E -. "감시 · 재컴파일 · 강화 · 망각" .-> E
+```
+
+그래프, 보관소, 사이트는 모두 하나의 지식 베이스의 **프로젝션**입니다.
+엔진은 그것들을 참으로 유지하는 루프입니다.
 
 ## 빠른 시작
 
-**Python 3.10+**가 필요합니다.
+**Python 3.10+**가 필요합니다. 기본 경로에는 API 키가 필요 없습니다.
 
 ```bash
-pip install tesserae          # 실제 임베딩을 원하면 [semantic] 추가
-# 또는: pipx install tesserae   # PATH 안전 설치에 가장 권장
-# 또는: npx @jokerized/tesserae # 동일한 CLI를 감싼 Node 래퍼
+pipx install tesserae          # 또는: pip install tesserae · npx @jokerized/tesserae
 
 cd /path/to/my-project
-tesserae init --yes           # 마법사; --yes는 감지된 기본값을 수락
-tesserae compile              # 지식 그래프 빌드
-tesserae ask "Mermaid 렌더링은 어디에 구현되어 있나요?"
-
-# 쿼리에 대한 맞춤 인용 컨텍스트 문서 컴파일:
-tesserae context "파서가 arXiv ID를 어떻게 처리하나요?" --budget 32000 -o context.md
-
-tesserae serve --port 8765    # 그래프 + 위키를 로컬에서 탐색
+tesserae init --yes            # 프로젝트를 감지하고 .tesserae/ 작성
+tesserae compile               # 소스에서 지식 그래프 빌드
 ```
 
-LLM 지원 기능은 기본적으로 OAuth 방식의 `codex` / `claude` CLI를 사용합니다 — 일반적인 경로에서 **API 키가 필요하지 않습니다**. [docs/quickstart.md](docs/quickstart.md)와 [docs/installation.md](docs/installation.md)를 참고하세요.
-
-<details>
-<summary><strong>설치 후 <code>tesserae: command not found</code>? Linux 관련 문제?</strong></summary>
-
-어떤 플랫폼에서든 가장 신뢰할 수 있는 방법은 [`pipx`](https://pipx.pypa.io/)입니다:
+이제 실제 코드와 문서에 근거해 무엇이든 물어보세요:
 
 ```bash
-# macOS: brew install pipx · Ubuntu/Debian: sudo apt install pipx
-pipx ensurepath          # ~/.local/bin을 PATH에 추가; 새 셸을 열어야 함
-pipx install tesserae
+tesserae ask "arXiv ID 파싱은 어디에 구현되어 있고, 무엇이 그것에 의존하나요?"
 ```
 
-일반 `pip install tesserae`를 사용하는 경우 Ubuntu에서 흔히 발생하는 문제:
-
-| 오류 | 원인 | 해결 방법 |
-|---|---|---|
-| `error: externally-managed-environment` | PEP 668 — 시스템 Python이 잠겨 있음 | `pipx` (위) 또는 venv 사용 |
-| `pip install --user …` 후 `command not found` | `~/.local/bin`이 `PATH`에 없음 | `echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc` |
-| 구형 배포판에서 `ModuleNotFoundError` | 시스템 `python3`이 3.10 미만 | `sudo apt install python3.11 python3.11-venv`, 이후 `python3.11 -m pip`로 설치 |
-
-</details>
-
-<details>
-<summary><strong>워크스루 GIF</strong> — 번들된 135개 문서 데모 코퍼스로 각 빠른 시작 단계 시연</summary>
-
-<details>
-<summary>1. 설정 — 리서치 디렉터리를 지정하고 프로젝트 위키 스캐폴드 생성</summary>
-<br/>
-<img src="docs/screencasts/setup.gif" alt="tesserae init --source ./research가 비대화형으로 실행되어 .tesserae/를 작성하는 모습" width="100%" />
-</details>
-
-<details>
-<summary>2. 컴파일 + 사이트 빌드 — 결정론적, LLM 호출 없음</summary>
-<br/>
-<img src="docs/screencasts/compile.gif" alt="tesserae compile 후 tesserae export site 실행, graph.json과 정적 사이트 트리 생성" width="100%" />
-</details>
-
-<details>
-<summary>3. Ask — CLI에서 컴파일된 위키 쿼리</summary>
-<br/>
-<img src="docs/screencasts/ask.gif" alt="tesserae ask --backend wiki가 점수, 종류, 아웃바운드 관계와 함께 상위 3개 결과를 반환하는 모습" width="100%" />
-</details>
-
-`vhs docs/screencasts/<name>.tape`으로 GIF를 재생성할 수 있습니다.
-
-</details>
-
-## 일상적인 명령어
-
-전체 그룹 목록은 `tesserae --help`, 플래그는 `tesserae <cmd> --help`를 실행하세요.
-
-| 명령어 | 설명 |
-|---|---|
-| `tesserae init` | 설정 마법사 → `.tesserae/config.json`. `--yes` 비대화형, `--bare` 최소 구성. |
-| `tesserae compile` | 지식 그래프와 모든 아티팩트를 재빌드합니다. `compile <paths>`로 추가 파일을 임시 수집. |
-| `tesserae ingest <file\|url>` | 전체 재컴파일 없이 단일 문서 또는 웹 페이지를 지식 베이스에 병합(패리티 게이트 증분 빠른 경로). |
-| `tesserae context "<query>"` | **온디맨드 컨텍스트 컴파일러**: `--budget` 내 PPR 확장으로 인용 컨텍스트 문서 생성; `--synthesize`는 LLM 요약 추가. |
-| `tesserae ask "<question>"` | 컴파일된 지식 베이스에 질문(`--scope all-registered`는 프로젝트 전체에 팬아웃). |
-| `tesserae engine` | 현재 프로젝트에 대한 감독형 새로고침 데몬: 감시, 디바운스, 재컴파일. |
-| `tesserae engine --all` | **플릿 모드**: 하나의 프로세스가 *모든* 등록된 프로젝트를 최신 상태로 유지 — 레지스트리 핫 리로드, `--compile-slots` 스로틀링. |
-| `tesserae refresh` | 원샷 파이프라인: 새 세션 가져오기 → 컴파일 → 보관소 동기화. |
-| `tesserae sessions discover --import` | 이 프로젝트에 대한 로컬 Claude Code / Codex 세션 기록을 찾아 가져옵니다. |
-| `tesserae export site` | 정적 사이트 빌드(`--deploy`, `--watch`). |
-| `tesserae serve` | 인라인 ask 위젯과 함께 사이트를 로컬에서 서빙(`/api/ask`). |
-| `tesserae projects …` | 다중 프로젝트 레지스트리: `register`, `list`, `activate`, `mcp-config`. |
-| `tesserae integrations refresh …` | 동반 도구(Understand-Anything, RAG-Anything) 재실행. |
-
-## 자동으로 최신 상태 유지
-
-엔진은 지식 베이스를 일회성 빌드가 아닌 *자기 개선*으로 만드는 핵심입니다:
+또는 어떤 에이전트에게든 건넬 맞춤형 인용 컨텍스트 문서를 컴파일하세요:
 
 ```bash
-# 단일 프로젝트: 소스 + 라이브 세션 감시, 변경 시 재컴파일.
-tesserae engine
-
-# 모든 등록된 프로젝트, 하나의 프로세스 (v0.8.0):
-tesserae engine --all --compile-slots 1
+tesserae context "파서는 잘못된 형식의 ID를 어떻게 처리하나요?" --budget 32000 -o context.md
 ```
 
-플릿 모드는 10초마다 `~/.tesserae/registry.json`을 대조하여 재시작 없이 프로젝트 등록/제거가 즉시 반영되고, 프로젝트 간 컴파일을 직렬화하여 동시 LLM 추출이 공유 계정 속도 제한을 침범하지 않도록 합니다. 첫 실행 시 세션 기록을 한 번 스윕하고(로그에 표시됨), 재시작 시에는 영속된 플로어에서 재개합니다.
+브라우저에서 그래프와 위키를 둘러보세요:
 
-## 컴파일 후 생성되는 것들
+```bash
+tesserae serve --port 8765
+```
+
+이것이 전체 루프입니다: **가리키고, 컴파일하고, 물어보기.** LLM 기반 기능은
+기본적으로 OAuth를 통해 `codex` 또는 `claude` CLI를 사용합니다 — 자세한 내용,
+PATH 수정, 제공자 옵션은 [설치](docs/i18n/installation.ko.md)와
+[빠른 시작](docs/i18n/quickstart.ko.md)을 보세요.
+
+## 무엇을 하나요
+
+**소스에서 타입 지정 그래프를 컴파일합니다.** 마크다운, 소스 코드, 그리고
+선택적으로 PDF/Office 문서/이미지를 가리키세요. Tesserae는 70종 이상의 노드
+종류 — 개념, 결정, 코드 심볼, 논문, 합성 — 를 타입 지정 엣지와 함께
+스키마에 검증해 추출합니다. 컴파일은 **바이트 단위로 결정적**입니다: 같은
+입력이면 언제나 동일한 `graph.json`.
+
+**에이전트 대화를 메모리로 바꿉니다.** 프로젝트에 관한 Claude Code와 Codex
+세션이 1급 노드 — 인사이트, 결정, 질문, TODO — 가 되어 그것들이 건드린
+파일에 연결됩니다. 세션에서 얻은 지식이 세션보다 오래 남습니다.
+
+**말한 것이 아니라 실제로 일어난 일을 기억합니다.** 도구 결과도 하나의
+턴입니다: 종료 코드와 오류 플래그가 수집 과정을 살아남아 `Event` 노드에
+새겨지므로, 그래프는 명령이 실행되었다는 사실만이 아니라 **실패했다는
+사실**까지 압니다. 한 세션 안에서 관측된 두 결과 — 실패한 호출, 그리고 같은
+피연산자에 대해 나중에 성공한 호출 — 로부터 Tesserae는 `recovers` 엣지를
+도출합니다. 어휘에 존재하는 유일한 인과 엣지이며, 모델이 주장하는 것이 아니라
+**관측에서 도출**됩니다. 실은 `happened_near`인 `caused_by`는 증거로 읽히기
+때문에, 그런 엣지는 아예 없느니만 못합니다.
+
+**인용된 컨텍스트를 온디맨드로 제공합니다.** 컨텍스트 컴파일러는 쿼리의 시드
+노드에서 Personalized PageRank를 실행하고, 가장 관련 있는 부분 그래프를 문자
+예산 안에 담아, 붙여넣을 준비가 된 인용 문서를 돌려주거나 MCP를 통해
+에이전트에게 스트리밍합니다.
+
+**스스로를 최신으로 유지합니다.** 감독형 엔진이 소스와 세션을 감시하고,
+버스트를 합치고, 재컴파일하며, 반복되는 발견을 강화하고 오래된 것을 대체하는
+자기 개선 패스를 실행합니다. 휴식 중 기억을 정리하는 뇌처럼, 프로젝트가
+유휴 상태가 되면 **스스로 에이전트 메모리를 통합합니다** — 명령이 필요 없는
+주기적 수면 주기입니다: 시끄러운 최근 기억을 압축하고 잊으며, **사용되지
+않으면 잊고**(오래된 지식만이 아니라 아무도 꺼내 쓰지 않는 지식이 흐려집니다),
+살아남은 것들 사이에서 **새로운 연결을 발견합니다**. 하나의 프로세스가 당신이
+가진 모든 프로젝트를 최신으로 유지할 수 있습니다.
+
+**모든 에이전트에게 자라나는 자기만의 메모리를 줍니다.** 각 에이전트의 경험을
+크기가 제한된 상위 계층으로 증류하고, 관리자는 자기 보고자의 증류 계층만
+읽게 하세요 — 조직 트리를 따라 재귀적으로. 아래
+[계층형 에이전트 메모리](#계층형-에이전트-메모리)를 보세요.
+
+## `compile` 이후의 모습
 
 ```text
 .tesserae/
-  graph.json              # 타입이 지정된 노드/엣지 (지식 베이스)
-  sqlite.db               # 쿼리 가능한 그래프 저장소
-  markdown_projection/    # 사람이 읽을 수 있는 위키 페이지
-  obsidian_vault/         # Obsidian에 바로 드롭 가능
-  site/                   # 정적 사이트 (그래프 뷰 + 위키 + 검색)
-  harness_sessions/       # 가져온 Claude/Codex 세션 메모리
-  agent_harness/          # 에이전트별 컨텍스트 구성 (Claude/Codex/Gemini/...)
-  cognee_bundle/          # Cognee 수집 준비된 JSONL
-  config.json · manifest.json · report.md · …
+├── graph.json              # 타입 지정 지식 베이스 — 노드 + 엣지
+├── sqlite.db               # 질의 가능한 그래프 저장소
+├── markdown_projection/    # 사람이 읽는 위키 페이지
+├── obsidian_vault/         # Obsidian에 그대로 넣으세요
+├── site/                   # 정적 사이트: 그래프 뷰 + 위키 + 검색
+├── harness_sessions/       # 가져온 Claude / Codex 세션 메모리
+├── agents/                 # 에이전트별 증류 메모리 계층 (선택)
+└── config.json · manifest.json · report.md
 ```
+
+## 계층형 에이전트 메모리
+
+모든 것을 기억하는 사람은 없고, 모든 것을 담을 만한 컨텍스트 윈도우를 가진
+에이전트도 없습니다. Tesserae의 답은 **계층형, 에이전트별 지식 베이스**입니다:
+모든 에이전트가 자신의 세션에서 자기 메모리를 키우고, 그 메모리는 주기적으로
+크기가 제한된 상위 계층으로 **증류**되며, 관리자는 보고자의 증류 계층만 봅니다
+— 실제 조직처럼 재귀적으로.
+
+```bash
+export TESSERAE_AGENT_DISTILL=1
+tesserae compile              # 에이전트별 Agent 노드 + 귀속 엣지 생성
+tesserae agents init          # 누가 누구를 스폰했는지로 조직도 추론
+tesserae agents tree          # 계층, 세션 수, 신선도 점검
+tesserae distill              # 각 에이전트의 경험을 L1 계층으로 압축
+```
+
+그러면 모든 그래프 읽기 도구 — CLI든 MCP든 — 가 `agent=` 스코프를 받습니다:
+
+```bash
+tesserae query "릴리스 체크리스트" --agent claude-code:me:reviewer   # 작업자 자신의 메모리
+tesserae ask   "우리 팀은 배포에 대해 무엇을 아나요?" --agent org      # 팀 전체, 증류본
+```
+
+증류는 **정리하고, 압축하고, 잊지만 결코 삭제하지 않습니다**: 감쇠된 발견은
+그것을 인용하는 증류본 안으로 접혀 들어가 `agents drill`로 여전히 도달
+가능하며, 버려지지 않습니다. 시간은 코퍼스의 시계이고, 노드 정체성은 결코
+LLM의 표현에 의존하지 않으며, 산출물은 결정적으로 유지됩니다. 전체 설계는
+[docs/i18n/agent-memory.ko.md](docs/i18n/agent-memory.ko.md)에 있습니다.
+
+`distill`을 직접 실행할 필요는 없습니다: `tesserae engine`을 띄워 두면 유휴
+휴식 중에 **스스로 통합합니다** — 동일한 선택형, 메모리 압력 게이트가 걸린
+패스를 감싼 수면 주기입니다.
+[docs/i18n/engine-consolidation.ko.md](docs/i18n/engine-consolidation.ko.md)를
+보세요.
 
 ## MCP 서버
 
-`tesserae projects mcp-config`는 Claude Code, Codex, 또는 모든 MCP 클라이언트의 서버 항목을 출력합니다. 주요 도구:
+`tesserae projects mcp-config`는 Claude Code, Codex 또는 임의의 MCP
+클라이언트를 위한 서버 항목을 바로 출력합니다. 모든 그래프 읽기 도구는
+`graph_path` / `project` / `agent`를 기본으로 받습니다. 주요 도구:
 
-- **`compile_context`** — 쿼리 또는 시드 노드에 대한 맞춤 인용 컨텍스트 문서
-  (`synthesize=true`가 아니면 결정론적), `graph_ppr` 기반.
-- **그래프 + 위키**: `search_nodes`, `node_context`, `graph_summary`,
-  `wiki_page`, `raw_source`, `timeline`, `search_facts`, `lint_report`, `ask`.
-- **세션 메모리**: `list_sessions`, `find_session_findings`,
-  `find_code_symbol_mentions`, `fresh_insights` (감쇠 랭킹, 중복 제거).
-- **레지스트리**: `list_projects`, `register_project`, `activate_project`.
+| 도구 | 용도 |
+|---|---|
+| `compile_context` | 쿼리나 시드 노드에 대한 맞춤 인용 컨텍스트 문서 (결정적; `preview=N`은 본문 대신 핸들 반환) |
+| `get_handle` | 큰 페이로드를 조각으로 페이징 — 에이전트가 한 번에 전부 컨텍스트에 들고 있지 않도록 |
+| `ask` · `query` · `search_nodes` · `node_context` | 계획된 답변, 원시 검색, 컴파일된 베이스 위의 그래프 탐색 |
+| `graph_map` | Budgeted Descent: 검색어를 추측하는 대신 스코프를 따라 위에서 아래로 그래프를 탐색 — 표준 진입점 |
+| `graph_ppr` · `search_facts` · `timeline` | Personalized PageRank 확장, 시간적 사실, 연대기. `search_facts`는 `current_only`(현재 사실) **또는** `as_of`(과거 시점 기준)를 받습니다 — 서로 다른 시계이므로 동시 사용은 거부됩니다 |
+| `verify_claim` | 이 트리플을 그래프가 승인하는가? 생성된 의견이 아니라 결정적 판정 |
+| `find_session_findings` · `fresh_insights` · `activity_summary` · `query_decisions` | 세션에서 유래한 메모리(감쇠 순위, 중복 제거), 다이제스트, 결정 기록 |
+| `agent_view_explain` · `drill_down` | 에이전트 스코프 뷰 해석; 증류된 노트를 원본 증거로 승격 (감사 기록됨) |
+| `ingest` · `graph_write` | 원시 웹/텍스트(예: 브라우저 클립)를 그래프에 병합; 에이전트가 귀속된 노드를 되쓰기 |
+| `doctor_run` · `doctor_report` · `lint_report` | 에이전트 루프 안에서의 헬스 체크와 그래프 린트 |
+
+## 일상적인 명령어
+
+그룹별 목록은 `tesserae --help`, 플래그는 `tesserae <cmd> --help`로 보세요.
+
+| 명령어 | 하는 일 |
+|---|---|
+| `tesserae init` | 원스텝 온보딩: 프로젝트 감지, LLM 제공자 선택, `.tesserae/config.json` 작성. `--yes`는 비대화형. |
+| `tesserae compile` | 그래프와 모든 프로젝션을 재빌드. `compile <경로>`는 추가 파일을 임시로 수집. |
+| `tesserae ask "<질문>"` | LLM이 계획한 인용 답변. 스마트 라우터가 대상 프로젝트를 고르고, `--scope federated`는 여러 프로젝트를 하나의 답으로 병합. |
+| `tesserae query "<질문>"` | 원시 검색 — BM25/시맨틱, LLM 합성 없음. |
+| `tesserae context "<질문>"` | `--budget` 아래 PPR로 온디맨드 인용 컨텍스트 문서. 그래프에 그럴 만한 출처가 있을 때 **절차적** 메모리 — 실제로 무엇을 실행했고 그 결과가 무엇이었는지 — 를 위한 슬롯을 예약합니다. |
+| `tesserae graph-map` | Budgeted Descent: 검색어가 아니라 스코프를 따라 위에서 아래로. 에이전트 조직 트리는 `--scope org:root`. |
+| `tesserae verify-claim` | 그래프가 트리플을 승인하는지에 대한 결정적 판정. JSON 출력. |
+| `tesserae engine [--all]` | 감독형 갱신 데몬 — 감시, 디바운스, 재컴파일, 유휴 시 에이전트 메모리 통합(수면 주기; `--no-consolidate`로 해제). `--all`은 등록된 모든 프로젝트를 한 프로세스로 유지. |
+| `tesserae refresh` | 원샷: 새 세션 가져오기 → 컴파일 → 보관소 동기화. |
+| `tesserae agents …` | `init`(조직 추론) · `tree` · `show` · `drill` — 계층형 메모리 조직 도구. |
+| `tesserae distill` | 각 에이전트의 세션을 크기 제한된 L1 메모리 계층으로 압축. |
+| `tesserae doctor` | 헬스 체크; `--fix`는 안전한 복구만 적용. 종료 코드 `0/1/2` = 정상/경고/오류. |
+| `tesserae lint` | 그래프 린트 — 고아 노드, 오래된 인용, 위키 드리프트, 빈약한 구간 커버리지, 근거 없는 절차적 풀. 안전한 항목은 `--fix-trivial`. |
+| `tesserae domains status` | 헌장에 따른 도메인 트리(부문 → 부서 → 팀) 출력. [아키텍처](docs/i18n/architecture.ko.md) 참고. |
+| `tesserae federation status` | 프로젝트 간 연합 점검 — `--scope federated`가 실제로 무엇에 도달하는지. |
+| `tesserae serve` | 등록된 모든 프로젝트를 서빙 — `/`에 랜딩, 각각 `/<alias>/`, 라이브 ask 위젯 포함. |
+| `tesserae export site \| okf` | 정적 사이트 빌드 또는 이식 가능한 [Google OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog) 번들 내보내기. |
+| `tesserae projects …` | 다중 프로젝트 레지스트리: `register`, `list`, `mcp-config`. |
 
 ## 다중 프로젝트
 
-`~/.tesserae/registry.json`의 레지스트리가 CLI, MCP, 플릿 엔진 전체에서 프로젝트 이름을 해석합니다:
+`~/.tesserae/registry.json`의 레지스트리가 어디서나 — CLI, MCP, 플릿 엔진 —
+프로젝트 이름을 해석합니다. "활성" 프로젝트라는 개념은 없습니다: 프로젝트별
+명령은 당신이 서 있는 프로젝트를 해석하고, `ask`는 전체를 가로질러
+라우팅합니다.
 
 ```bash
 tesserae projects register /path/to/my-project --name myproj
-tesserae projects activate myproj
-tesserae ask "..." --scope all-registered        # 모든 프로젝트에 팬아웃
+tesserae ask "research와 notes의 검색 방식을 비교해줘"   # → 연합, 상호 참조
+tesserae ask "myproj는 어떻게 컴파일하나요?"              # → 해당 프로젝트로 라우팅
+tesserae serve                                          # → 하나의 서버 아래 모든 프로젝트
 ```
 
-한 프로젝트의 마크다운이 `wiki://<alias>/<kind>/<slug>`로 다른 프로젝트의 노드를 딥링크할 수 있으며, 컴파일 시에 이것이 그래프 뷰의 브리지 노드가 됩니다. 자세한 내용은 [docs](docs/)를 참고하세요.
+한 프로젝트의 마크다운은 `wiki://<alias>/<kind>/<slug>`로 다른 프로젝트의
+노드를 딥링크할 수 있고, 컴파일 시점에 그래프 뷰의 브리지 노드가 됩니다.
 
-## 통합 (모두 선택 사항)
+## 통합 (모두 선택)
 
-- **Claude Code 플러그인** — 슬래시 명령어, 세션 훅, 스킬, MCP 자동 등록을 한 번의 `/plugin install`로 제공.
-  [docs/integrations/claude-code-plugin.md](docs/integrations/claude-code-plugin.md)
-- **세션 그래프** — Claude Code / Codex 대화 → Insight / Decision /
-  Question / TODO 노드, 접촉한 문서와 연결. API 키 불필요.
-  [docs/integrations/sessions.md](docs/integrations/sessions.md)
-- **Understand-Anything** — 코드 지식 그래프 수집.
-  [docs/integrations/understand-anything.md](docs/integrations/understand-anything.md)
-- **RAG-Anything** — 멀티모달 수집(MinerU/Docling을 통한 PDF/Office/이미지)과 LightRAG 질문 백엔드.
-  [docs/integrations/rag-anything.md](docs/integrations/rag-anything.md)
-- **Cognee** — 그래프+벡터 메모리 백엔드; 컴파일은 항상 Cognee 준비 번들을 작성하며, 런타임 cognify는 최선 노력으로 제공.
-- **Obsidian** — 사용자 편집 오버레이와 함께 양방향 보관소 동기화.
-  [docs/integrations/obsidian.md](docs/integrations/obsidian.md)
+- **Claude Code 플러그인** — 슬래시 명령, 세션 훅, 스킬, MCP 자동 등록을
+  `/plugin install` 하나로. [→](docs/i18n/integrations/claude-code-plugin.ko.md)
+- **세션 그래프** — Claude Code / Codex 대화가 인사이트 / 결정 / 질문 / TODO
+  노드가 되어 관련 문서에 연결됩니다. API 키 불필요.
+  [→](docs/i18n/integrations/sessions.ko.md)
+- **RAG-Anything** — 멀티모달 수집(MinerU / Docling을 통한 PDF / Office /
+  이미지)과 LightRAG 질의 백엔드. [→](docs/i18n/integrations/rag-anything.ko.md)
+- **Obsidian** — 사용자 편집 오버레이가 있는 양방향 보관소 동기화.
+  [→](docs/i18n/integrations/obsidian.ko.md)
+- **웹 클리퍼** — 페이지나 선택 영역을 한 번에 코퍼스로 클리핑.
+  [→](docs/i18n/integrations/chrome-extension.ko.md)
 
 ## 비교
 
 <details>
-<summary>Quartz, Logseq, Cognee, Foam과의 기능 비교표</summary>
+<summary><strong>기능 매트릭스</strong> — Quartz, Logseq, Cognee, Foam 대비</summary>
 
-| 기능 | Tesserae | Quartz | Logseq | Cognee | Foam |
-|---|---|---|---|---|---|
-| 정적 HTML 출력 | 예 | 예 | 부분(내보내기) | 아니요 | 부분(게시) |
-| 내장 그래프 뷰 | 예 | 예 | 예 | 예(별도 UI) | 예(VSCode) |
-| 타입이 지정된 노드 스키마 | 예(41가지 타입) | 아니요 | 부분(태그) | 예 | 아니요 |
-| 소스에서 개념 추출 | 예(LLM) | 아니요 | 아니요 | 예 | 아니요 |
-| 멀티모달 수집(PDF/이미지) | 예(RAG-Anything 경유) | 아니요 | 부분(임베드) | 예 | 아니요 |
-| 코드 그래프 수집 | 예 | 아니요 | 아니요 | 부분 | 아니요 |
-| MCP 서버 | 예 | 아니요 | 아니요 | 예 | 아니요 |
-| 온디맨드 인용 컨텍스트 컴파일러 | 예(PPR + 예산) | 아니요 | 아니요 | 아니요 | 아니요 |
-| 라이브 세션 모니터링 → 그래프 | 예 | 아니요 | 아니요 | 아니요 | 아니요 |
-| 다중 프로젝트 레지스트리 | 예 | 아니요 | 예(그래프) | 부분 | 아니요 |
-| 다중 프로젝트 데몬(플릿) | 예 | 아니요 | 아니요 | 아니요 | 아니요 |
-| API 키 없이 작동(OAuth) | 예 | 해당없음 | 해당없음 | 아니요 | 해당없음 |
-| 결정론적 바이트 동일 컴파일 | 예 | 예 | 해당없음 | 아니요 | 해당없음 |
-| 라이브 편집 | 아니요 | 부분 | 예 | 해당없음 | 예 |
-| 실시간 협업 | 아니요 | 아니요 | 예(DB 베타) | 아니요 | 아니요 |
+<br/>
+
+| | Tesserae | Quartz | Logseq | Cognee | Foam |
+|---|:---:|:---:|:---:|:---:|:---:|
+| 정적 사이트 + 그래프 뷰 | ✅ | ✅ | ✅ | ➖ | ➖ |
+| 타입 지정 노드 스키마 | ✅ 70종+ | ❌ | ➖ | ✅ | ❌ |
+| 소스에서 개념 추출 | ✅ | ❌ | ❌ | ✅ | ❌ |
+| 멀티모달 수집 (PDF/이미지) | ✅ | ❌ | ➖ | ✅ | ❌ |
+| 코드 그래프 수집 | ✅ | ❌ | ❌ | ➖ | ❌ |
+| MCP 서버 | ✅ | ❌ | ❌ | ✅ | ❌ |
+| 온디맨드 인용 컨텍스트 컴파일러 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 라이브 세션 → 그래프 메모리 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 에이전트별 계층 메모리 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 다중 프로젝트 데몬 (플릿) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| API 키 없이 동작 | ✅ | — | — | ❌ | — |
+| 바이트 단위 결정적 컴파일 | ✅ | ✅ | — | ❌ | — |
+| UI에서 라이브 편집 | ❌ | ➖ | ✅ | — | ✅ |
 
 </details>
 
-Tesserae는 라이브 편집보다 소스 기반 컴파일을 선택합니다. UI에서 노트를 편집하고 싶다면 Logseq 또는 Obsidian을 사용하세요. 지식 그래프를 위한 빌드 도구 *겸 라이브 엔진*을 원한다면 이 프로젝트가 적합합니다.
+Tesserae는 라이브 편집이 아니라 **소스로부터의 컴파일**을 택했습니다. UI에서
+노트를 편집하고 싶다면 Logseq나 Obsidian을 쓰세요. 근거 있는 지식 그래프를
+유지하고 그것을 에이전트에게 먹이는 *빌드 도구이자 라이브 엔진*을 원한다면,
+이 프로젝트입니다.
 
-**적합한 경우:** 프로젝트의 텍스트 중심 소스에 대해 견고하고 검사 가능한 지식 그래프를 원하거나, 자신의 파일에 기반한 로컬 MCP 서버가 필요하거나, 글루 코드 없이 Cognee/Obsidian 번들이 필요한 경우.
+**쓰세요** — 프로젝트 소스 위의 지속적이고 점검 가능한 지식 그래프, 당신의
+파일에 근거한 로컬 MCP 서버, 증발하지 않고 복리로 쌓이는 에이전트별 메모리를
+원한다면.
 
-**적합하지 않은 경우:** 소규모 디렉터리에 대한 벡터 검색만 필요하거나, 편집 UI가 있는 호스팅 위키를 원하거나, 턴키 "무엇이든 물어보세요" 에이전트를 기대하는 경우 — Tesserae는 기반을 만들고, 원하는 에이전트에 연결하는 것은 사용자의 몫입니다.
+**건너뛰세요** — 작은 폴더에 대한 벡터 검색만 필요하거나, 편집 UI가 있는
+호스팅 위키를 원하거나, 턴키 "무엇이든 물어보세요" 봇을 기대한다면. Tesserae는
+기반을 만들고, 에이전트와의 연결은 당신이 선택합니다.
 
-## 인증 및 LLM 제공자
+## 제공자와 프라이버시
 
-일반적인 경로는 **API 키가 필요 없습니다**:
+모든 것이 로컬에서 돌아가고, 일반적인 경로는 **API 키를 쓰지 않습니다**:
 
-- **Codex CLI**(기본값)와 **Claude Code CLI**는 멀티 계정 로테이션을 지원하는 OAuth 방식.
-- **임베딩**: 네이티브 하이브리드 검색은 `pip install "tesserae[semantic]"` (`model2vec`)으로 오프라인, torch 없는 시맨틱 레인을 사용합니다. Cognee/RAG-Anything 백엔드는 기본적으로 결정론적 제공자를 사용하며, 더 나은 리콜을 위해 Ollama 또는 OpenAI 호환 엔드포인트로 전환할 수 있습니다.
-
-`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`는 설정되어 있으면 자동으로 감지되지만, 필수는 아닙니다.
+- **Codex CLI**(기본)와 **Claude Code CLI**를 OAuth로, 다중 계정 로테이션과
+  함께.
+- **임베딩**은 오프라인, torch 없는 경로로(`pip install "tesserae[semantic]"`,
+  `model2vec`). `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`는 설정되어 있으면
+  쓰이지만 결코 필수가 아닙니다.
 
 ## 현황 및 제한 사항
 
-현재 릴리스는 [릴리스 노트](docs/release-notes/)를 참고하세요. 알려진 제한 사항:
+현재 버전은 [릴리스 노트](docs/release-notes/)를 보세요. 솔직히 말하면:
 
-- 대규모 코퍼스(수천 개 파일)의 첫 번째 컴파일은 몇 분이 걸리며, 컴파일 시간은 대략 선형적으로 증가합니다. 증분 컴파일(`--changed-only`)은 제공되지만 실험적이며 기본적으로 비활성화되어 있습니다.
-- `semantic` 추가 없이는 하이브리드 검색이 비시맨틱 스텁으로 성능이 저하됩니다(눈에 띄는 경고 발생).
-- RAG-Anything 비전(이미지 설명)은 아직 엔드-투-엔드로 연결되지 않았습니다.
-- Cognee 런타임 cognify는 최선 노력으로 제공됩니다: 누락된 제공자는 기록되고 건너뛰어지며, 치명적 오류가 발생하지 않습니다.
-- MCP 도구 세트는 안정적이지만, 그래프 스키마는 노드 타입이 추가될 수 있습니다.
+- 수천 개 파일에 대한 첫 컴파일은 몇 분 걸리며, 시간은 대체로 선형으로
+  늘어납니다. 증분 컴파일(`--changed-only`)은 제공되지만 실험적입니다.
+- `semantic` 엑스트라 없이는 하이브리드 검색이 비시맨틱 스텁으로 저하됩니다
+  (경고를 크게 출력).
+- 0.30.0부터 **코드 계층은 선택 사항**입니다 — 큰 저장소에서 코드 심볼이 다른
+  모든 것을 밀어냈기 때문에, `compile`은 명시적으로 요청하지 않는 한 더 이상
+  코드 심볼을 수집하지 않습니다. `tesserae code ingest`로 CodeGraph를 의도적으로
+  연결할 수 있습니다.
+- **헌장**(`tesserae domains status`)은 구현과 테스트가 끝났지만 아직 `compile`이
+  생성하지 않습니다. 그때까지 이 명령은 "no charter yet"을 보고합니다.
+- RAG-Anything 이미지 설명은 아직 엔드투엔드로 연결되지 않았습니다.
+- MCP 도구 집합은 안정적이지만, 그래프 스키마는 여전히 노드 타입이 늘어납니다.
+  인과 어휘는 의도적으로 `recovers` 하나뿐이며, 모델이 주장하는 것이 아니라
+  관측된 결과에서만 도출됩니다.
 
 ## 프로젝트 구조
 
 ```text
-tesserae/        # 패키지 (CLI, 컴파일러, 엔진, MCP 서버, 어댑터)
-docs/            # 영어 문서 + 다른 7개 언어용 docs/i18n/
-ontology/        # 컴파일러가 검증하는 노드/엣지 스키마
-prompts/         # 추출 및 합성 프롬프트
-tests/           # pytest 스위트
-evals/           # 그래프 품질 평가 하니스
-examples/        # 스크린캐스트에 사용되는 데모 코퍼스
+tesserae/     # 패키지 — CLI, 컴파일러, 엔진, MCP 서버, 어댑터
+docs/         # 영어 문서 + 나머지 7개 언어를 위한 docs/i18n/
+ontology/     # 컴파일러가 검증하는 노드/엣지 스키마
+prompts/      # 추출 및 합성 프롬프트
+tests/        # pytest 스위트 (3,400개 이상)
+evals/        # 그래프 품질 평가 하네스
 ```
 
-## 현지화 문서
+## 기여 및 문서
 
-[English](./README.md) ·
-[中文](./README.zh.md) ·
-[日本語](./README.ja.md) ·
-[Русский](./README.ru.md) ·
-[Español](./README.es.md) ·
-[Français](./README.fr.md) ·
-[Deutsch](./README.de.md)
-
-장문의 문서는 `docs/i18n/` 아래에 미러링되어 있습니다.
+- **문서**: [빠른 시작](docs/i18n/quickstart.ko.md) · [설치](docs/i18n/installation.ko.md) · [에이전트 메모리](docs/i18n/agent-memory.ko.md) · [아키텍처](docs/i18n/architecture.ko.md)
+- **다른 언어**: [English](./README.md) · [中文](./README.zh.md) · [日本語](./README.ja.md) · [Русский](./README.ru.md) · [Español](./README.es.md) · [Français](./README.fr.md) · [Deutsch](./README.de.md) — 긴 문서는 `docs/i18n/` 아래에 미러링되어 있습니다.
 
 ## 라이선스
 
-MIT. [LICENSE](LICENSE)를 참고하세요.
+[MIT](LICENSE).
