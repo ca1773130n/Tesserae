@@ -19,6 +19,7 @@ from typing import Dict, Iterable, List, Optional, Sequence
 
 from .cross_project import find_wiki_uris_in_text, parse_wiki_uri
 from .research_graph import (
+    SESSION_FINDING_TYPES,
     ResearchEdge,
     ResearchGraph,
     ResearchNode,
@@ -261,15 +262,7 @@ def directory_for_node(node: ResearchNode) -> str:
 # Local mirror of SESSION_FINDING_TYPES so we don't reach into research_graph
 # at projection time. Kept in sync with the canonical set in
 # tesserae.research_graph (Phase 1).
-_SESSION_FINDING_NODE_TYPES = {
-    ResearchNodeType.SESSION_INSIGHT,
-    ResearchNodeType.SESSION_DECISION,
-    ResearchNodeType.SESSION_QUESTION,
-    ResearchNodeType.SESSION_TODO,
-    ResearchNodeType.SESSION_HYPOTHESIS,
-    ResearchNodeType.SESSION_TAKEAWAY,
-    ResearchNodeType.SESSION_FAILURE,
-}
+_SESSION_FINDING_NODE_TYPES = SESSION_FINDING_TYPES
 
 
 # Type priority for slug-collision tie-breaking. When two nodes claim the same

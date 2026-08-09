@@ -49,6 +49,7 @@ from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Set, Tuple
 from .harness_sessions import HarnessSession, session_matches_project
 from .llm_json import LLMJsonClient
 from .research_graph import (
+    SESSION_FINDING_KIND_TO_TYPE,
     SESSION_FINDING_TYPES,
     ResearchEdge,
     ResearchGraph,
@@ -75,16 +76,10 @@ logger = logging.getLogger(__name__)
 CACHE_SCHEMA_VERSION = 4
 
 
-# Map from Finding.kind (lowercase string) to ResearchNodeType.
-_KIND_TO_NODE_TYPE: Dict[str, ResearchNodeType] = {
-    "insight": ResearchNodeType.SESSION_INSIGHT,
-    "decision": ResearchNodeType.SESSION_DECISION,
-    "question": ResearchNodeType.SESSION_QUESTION,
-    "todo": ResearchNodeType.SESSION_TODO,
-    "hypothesis": ResearchNodeType.SESSION_HYPOTHESIS,
-    "takeaway": ResearchNodeType.SESSION_TAKEAWAY,
-    "failure": ResearchNodeType.SESSION_FAILURE,
-}
+# Map from Finding.kind (lowercase string) to ResearchNodeType. Aliased, not
+# re-listed: an unmapped kind is ``continue``d at the mint site, so a copy that
+# drifts drops findings with no log and no error.
+_KIND_TO_NODE_TYPE: Dict[str, ResearchNodeType] = SESSION_FINDING_KIND_TO_TYPE
 
 
 @dataclass

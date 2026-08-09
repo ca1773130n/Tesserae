@@ -245,20 +245,45 @@ CODE_GRAPH_TYPES: FrozenSet[ResearchNodeType] = frozenset({
 EXTRACTABLE_NODE_TYPES: Set[str] = ALLOWED_NODE_TYPES - {item.value for item in CODE_GRAPH_TYPES}
 
 
+# THE source of truth for the session-finding taxonomy: the ``kind`` string the
+# extracting model emits, and the node type it mints. Everything downstream —
+# the extractor's allowed-kind tuple, the compiler's mint table, the MCP tool
+# schemas an agent reads, the ask planner's catalog, the federation whitelist —
+# is DERIVED from this one mapping.
+#
+# It is one mapping because it was nine hand-maintained tables, and adding the
+# seventh kind (``failure``) reached six of them. The three it missed were the
+# ones no Python-level test could see: two published MCP ``inputSchema`` enums
+# and the planner's catalog string. A kind mapped server-side but absent from
+# the enum is unreachable — a schema-driven client cannot ask for it — and one
+# absent from the catalog is a kind the planner is instructed never to emit.
+# Both fail closed, silently, exactly like the six that came before.
+#
+# ORDER IS PART OF THE PUBLISHED CONTRACT: it is the order of the enums in the
+# MCP schemas. Append; do not reorder.
+SESSION_FINDING_KIND_TO_TYPE: Dict[str, ResearchNodeType] = {
+    "insight": ResearchNodeType.SESSION_INSIGHT,
+    "decision": ResearchNodeType.SESSION_DECISION,
+    "question": ResearchNodeType.SESSION_QUESTION,
+    "todo": ResearchNodeType.SESSION_TODO,
+    "hypothesis": ResearchNodeType.SESSION_HYPOTHESIS,
+    "takeaway": ResearchNodeType.SESSION_TAKEAWAY,
+    "failure": ResearchNodeType.SESSION_FAILURE,
+}
+
+#: The kind strings, in contract order.
+SESSION_FINDING_KINDS: Tuple[str, ...] = tuple(SESSION_FINDING_KIND_TO_TYPE)
+
 # The structured-finding types. Used by the same-type aggressive dedup pass to
 # skip these (two same-text findings from two different sessions are
 # legitimately separate provenance — see Phase 1 of the session-graph plan).
-# Derive from this set rather than re-listing it: every hand-written copy is a
-# place the next kind is silently excluded.
-SESSION_FINDING_TYPES: Set[ResearchNodeType] = {
-    ResearchNodeType.SESSION_INSIGHT,
-    ResearchNodeType.SESSION_DECISION,
-    ResearchNodeType.SESSION_QUESTION,
-    ResearchNodeType.SESSION_TODO,
-    ResearchNodeType.SESSION_HYPOTHESIS,
-    ResearchNodeType.SESSION_TAKEAWAY,
-    ResearchNodeType.SESSION_FAILURE,
-}
+SESSION_FINDING_TYPES: Set[ResearchNodeType] = set(SESSION_FINDING_KIND_TO_TYPE.values())
+
+#: The same set as node-type STRINGS, for the many consumers that compare
+#: against ``node.type`` values rather than enum members.
+SESSION_FINDING_TYPE_VALUES: FrozenSet[str] = frozenset(
+    t.value for t in SESSION_FINDING_TYPES
+)
 
 
 # AgentRunbook cross-session distilled-memory node types. ``Event`` is a

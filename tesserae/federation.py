@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .research_graph import (
+    SESSION_FINDING_TYPE_VALUES,
     ResearchEdge,
     ResearchGraph,
     ResearchNode,
@@ -279,12 +280,12 @@ _SEMANTIC_TYPE_VALUES = frozenset({
     "Concept", "TechnicalTerm", "MathematicalConcept", "MethodologicalConcept",
     "Algorithm", "ArchitecturePattern", "TrainingParadigm", "InferenceStrategy",
     "Task", "Capability", "ResearchTopic", "ProblemArea", "ApproachFamily",
-    "SessionInsight", "SessionDecision", "SessionHypothesis", "SessionTakeaway",
-    "SessionQuestion", "SessionTODO", "SessionFailure",
     "Runbook", "Gotcha", "OpenQuestion",
     "Claim", "ContributionClaim", "PerformanceClaim", "ComparisonClaim",
     "LimitationClaim", "CausalClaim",
-})
+# Session findings are unioned in rather than re-listed: a finding type absent
+# here simply never federates, with no error to notice.
+}) | SESSION_FINDING_TYPE_VALUES
 
 
 def _federation_cache_dir() -> Path:

@@ -21,24 +21,18 @@ from typing import List, Optional, Sequence, Tuple
 from .harness_sessions import HarnessSession
 from .llm_chunking import chunk_char_budget, split_text
 from .llm_json import LLMJsonClient
+from .research_graph import SESSION_FINDING_KINDS
 
 logger = logging.getLogger(__name__)
 
 
-# The finding kinds. Mirrors the ``Session<Kind>`` ResearchNodeType entries.
-# The LLM must emit one of these literal strings as the ``kind`` field on every
-# finding. Adding one is a SEVEN-table change and every table fails closed and
-# silently — see ``tests/test_session_finding_kind_wiring.py``, which asserts
-# the wiring for every kind rather than for one example.
-ALLOWED_FINDING_KINDS = (
-    "insight",
-    "decision",
-    "question",
-    "todo",
-    "hypothesis",
-    "takeaway",
-    "failure",
-)
+# The finding kinds the LLM may emit as the ``kind`` field. DERIVED from
+# ``research_graph.SESSION_FINDING_KIND_TO_TYPE``, which is the taxonomy's one
+# source of truth, so this tuple cannot drift from the node types it names.
+# Adding a kind still requires a prose bullet in ``_PROMPT_SYSTEM`` below —
+# that is the one thing that cannot be derived, and
+# ``tests/test_session_finding_kind_wiring.py`` asserts every kind has one.
+ALLOWED_FINDING_KINDS: Tuple[str, ...] = SESSION_FINDING_KINDS
 
 
 @dataclass
@@ -67,7 +61,7 @@ class Finding:
 
 
 _PROMPT_SYSTEM = """You are an extractor that reads agent/user conversation transcripts and \
-produces a structured list of findings as JSON. Findings fall into seven kinds:
+produces a structured list of findings as JSON. Findings fall into these kinds:
 
 - "insight"     — a learned fact, observed pattern, or non-obvious connection that emerged in the conversation
 - "decision"    — an explicit choice the user and agent agreed on
@@ -86,7 +80,7 @@ Output schema (strictly):
 {
   "findings": [
     {
-      "kind": "<one of: insight | decision | question | todo | hypothesis | takeaway | failure>",
+      "kind": "<one of: __ALLOWED_KINDS__>",
       "body": "<single-line statement of the finding, <= 240 chars>",
       "turn_ids": [<int>, <int>, ...],
       "references": ["<doc_node_id>", "<doc_node_id>", ...],
@@ -106,6 +100,16 @@ Constraints:
 - "confidence" reflects how well the TRANSCRIPT supports the finding (1.0 = stated explicitly and unambiguously; lower = inferred). Do NOT infer intent or motivation that was not actually stated — lower the confidence instead.
 - "confidence_rationale" justifies the score in one clause. It is a flag for the reader, never a guarantee of truth.
 - "revisit_signals" is optional ([] if none): conditions that would make this finding stale or worth re-checking later."""
+
+# The one place the prompt names the kind set as a machine-readable union is
+# substituted from ``ALLOWED_FINDING_KINDS`` rather than retyped. The bullets
+# above stay hand-written — a kind's SEMANTICS cannot be derived — and the
+# wiring test asserts every allowed kind has one, so a kind added to the
+# taxonomy without a bullet fails there rather than reaching the model
+# undescribed.
+_PROMPT_SYSTEM = _PROMPT_SYSTEM.replace(
+    "__ALLOWED_KINDS__", " | ".join(ALLOWED_FINDING_KINDS)
+)
 
 
 def _build_user_message(
