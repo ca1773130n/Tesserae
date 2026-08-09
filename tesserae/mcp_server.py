@@ -1497,10 +1497,14 @@ class LLMWikiMCPServer:
                                 "query into sub-queries and reserve budget slots for "
                                 "the most relevant Runbook / Gotcha / Event "
                                 "distilled-memory nodes. Only nodes actually made by "
-                                "one of those producers qualify — a document "
-                                "extraction that merely landed on the type name does "
-                                "not — so pools are often empty; `knobs."
-                                "pool_reservations` reports what each one found. "
+                                "a producer qualify (the distillation passes, the "
+                                "session-event pass, or an agent's own graph_write) "
+                                "— a document extraction that merely landed on the "
+                                "type name does not — so pools are often empty. "
+                                "`knobs.pool_reservations` reports each pool as null "
+                                "(nothing to reserve) or {node_id, delivered}, where "
+                                "delivered=false means the budget dropped the "
+                                "reserved node before it reached the bundle. "
                                 "Default false = single-pool."
                             ),
                         },
