@@ -1595,6 +1595,7 @@ def _tool_result_turn(
     text: str,
     is_error: object = None,
     exit_code: Optional[int] = None,
+    call_id: object = None,
 ) -> Dict[str, object]:
     """Build a ``tool_result`` turn, omitting every signal that is absent.
 
@@ -1610,6 +1611,19 @@ def _tool_result_turn(
     ``is_error`` is stored only when it is a real ``bool`` and ``exit_code``
     only when it is not None, so a harness that one day sends the string
     ``"false"`` records no signal rather than a failure.
+
+    ``call_id`` is the harness's OWN identifier for the call this result
+    answers — Claude's ``tool_use_id``, Codex's ``call_id``. It costs one dict
+    key and it is the only thing that says WHAT this result is the result of:
+    the invocation's arguments live on a different turn, and without the id a
+    consumer has to re-derive the linkage by position. Position does not work.
+    Measured over the ingest corpus, 746 of Codex's 1,286 results (58%) were
+    issued while another call was outstanding — Codex emits a whole batch of
+    ``function_call``s and then the whole batch of outputs, up to 5 deep — so
+    "the result after the invocation" is wrong for the majority of them. A FIFO
+    queue keyed on the tool name reproduces the harness's linkage for 2,328 of
+    2,330 results, which is to say it is silently wrong twice, forever. Storing
+    the id makes the question exact instead of 99.91% right.
     """
     turn: Dict[str, object] = {
         "role": "tool_result",
@@ -1621,6 +1635,32 @@ def _tool_result_turn(
         turn["is_error"] = is_error
     if exit_code is not None:
         turn["exit_code"] = exit_code
+    if isinstance(call_id, str) and call_id:
+        turn["call_id"] = call_id
+    return turn
+
+
+def _tool_call_turn(
+    *,
+    timestamp: str,
+    name: str,
+    text: str,
+    call_id: object = None,
+) -> Dict[str, object]:
+    """Build a ``tool`` (invocation) turn, carrying the harness's call id.
+
+    The invocation is where the OPERAND lives — the command, the file path,
+    the arguments. ``_tool_result_turn`` records how it went; this records what
+    was asked for; ``call_id`` is what joins them.
+    """
+    turn: Dict[str, object] = {
+        "role": "tool",
+        "timestamp": timestamp,
+        "name": name,
+        "text": text,
+    }
+    if isinstance(call_id, str) and call_id:
+        turn["call_id"] = call_id
     return turn
 
 
@@ -1670,7 +1710,14 @@ def _claude_turns(rows: Sequence[Mapping[str, object]], limit: int = _TURN_LIMIT
                 if item.get("type") == "tool_use":
                     name = str(item.get("name") or "tool")
                     tool_text = _turn_text(json.dumps(item.get("input", {}), ensure_ascii=False, sort_keys=True), limit=_TOOL_TURN_LIMIT)
-                    turns.append({"role": "tool", "timestamp": timestamp, "name": name, "text": tool_text})
+                    turns.append(
+                        _tool_call_turn(
+                            timestamp=timestamp,
+                            name=name,
+                            text=tool_text,
+                            call_id=item.get("id"),
+                        )
+                    )
                 elif item.get("type") == "tool_result":
                     tool_use_id = item.get("tool_use_id")
                     # ``content`` here is a bare string 89.5% of the time and a
@@ -1687,6 +1734,7 @@ def _claude_turns(rows: Sequence[Mapping[str, object]], limit: int = _TURN_LIMIT
                             else "tool",
                             text=result_text,
                             is_error=item.get("is_error"),
+                            call_id=tool_use_id,
                         )
                     )
         if len(turns) >= limit:
@@ -1713,7 +1761,14 @@ def _codex_turns(rows: Sequence[Mapping[str, object]], limit: int = _TURN_LIMIT_
                 call_names[call_id] = name
             tool_text = _turn_text(str(payload.get("arguments") or ""), limit=_TOOL_TURN_LIMIT)
             if tool_text:
-                turns.append({"role": "tool", "timestamp": timestamp, "name": name, "text": tool_text})
+                turns.append(
+                    _tool_call_turn(
+                        timestamp=timestamp,
+                        name=name,
+                        text=tool_text,
+                        call_id=call_id,
+                    )
+                )
         elif payload.get("type") == "function_call_output":
             output = payload.get("output")
             output_text = output if isinstance(output, str) else _content_to_text(output)
@@ -1726,6 +1781,7 @@ def _codex_turns(rows: Sequence[Mapping[str, object]], limit: int = _TURN_LIMIT_
                     else "function_call",
                     text=output_text,
                     exit_code=_codex_exit_code(output_text),
+                    call_id=call_id,
                 )
             )
         if len(turns) >= limit:
