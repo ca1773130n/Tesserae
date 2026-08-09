@@ -23,6 +23,18 @@ import re
 #: pure function of the text. Keying on the running user's home would make the
 #: output depend on WHO compiled — breaking byte-idempotence across machines —
 #: and would leave a second operator's home directory untouched.
+#:
+#: There is no LEFT boundary, and that is a decision rather than an oversight.
+#: A boundary would make the rule stricter and therefore leakier, and the
+#: corpus says by how much: of the 3,432 matches over the ingest corpus's turn
+#: text, 24 are directly preceded by a word character — every one of them a
+#: real home path abutting an escape sequence, ``...\nn/Users/neo/...`` inside
+#: a JSON-escaped shell script (22) or ``\x1b[35m/Users/neo/...`` inside ANSI
+#: colour output (2). ``(?<![\w])`` would stop redacting all 24. What it would
+#: buy is not over-redacting a path that merely CONTAINS ``/Users/<x>`` deeper
+#: down (``/opt/Users/shared``); that renders as ``/opt~``, which is ugly and
+#: publishes nothing. Leaking 24 real home paths to stop an ugly rendering is
+#: the wrong trade, so the rule stays greedy on the left.
 HOME_PATH = re.compile(r"/(?:Users|home)/[^/\s]+")
 
 

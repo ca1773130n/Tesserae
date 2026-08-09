@@ -759,34 +759,47 @@ def is_tesserae_internal_session(session: HarnessSession) -> bool:
     the prompt out of the title. False positives (dropping real work) are worse
     than false negatives here, so the anchor is deliberate.
 
-    The turn window is defined over CONVERSATION turns — what was said, not
-    what ingest happened to mint from it. Tool invocations and their results
-    are excluded from it in both directions, and both matter:
+    The turn window is the OPENING of the session: the turns spoken before the
+    model first replies, capped at three. Three properties have to hold at once
+    and only this window has all three.
 
-    * a tool loop must not DISPLACE the signature past the window. Today no
-      Tesserae internal call uses tools (a ``claude -p`` one-shot has no tool
-      loop; measured, 700 of 700 self-capture transcripts carry the signature
-      at turn 0 and 2 carry any tool result at all), so the guard survives on
-      a property of how Tesserae currently calls the model rather than on
-      anything the guard itself enforces. An agentic extraction or a retrieval
-      planner with MCP access would break that, silently, by re-admitting the
-      record. Excluding tool turns makes it an invariant instead.
     * a tool RESULT must not match. A ``Read`` of a prompt constant, a ``cat``
       of ``prompts/``, or a subagent result that echoes one puts a signature at
-      position 0 of the result text — and dropping real work is the failure
-      this docstring already calls the worse one.
+      position 0 of the result text. Tool turns are excluded outright.
+    * a tool loop must not DISPLACE the signature out of the window. A raw
+      ``turns[:3]`` slice is three *minted* turns, so a single tool call before
+      the prompt would push it out. Today no Tesserae internal call uses tools
+      (a ``claude -p`` one-shot has no tool loop; measured, 700 of 700
+      self-capture transcripts carry the signature at turn 0 and 2 carry any
+      tool result at all), but an agentic extraction or a retrieval planner
+      with MCP access would break that silently. Counting spoken turns only
+      makes it an invariant rather than a property of today's call shape.
+    * the window must not REACH, and this is the one that bounds the other two.
+      Counting spoken turns with no stop condition walks arbitrarily deep: the
+      third spoken turn can be a thousand tool turns in, and a user who pastes
+      one of these prompts to ask about it — routine in this repository — then
+      has their whole session dropped. That is a false positive, and this
+      docstring already says false positives are the worse failure. So the
+      window ends at the model's first reply: a self-capture record IS a
+      one-shot, the prompt is what precedes the answer, and after an answer
+      exists, text that looks like a prompt is someone discussing one.
     """
     blobs = [session.title or "", session.summary or "", session.redacted_preview or ""]
     turns = (session.metadata or {}).get("turns") if isinstance(session.metadata, dict) else None
     if isinstance(turns, list):
-        spoken = [
-            turn
-            for turn in turns
-            if isinstance(turn, Mapping)
-            and str(turn.get("role") or "") not in ("tool", "tool_result")
-        ]
-        for turn in spoken[:3]:
-            blobs.append(str(turn.get("text") or ""))
+        opening: List[str] = []
+        for turn in turns:
+            if not isinstance(turn, Mapping):
+                continue
+            role = str(turn.get("role") or "")
+            if role in ("tool", "tool_result"):
+                continue
+            if role == "assistant":
+                break
+            opening.append(str(turn.get("text") or ""))
+            if len(opening) >= 3:
+                break
+        blobs.extend(opening)
     return any(
         blob.lstrip().startswith(_TESSERAE_PROMPT_SIGNATURES) for blob in blobs
     )
@@ -1513,30 +1526,48 @@ _TOOL_TURN_LIMIT = 1200
 #: plain ``output`` string — it is a display convention, not a schema, so it is
 #: matched rather than looked up, and a miss must stay a miss (see
 #: ``_codex_exit_code``). Claude has no equivalent anywhere.
-_CODEX_EXIT_CODE_RE = re.compile(r"^Process exited with code (-?\d+)$", re.MULTILINE)
+_CODEX_EXIT_CODE_RE = re.compile(r"^Process exited with code (-?\d+)$")
 
-#: Only the header is scanned. A result body can legitimately contain the
-#: sentence (a transcript of another run, this very comment), and the header is
-#: always within the first few lines.
+#: The line that ends Codex's header and begins the tool's own bytes. It is the
+#: anchor, not a heuristic: measured over the ingest corpus, ALL 1,232 outputs
+#: carrying an exit line have this marker within the first 2 KB, and the exit
+#: line always precedes it (line index 2, in 1,232 of 1,232).
+_CODEX_OUTPUT_MARKER = "\nOutput:\n"
+
+#: Backstop on the header scan. The header is four short lines; a 2 KB slice is
+#: already far more than it can occupy, and it bounds the work on a 2 MB result.
 _CODEX_EXIT_SCAN_CHARS = 2048
 
 
 def _codex_exit_code(output: str) -> Optional[int]:
-    """The exit code Codex reported, or None when it reported none.
+    """The exit code Codex reported in its HEADER, or None when it reported none.
 
-    None is a real answer, not a fallback: 4.2% of outputs (apply_patch, MCP
-    tools) carry no exit line at all. Returning 0 for those would manufacture
-    the "this ran and passed" claim that the whole change exists to make
-    honest, and would let the coverage rot silently the day Codex changes its
-    output framing.
+    Only the header — the bytes before ``Output:`` — is read, and a result with
+    no header has no exit code. The body cannot be scanned for this line: a tool
+    result routinely contains one that is not its own. A ``cat`` of a transcript,
+    a test that asserts on the string, a ``git show`` of this very module all
+    put ``Process exited with code 0`` inside the body, and the 54 results that
+    genuinely have no exit line (apply_patch, MCP tools — none of them a shell)
+    are exactly the ones where such a line would be believed. Stamping one there
+    invents a passing run on a tool that never ran a process, which is the
+    single claim this whole path exists to make honest.
+
+    None is a real answer, not a fallback. Returning 0 for a missing header
+    would manufacture "this ran and passed", and would let the coverage rot
+    silently the day Codex changes its output framing — a miss must stay a miss.
     """
-    match = _CODEX_EXIT_CODE_RE.search(output[:_CODEX_EXIT_SCAN_CHARS])
-    if match is None:
+    head = output[:_CODEX_EXIT_SCAN_CHARS]
+    marker = head.find(_CODEX_OUTPUT_MARKER)
+    if marker < 0:
         return None
-    try:
-        return int(match.group(1))
-    except ValueError:  # pragma: no cover - the group is \d+ by construction
-        return None
+    for line in head[:marker].split("\n"):
+        match = _CODEX_EXIT_CODE_RE.match(line.strip())
+        if match is not None:
+            try:
+                return int(match.group(1))
+            except ValueError:  # pragma: no cover - the group is \d+ already
+                return None
+    return None
 
 
 def _tool_result_turn(
@@ -1550,10 +1581,17 @@ def _tool_result_turn(
     """Build a ``tool_result`` turn, omitting every signal that is absent.
 
     ``is_error`` and ``exit_code`` are TYPED FIELDS, not something to recover
-    from the truncated text: measured, only 2.18% of results carry ``is_error``
-    and only 1.64% of result text so much as mentions an exit code, so
-    re-parsing a 1,200-char-capped string would lose most of the signal this
-    exists to carry. An absent key means "not reported" — never "succeeded".
+    from the truncated text. Measured over the 2,330 results in the ingest
+    corpus: Claude sets ``is_error`` on 431 of its 1,044 results (41.3%) and
+    NEVER writes an exit code anywhere, while Codex writes an exit code in a
+    header on 1,232 of its 1,286 (95.8%) and never sets ``is_error``. Neither
+    signal survives a 1,200-char cap on the wrong side of it, and a Claude
+    failure has no text to re-parse at all. An absent key means "not reported"
+    — never "succeeded".
+
+    ``is_error`` is stored only when it is a real ``bool`` and ``exit_code``
+    only when it is not None, so a harness that one day sends the string
+    ``"false"`` records no signal rather than a failure.
     """
     turn: Dict[str, object] = {
         "role": "tool_result",
@@ -1690,19 +1728,34 @@ def _errors_from_turns(turns: Sequence[Mapping[str, object]]) -> List[str]:
     ``HarnessSession.errors`` was declared and round-tripped from the day it
     was written and populated by nothing — 0 of the 211 live records carried
     one. This is its only writer. A turn counts as a failure on POSITIVE
-    evidence only: ``is_error`` true, or a non-zero exit code. Silence is not
-    failure, and it is not success either.
+    evidence only: ``is_error`` exactly ``True``, or an integer exit code that
+    is not zero. Silence is not failure, and it is not success either — and a
+    run that exited 0 is a SUCCESS, so it must never land here. Dropping the
+    ``!= 0`` turns every recorded exit code into a reported failure, which is
+    the same over-claim as reading silence as success with the sign flipped.
+
+    The detail is home-path redacted like every other producer that copies
+    transcript text. ``errors`` is serialized into every stored session record
+    and read back by anything that loads the store, so an absolute
+    ``/Users/<name>/`` path here publishes the operator's account name exactly
+    as the node names did.
     """
     errors: List[str] = []
     for turn in turns:
         if str(turn.get("role") or "") != "tool_result":
             continue
         exit_code = turn.get("exit_code")
-        failed_exit = isinstance(exit_code, int) and not isinstance(exit_code, bool) and exit_code != 0
+        failed_exit = (
+            isinstance(exit_code, int)
+            and not isinstance(exit_code, bool)
+            and exit_code != 0
+        )
         if not (turn.get("is_error") is True or failed_exit):
             continue
         name = str(turn.get("name") or "tool")
-        detail = " ".join(str(turn.get("text") or "").split())[:_ERROR_TEXT_LIMIT]
+        detail = redact_home_paths(
+            " ".join(str(turn.get("text") or "").split())
+        )[:_ERROR_TEXT_LIMIT]
         prefix = f"{name} exited {exit_code}" if failed_exit else f"{name} failed"
         errors.append(f"{prefix}: {detail}" if detail else prefix)
         if len(errors) >= _MAX_SESSION_ERRORS:

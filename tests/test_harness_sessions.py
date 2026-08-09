@@ -1367,3 +1367,154 @@ def test_a_tool_result_quoting_a_tesserae_prompt_does_not_drop_a_real_session():
         },
     )
     assert is_tesserae_internal_session(session) is False
+
+
+def test_a_successful_run_is_not_recorded_as_an_error(tmp_path):
+    """The guard that separates a failure from a success is ``exit_code != 0``,
+    and nothing tested it: dropping it made EVERY result carrying an exit code a
+    reported failure, and the whole suite still passed (3,334 tests). Codex
+    stamps an exit code on 1,232 of its 1,286 results, so the mutant turns a
+    session of clean runs into a session that failed 1,232 times."""
+    from tesserae.harness_sessions import _errors_from_turns
+
+    turns = [
+        {"role": "tool_result", "name": "shell", "text": "12 passed", "exit_code": 0},
+        {"role": "tool_result", "name": "shell", "text": "boom", "exit_code": 1},
+    ]
+    errors = _errors_from_turns(turns)
+    assert len(errors) == 1, f"a run that exited 0 is a success: {errors}"
+    assert "exited 1" in errors[0]
+
+
+def test_a_non_boolean_is_error_is_not_recorded_as_a_failure():
+    """``is_error`` is compared with ``is True``, not for truthiness. A harness
+    that sends the STRING "false" would otherwise report a failure that the
+    harness explicitly denied."""
+    from tesserae.harness_sessions import _errors_from_turns, _tool_result_turn
+
+    assert _errors_from_turns(
+        [{"role": "tool_result", "name": "Bash", "text": "fine", "is_error": "false"}]
+    ) == []
+    turn = _tool_result_turn(timestamp="", name="Bash", text="fine", is_error="false")
+    assert "is_error" not in turn
+
+
+def test_a_session_never_stores_more_than_the_error_cap(tmp_path):
+    """``errors`` is serialized into every stored record, so it is bounded on
+    both axes. Neither bound was asserted anywhere."""
+    from tesserae.harness_sessions import (
+        _ERROR_TEXT_LIMIT,
+        _MAX_SESSION_ERRORS,
+        _errors_from_turns,
+    )
+
+    turns = [
+        {
+            "role": "tool_result",
+            "name": "shell",
+            "text": "x" * 5000,
+            "exit_code": 1,
+        }
+    ] * (_MAX_SESSION_ERRORS + 25)
+    errors = _errors_from_turns(turns)
+    assert len(errors) == _MAX_SESSION_ERRORS
+    assert all(len(e) <= len("shell exited 1: ") + _ERROR_TEXT_LIMIT for e in errors)
+
+
+def test_a_recorded_error_does_not_publish_the_operators_home_directory():
+    """``errors`` was the one field this branch added that the home-path
+    redaction invariant did not cover, and it is stored in every session
+    record."""
+    from tesserae.harness_sessions import _errors_from_turns
+
+    (error,) = _errors_from_turns(
+        [
+            {
+                "role": "tool_result",
+                "name": "Bash",
+                "text": "FAILED /Users/rivka/proj/tests/test_x.py::test_y",
+                "exit_code": 1,
+            }
+        ]
+    )
+    assert "/Users/rivka" not in error
+    assert "~/proj/tests/test_x.py" in error
+
+
+# ---------------------------------------------------------------------------
+# The Codex exit code is read from a header, never from the body
+# ---------------------------------------------------------------------------
+
+
+def test_an_exit_line_quoted_in_a_tool_result_body_is_not_an_exit_code():
+    """A result that merely CONTAINS the sentence has not reported an exit
+    status. ``cat`` of a transcript, a test asserting on the string, ``git
+    show`` of the module that defines it — all of them put the line in the body,
+    and the 54 results with no header are exactly where it would be believed."""
+    from tesserae.harness_sessions import _codex_exit_code
+
+    assert (
+        _codex_exit_code(
+            "Success. Updated the following files:\n"
+            "M runner.py\n"
+            "and the transcript it patched reads:\n"
+            "Process exited with code 0\n"
+        )
+        is None
+    )
+
+
+def test_the_exit_code_is_read_from_the_header_not_from_the_body():
+    """Both halves in one result: the header says 0, the body quotes 1."""
+    from tesserae.harness_sessions import _codex_exit_code
+
+    assert (
+        _codex_exit_code(
+            "Chunk ID: 861f8c\n"
+            "Wall time: 0.4 seconds\n"
+            "Process exited with code 0\n"
+            "Original token count: 12\n"
+            "Output:\n"
+            "Process exited with code 1\n"
+        )
+        == 0
+    )
+
+
+def test_the_self_capture_window_does_not_reach_past_the_first_reply():
+    """Counting SPOKEN turns with no stop condition walks arbitrarily deep, so
+    a user who pastes one of these prompts to ask about it — routine in this
+    repository — has the whole session dropped. The guard's own docstring says
+    dropping real work is the worse failure, so the window ends at the model's
+    first reply: after an answer exists, prompt-shaped text is someone
+    discussing a prompt."""
+    from tesserae.harness_sessions import (
+        HarnessSession,
+        _TESSERAE_PROMPT_SIGNATURES,
+        is_tesserae_internal_session,
+    )
+
+    signature = _TESSERAE_PROMPT_SIGNATURES[0]
+    turns = [
+        {"role": "user", "text": "refactor the exporter"},
+        {"role": "assistant", "text": "Starting on the exporter now."},
+    ]
+    for _ in range(20):
+        turns.append({"role": "tool", "name": "Edit", "text": "{}"})
+        turns.append({"role": "tool_result", "name": "Edit", "text": "ok"})
+    turns.append({"role": "user", "text": signature + " — why does this drop TODOs?"})
+
+    session = HarnessSession(
+        id="z",
+        slug="z",
+        harness="claude-code",
+        agent_label="Claude Code",
+        project_name="p",
+        project_root="/tmp/p",
+        started_at="2026-08-09T10:00:00Z",
+        title="refactor the exporter",
+        summary="refactor the exporter",
+        redacted_preview="refactor the exporter",
+        metadata={"turns": turns},
+    )
+    assert is_tesserae_internal_session(session) is False
