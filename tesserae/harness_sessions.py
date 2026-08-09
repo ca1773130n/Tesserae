@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass, field, replace as replace_dc
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
-from .redaction import redact_home_paths
+from .redaction import redact_home_paths, redact_published_text
 
 logger = logging.getLogger(__name__)
 
@@ -1469,24 +1469,6 @@ def _first_message_model(rows: Sequence[Mapping[str, object]]) -> str:
     return ""
 
 
-_REDACT_PATTERNS = (
-    re.compile(r"(?i)(api[_-]?key|token|secret|password|passwd|authorization|bearer)\s*[:=]\s*[^\s,;]+"),
-    re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+\-/=]+"),
-    re.compile(r"sk-[A-Za-z0-9]{12,}"),
-    re.compile(r"ghp_[A-Za-z0-9]{20,}"),
-    re.compile(r"xox[baprs]-[A-Za-z0-9-]+"),
-)
-
-
-def _redact_text(text: str) -> str:
-    if not text:
-        return ""
-    redacted = text
-    for pattern in _REDACT_PATTERNS:
-        redacted = pattern.sub("[REDACTED]", redacted)
-    return redacted
-
-
 def _turn_text(text: str, limit: int = 2400) -> str:
     """The stored form of one turn's text: redacted, then truncated.
 
@@ -1505,8 +1487,13 @@ def _turn_text(text: str, limit: int = 2400) -> str:
     the truncation point cannot survive as a fragment, and the cap counts the
     bytes actually stored. ``redact_home_paths`` is idempotent (``~`` contains
     no second root to match), so the later copies re-applying it are harmless.
+
+    The rules themselves live in :mod:`tesserae.redaction` rather than here,
+    because ingest is not the only writer: a producer that copies a command
+    out of a turn and into an edge needs the same credential rules, and a
+    private copy in the ingest layer is unreachable from the graph layer.
     """
-    clean = redact_home_paths(_redact_text(text.strip()))
+    clean = redact_published_text(text.strip())
     if len(clean) <= limit:
         return clean
     return clean[:limit].rstrip() + "…"
@@ -1536,7 +1523,7 @@ _TURN_LIMIT_BACKSTOP = 100_000
 # median 1,825 chars, p99 40,082, max 2,044,054 — 14.7 MB raw, 2.0 MB at this
 # cap. ``_TURN_LIMIT_BACKSTOP`` counts TURNS and gives no protection against
 # bytes, so this is the only thing bounding what a runaway result stores.
-# Routing through ``_turn_text`` also applies ``_redact_text``, so a secret
+# Routing through ``_turn_text`` also applies ``redact_secrets``, so a secret
 # echoed back by a tool is redacted on the way in.
 _TOOL_TURN_LIMIT = 1200
 
