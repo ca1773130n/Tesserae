@@ -645,16 +645,25 @@ def test_capturing_tool_results_does_not_renumber_the_events_already_minted():
     )
 
 
-def test_a_tool_result_event_id_does_not_collide_with_a_conversation_turns():
-    """The two id-seed spaces share one namespace, so the result key has to be
-    distinguishable from a plain ordinal rather than merely unlikely."""
-    turns = _mixed_turns() + [
-        {
-            "role": "tool_result",
-            "timestamp": "2026-08-09T10:00:05Z",
-            "name": "Read",
-            "text": "second result in the same run",
-        }
+def test_two_results_from_one_parallel_tool_call_get_distinct_ids():
+    """The shape that forces the result key to carry its own counter.
+
+    A parallel tool call — routine in Claude transcripts — emits two invocations
+    and then two results back to back, all naming the same tool. The seed's
+    positional half is the count of CONVERSATION turns, which does not advance
+    across a run of results, and the other half is the action, which is the tool
+    name for both. Without the per-run counter the two results are one node, so
+    one Event stands for two turns and every finding citing either lands on it.
+    """
+    turns = [
+        {"role": "user", "timestamp": "2026-08-09T10:00:00Z", "text": "read both"},
+        {"role": "tool", "timestamp": "2026-08-09T10:00:01Z", "name": "Read", "text": '{"a": 1}'},
+        {"role": "tool", "timestamp": "2026-08-09T10:00:01Z", "name": "Read", "text": '{"b": 2}'},
+        {"role": "tool_result", "timestamp": "2026-08-09T10:00:02Z", "name": "Read", "text": "alpha"},
+        {"role": "tool_result", "timestamp": "2026-08-09T10:00:02Z", "name": "Read", "text": "beta"},
     ]
     nodes = _events(turns)
+    results = [n for n in nodes if n.metadata["actor"] == "tool_result"]
+    assert len(results) == 2
+    assert results[0].id != results[1].id
     assert len({n.id for n in nodes}) == len(nodes)
