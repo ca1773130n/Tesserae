@@ -18,6 +18,8 @@ from dataclasses import asdict, dataclass, field, replace as replace_dc
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
+from .redaction import redact_home_paths
+
 logger = logging.getLogger(__name__)
 
 # How far into nested ``content`` lists the tally walks. Harness images sit at
@@ -1564,8 +1566,15 @@ def _title_and_preview(texts: Sequence[str]) -> Tuple[str, str]:
     meaningful = [t for t in texts if not _is_boilerplate_preamble(t)]
     pool = meaningful or list(texts)
     first_raw = pool[0].strip()
-    title = _clean_text(first_raw.splitlines()[0]).strip("# ")[:96]
-    preview = _clean_text("\n\n".join(pool[:4]))[:1200]
+    # Redacted HERE, at the mint, because this one pair of strings fans out to
+    # four published surfaces: ``session.title`` becomes the Session node's
+    # display name, the same helper mints the subagent descriptor title that
+    # becomes a SessionTakeaway name (51 of the 57 measured leaks), and
+    # ``preview`` is stored as the field literally called ``redacted_preview``,
+    # which until now redacted secrets but not the operator's home directory.
+    # Redacting at any one display site would leave the other three.
+    title = redact_home_paths(_clean_text(first_raw.splitlines()[0]).strip("# ")[:96])
+    preview = redact_home_paths(_clean_text("\n\n".join(pool[:4]))[:1200])
     return title, preview
 
 

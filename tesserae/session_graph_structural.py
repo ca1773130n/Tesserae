@@ -29,6 +29,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Set
 
 from .agent_identity import ORG_ROOT, AgentRegistry, resolve_agent_key
 from .harness_sessions import HarnessSession, session_matches_project
+from .redaction import redact_home_paths
 from .research_graph import (
     ResearchEdge,
     ResearchGraph,
@@ -118,7 +119,11 @@ def extract_structural(
         # in ``session_graph.py``.
         session_anchor_ts = _session_anchor_timestamp(session)
         for decision_text in session.decisions or []:
-            text = (decision_text or "").strip()
+            # Redacted BEFORE the seed hash, not after: leaving the home path
+            # in the hash input would make the id depend on whose machine
+            # compiled. This one costs id churn (measured: 1 SessionDecision +
+            # 1 SessionTODO on the live graph) and is worth it for that reason.
+            text = redact_home_paths((decision_text or "").strip())
             if not text:
                 continue
             decision_id_seed = (
@@ -198,8 +203,12 @@ def extract_structural(
                 promoted_kind = ResearchNodeType.SESSION_DECISION.value
                 if sub_type:
                     sub_id = str(descriptor.get("id") or sub_key)
+                    # The largest of the five leaking producers: 51 of the 57
+                    # nodes measured on the live graph. Its seed is text-free
+                    # (``session:{id}:subagent:{sub}:run``), so all 51 keep
+                    # their id and every edge — a name rewrite, not churn.
                     run_text = (
-                        str(descriptor.get("title") or "").strip()
+                        redact_home_paths(str(descriptor.get("title") or "").strip())
                         or f"{sub_type} subagent run"
                     )
                     run_id_seed = f"session:{session.id}:subagent:{sub_id}:run"
@@ -471,7 +480,7 @@ def _subagent_anchor_timestamp(descriptor: Mapping[str, object]) -> str | None:
 
 def _session_display_name(session: HarnessSession) -> str:
     """Human-readable name for a Session node (e.g. ``2026-05-19 weekly digest``)."""
-    title = (session.title or session.slug or session.id).strip()
+    title = redact_home_paths((session.title or session.slug or session.id).strip())
     date = session.date
     if date and date != "undated" and date not in title:
         return f"{date} — {title}" if title else date

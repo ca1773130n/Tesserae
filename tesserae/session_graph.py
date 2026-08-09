@@ -56,6 +56,7 @@ from .research_graph import (
     ResearchNodeType,
     stable_id,
 )
+from .redaction import redact_home_paths
 from .session_graph_llm import Finding, extract_with_llm
 from .session_graph_path_index import DocPathIndex
 from .session_graph_structural import extract_structural
@@ -336,8 +337,18 @@ class SessionGraphExtractor:
             node_type = _KIND_TO_NODE_TYPE.get(f.kind)
             if node_type is None:
                 continue
+            # The model writes this body from raw transcript turns, so it is
+            # the one finding field that can carry the operator's home
+            # directory into graph.json, the vault and the site. Redact BEFORE
+            # the seed hash: exempting the seed would leave the home path in
+            # the hash input and make the id depend on whose machine compiled.
+            # Measured cost on the live graph: 2 nodes (1 SessionDecision, 1
+            # SessionTODO) and their 6 edges move id — a declared migration,
+            # not a no-op. The latent exposure is larger: all 1,162 session-llm
+            # findings hash their body, so any FUTURE leak churns silently.
+            body = redact_home_paths(f.body)
             finding_id_seed = (
-                f"session:{session_id_str}:{f.kind}:{_short_hash(f.body)}"
+                f"session:{session_id_str}:{f.kind}:{_short_hash(body)}"
             )
             # Deterministic decay anchor ONLY. ``first_seen_at`` is derived
             # from the SOURCE TURN's own timestamp, falling back to the
@@ -379,7 +390,7 @@ class SessionGraphExtractor:
             if f.revisit_signals:
                 finding_metadata["revisit_signals"] = list(f.revisit_signals)
             finding_node = builder.add_node(
-                name=f.body,
+                name=body,
                 node_type=node_type,
                 id_seed=finding_id_seed,
                 metadata=finding_metadata,
