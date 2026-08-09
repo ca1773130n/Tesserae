@@ -248,3 +248,36 @@ def test_rerun_is_byte_identical():
     enriched = extract_events(session, findings=[finding], json_client=_StubClient())
     assert [n.id for n in enriched[0]] == [n.id for n in first[0]]
     assert _dump(enriched[0], enriched[1])[1] == _dump(*first)[1]  # edges identical
+
+
+# --------------------------------------------------------------------------
+# Gate (roadmap step 4): the Event pass owns its own switch
+# --------------------------------------------------------------------------
+
+
+def test_event_pass_gate_is_default_on_with_config_and_env_opt_out():
+    """Default-on, opt-out by config or env, env wins.
+
+    Separate from ``distillation_enabled`` on purpose: that gate guards an LLM
+    pass and is default-OFF, while this one guards a deterministic template
+    pass. Sharing it meant the LLM-free layer could not be had on its own.
+    """
+    from tesserae.memory.distill import distillation_enabled
+    from tesserae.session_event import event_pass_enabled
+
+    assert event_pass_enabled(cfg=None, env={}) is True
+    assert event_pass_enabled(cfg={"session_events": {"enabled": False}}, env={}) is False
+    assert event_pass_enabled(cfg={"session_events": {"enabled": "off"}}, env={}) is False
+    # env overrides config, both directions
+    assert event_pass_enabled(
+        cfg={"session_events": {"enabled": False}},
+        env={"TESSERAE_SESSION_EVENT_PASS": "1"},
+    ) is True
+    assert event_pass_enabled(
+        cfg=None, env={"TESSERAE_SESSION_EVENT_PASS": "no"}
+    ) is False
+
+    # The two gates are genuinely independent: the flag that runs the LLM
+    # distillation must not be what decides whether Events get minted.
+    assert distillation_enabled(cfg=None, env={}) is False
+    assert event_pass_enabled(cfg=None, env={}) is True

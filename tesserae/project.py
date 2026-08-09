@@ -1809,15 +1809,20 @@ class ProjectWiki:
         )
         session_slice = extractor.extract()
 
-        # AgentRunbook Event layer (opt-in, gated by the same distillation
-        # switch). For each session, mint per-transition ``Event`` nodes from
-        # its turns and link this session's findings to them via
-        # ``derived_from``. Additive + byte-idempotent; degrades to a
-        # deterministic no-LLM template when ``json_client`` is None. See
-        # ``tesserae.session_event`` and the AgentRunbook memory spec.
-        from .memory.distill import distillation_enabled
+        # AgentRunbook Event layer. For each session, mint per-transition
+        # ``Event`` nodes from its turns and link this session's findings to
+        # them via ``derived_from``. LLM-free and template-only, so additive and
+        # byte-idempotent — ``json_client`` is accepted for API symmetry and
+        # never used. See ``tesserae.session_event``.
+        #
+        # DEFAULT-ON for session-bearing projects (roadmap step 4): control
+        # flow only reaches here when ``in_project`` is non-empty. It used to
+        # share ``distillation_enabled`` with the LLM Runbook/Gotcha pass, which
+        # made this deterministic layer unavailable without also buying an LLM
+        # pass and its cache; ``event_pass_enabled`` is its own opt-out.
+        from .session_event import event_pass_enabled
 
-        if distillation_enabled(cfg):
+        if event_pass_enabled(cfg):
             from .session_event import extract_events
 
             findings_by_session: Dict[str, List[ResearchNode]] = {}

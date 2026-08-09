@@ -119,6 +119,7 @@ ungesetzt, es sei denn, Sie stoßen auf Kontext-Limits.
 | `TESSERAE_ENABLE_LLM_PASSES` | aus | Optionale LLM-Anreicherungs-Pässe über die Extraktion hinaus |
 | `TESSERAE_AGENT_DISTILL` | aus | Pro-Agent L1-Expertise-Artefakte (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | aus | Runbook/Gotcha distillierte Gedächtnis-Knoten |
+| `TESSERAE_SESSION_EVENT_PASS` | **ein** | `Event`-Knoten pro Zug aus Sitzungstranskripten. Ohne LLM und bytegenau deterministisch, aber ein Knoten je bedeutsamem Zug — bei langem Korpus umfangreich. `false`/`0`/`no`/`off` deaktiviert |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | ein | Verlinkt Session-Insights mit Code-Symbolen |
 | `TESSERAE_SUPERSEDE_PASS` | ein | `superseded_by` Kanten zwischen überarbeiteten Ansprüchen |
 | `TESSERAE_PROMPT_SIGNATURES` | aus | Zeichnet Prompt-Signaturen für Drift-Erkennung auf |

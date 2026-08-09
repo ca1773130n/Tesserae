@@ -103,6 +103,7 @@ export TESSERAE_LLM_CACHE=0   # 항상 re-ask
 | `TESSERAE_ENABLE_LLM_PASSES` | off | 추출 이상의 optional LLM enrichment passes |
 | `TESSERAE_AGENT_DISTILL` | off | Per-agent L1 expertise artifacts (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | off | Runbook/Gotcha distilled-memory nodes |
+| `TESSERAE_SESSION_EVENT_PASS` | **on** | 세션 트랜스크립트의 턴별 `Event` 노드. LLM을 쓰지 않고 바이트 단위로 결정적이지만, 유의미한 턴마다 노드 하나씩 — 긴 코퍼스에서는 규모가 커집니다. `false`/`0`/`no`/`off`로 비활성화 |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | on | session insights를 code symbols에 link |
 | `TESSERAE_SUPERSEDE_PASS` | on | 수정된 claims 사이의 `superseded_by` edges |
 | `TESSERAE_PROMPT_SIGNATURES` | off | drift detection을 위한 prompt signatures 기록 |
