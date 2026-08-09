@@ -105,35 +105,35 @@ def test_a_subagent_run_name_does_not_publish_the_operators_home_directory(
     assert any("~/Developer/proj/tesserae/verify.py" in n for n in names)
 
 
-def test_redacting_a_subagent_run_name_does_not_move_its_node_id(tmp_path: Path):
-    """The seed is ``session:{id}:subagent:{sub}:run`` — text-free. 51 nodes
-    change their name and keep every edge; that is the whole point of doing
-    this producer first."""
-    leaky = _session(
-        tmp_path,
-        metadata={
-            "subagents": [
-                {"id": "sub-1", "type": "code-reviewer", "title": "review /Users/rivka/x.py"}
-            ]
-        },
-    )
-    clean = _session(
-        tmp_path,
-        metadata={
-            "subagents": [
-                {"id": "sub-1", "type": "code-reviewer", "title": "review ~/x.py"}
-            ]
-        },
-    )
-    leaky_ids = {
-        n.id for n in _structural(leaky, tmp_path).nodes
-        if n.type == ResearchNodeType.SESSION_TAKEAWAY
-    }
-    clean_ids = {
-        n.id for n in _structural(clean, tmp_path).nodes
-        if n.type == ResearchNodeType.SESSION_TAKEAWAY
-    }
-    assert leaky_ids == clean_ids
+def test_a_subagent_run_id_is_a_function_of_the_subagent_not_of_its_name(
+    tmp_path: Path,
+):
+    """The seed is ``session:{id}:subagent:{sub}:run`` — text-free, which is
+    why redacting 51 SessionTakeaway names is a name rewrite that keeps every
+    edge rather than graph churn.
+
+    Pinned by feeding two DIFFERENT titles, not two spellings of one: comparing
+    a leaky title against its already-redacted twin proves nothing, because
+    redaction collapses them before the seed is built either way. A seed that
+    hashed the title would survive that comparison and fail this one."""
+    def _takeaway_ids(title: str) -> set:
+        session = _session(
+            tmp_path,
+            metadata={
+                "subagents": [
+                    {"id": "sub-1", "type": "code-reviewer", "title": title}
+                ]
+            },
+        )
+        return {
+            n.id
+            for n in _structural(session, tmp_path).nodes
+            if n.type == ResearchNodeType.SESSION_TAKEAWAY
+        }
+
+    first = _takeaway_ids("review the retrieval planner")
+    second = _takeaway_ids("audit the federation whitelist instead")
+    assert first and first == second
 
 
 # ---------------------------------------------------------------------------

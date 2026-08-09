@@ -1235,7 +1235,12 @@ def test_a_session_records_its_failures_in_the_errors_field(tmp_path):
     assert hs.HarnessSession.from_dict(session.to_dict()).errors == session.errors
 
 
-def test_a_session_with_no_failures_records_no_errors(tmp_path):
+def test_a_result_that_reported_nothing_is_not_recorded_as_a_failure(tmp_path):
+    """The interesting case is SILENCE, not `is_error: false`. Most results —
+    every non-Bash tool — carry no outcome field at all, and the whole point of
+    the change is that neither absence nor presence may be invented. A session
+    of ordinary Read calls must record no errors, or `errors` becomes noise
+    instead of the failure list a recovery edge can anchor on."""
     from tesserae import harness_sessions as hs
 
     project = tmp_path / "proj"
@@ -1245,7 +1250,12 @@ def test_a_session_with_no_failures_records_no_errors(tmp_path):
     directory.mkdir(parents=True, exist_ok=True)
     rows = [
         {**row, "cwd": str(project.resolve()), "sessionId": "s2"}
-        for row in _claude_tool_rows({"type": "tool_result", "content": "ok", "is_error": False})
+        for row in (
+            # no is_error key at all — the 58.7% case
+            _claude_tool_rows({"type": "tool_result", "content": "file contents"}, tool="Read")
+            # explicitly not an error — the 37.8% case
+            + _claude_tool_rows({"type": "tool_result", "content": "ok", "is_error": False})
+        )
     ]
     path = directory / "s2.jsonl"
     path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
@@ -1253,6 +1263,41 @@ def test_a_session_with_no_failures_records_no_errors(tmp_path):
     session = hs._parse_claude_session(project.resolve(), root, path)
     assert session is not None
     assert session.errors == []
+
+
+def test_a_non_zero_exit_code_lands_in_errors_even_without_is_error(tmp_path):
+    """Codex reports no is_error at all — its only failure signal is the exit
+    code, so `errors` has to read that too or half the corpus never reports."""
+    from tesserae import harness_sessions as hs
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    root = tmp_path / "codex"
+    directory = root / "sessions"
+    directory.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "timestamp": "2026-08-09T09:59:00Z",
+            "payload": {"type": "session_meta", "cwd": str(project.resolve())},
+        },
+        {
+            "timestamp": "2026-08-09T09:59:30Z",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "run the suite"}],
+            },
+        },
+    ] + _codex_tool_rows(
+        "Process exited with code 2\nOutput:\nE   assert 1 == 2\n"
+    )
+    path = directory / "c1.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+    session = hs._parse_codex_session(project.resolve(), root, path)
+    assert session is not None
+    assert session.errors, "a non-zero exit code is a failure"
+    assert any("exited 2" in e for e in session.errors)
 
 
 def test_the_self_capture_guard_reads_past_tool_results_to_find_the_signature():
