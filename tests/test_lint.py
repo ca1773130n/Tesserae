@@ -1284,9 +1284,19 @@ def test_lint_procedural_pools_reports_reachability_not_just_census(
         },
     )
     finding = _node("f1", "SessionInsight", "cut the release from CI")
+    # A LINKED document extraction, so "reachable" cannot be counted for a node
+    # that is not producer-made. Without it every document extraction in this
+    # fixture is isolated, and a mutant that counts reachability BEFORE the
+    # provenance check still passes — it can only ever report reachable=0 for
+    # them by accident of the fixture. With this node present such a mutant
+    # reports Event=1/0/1, which is self-contradictory (reachable > made).
+    doc_event = _node("de1", "Event", "CVPR 2026")
     graph = {
-        "nodes": profiles + [runbook, finding],
-        "edges": [{"source": "rb1", "target": "f1", "type": "derived_from"}],
+        "nodes": profiles + [runbook, finding, doc_event],
+        "edges": [
+            {"source": "rb1", "target": "f1", "type": "derived_from"},
+            {"source": "de1", "target": "f1", "type": "mentions"},
+        ],
     }
     report = WikiLinter(_scaffold(tmp_path, graph=graph)).run()
 
@@ -1298,6 +1308,13 @@ def test_lint_procedural_pools_reports_reachability_not_just_census(
         f"reachable at all; got {message}"
     )
     assert "Runbook=1/1/1" in message, message
+    # The linked document extraction is reachable but NOT producer-made, so it
+    # must count only in the total. reachable > made is incoherent and is what a
+    # mutant that hoists the reachability tally above the provenance check emits.
+    assert "Event=0/0/1" in message, (
+        "a reachable node that no producer made must not be counted as reachable "
+        f"for the pool; got {message}"
+    )
     assert "ExpertiseProfile" in (matches[0].suggested_fix or "") + message, message
     assert "unreachable" in message.lower(), (
         f"an isolated pool must be named as unservable; got {message}"
