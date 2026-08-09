@@ -89,6 +89,44 @@ def _interpreter_recovery_session():
 # ---------------------------------------------------------------------------
 
 
+def test_a_leading_env_assignment_is_not_the_program():
+    """The ``VAR=VAL`` strip, quoted from the two corpus sessions that need it.
+
+    ``codex:019f0936`` and ``codex:019f0bff`` both prefix the command with
+    ``PYTHONDONTWRITEBYTECODE=1``. Without the strip that assignment becomes the
+    "program", identically on both sides, and ``python`` vs ``.venv/bin/python``
+    falls into the OPERAND instead — where it must match exactly, so the pair is
+    refused.
+
+    Nothing pinned this. Disabling ``_is_env_assignment`` left the whole module
+    green at 47 passed while the corpus yield dropped from 9 edges across 7
+    sessions to 7 across 5 — a silent loss of 22% of everything this step
+    produces. The module docstring uses this exact shape as its worked example,
+    and no test used one.
+    """
+    session = _Session(
+        [
+            _call("exec_command", {"cmd": f'PYTHONDONTWRITEBYTECODE=1 python -c "{EXPR}"'}, "c1"),
+            _result("exec_command", "c1", exit_code=127, text="command not found: python"),
+            _call(
+                "exec_command",
+                {"cmd": f'PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c "{EXPR}"'},
+                "c2",
+            ),
+            _result("exec_command", "c2", exit_code=0, text="ok"),
+        ]
+    )
+
+    edges = _recovers(session)
+
+    assert len(edges) == 1, (
+        "the env assignment must be stripped so the program family is compared; "
+        f"got {[e.metadata.get('anchor') for e in edges]}"
+    )
+    assert edges[0].metadata["program_family"] == "python"
+    assert "PYTHONDONTWRITEBYTECODE" not in str(edges[0].metadata["anchor"])
+
+
 def test_recovers_is_in_the_ontology_and_is_causal():
     assert RECOVERS_EDGE == "recovers"
     assert RECOVERS_EDGE in ALLOWED_EDGE_TYPES
@@ -205,11 +243,192 @@ def test_the_edge_names_both_turns_and_how_it_was_derived():
     assert "1" in (edge.evidence or "") and "3" in (edge.evidence or "")
     basis = edge.metadata["basis"]
     assert isinstance(basis, str) and basis
-    # "how was this derived" must be answerable per EDGE, not per edge type.
-    assert "command" in basis
+    # "how was this derived" must be answerable per EDGE, not per edge type,
+    # and it must name the DERIVATION rather than restate the conclusion:
+    # every dimension the two calls had to agree on, and what was observed at
+    # each end. "failure-then-success" alone implies more than was seen.
+    assert "argv-after-program" in basis
+    assert "program-family" in basis
+    assert "workdir" in basis
+    assert "observed-error-then-observed-ok" in basis
     assert edge.metadata["tool"] == "exec_command"
+    assert edge.metadata["program_family"] == "python"
     assert edge.metadata["gap"] == 1
     assert edge.metadata["failure_exit_code"] == 127
+
+
+def test_the_evidence_describes_only_what_was_observed():
+    """The honesty defect this whole step exists to avoid, in the one field a
+    human reads. The two commands DIFFERED — that difference is the entire point
+    of the key — so the sentence may not say "the same command"; the anchor is
+    argv after the program, not "the command"; and the rule only ever looked at
+    results whose operand it could read and whose outcome the harness reported,
+    so it may not claim there was no success in between full stop."""
+    edge = _recovers(_interpreter_recovery_session())[0]
+    ev = edge.evidence or ""
+    assert "the same command" not in ev
+    assert "on command" not in ev
+    # It says which dimension actually agreed...
+    assert "the same arguments after the program name" in ev
+    assert "'python'-family program" in ev
+    # ...and admits what it did NOT compare and did NOT look at.
+    assert "The full command texts were not compared." in ev
+    assert "results with no reported outcome" in ev
+    assert "whose operand could not be derived, were not examined" in ev
+
+
+def test_the_evidence_says_which_program_family_and_working_directory_agreed():
+    session = _Session(
+        [
+            _call("exec_command", {"cmd": f'python -c "{EXPR}"', "workdir": "/tmp/proj"}, "c1"),
+            _result("exec_command", "c1", exit_code=127),
+            _call("exec_command", {"cmd": f'python3 -c "{EXPR}"', "workdir": "/tmp/proj"}, "c2"),
+            _result("exec_command", "c2", exit_code=0),
+        ]
+    )
+    edge = _recovers(session)[0]
+    assert "in workdir '/tmp/proj'" in (edge.evidence or "")
+    assert edge.metadata["workdir"] == "/tmp/proj"
+
+
+# ---------------------------------------------------------------------------
+# A published string is a published secret — R1
+# ---------------------------------------------------------------------------
+
+
+#: A credential SHAPE, assembled at import time so no finished literal is
+#: committed. It must look real to the redactor and to nothing else.
+#:
+#: The first version hard-coded the token and named it ``LIVE_KEY`` — which is
+#: what a genuinely leaked one would be called. GitGuardian failed the pull
+#: request, correctly: a repository cannot tell a fixture from a leak by
+#: looking, and that is the whole premise of secret scanning.
+#:
+#: THE BODY IS WHAT GETS DETECTED, not the vendor prefix. That took four
+#: attempts to learn, so it is written down:
+#:
+#:   1. hard-coded ``sk-ant-api03-<40 random-looking chars>``  -> flagged
+#:   2. same body, prefix assembled from fragments             -> flagged
+#:   3. every vendor shape deleted from the tree               -> STILL flagged,
+#:      because an earlier commit in the same pull request still carried it and
+#:      the scan covers all nine
+#:   4. body replaced with a low-entropy, self-describing string -> this
+#:
+#: Attempts 1-3 all chased the ``sk-ant`` prefix. The detector was never looking
+#: at the prefix; it was looking at 40 characters of mixed-case alphanumeric
+#: entropy, which is what a real key body looks like and what a fixture has no
+#: reason to contain. Splitting the prefix defeated a match that was not
+#: happening.
+#:
+#: So the body now spells out what it is. It still matches the ``sk[-_]ant[-_]``
+#: rule in ``redaction.SECRET_PATTERNS`` — verified, and the tests below still
+#: fail when redaction is disabled — while carrying no entropy for a scanner to
+#: object to. Deleting the fixture was the alternative, and it cost the only
+#: test of the rule that exists because this shape is the most likely credential
+#: on a machine running this codebase; the coverage was worth keeping.
+#:
+#: An ignore rule was never the answer: it would teach the scanner to skip the
+#: one family this module redacts.
+_KEY_PREFIX = "sk-" + "ant-" + "api03-"
+CREDENTIAL_SHAPED = _KEY_PREFIX + "NOT" + "A" * 8 + "REALKEY" + "N" * 8 + "FIXTUREONLY"
+CREDENTIAL_SHAPED_ALT = _KEY_PREFIX + "Z" * 16
+
+
+def _credentialed_session():
+    return _Session(
+        [
+            _call("exec_command", {"cmd": f"python publish.py --api-key {CREDENTIAL_SHAPED} --dry-run"}, "c1"),
+            _result("exec_command", "c1", exit_code=127, text="command not found: python"),
+            _call("exec_command", {"cmd": f"python3 publish.py --api-key {CREDENTIAL_SHAPED} --dry-run"}, "c2"),
+            _result("exec_command", "c2", exit_code=0, text="published"),
+        ]
+    )
+
+
+def test_a_credential_in_the_command_never_reaches_the_edge():
+    """The edge copies a shell command into ``metadata["anchor"]`` and into the
+    human-readable evidence. Those become bytes in ``graph.json``, the markdown
+    projection and any exported site, so they pass the same credential rules
+    ingest applies to a turn — this producer is not exempt from them because it
+    is downstream of one that applies them."""
+    edges = _recovers(_credentialed_session())
+    assert len(edges) == 1
+    blob = json.dumps(edges[0].model_dump(), ensure_ascii=False)
+    assert CREDENTIAL_SHAPED not in blob
+    assert "sk-ant" not in blob
+    assert "[REDACTED]" in blob
+    # and the rest of the operand survives, so the edge still says something
+    assert "publish.py" in blob
+
+
+def test_the_credential_rules_are_shared_rather_than_private_to_ingest():
+    """A private copy in the ingest layer is unreachable from the graph layer,
+    which is exactly how this producer came to publish a raw command."""
+    from tesserae.harness_sessions import _turn_text
+
+    # An Anthropic key is ``sk-ant-<version>-<blob>``; the hyphens break the
+    # ``sk-[A-Za-z0-9]{12,}`` rule after three characters, and ``--api-key``
+    # separated by a space is not the ``key=value`` the generic rule wants. The
+    # single most likely credential on a machine running this codebase passed
+    # ingest untouched, which is what made the edge's omission reachable.
+    assert CREDENTIAL_SHAPED not in _turn_text(f'{{"cmd": "deploy --api-key {CREDENTIAL_SHAPED}"}}')
+
+    from tesserae.redaction import redact_secrets
+
+    assert CREDENTIAL_SHAPED not in redact_secrets(f"deploy --api-key {CREDENTIAL_SHAPED}")
+    # Each half of that carries its own weight: a vendor-prefixed key with no
+    # flag in front of it...
+    assert CREDENTIAL_SHAPED not in redact_secrets(f"deploy {CREDENTIAL_SHAPED}")
+    # ...and a flag value that is not vendor-prefixed at all. The value is
+    # deliberately self-describing rather than hex: an 18-character hex string
+    # here is what GitGuardian's "Generic CLI Option Secret" detector fires on,
+    # and it did — this exact line failed PR #128 while four rewrites of the
+    # sk-ant fixture above chased the wrong string entirely. The rule under test
+    # is `--(api-key|token|secret|password)[=\s]+\S+`, which matches any
+    # non-space value, so nothing is lost by making the value say what it is.
+    _flag_value = "not-a-real-token-fixture-only"
+    assert _flag_value not in redact_secrets(f"deploy --token {_flag_value}")
+
+
+def test_a_credential_straddling_the_display_cap_does_not_survive_as_a_fragment():
+    """Redaction runs BEFORE truncation, exactly as it does at ingest. Cut
+    first and the tail of a key becomes a fragment short enough to slip under
+    every pattern's length floor — and a fragment of a live key is a live
+    key's prefix, published."""
+    from tesserae.session_recovery import _ANCHOR_DISPLAY_LIMIT
+
+    # Positioned so the cut lands ten characters into the key: enough of it to
+    # publish, too little for any pattern's length floor to recognise.
+    padding = "x" * (_ANCHOR_DISPLAY_LIMIT - 25)
+    command = f"python run.py --pad {padding} {CREDENTIAL_SHAPED}"
+    session = _Session(
+        [
+            _call("exec_command", {"cmd": command}, "c1"),
+            _result("exec_command", "c1", exit_code=127),
+            _call("exec_command", {"cmd": command.replace("python", "python3", 1)}, "c2"),
+            _result("exec_command", "c2", exit_code=0),
+        ]
+    )
+    edges = _recovers(session)
+    assert len(edges) == 1
+    blob = json.dumps(edges[0].model_dump(), ensure_ascii=False)
+    assert "sk-ant" not in blob
+
+
+def test_two_calls_differing_only_in_their_credential_are_not_one_anchor():
+    """...and the redaction happens at PUBLICATION, not in the key. Redacting
+    before keying would give every credentialed call one shared ``[REDACTED]``
+    anchor — the truncation collapse, rebuilt: unrelated work silently joined
+    into a single operand."""
+    session = _Session(
+        [
+            _call("exec_command", {"cmd": f"python deploy.py --api-key {CREDENTIAL_SHAPED}"}, "c1"),
+            _result("exec_command", "c1", exit_code=1, text="denied"),
+            _call("exec_command", {"cmd": f"python deploy.py --api-key {CREDENTIAL_SHAPED_ALT}"}, "c2"),
+            _result("exec_command", "c2", exit_code=0, text="ok"),
+        ]
+    )
+    assert _recovers(session) == []
 
 
 def test_a_recovery_may_be_separated_by_unrelated_work():
@@ -284,6 +503,107 @@ def test_a_different_query_to_the_same_search_tool_is_not_a_recovery():
             _result("Bash", "t2", is_error=False, text="hits"),
         ],
         session_id="claude-code:s3",
+    )
+    assert _recovers(session) == []
+
+
+def test_a_read_of_a_file_does_not_recover_a_run_of_it():
+    """THE collision that comes from deleting the program token. ``cat foo.py``
+    and ``python foo.py`` reduce to the same argv, so an operand-only key makes
+    a *read* of a file "recover" a *run* of it — and the edge reads as evidence
+    that the script was fixed. The program is reduced to its family, never
+    dropped."""
+    session = _Session(
+        [
+            _call("exec_command", {"cmd": "python scripts/build.py --release"}, "c1"),
+            _result("exec_command", "c1", exit_code=1, text="Traceback"),
+            _call("exec_command", {"cmd": "cat scripts/build.py --release"}, "c2"),
+            _result("exec_command", "c2", exit_code=0, text="<the source>"),
+        ]
+    )
+    assert _recovers(session) == []
+
+
+def test_the_same_program_reached_by_a_different_path_is_still_one_program():
+    """The RECALL guard on the fix above, and the reason the program becomes a
+    family rather than a literal: ``python``, ``python3``, ``python3.12`` and
+    ``.venv/bin/python`` are one program launched four ways, and that difference
+    is 9 of the 9 edges the corpus yields. This one passes before the fix too —
+    it is here to fail if the key is ever tightened to the exact program token,
+    which is the plausible over-correction."""
+    for fixed in ("python3", "python3.12", ".venv/bin/python", "/usr/bin/python3"):
+        session = _Session(
+            [
+                _call("exec_command", {"cmd": f'python -c "{EXPR}"'}, "c1"),
+                _result("exec_command", "c1", exit_code=127),
+                _call("exec_command", {"cmd": f'{fixed} -c "{EXPR}"'}, "c2"),
+                _result("exec_command", "c2", exit_code=0),
+            ]
+        )
+        assert len(_recovers(session)) == 1, fixed
+
+
+def test_the_same_argv_in_a_different_working_directory_is_not_a_recovery():
+    """``workdir`` is on 1,223 of Codex's 1,225 shell invocations and was
+    ignored. ``-m pytest tests/x.py`` failing in one checkout and passing in
+    another is two different files, and the edge would say the test was fixed."""
+    session = _Session(
+        [
+            _call("exec_command", {"cmd": "python -m pytest tests/x.py", "workdir": "/a"}, "c1"),
+            _result("exec_command", "c1", exit_code=1, text="1 failed"),
+            _call("exec_command", {"cmd": "python -m pytest tests/x.py", "workdir": "/b"}, "c2"),
+            _result("exec_command", "c2", exit_code=0, text="1 passed"),
+        ]
+    )
+    assert _recovers(session) == []
+
+
+def test_a_reported_working_directory_does_not_match_an_unreported_one():
+    """"Nowhere reported" is not a directory. Claude's ``Bash`` sends no
+    workdir at all, so treating a missing one as a wildcard would let every
+    Claude call match every Codex call on the same argv."""
+    session = _Session(
+        [
+            _call("exec_command", {"cmd": "python -m pytest tests/x.py"}, "c1"),
+            _result("exec_command", "c1", exit_code=1, text="1 failed"),
+            _call("exec_command", {"cmd": "python -m pytest tests/x.py", "workdir": "/a"}, "c2"),
+            _result("exec_command", "c2", exit_code=0, text="1 passed"),
+        ]
+    )
+    assert _recovers(session) == []
+
+
+def test_a_search_scope_is_not_the_operand():
+    """The file dimension's twin of the program collision. ``Grep`` takes
+    ``pattern`` as what was asked for and ``path`` as the directory to look in;
+    keying on ``path`` makes one failed search "recovered" by an unrelated
+    successful search of the same directory. 34 of the corpus's 35 ``path``
+    invocations are exactly this."""
+    session = _Session(
+        [
+            _call("Grep", {"pattern": "max_turns", "path": "tesserae"}, "t1"),
+            _result("Grep", "t1", is_error=True, text="Error"),
+            _call("Grep", {"pattern": "call_id", "path": "tesserae"}, "t2"),
+            _result("Grep", "t2", is_error=False, text="hits"),
+        ],
+        session_id="claude-code:s8",
+    )
+    assert _recovers(session) == []
+
+
+def test_a_search_that_found_nothing_is_not_a_failure_even_with_no_exit_code():
+    """The guard that could not fire. Claude reports NO exit code on any result,
+    ever — so a search-tool exemption nested inside ``isinstance(exit_code, int)``
+    is structurally unable to fire on a Claude transcript, on the harness that
+    runs the most greps. It fires 4 times on the measured corpus once it can."""
+    session = _Session(
+        [
+            _call("Bash", {"command": 'grep -rn "call_id" tesserae/session_event.py'}, "t1"),
+            _result("Bash", "t1", is_error=True, text=""),
+            _call("Bash", {"command": 'grep -rn "call_id" tesserae/session_event.py'}, "t2"),
+            _result("Bash", "t2", is_error=False, text="12: call_id"),
+        ],
+        session_id="claude-code:s9",
     )
     assert _recovers(session) == []
 
@@ -510,21 +830,83 @@ def test_a_recovery_never_crosses_a_session():
 def test_batched_calls_are_matched_by_call_id_not_by_adjacency():
     """746 of 1,286 Codex results (58%) were issued while another call was
     outstanding. 'The result after the invocation' is wrong for the majority of
-    them; only the harness's own call id is right."""
+    them; only the harness's own call id is right. Here the failure is the FIRST
+    result of a batch and its fix is issued in the NEXT batch, so a positional
+    pairing would read the operand of ``git status`` off the python failure."""
     session = _Session(
         [
             _call("exec_command", {"cmd": f'python -c "{EXPR}"'}, "cA"),
             _call("exec_command", {"cmd": "git status --short"}, "cB"),
-            _call("exec_command", {"cmd": f'python3 -c "{EXPR}"'}, "cC"),
             _result("exec_command", "cA", exit_code=127, text="command not found"),
             _result("exec_command", "cB", exit_code=0),
+            _call("exec_command", {"cmd": f'python3 -c "{EXPR}"'}, "cC"),
+            _call("exec_command", {"cmd": "git diff --stat"}, "cD"),
+            _result("exec_command", "cD", exit_code=0),
             _result("exec_command", "cC", exit_code=0),
         ]
     )
     edges = _recovers(session)
     assert len(edges) == 1
+    assert edges[0].metadata["failure_turn_id"] == 2
+    assert edges[0].metadata["recovery_turn_id"] == 7
+
+
+def test_a_call_already_in_flight_when_the_failure_landed_is_not_a_recovery():
+    """Codex emits a whole batch of calls and then the whole batch of outputs,
+    up to 5 deep, and 58% of its results were issued while another call was
+    outstanding. A call issued BEFORE the failure came back cannot be a response
+    to it — the agent had not seen the failure yet — however neatly the two
+    results line up afterwards. The call id says when each was issued; nothing
+    else in the record does."""
+    session = _Session(
+        [
+            _call("exec_command", {"cmd": f'python -c "{EXPR}"'}, "cA"),
+            _call("exec_command", {"cmd": f'python3 -c "{EXPR}"'}, "cB"),
+            _result("exec_command", "cA", exit_code=127, text="command not found"),
+            _result("exec_command", "cB", exit_code=0),
+        ]
+    )
+    assert _recovers(session) == []
+
+
+def test_the_edge_points_at_the_last_failure_the_recovering_call_could_have_seen():
+    """Three attempts, the third works. The edge must name the attempt the fix
+    followed, not the first one in the session — 'this succeeded after that
+    failed' is a claim about the attempt immediately before it, and the gap is
+    read as how long the agent was stuck."""
+    session = _Session(
+        [
+            _call("exec_command", {"cmd": f'python -c "{EXPR}"'}, "c1"),
+            _result("exec_command", "c1", exit_code=127),
+            _call("exec_command", {"cmd": f'python2 -c "{EXPR}"'}, "c2"),
+            _result("exec_command", "c2", exit_code=127),
+            _call("exec_command", {"cmd": f'python3 -c "{EXPR}"'}, "c3"),
+            _result("exec_command", "c3", exit_code=0),
+        ]
+    )
+    edges = _recovers(session)
+    assert len(edges) == 1
     assert edges[0].metadata["failure_turn_id"] == 3
-    assert edges[0].metadata["recovery_turn_id"] == 5
+    assert edges[0].metadata["gap"] == 1
+
+
+def test_a_long_retry_loop_is_not_lost_to_the_gap_bound():
+    """Measuring the gap from the FIRST failure throws away the case the bound
+    was never meant to catch: an agent that retried the same thing more times
+    than the bound allows and then fixed it. The success is one result after the
+    attempt it followed; only an accounting choice made it look 50 apart."""
+    from tesserae.session_recovery import _MAX_RECOVERY_GAP
+
+    turns = []
+    for i in range(_MAX_RECOVERY_GAP + 2):
+        turns.append(_call("exec_command", {"cmd": f'python -c "{EXPR}"'}, f"f{i}"))
+        turns.append(_result("exec_command", f"f{i}", exit_code=127))
+    turns.append(_call("exec_command", {"cmd": f'python3 -c "{EXPR}"'}, "ok"))
+    turns.append(_result("exec_command", "ok", exit_code=0))
+    edges = _recovers(_Session(turns))
+    assert len(edges) == 1
+    assert edges[0].metadata["gap"] == 1
+    assert edges[0].metadata["failure_turn_id"] == len(turns) - 3
 
 
 def test_a_batch_whose_ids_would_mislead_a_positional_pairing():

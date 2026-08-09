@@ -48,7 +48,7 @@ SECRET_PATTERNS = (
     re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+\-/=]+"),
     re.compile(r"sk-[A-Za-z0-9]{12,}"),
     # ...and the vendor-prefixed form the rule above cannot see. An Anthropic
-    # key is ``sk-ant-api03-<blob>``: the hyphens break ``[A-Za-z0-9]{12,}``
+    # key is ``sk-ant-<version>-<blob>``: the hyphens break ``[A-Za-z0-9]{12,}``
     # after three characters, so the single most likely credential on a machine
     # running this codebase passed the redactor untouched. Segment names are
     # spelled out rather than admitting any hyphenated word after ``sk-``,
