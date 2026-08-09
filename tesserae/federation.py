@@ -280,7 +280,8 @@ _SEMANTIC_TYPE_VALUES = frozenset({
     "Algorithm", "ArchitecturePattern", "TrainingParadigm", "InferenceStrategy",
     "Task", "Capability", "ResearchTopic", "ProblemArea", "ApproachFamily",
     "SessionInsight", "SessionDecision", "SessionHypothesis", "SessionTakeaway",
-    "SessionQuestion", "SessionTODO", "Runbook", "Gotcha", "OpenQuestion",
+    "SessionQuestion", "SessionTODO", "SessionFailure",
+    "Runbook", "Gotcha", "OpenQuestion",
     "Claim", "ContributionClaim", "PerformanceClaim", "ComparisonClaim",
     "LimitationClaim", "CausalClaim",
 })

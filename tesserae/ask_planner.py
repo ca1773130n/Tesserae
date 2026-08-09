@@ -141,6 +141,7 @@ _FINDING_TYPES = {
     "todo": "SessionTODO",
     "hypothesis": "SessionHypothesis",
     "takeaway": "SessionTakeaway",
+    "failure": "SessionFailure",
 }
 
 

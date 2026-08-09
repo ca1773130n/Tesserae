@@ -243,3 +243,47 @@ def test_chunked_session_produces_one_call_per_chunk():
     assert len(client.calls) == 3
     bodies = sorted(f.body for f in findings)
     assert bodies == ["A", "B", "C"]
+
+
+# ---------------------------------------------------------------------------
+# Roadmap step 5 — a failed run is a first-class finding.
+#
+# The taxonomy had six kinds, none of which can say "this ran and it failed".
+# HiSkill's point: a failed anchor is a PRECONDITION for any recovery edge, so
+# without a failure kind the whole Causal/Lesson/Procedure layer is built on
+# prose keyword votes.
+# ---------------------------------------------------------------------------
+
+
+def test_a_failure_finding_survives_validation():
+    finding = _validate_finding(
+        {
+            "kind": "failure",
+            "body": "pytest exited 1: test_prune_scope failed on a stale fixture day",
+            "turn_ids": [3],
+            "references": [],
+        },
+        set(),
+        session_id="sess-fail",
+    )
+    assert finding is not None, "an unknown kind is dropped silently at extraction"
+    assert finding.kind == "failure"
+
+
+def test_the_prompt_offers_failure_as_a_kind():
+    """An allowed kind the prompt never names is a kind the model never emits."""
+    from tesserae.session_graph_llm import _PROMPT_SYSTEM
+
+    assert '"failure"' in _PROMPT_SYSTEM or "- \"failure\"" in _PROMPT_SYSTEM
+    assert "failure" in _PROMPT_SYSTEM.split('"kind": "<one of:')[1].split(">")[0]
+
+
+def test_a_still_unknown_kind_is_still_dropped():
+    assert (
+        _validate_finding(
+            {"kind": "vibes", "body": "b", "turn_ids": [], "references": []},
+            set(),
+            session_id="s",
+        )
+        is None
+    )

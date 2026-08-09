@@ -25,9 +25,11 @@ from .llm_json import LLMJsonClient
 logger = logging.getLogger(__name__)
 
 
-# The six finding kinds. Mirrors the six new ``Session<Kind>``
-# ResearchNodeType entries added in Phase 1. The LLM must emit one of
-# these literal strings as the ``kind`` field on every finding.
+# The finding kinds. Mirrors the ``Session<Kind>`` ResearchNodeType entries.
+# The LLM must emit one of these literal strings as the ``kind`` field on every
+# finding. Adding one is a SEVEN-table change and every table fails closed and
+# silently — see ``tests/test_session_finding_kind_wiring.py``, which asserts
+# the wiring for every kind rather than for one example.
 ALLOWED_FINDING_KINDS = (
     "insight",
     "decision",
@@ -35,6 +37,7 @@ ALLOWED_FINDING_KINDS = (
     "todo",
     "hypothesis",
     "takeaway",
+    "failure",
 )
 
 
@@ -64,7 +67,7 @@ class Finding:
 
 
 _PROMPT_SYSTEM = """You are an extractor that reads agent/user conversation transcripts and \
-produces a structured list of findings as JSON. Findings fall into six kinds:
+produces a structured list of findings as JSON. Findings fall into seven kinds:
 
 - "insight"     — a learned fact, observed pattern, or non-obvious connection that emerged in the conversation
 - "decision"    — an explicit choice the user and agent agreed on
@@ -72,6 +75,7 @@ produces a structured list of findings as JSON. Findings fall into six kinds:
 - "todo"        — an actionable follow-up
 - "hypothesis"  — a testable assumption that hasn't been verified yet
 - "takeaway"    — a condensed key point worth remembering after the session
+- "failure"     — something that was RUN and did not work: a command that exited non-zero, a test that failed, an approach that was tried and abandoned because it broke. Cite the turn where it failed. Do NOT use this for a risk that was merely discussed, or for a bug that was only described — only for an attempt whose outcome was observed in the transcript.
 
 Each finding MUST cite (1) the turn IDs from the transcript that the finding is \
 derived from, and (2) the node IDs from the supplied "available doc node IDs" \
@@ -82,7 +86,7 @@ Output schema (strictly):
 {
   "findings": [
     {
-      "kind": "<one of: insight | decision | question | todo | hypothesis | takeaway>",
+      "kind": "<one of: insight | decision | question | todo | hypothesis | takeaway | failure>",
       "body": "<single-line statement of the finding, <= 240 chars>",
       "turn_ids": [<int>, <int>, ...],
       "references": ["<doc_node_id>", "<doc_node_id>", ...],

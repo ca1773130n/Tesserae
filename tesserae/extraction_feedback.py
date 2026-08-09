@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from .research_graph import SESSION_FINDING_TYPES
+
 SCHEMA_VERSION = 1
 
 
@@ -124,10 +126,11 @@ def events_from_vault_overlay(
 
 
 # Session-finding node types → session_findings extractor; everything else → doc_graph.
-_SESSION_TYPES = {
-    "SessionInsight", "SessionDecision", "SessionQuestion",
-    "SessionTodo", "SessionHypothesis", "SessionTakeaway",
-}
+# Derived, not hand-listed: this set was hand-listed and drifted — it carried
+# "SessionTodo" while the real type value is "SessionTODO", so every TODO
+# finding was routed to the doc_graph feedback extractor instead of the
+# session one, silently, for as long as the list existed.
+_SESSION_TYPES = {t.value for t in SESSION_FINDING_TYPES}
 
 
 def _route(node_type: str) -> str:

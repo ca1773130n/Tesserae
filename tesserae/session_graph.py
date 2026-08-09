@@ -64,7 +64,13 @@ from .session_graph_structural import extract_structural
 logger = logging.getLogger(__name__)
 
 
-CACHE_SCHEMA_VERSION = 3
+# Bumped to 4 for the ``failure`` finding kind (roadmap step 5). A cached
+# chunk was extracted under a prompt that offered six kinds and could not have
+# produced a failure finding, so replaying it would leave the new kind firing
+# on new sessions only — a taxonomy that silently does not apply to the corpus
+# it was added for. The prompt is not part of the chunk hash, so this version
+# is the only thing that can invalidate those chunks.
+CACHE_SCHEMA_VERSION = 4
 
 
 # Map from Finding.kind (lowercase string) to ResearchNodeType.
@@ -75,6 +81,7 @@ _KIND_TO_NODE_TYPE: Dict[str, ResearchNodeType] = {
     "todo": ResearchNodeType.SESSION_TODO,
     "hypothesis": ResearchNodeType.SESSION_HYPOTHESIS,
     "takeaway": ResearchNodeType.SESSION_TAKEAWAY,
+    "failure": ResearchNodeType.SESSION_FAILURE,
 }
 
 

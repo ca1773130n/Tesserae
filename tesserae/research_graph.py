@@ -117,7 +117,7 @@ class ResearchNodeType(str, Enum):
     # decide / conclude / ask about this paper?". See the spec at
     # docs/superpowers/specs/2026-05-19-session-graph-extractor-design.md.
     # ``Session`` carries the harness-session envelope (private, no vault
-    # page); the six ``Session<Kind>`` types are the structured findings
+    # page); the ``Session<Kind>`` types are the structured findings
     # extracted from the transcript and ARE public.
     SESSION = "Session"
     SESSION_INSIGHT = "SessionInsight"
@@ -126,6 +126,11 @@ class ResearchNodeType(str, Enum):
     SESSION_TODO = "SessionTODO"
     SESSION_HYPOTHESIS = "SessionHypothesis"
     SESSION_TAKEAWAY = "SessionTakeaway"
+    # A run that was observed to FAIL. Distinct from the other six because it
+    # is the only one asserting an outcome rather than a statement, and it is
+    # the precondition for any later recovery/causal edge: without a failed
+    # anchor there is nothing for a fix to be a fix OF.
+    SESSION_FAILURE = "SessionFailure"
 
     # Community-summary layer (post-compile pass). Each node summarizes
     # a Louvain / label-propagation cluster of structurally connected
@@ -240,10 +245,11 @@ CODE_GRAPH_TYPES: FrozenSet[ResearchNodeType] = frozenset({
 EXTRACTABLE_NODE_TYPES: Set[str] = ALLOWED_NODE_TYPES - {item.value for item in CODE_GRAPH_TYPES}
 
 
-# The six structured-finding types. Used by the same-type aggressive
-# dedup pass to skip these (two same-text findings from two different
-# sessions are legitimately separate provenance — see Phase 1 of the
-# session-graph plan).
+# The structured-finding types. Used by the same-type aggressive dedup pass to
+# skip these (two same-text findings from two different sessions are
+# legitimately separate provenance — see Phase 1 of the session-graph plan).
+# Derive from this set rather than re-listing it: every hand-written copy is a
+# place the next kind is silently excluded.
 SESSION_FINDING_TYPES: Set[ResearchNodeType] = {
     ResearchNodeType.SESSION_INSIGHT,
     ResearchNodeType.SESSION_DECISION,
@@ -251,6 +257,7 @@ SESSION_FINDING_TYPES: Set[ResearchNodeType] = {
     ResearchNodeType.SESSION_TODO,
     ResearchNodeType.SESSION_HYPOTHESIS,
     ResearchNodeType.SESSION_TAKEAWAY,
+    ResearchNodeType.SESSION_FAILURE,
 }
 
 

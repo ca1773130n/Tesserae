@@ -90,6 +90,7 @@ _CALLOUT_BY_NODE_TYPE: Dict[ResearchNodeType, tuple[str, str]] = {
     ResearchNodeType.SESSION_TODO: ("todo", "TODO"),
     ResearchNodeType.SESSION_HYPOTHESIS: ("example", "Hypothesis"),
     ResearchNodeType.SESSION_TAKEAWAY: ("summary", "Takeaway"),
+    ResearchNodeType.SESSION_FAILURE: ("failure", "Failure"),
     # Community summaries — distinctive callout so the cluster page is
     # visually separable from the per-node syntheses around it.
     ResearchNodeType.COMMUNITY_SUMMARY: ("abstract", "Community"),
@@ -267,6 +268,7 @@ _SESSION_FINDING_NODE_TYPES = {
     ResearchNodeType.SESSION_TODO,
     ResearchNodeType.SESSION_HYPOTHESIS,
     ResearchNodeType.SESSION_TAKEAWAY,
+    ResearchNodeType.SESSION_FAILURE,
 }
 
 

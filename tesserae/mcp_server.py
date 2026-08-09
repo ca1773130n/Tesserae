@@ -2970,6 +2970,7 @@ class LLMWikiMCPServer:
         "SessionTODO",
         "SessionHypothesis",
         "SessionTakeaway",
+        "SessionFailure",
     }
     _KIND_TO_TYPE = {
         "insight": "SessionInsight",
@@ -2978,6 +2979,7 @@ class LLMWikiMCPServer:
         "todo": "SessionTODO",
         "hypothesis": "SessionHypothesis",
         "takeaway": "SessionTakeaway",
+        "failure": "SessionFailure",
     }
 
     def _mcp_activity_summary(self, args: JSONDict) -> JSONDict:

@@ -2316,7 +2316,7 @@ for _family, _types in {
     "synthesis": ("Synthesis", "CommunitySummary"),
     "sessions": (
         "Session", "SessionInsight", "SessionDecision", "SessionQuestion", "SessionTODO",
-        "SessionHypothesis", "SessionTakeaway",
+        "SessionHypothesis", "SessionTakeaway", "SessionFailure",
     ),
     "actors": ("Person", "Organization"),
 }.items():
@@ -2355,7 +2355,7 @@ _GRAPH_VIEW_EXTRA_TYPES: frozenset[str] = frozenset(
         "CodeParameter", "CodeNamespace", "CodeSymbol", "Dependency",
         # Sessions family — session memory drawer section.
         "Session", "SessionInsight", "SessionDecision", "SessionQuestion",
-        "SessionTODO", "SessionHypothesis", "SessionTakeaway",
+        "SessionTODO", "SessionHypothesis", "SessionTakeaway", "SessionFailure",
     }
 )
 _GRAPH_VIEW_TYPES: frozenset[str] = WIKI_LAYER_TYPES | _GRAPH_VIEW_EXTRA_TYPES
@@ -2374,7 +2374,7 @@ _CODE_FANIN_EDGE_TYPES: frozenset[str] = frozenset(
 _SESSION_FINDING_TYPE_VALUES: frozenset[str] = frozenset(
     {
         "SessionInsight", "SessionDecision", "SessionQuestion",
-        "SessionTODO", "SessionHypothesis", "SessionTakeaway",
+        "SessionTODO", "SessionHypothesis", "SessionTakeaway", "SessionFailure",
     }
 )
 
