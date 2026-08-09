@@ -305,6 +305,7 @@ class WikiLinter:
         findings.extend(self._check_code_graph_staleness(nodes_by_id))
         findings.extend(self._check_agent_metadata_allowlist(nodes_by_id))
         findings.extend(self._check_agent_forget_ledger())
+        findings.extend(self._check_procedural_pools(nodes_by_id))
         findings.extend(self._check_undistilled_backlog(nodes_by_id, edges))
         findings.extend(self._check_reasoning_edge_ratio(edges))
         findings.extend(self._check_interval_coverage(nodes_by_id, edges))
@@ -985,6 +986,73 @@ class WikiLinter:
                 "project. A path outside every root a Session node declares "
                 "is undated by design — it is not this project's ingest "
                 "layout, so no segment of it names its observation day."
+            ),
+        )
+
+    def _check_procedural_pools(
+        self, nodes_by_id: Dict[str, dict]
+    ) -> Iterable[LintFinding]:
+        """How much of each producer-owned type its producer actually made.
+
+        ``compile_context(multi_pool=True)`` reserves a budget slot per
+        procedural pool, and since roadmap step 4 only a node carrying producer
+        provenance can take one. Document extraction mints the same type names,
+        so a graph can hold hundreds of ``Event`` nodes — conference deadlines,
+        typically — and still have a pool that reserves nothing. That is the
+        correct outcome and an invisible one: the caller sees procedural memory
+        working. This states the ratio instead.
+
+        Warning (not info) when some type is populated yet wholly unearned:
+        that is a pool advertising knowledge it does not have. Info when every
+        populated type has at least one real node. Silent when the graph has no
+        nodes of these types at all — there is no pool to misread.
+        """
+        from .research_graph import PROCEDURAL_POOL_TYPES, has_producer_provenance
+
+        pool_values = sorted(item.value for item in PROCEDURAL_POOL_TYPES)
+        made: Dict[str, int] = {value: 0 for value in pool_values}
+        total: Dict[str, int] = {value: 0 for value in pool_values}
+        for node in nodes_by_id.values():
+            type_value = str(node.get("type") or "")
+            if type_value not in total:
+                continue
+            total[type_value] += 1
+            if has_producer_provenance(type_value, node.get("metadata") or {}):
+                made[type_value] += 1
+
+        populated = [value for value in pool_values if total[value]]
+        if not populated:
+            return
+
+        histogram = ", ".join(f"{value}={made[value]}/{total[value]}" for value in populated)
+        unearned = [value for value in populated if made[value] == 0]
+        all_total = sum(total[value] for value in populated)
+        all_made = sum(made[value] for value in populated)
+        yield LintFinding(
+            severity="warning" if unearned else "info",
+            code="PROCEDURAL_POOLS",
+            message=(
+                f"{all_made} of {all_total} nodes on producer-owned types were "
+                f"made by their producer (producer-made/total: {histogram})."
+                + (
+                    f" {', '.join(unearned)} hold only document extractions, so "
+                    f"multi_pool reserves nothing for them."
+                    if unearned
+                    else ""
+                )
+            ),
+            suggested_fix=(
+                "A node earns a reserved procedural slot by provenance, not by "
+                "type: metadata['extractor'] naming a producer pass, distill "
+                "provenance (member_ids / member_refs / lineage_key / "
+                "distill_quality / distilled_through), or metadata['agent'] on "
+                "an ExpertiseProfile. A wholly unearned pool means the type is "
+                "populated only by document extraction — the vocabulary is "
+                "offered to the extraction LLM by EXTRACTABLE_NODE_TYPES, so a "
+                "call-for-papers becomes an Event. Run the producer (the "
+                "session-event pass, or distillation) to fill the pool; these "
+                "nodes stay reachable through search_nodes / graph_map / "
+                "node_context, which do not apply this rule."
             ),
         )
 

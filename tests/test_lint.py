@@ -1173,3 +1173,43 @@ def test_lint_interval_coverage_matches_the_temporal_projector_exactly(
     assert f"{undated} of {len(facts)} facts" in finding.message
     for key in sorted(basis):
         assert f"{key}={basis[key]}" in finding.message
+
+
+def test_lint_procedural_pools_reports_document_extractions(tmp_path: Path) -> None:
+    """A pool that looks populated but can reserve nothing must say so.
+
+    ``Runbook``/``Gotcha``/``Event``/``DistilledNote``/``ExpertiseProfile`` are
+    producer-owned, but document extraction may mint the same type names — a
+    conference deadline lands typed ``Event``. Since roadmap step 4 those nodes
+    can no longer take a reserved procedural slot, so a graph can hold hundreds
+    of Event nodes and still have an empty Event pool. Unreported, that reads
+    as working procedural memory.
+    """
+    graph = {
+        "nodes": [
+            _node("e1", "Event", "CVPR 2026"),
+            _node("e2", "Event", "3DV2027"),
+            _node("e3", "Event", "3rd Joint EgoVis Workshop"),
+            _node(
+                "rb1",
+                "Runbook",
+                "Runbook: release",
+                metadata={
+                    "extractor": "memory.distill.run_distillation_pass",
+                    "member_ids": ["f1", "f2"],
+                },
+            ),
+        ],
+        "edges": [],
+    }
+    project = _scaffold(tmp_path, graph=graph)
+    report = WikiLinter(project).run()
+
+    matches = [f for f in report.findings if f.code == "PROCEDURAL_POOLS"]
+    assert len(matches) == 1, f"expected one PROCEDURAL_POOLS finding; got {matches}"
+    finding = matches[0]
+    assert finding.severity == "warning", (
+        "a wholly unearned pool is a defect to act on, not a statistic"
+    )
+    assert "Event=0/3" in finding.message, finding.message
+    assert "Runbook=1/1" in finding.message, finding.message
