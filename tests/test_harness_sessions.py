@@ -1058,3 +1058,461 @@ def test_the_tally_is_not_reachable_as_module_state(tmp_path):
     assert not hasattr(hs, "_DROPPED_CONTENT_BLOCKS")
     assert not hasattr(hs, "reset_dropped_content_blocks")
     assert not hasattr(hs, "dropped_content_block_counts")
+
+
+# ---------------------------------------------------------------------------
+# Roadmap step 5 — tool results survive ingest.
+#
+# verify.py says of this codebase, in source: "tool_result is parsed solely to
+# map subagent ids and never becomes a turn, so no exit code survives ingest
+# ... this tool can say a document says so, never this ran and passed."
+#
+# Every test below asserts on the CONTENT of the minted turn list — the
+# behaviour verify.py names as missing — not on the existence of a helper.
+# ---------------------------------------------------------------------------
+
+
+def _claude_tool_rows(result_block, *, tool="Bash", tool_input=None):
+    """An assistant tool_use row followed by the user row carrying its result."""
+    return [
+        {
+            "type": "assistant",
+            "timestamp": "2026-08-09T10:00:00Z",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_1",
+                        "name": tool,
+                        "input": tool_input or {"command": "pytest"},
+                    }
+                ]
+            },
+        },
+        {
+            "type": "user",
+            "timestamp": "2026-08-09T10:00:05Z",
+            "message": {"content": [{**result_block, "tool_use_id": "toolu_1"}]},
+        },
+    ]
+
+
+def test_a_claude_tool_result_becomes_its_own_turn_naming_the_tool_that_ran():
+    from tesserae.harness_sessions import _claude_turns
+
+    rows = _claude_tool_rows(
+        {"type": "tool_result", "content": "1 failed, 4 passed", "is_error": True}
+    )
+    turns = _claude_turns(rows)
+
+    assert [t["role"] for t in turns] == ["tool", "tool_result"]
+    result = turns[1]
+    # The tool_result block carries only tool_use_id; the NAME has to be
+    # resolved back through the invocation or the outcome is unattributable.
+    assert result["name"] == "Bash"
+    assert "1 failed, 4 passed" in str(result["text"])
+    assert result["is_error"] is True
+
+
+def test_a_claude_tool_result_without_is_error_is_not_recorded_as_a_success():
+    """`is_error` is omitted for every non-Bash tool, so its ABSENCE is not
+    evidence of success. Stamping ok here would manufacture the exact claim
+    verify.py refuses to make."""
+    from tesserae.harness_sessions import _claude_turns
+
+    turns = _claude_turns(
+        _claude_tool_rows({"type": "tool_result", "content": "file contents"}, tool="Read")
+    )
+    result = next(t for t in turns if t["role"] == "tool_result")
+    assert "is_error" not in result
+    assert "exit_code" not in result
+
+
+def test_a_claude_tool_result_text_is_capped_like_a_tool_turn():
+    """Results are an order of magnitude larger than inputs (measured max: a
+    2 MB single block). Uncapped they would be stored verbatim."""
+    from tesserae.harness_sessions import _claude_turns
+
+    turns = _claude_turns(
+        _claude_tool_rows({"type": "tool_result", "content": "x" * 50_000})
+    )
+    result = next(t for t in turns if t["role"] == "tool_result")
+    assert len(str(result["text"])) <= 1201  # 1200 + the ellipsis
+
+
+def _codex_tool_rows(output):
+    return [
+        {
+            "timestamp": "2026-08-09T10:00:00Z",
+            "payload": {
+                "type": "function_call",
+                "name": "shell",
+                "call_id": "call_1",
+                "arguments": '{"command":["pytest"]}',
+            },
+        },
+        {
+            "timestamp": "2026-08-09T10:00:05Z",
+            "payload": {
+                "type": "function_call_output",
+                "call_id": "call_1",
+                "output": output,
+            },
+        },
+    ]
+
+
+def test_a_codex_function_call_output_turn_carries_the_process_exit_code():
+    """Codex is the only harness that reports a real exit status, and it does
+    so as a header line inside a plain output string."""
+    from tesserae.harness_sessions import _codex_turns
+
+    turns = _codex_turns(
+        _codex_tool_rows(
+            "Chunk ID: 861f8c\nWall time: 0.4 seconds\nProcess exited with code 2\n"
+            "Output:\n---\nE   assert 1 == 2\n"
+        )
+    )
+    assert [t["role"] for t in turns] == ["tool", "tool_result"]
+    result = turns[1]
+    assert result["name"] == "shell"
+    assert result["exit_code"] == 2
+    assert "assert 1 == 2" in str(result["text"])
+
+
+def test_a_codex_output_with_no_exit_line_carries_no_exit_code():
+    """apply_patch and MCP tools emit no exit line (measured: 54 of 1,286).
+    Defaulting those to 0 would silently rot coverage into a false pass."""
+    from tesserae.harness_sessions import _codex_turns
+
+    turns = _codex_turns(_codex_tool_rows("Success. Updated the following files:\nM foo.py"))
+    result = next(t for t in turns if t["role"] == "tool_result")
+    assert "exit_code" not in result
+
+
+def test_a_zero_exit_code_is_recorded_as_zero_not_dropped_as_falsey():
+    from tesserae.harness_sessions import _codex_turns
+
+    turns = _codex_turns(_codex_tool_rows("Process exited with code 0\nOutput:\nok\n"))
+    result = next(t for t in turns if t["role"] == "tool_result")
+    assert result["exit_code"] == 0
+
+
+def test_a_session_records_its_failures_in_the_errors_field(tmp_path):
+    """`HarnessSession.errors` has been declared and round-tripped since it was
+    written and populated by nothing — 0 of the 211 live records carry one."""
+    from tesserae import harness_sessions as hs
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    root = tmp_path / "claude"
+    directory = root / "projects" / hs._claude_project_dir(project.resolve())
+    directory.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "type": "user",
+            "cwd": str(project.resolve()),
+            "timestamp": "2026-08-09T09:59:00Z",
+            "sessionId": "s1",
+            "message": {"role": "user", "content": "run the suite"},
+        }
+    ] + [
+        {**row, "cwd": str(project.resolve()), "sessionId": "s1"}
+        for row in _claude_tool_rows(
+            {"type": "tool_result", "content": "ERROR: 1 failed", "is_error": True}
+        )
+    ]
+    path = directory / "s1.jsonl"
+    path.write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
+    )
+
+    session = hs._parse_claude_session(project.resolve(), root, path)
+    assert session is not None
+    assert session.errors, "a failing tool result must land in session.errors"
+    assert any("Bash" in e for e in session.errors)
+    # and it must survive the store round-trip it was already wired for
+    assert hs.HarnessSession.from_dict(session.to_dict()).errors == session.errors
+
+
+def test_a_result_that_reported_nothing_is_not_recorded_as_a_failure(tmp_path):
+    """The interesting case is SILENCE, not `is_error: false`. Most results —
+    every non-Bash tool — carry no outcome field at all, and the whole point of
+    the change is that neither absence nor presence may be invented. A session
+    of ordinary Read calls must record no errors, or `errors` becomes noise
+    instead of the failure list a recovery edge can anchor on."""
+    from tesserae import harness_sessions as hs
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    root = tmp_path / "claude"
+    directory = root / "projects" / hs._claude_project_dir(project.resolve())
+    directory.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {**row, "cwd": str(project.resolve()), "sessionId": "s2"}
+        for row in (
+            # no is_error key at all — the 58.7% case
+            _claude_tool_rows({"type": "tool_result", "content": "file contents"}, tool="Read")
+            # explicitly not an error — the 37.8% case
+            + _claude_tool_rows({"type": "tool_result", "content": "ok", "is_error": False})
+        )
+    ]
+    path = directory / "s2.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+    session = hs._parse_claude_session(project.resolve(), root, path)
+    assert session is not None
+    assert session.errors == []
+
+
+def test_a_non_zero_exit_code_lands_in_errors_even_without_is_error(tmp_path):
+    """Codex reports no is_error at all — its only failure signal is the exit
+    code, so `errors` has to read that too or half the corpus never reports."""
+    from tesserae import harness_sessions as hs
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    root = tmp_path / "codex"
+    directory = root / "sessions"
+    directory.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "timestamp": "2026-08-09T09:59:00Z",
+            "payload": {"type": "session_meta", "cwd": str(project.resolve())},
+        },
+        {
+            "timestamp": "2026-08-09T09:59:30Z",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "run the suite"}],
+            },
+        },
+    ] + _codex_tool_rows(
+        "Process exited with code 2\nOutput:\nE   assert 1 == 2\n"
+    )
+    path = directory / "c1.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+    session = hs._parse_codex_session(project.resolve(), root, path)
+    assert session is not None
+    assert session.errors, "a non-zero exit code is a failure"
+    assert any("exited 2" in e for e in session.errors)
+
+
+def test_the_self_capture_guard_reads_past_tool_results_to_find_the_signature():
+    """v0.29.0 exists because Tesserae harvested its own LLM calls — 98.4% of
+    the store. The guard anchors on the first three turns; widening ingest adds
+    turns that can DISPLACE the signature out of that window. The window must be
+    defined over conversation turns, not over whatever ingest happens to mint."""
+    from tesserae.harness_sessions import (
+        HarnessSession,
+        _TESSERAE_PROMPT_SIGNATURES,
+        is_tesserae_internal_session,
+    )
+
+    signature = _TESSERAE_PROMPT_SIGNATURES[0]
+    session = HarnessSession(
+        id="x",
+        slug="x",
+        harness="claude-code",
+        agent_label="Claude Code",
+        project_name="p",
+        project_root="/tmp/p",
+        started_at="2026-08-09T10:00:00Z",
+        title="unrelated",
+        summary="unrelated",
+        redacted_preview="unrelated",
+        metadata={
+            "turns": [
+                {"role": "tool", "name": "Read", "text": "{}"},
+                {"role": "tool_result", "name": "Read", "text": "some file"},
+                {"role": "tool", "name": "Bash", "text": "{}"},
+                {"role": "tool_result", "name": "Bash", "text": "output"},
+                {"role": "user", "text": signature + " and then some"},
+            ]
+        },
+    )
+    assert is_tesserae_internal_session(session) is True
+
+
+def test_a_tool_result_quoting_a_tesserae_prompt_does_not_drop_a_real_session():
+    """The guard's own docstring: "False positives (dropping real work) are
+    worse than false negatives here." A Read of a prompt constant echoes a
+    signature verbatim at position 0 of the result text."""
+    from tesserae.harness_sessions import (
+        HarnessSession,
+        _TESSERAE_PROMPT_SIGNATURES,
+        is_tesserae_internal_session,
+    )
+
+    signature = _TESSERAE_PROMPT_SIGNATURES[0]
+    session = HarnessSession(
+        id="y",
+        slug="y",
+        harness="claude-code",
+        agent_label="Claude Code",
+        project_name="p",
+        project_root="/tmp/p",
+        started_at="2026-08-09T10:00:00Z",
+        title="fix the extractor prompt",
+        summary="fix the extractor prompt",
+        redacted_preview="fix the extractor prompt",
+        metadata={
+            "turns": [
+                {"role": "user", "text": "show me the extractor prompt"},
+                {"role": "tool", "name": "Read", "text": '{"file_path": "prompts.py"}'},
+                {"role": "tool_result", "name": "Read", "text": signature},
+            ]
+        },
+    )
+    assert is_tesserae_internal_session(session) is False
+
+
+def test_a_successful_run_is_not_recorded_as_an_error(tmp_path):
+    """The guard that separates a failure from a success is ``exit_code != 0``,
+    and nothing tested it: dropping it made EVERY result carrying an exit code a
+    reported failure, and the whole suite still passed (3,334 tests). Codex
+    stamps an exit code on 1,232 of its 1,286 results, so the mutant turns a
+    session of clean runs into a session that failed 1,232 times."""
+    from tesserae.harness_sessions import _errors_from_turns
+
+    turns = [
+        {"role": "tool_result", "name": "shell", "text": "12 passed", "exit_code": 0},
+        {"role": "tool_result", "name": "shell", "text": "boom", "exit_code": 1},
+    ]
+    errors = _errors_from_turns(turns)
+    assert len(errors) == 1, f"a run that exited 0 is a success: {errors}"
+    assert "exited 1" in errors[0]
+
+
+def test_a_non_boolean_is_error_is_not_recorded_as_a_failure():
+    """``is_error`` is compared with ``is True``, not for truthiness. A harness
+    that sends the STRING "false" would otherwise report a failure that the
+    harness explicitly denied."""
+    from tesserae.harness_sessions import _errors_from_turns, _tool_result_turn
+
+    assert _errors_from_turns(
+        [{"role": "tool_result", "name": "Bash", "text": "fine", "is_error": "false"}]
+    ) == []
+    turn = _tool_result_turn(timestamp="", name="Bash", text="fine", is_error="false")
+    assert "is_error" not in turn
+
+
+def test_a_session_never_stores_more_than_the_error_cap(tmp_path):
+    """``errors`` is serialized into every stored record, so it is bounded on
+    both axes. Neither bound was asserted anywhere."""
+    from tesserae.harness_sessions import _errors_from_turns
+
+    turns = [
+        {
+            "role": "tool_result",
+            "name": "shell",
+            "text": "x" * 5000,
+            "exit_code": 1,
+        }
+    ] * 75
+    errors = _errors_from_turns(turns)
+    # Literal bounds, deliberately: asserting against the constants would make
+    # the test agree with whatever the constants say and bound nothing.
+    assert len(errors) <= 50
+    assert max(len(e) for e in errors) <= 250, "one result must not carry 5 KB"
+
+
+def test_a_recorded_error_does_not_publish_the_operators_home_directory():
+    """``errors`` was the one field this branch added that the home-path
+    redaction invariant did not cover, and it is stored in every session
+    record."""
+    from tesserae.harness_sessions import _errors_from_turns
+
+    (error,) = _errors_from_turns(
+        [
+            {
+                "role": "tool_result",
+                "name": "Bash",
+                "text": "FAILED /Users/rivka/proj/tests/test_x.py::test_y",
+                "exit_code": 1,
+            }
+        ]
+    )
+    assert "/Users/rivka" not in error
+    assert "~/proj/tests/test_x.py" in error
+
+
+# ---------------------------------------------------------------------------
+# The Codex exit code is read from a header, never from the body
+# ---------------------------------------------------------------------------
+
+
+def test_an_exit_line_quoted_in_a_tool_result_body_is_not_an_exit_code():
+    """A result that merely CONTAINS the sentence has not reported an exit
+    status. ``cat`` of a transcript, a test asserting on the string, ``git
+    show`` of the module that defines it — all of them put the line in the body,
+    and the 54 results with no header are exactly where it would be believed."""
+    from tesserae.harness_sessions import _codex_exit_code
+
+    assert (
+        _codex_exit_code(
+            "Success. Updated the following files:\n"
+            "M runner.py\n"
+            "and the transcript it patched reads:\n"
+            "Process exited with code 0\n"
+        )
+        is None
+    )
+
+
+def test_the_exit_code_is_read_from_the_header_not_from_the_body():
+    """Both halves in one result: the header says 0, the body quotes 1."""
+    from tesserae.harness_sessions import _codex_exit_code
+
+    assert (
+        _codex_exit_code(
+            "Chunk ID: 861f8c\n"
+            "Wall time: 0.4 seconds\n"
+            "Process exited with code 0\n"
+            "Original token count: 12\n"
+            "Output:\n"
+            "Process exited with code 1\n"
+        )
+        == 0
+    )
+
+
+def test_the_self_capture_window_does_not_reach_past_the_first_reply():
+    """Counting SPOKEN turns with no stop condition walks arbitrarily deep, so
+    a user who pastes one of these prompts to ask about it — routine in this
+    repository — has the whole session dropped. The guard's own docstring says
+    dropping real work is the worse failure, so the window ends at the model's
+    first reply: after an answer exists, prompt-shaped text is someone
+    discussing a prompt."""
+    from tesserae.harness_sessions import (
+        HarnessSession,
+        _TESSERAE_PROMPT_SIGNATURES,
+        is_tesserae_internal_session,
+    )
+
+    signature = _TESSERAE_PROMPT_SIGNATURES[0]
+    turns = [
+        {"role": "user", "text": "refactor the exporter"},
+        {"role": "assistant", "text": "Starting on the exporter now."},
+    ]
+    for _ in range(20):
+        turns.append({"role": "tool", "name": "Edit", "text": "{}"})
+        turns.append({"role": "tool_result", "name": "Edit", "text": "ok"})
+    turns.append({"role": "user", "text": signature + " — why does this drop TODOs?"})
+
+    session = HarnessSession(
+        id="z",
+        slug="z",
+        harness="claude-code",
+        agent_label="Claude Code",
+        project_name="p",
+        project_root="/tmp/p",
+        started_at="2026-08-09T10:00:00Z",
+        title="refactor the exporter",
+        summary="refactor the exporter",
+        redacted_preview="refactor the exporter",
+        metadata={"turns": turns},
+    )
+    assert is_tesserae_internal_session(session) is False

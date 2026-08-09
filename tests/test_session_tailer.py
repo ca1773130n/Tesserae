@@ -570,3 +570,129 @@ def test_truncated_file_is_reread_from_start(tmp_path):
     _write(path, header + [mk("user", "new", "2026-05-06T10:00:00Z")])  # smaller file
     tailer.tick()
     assert sink and "new" in _text_turns(sink[0][1])  # re-read, not skipped
+
+
+# --------------------------------------------------------------------------- #
+# A tool's NAME must survive the batch boundary                               #
+#                                                                             #
+# The tailer parses the delta rows to build the turns it emits, but a tool     #
+# result names only the id of the call it answers. When the invocation landed  #
+# in an earlier batch — routine, because a tool call and its result are        #
+# written seconds apart and the poll interval falls between them — the delta   #
+# alone cannot resolve the name, and the result is emitted as a generic        #
+# "tool" / "function_call". ``on_chunk_turns`` persists that attribution into  #
+# session_chunks.db under a uniqueness key that a later full backfill will not #
+# replace, so a mislabelled activity summary is permanent.                     #
+# --------------------------------------------------------------------------- #
+
+
+def _claude_tool_use_line(project: Path, ts: str) -> str:
+    return json.dumps({
+        "type": "assistant",
+        "timestamp": ts,
+        "cwd": str(project),
+        "sessionId": "abc",
+        "gitBranch": "main",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_1",
+                    "name": "Bash",
+                    "input": {"command": "pytest"},
+                }
+            ]
+        },
+    })
+
+
+def _claude_tool_result_line(project: Path, ts: str) -> str:
+    return json.dumps({
+        "type": "user",
+        "timestamp": ts,
+        "cwd": str(project),
+        "sessionId": "abc",
+        "gitBranch": "main",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_1",
+                    "content": "1 failed, 4 passed",
+                    "is_error": True,
+                }
+            ]
+        },
+    })
+
+
+def _codex_call_line(ts: str) -> str:
+    return json.dumps({
+        "timestamp": ts,
+        "type": "response_item",
+        "payload": {
+            "type": "function_call",
+            "name": "shell",
+            "call_id": "call_1",
+            "arguments": '{"command":["pytest"]}',
+        },
+    })
+
+
+def _codex_output_line(ts: str) -> str:
+    return json.dumps({
+        "timestamp": ts,
+        "type": "response_item",
+        "payload": {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": "Process exited with code 1\nOutput:\nE assert 1 == 2\n",
+        },
+    })
+
+
+@pytest.mark.parametrize("fmt", ["claude", "codex"])
+def test_a_result_in_a_later_batch_still_names_the_tool_that_ran(tmp_path, fmt):
+    project, path, roots, header, mk = _setup(tmp_path, fmt)
+    if fmt == "claude":
+        first = [mk("user", "run the suite", "2026-05-05T10:00:00Z"),
+                 _claude_tool_use_line(project, "2026-05-05T10:00:01Z")]
+        second = _claude_tool_result_line(project, "2026-05-05T10:00:05Z") + "\n"
+        expected, generic = "Bash", "tool"
+    else:
+        first = [mk("user", "run the suite", "2026-05-05T10:00:00Z"),
+                 _codex_call_line("2026-05-05T10:00:01Z")]
+        second = _codex_output_line("2026-05-05T10:00:05Z") + "\n"
+        expected, generic = "shell", "function_call"
+
+    _write(path, header + first)
+    sink: list = []
+    chunks: list = []
+    db = HarnessSessionsDB(tmp_path / ".tesserae" / "harness_sessions.db")
+    tailer = SessionTailer(
+        project_root=project,
+        sessions_db=db,
+        on_new_turns=lambda p, t: sink.append((p, t)),
+        watch_roots=roots,
+        poll_interval=0.0,
+        on_chunk_turns=lambda *a: chunks.append(a),
+    )
+
+    tailer.tick()          # the invocation, alone
+    _append(path, second)  # its result, one poll later
+    tailer.tick()
+
+    emitted = [t for _p, turns in sink for t in turns if t.get("role") == "tool_result"]
+    assert emitted, "the result must still be emitted"
+    (result,) = emitted
+    assert result["name"] != generic, (
+        "a result whose invocation was in an earlier batch was emitted "
+        f"unattributed as {generic!r}"
+    )
+    assert result["name"] == expected
+
+    chunked = [t for _h, _p, _k, turns in chunks
+               for t in turns if t.get("role") == "tool_result"]
+    assert [t["name"] for t in chunked] == [expected], (
+        "the chunk store persists the attribution the activity summary reads"
+    )

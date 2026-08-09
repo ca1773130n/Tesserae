@@ -741,14 +741,44 @@ def _refusal(
 # fallback. That is a research_graph change, not a verify change.
 
 # ponytail: ``execution_verified`` provenance is reserved in the vocabulary and
-# never emitted, because the data does not exist yet. The Claude/Codex session
-# importers mint turns from ``tool_use`` INPUTS only
-# (``harness_sessions._claude_turns``); ``tool_result`` is parsed solely to map
-# subagent ids and never becomes a turn, so no exit code survives ingest. Event
-# nodes carry ``{actor, action, tool}`` but no exit code, and the Event pass is
-# gated on ``distillation_enabled(cfg)``. Ceiling: this tool can say "a document
-# says so", never "this ran and passed". Upgrade path, in order — (1) capture
-# ``tool_result`` text + exit code as a turn, (2) put ``exit_code`` on
-# ``Event.metadata``, (3) promote a finding here when one of its
-# ``derived_from`` Events carries a zero exit code. That is an INGEST change,
-# not a verify change.
+# STILL never emitted. Ceiling unchanged: this tool can say "a document says
+# so", never "this ran and passed". What changed is that the reason is no longer
+# missing data — steps (1) and (2) of the upgrade path this note used to
+# prescribe have shipped, and step (3) has deliberately not.
+#
+# Shipped. ``harness_sessions`` now mints a ``tool_result`` turn, and
+# ``session_event`` stamps ``{status, exit_code}`` onto ``Event.metadata``, so
+# an exit code survives ingest and reaches the graph. The Event pass is
+# default-on for session-bearing projects (``event_pass_enabled``).
+#
+# NOT shipped, and not an oversight: "promote a finding when one of its
+# ``derived_from`` Events carries a zero exit code", which is what this note
+# used to prescribe as step (3). Implemented literally it manufactures the
+# claim it was meant to earn. A finding's ``derived_from`` Event is the turn the
+# finding was EXTRACTED from, not a test of what the finding says; "we decided
+# to use msgpack", cited at a turn where an unrelated ``ls`` exited 0, would be
+# promoted to the top of the provenance lattice. That is a wrong provenance
+# edge, and a wrong provenance edge is worse than a missing one — it reads as
+# evidence. No finding kind currently asserts "this passed", so there is nothing
+# for a zero exit code to be the verification OF.
+#
+# What the data will and will not support, measured on the ingest corpus (2,330
+# tool results over 103 transcripts) — any future rule has to respect this:
+#
+# * Codex reports a real exit code on 1,232 of its 1,286 results (95.8%), in a
+#   header line. "This ran and exited N" is a CODEX-ONLY claim.
+# * Claude reports NO exit code anywhere — not in the ``tool_result`` block, not
+#   in the row-level ``toolUseResult`` sibling. Its only signal is ``is_error``,
+#   set on 431 of its 1,044 results (41.3%) and true on 37 (3.5%).
+# * The ABSENCE of ``is_error`` on a Claude result must never be read as
+#   success. The key is simply omitted for most tools, so the 613 results
+#   without it contain every failure those tools had no way to report.
+#   ``Event.metadata['status']`` says ``unreported`` for exactly this case, and
+#   a rule that treats ``unreported`` as ``ok`` is the failure mode to avoid.
+#
+# The shape a sound step (3) would need: the deciding EDGE must itself be the
+# execution claim — e.g. a ``SessionFailure`` whose ``derived_from`` Event
+# carries a non-zero exit code, where the observed outcome IS what the triple
+# asserts — not any finding that happens to be co-located with a passing run.
+# That needs a finding kind that asserts an outcome on both polarities, which
+# does not exist yet. Until it does, this stays reserved.

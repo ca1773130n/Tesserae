@@ -38,6 +38,9 @@ from .retrieval.hybrid import (
 from .research_graph import (
     ALLOWED_EDGE_TYPES,
     ALLOWED_NODE_TYPES,
+    SESSION_FINDING_KIND_TO_TYPE,
+    SESSION_FINDING_KINDS,
+    SESSION_FINDING_TYPE_VALUES,
     ResearchEdge,
     ResearchGraph,
     ResearchNode,
@@ -773,6 +776,14 @@ class LLMWikiMCPServer:
         project_prop = {"type": "string", "description": "Registered project name (see list_projects). Overridden by graph_path."}
         agent_prop = {"type": "string", "description": "Agent-scoped view: a worker key (own raw + distilled memory), a manager key (federated reports' distillates), or 'org' (all distilled artifacts). Requires a project root; see agents list / tesserae distill."}
         budget_chars_prop = {"type": "integer", "minimum": 0, "default": DEFAULT_BUDGET_CHARS, "description": "CTX-01 response budget in characters: each returned item is clamped to budget_chars/8 and overflow items are dropped behind one '+N more, cursor=K' continuation line. 0 = uncapped."}
+        # The finding-kind vocabulary, interpolated from the taxonomy rather
+        # than typed out. An enum is the ONLY thing a schema-driven MCP client
+        # can send: a kind the server maps but the enum omits is unreachable
+        # through the published contract, and nothing raises — the call just
+        # comes back empty. The description carries the same list because that
+        # is what an agent reads to decide the tool can answer its question.
+        finding_kind_enum = list(SESSION_FINDING_KINDS)
+        finding_kind_list = ", ".join(SESSION_FINDING_KINDS)
         as_of_prop = {"type": "string", "description": "Bitemporal time-travel pivot, ISO-8601 (e.g. '2026-03-01' or '2026-03-01T12:00:00Z'). Returns only the facts whose validity interval covers that instant: valid_from <= as_of < valid_to. Undated facts are included but counted back as 'undated_included' — how many of the rows IN THIS RESPONSE lack a usable valid_from, so a thin-coverage answer is never mistaken for a complete one. Unparseable values error rather than silently answering over the whole corpus."}
         return [
             {
@@ -1308,8 +1319,7 @@ class LLMWikiMCPServer:
                     "Return Session<Kind> findings related to a specific node. "
                     "The node is matched as either the source or the target of "
                     "`discussed_in` / `references` edges. Optionally filter to "
-                    "specific finding kinds (insight, decision, question, todo, "
-                    "hypothesis, takeaway)."
+                    f"specific finding kinds ({finding_kind_list})."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -1320,14 +1330,11 @@ class LLMWikiMCPServer:
                         },
                         "kinds": {
                             "type": "array",
-                            "items": {
-                                "type": "string",
-                                "enum": [
-                                    "insight", "decision", "question",
-                                    "todo", "hypothesis", "takeaway",
-                                ],
-                            },
-                            "description": "Optional whitelist of finding kinds to include.",
+                            "items": {"type": "string", "enum": finding_kind_enum},
+                            "description": (
+                                "Optional whitelist of finding kinds to include: "
+                                f"{finding_kind_list}."
+                            ),
                         },
                         "limit": {
                             "type": "integer",
@@ -1807,7 +1814,8 @@ class LLMWikiMCPServer:
                     "Return session findings ranked by Ebbinghaus-style "
                     "decay score (newest + most-accessed first). Filters "
                     "out findings superseded by a newer near-duplicate. "
-                    "Optionally restrict to a single finding kind."
+                    "Optionally restrict to a single finding kind "
+                    f"({finding_kind_list})."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -1822,11 +1830,10 @@ class LLMWikiMCPServer:
                         },
                         "kind": {
                             "type": "string",
-                            "enum": [
-                                "insight", "decision", "question",
-                                "todo", "hypothesis", "takeaway",
-                            ],
-                            "description": "Restrict to one finding kind.",
+                            "enum": finding_kind_enum,
+                            "description": (
+                                f"Restrict to one finding kind: {finding_kind_list}."
+                            ),
                         },
                         "include_superseded": {
                             "type": "boolean",
@@ -2963,22 +2970,12 @@ class LLMWikiMCPServer:
     # Session-graph tool implementations
     # ------------------------------------------------------------------
 
-    _SESSION_FINDING_TYPES = {
-        "SessionInsight",
-        "SessionDecision",
-        "SessionQuestion",
-        "SessionTODO",
-        "SessionHypothesis",
-        "SessionTakeaway",
-    }
-    _KIND_TO_TYPE = {
-        "insight": "SessionInsight",
-        "decision": "SessionDecision",
-        "question": "SessionQuestion",
-        "todo": "SessionTODO",
-        "hypothesis": "SessionHypothesis",
-        "takeaway": "SessionTakeaway",
-    }
+    # Derived from the taxonomy, like the ``inputSchema`` enums in
+    # ``list_tools``. A server-side map that admits a kind the published schema
+    # hides is the worst of the two failures: the code looks wired, and no
+    # schema-driven client can ever reach it.
+    _SESSION_FINDING_TYPES = set(SESSION_FINDING_TYPE_VALUES)
+    _KIND_TO_TYPE = {kind: t.value for kind, t in SESSION_FINDING_KIND_TO_TYPE.items()}
 
     def _mcp_activity_summary(self, args: JSONDict) -> JSONDict:
         """Adapter over :func:`build_summary` — resolve windows, gather, render.

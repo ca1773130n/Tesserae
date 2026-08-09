@@ -243,3 +243,107 @@ def test_chunked_session_produces_one_call_per_chunk():
     assert len(client.calls) == 3
     bodies = sorted(f.body for f in findings)
     assert bodies == ["A", "B", "C"]
+
+
+# ---------------------------------------------------------------------------
+# Roadmap step 5 — a failed run is a first-class finding.
+#
+# The taxonomy had six kinds, none of which can say "this ran and it failed".
+# HiSkill's point: a failed anchor is a PRECONDITION for any recovery edge, so
+# without a failure kind the whole Causal/Lesson/Procedure layer is built on
+# prose keyword votes.
+# ---------------------------------------------------------------------------
+
+
+def test_a_failure_finding_survives_validation():
+    finding = _validate_finding(
+        {
+            "kind": "failure",
+            "body": "pytest exited 1: test_prune_scope failed on a stale fixture day",
+            "turn_ids": [3],
+            "references": [],
+        },
+        set(),
+        session_id="sess-fail",
+    )
+    assert finding is not None, "an unknown kind is dropped silently at extraction"
+    assert finding.kind == "failure"
+
+
+def test_the_prompt_offers_failure_as_a_kind():
+    """An allowed kind the prompt never names is a kind the model never emits."""
+    from tesserae.session_graph_llm import _PROMPT_SYSTEM
+
+    assert '"failure"' in _PROMPT_SYSTEM or "- \"failure\"" in _PROMPT_SYSTEM
+    assert "failure" in _PROMPT_SYSTEM.split('"kind": "<one of:')[1].split(">")[0]
+
+
+def test_a_still_unknown_kind_is_still_dropped():
+    assert (
+        _validate_finding(
+            {"kind": "vibes", "body": "b", "turn_ids": [], "references": []},
+            set(),
+            session_id="s",
+        )
+        is None
+    )
+
+
+# ---------------------------------------------------------------------------
+# The capture and its consumer
+# ---------------------------------------------------------------------------
+
+
+def _outcome_session(result: dict):
+    from pathlib import Path
+
+    from tesserae.harness_sessions import HarnessSession
+
+    return HarnessSession(
+        id="sess-outcome",
+        slug="sess-outcome",
+        harness="codex",
+        agent_label="Codex",
+        project_name="demo",
+        project_root=str(Path("/tmp/demo").resolve()),
+        started_at="2026-08-09T10:00:00Z",
+        metadata={
+            "turns": [
+                {"role": "user", "timestamp": "", "text": "run the suite"},
+                {
+                    "role": "tool",
+                    "timestamp": "",
+                    "name": "shell",
+                    "text": '{"command": "pytest"}',
+                },
+                {"role": "tool_result", "timestamp": "", "name": "shell", **result},
+            ]
+        },
+    )
+
+
+def test_the_model_can_tell_a_failed_run_from_a_successful_one():
+    """``failure`` was added to the prompt as a kind the model may emit, but the
+    only signal that a run failed is a TYPED field (``exit_code`` / ``is_error``)
+    and the payload the model is shown is ``{role, text}`` exactly. Without the
+    outcome in the text, the sole producer of ``SessionFailure`` cannot see the
+    thing this branch captured."""
+    from tesserae.session_graph import _normalised_turns
+
+    failed = _normalised_turns(_outcome_session({"text": "1 failed", "exit_code": 1}))
+    passed = _normalised_turns(_outcome_session({"text": "1 passed", "exit_code": 0}))
+    failed_result = failed[2]["text"]
+    passed_result = passed[2]["text"]
+    assert failed_result != passed_result
+    assert "1" in failed_result and "exit" in failed_result.lower()
+    assert "0" in passed_result and "exit" in passed_result.lower()
+
+
+def test_a_result_that_reported_nothing_does_not_read_to_the_model_as_success():
+    """Absence of ``is_error`` on a Claude result is not a pass — the key is
+    simply omitted for most tools. The rendered marker says so out loud."""
+    from tesserae.session_graph import _normalised_turns
+
+    silent = _normalised_turns(_outcome_session({"text": "some output"}))[2]["text"]
+    assert "no outcome" in silent
+    assert "success" not in silent

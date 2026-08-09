@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
-from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType, is_public_research_node
+from ..research_graph import SESSION_FINDING_TYPE_VALUES, ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType, is_public_research_node
 from ..wiki_store import WikiPage
 from .ask_widget import _load_demo_qa, ask_widget_js
 from .raw_view import (
@@ -2314,10 +2314,7 @@ for _family, _types in {
         "CausalClaim", "OpenQuestion", "EvidenceSpan",
     ),
     "synthesis": ("Synthesis", "CommunitySummary"),
-    "sessions": (
-        "Session", "SessionInsight", "SessionDecision", "SessionQuestion", "SessionTODO",
-        "SessionHypothesis", "SessionTakeaway",
-    ),
+    "sessions": ("Session",) + tuple(sorted(SESSION_FINDING_TYPE_VALUES)),
     "actors": ("Person", "Organization"),
 }.items():
     for _t in _types:
@@ -2354,9 +2351,11 @@ _GRAPH_VIEW_EXTRA_TYPES: frozenset[str] = frozenset(
         "CodeConstant", "CodeRoute", "CodeComponent", "CodeField",
         "CodeParameter", "CodeNamespace", "CodeSymbol", "Dependency",
         # Sessions family — session memory drawer section.
-        "Session", "SessionInsight", "SessionDecision", "SessionQuestion",
-        "SessionTODO", "SessionHypothesis", "SessionTakeaway",
+        "Session",
     }
+    # Unioned, not re-listed: a finding type missing from the graph view is
+    # invisible on the site with nothing to notice it by.
+    | SESSION_FINDING_TYPE_VALUES
 )
 _GRAPH_VIEW_TYPES: frozenset[str] = WIKI_LAYER_TYPES | _GRAPH_VIEW_EXTRA_TYPES
 
@@ -2371,12 +2370,7 @@ _CODE_FANIN_EDGE_TYPES: frozenset[str] = frozenset(
     {"calls", "references", "imports", "declared_in"}
 )
 # Session-finding node types whose importance is ``decay_score`` when present.
-_SESSION_FINDING_TYPE_VALUES: frozenset[str] = frozenset(
-    {
-        "SessionInsight", "SessionDecision", "SessionQuestion",
-        "SessionTODO", "SessionHypothesis", "SessionTakeaway",
-    }
-)
+_SESSION_FINDING_TYPE_VALUES: frozenset[str] = SESSION_FINDING_TYPE_VALUES
 
 
 def _is_hidden_group_node(node: ResearchNode) -> bool:

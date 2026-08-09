@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from .citation_names import NODE_CITATION_RE, rewrite_citations
+from .research_graph import SESSION_FINDING_KIND_TO_TYPE, SESSION_FINDING_KINDS
 
 MAX_STEPS = 5
 _EVIDENCE_CLIP = 2500  # chars per evidence block fed to synthesis
@@ -55,9 +56,15 @@ _CATALOG: List[Tuple[str, str, str]] = [
     ),
     (
         "session_findings",
-        '{"kind": "insight|decision|question|todo|hypothesis|takeaway", "limit": int<=20}',
+        # The kind union is INTERPOLATED from the taxonomy, not retyped: this
+        # string is the planner's system prompt, so a kind missing here is a
+        # kind the planner is instructed never to emit — and the executor
+        # branch that maps it then never runs, however correct that map is.
+        '{"kind": "' + "|".join(SESSION_FINDING_KINDS) + '", "limit": int<=20}',
         "Findings extracted from sessions, newest first. Omit kind for all "
-        "kinds. Best for 'what did we learn/decide' style questions.",
+        "kinds. Best for 'what did we learn/decide/try' style questions; "
+        "kind='failure' answers 'what broke' / 'what did we try that did not "
+        "work'.",
     ),
     (
         "activity_summary",
@@ -134,14 +141,7 @@ def _as_int(value: Any, default: int, cap: int) -> int:
         return default
 
 
-_FINDING_TYPES = {
-    "insight": "SessionInsight",
-    "decision": "SessionDecision",
-    "question": "SessionQuestion",
-    "todo": "SessionTODO",
-    "hypothesis": "SessionHypothesis",
-    "takeaway": "SessionTakeaway",
-}
+_FINDING_TYPES = {kind: t.value for kind, t in SESSION_FINDING_KIND_TO_TYPE.items()}
 
 
 def _node_ts(node: Any) -> str:
