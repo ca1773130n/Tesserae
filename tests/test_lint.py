@@ -1208,8 +1208,97 @@ def test_lint_procedural_pools_reports_document_extractions(tmp_path: Path) -> N
     matches = [f for f in report.findings if f.code == "PROCEDURAL_POOLS"]
     assert len(matches) == 1, f"expected one PROCEDURAL_POOLS finding; got {matches}"
     finding = matches[0]
-    assert finding.severity == "warning", (
-        "a wholly unearned pool is a defect to act on, not a statistic"
+    # Info, not warning: see
+    # ``test_lint_procedural_pools_does_not_gate_strict_on_an_unfillable_pool``
+    # — the projects this trips on cannot act on the remedy.
+    assert finding.severity == "info"
+    # reachable/producer-made/total. Nothing has edges here, so even the real
+    # Runbook is unreachable — which the histogram says out loud.
+    assert "Event=0/0/3" in finding.message, finding.message
+    assert "Runbook=0/1/1" in finding.message, finding.message
+
+
+def test_lint_procedural_pools_does_not_gate_strict_on_an_unfillable_pool(
+    tmp_path: Path,
+) -> None:
+    """``compile --strict`` must not fail a project for never running a producer.
+
+    The projects this probe trips on are exactly the ones whose procedural
+    producers have never run — a documentation corpus with no sessions, say.
+    The remedy on offer is "run the producer", which for them means "record
+    agent sessions", not a fix they can apply to the graph in front of them.
+    ``compile --strict`` maps warnings to exit 1, so a warning here breaks
+    those builds over a condition they cannot act on.
+
+    This is the posture INTERVAL_COVERAGE already ships with: report the
+    number, at ``info``, with no threshold.
+    """
+    graph = {
+        "nodes": [
+            _node("e1", "Event", "CVPR 2026"),
+            _node("e2", "Event", "3DV 2027"),
+        ],
+        "edges": [],
+    }
+    report = WikiLinter(_scaffold(tmp_path, graph=graph)).run()
+
+    matches = [f for f in report.findings if f.code == "PROCEDURAL_POOLS"]
+    assert len(matches) == 1, f"expected one PROCEDURAL_POOLS finding; got {matches}"
+    assert matches[0].severity == "info", (
+        "an unfillable pool is a statistic about which producers have run, "
+        "not a defect the tripping project can act on"
     )
-    assert "Event=0/3" in finding.message, finding.message
-    assert "Runbook=1/1" in finding.message, finding.message
+    assert not report.has_warnings() and not report.has_errors(), (
+        "a graph whose only flaw is an unfilled procedural pool must leave "
+        f"`compile --strict` green; got {[(f.code, f.severity) for f in report.findings]}"
+    )
+
+
+def test_lint_procedural_pools_reports_reachability_not_just_census(
+    tmp_path: Path,
+) -> None:
+    """A pool nothing can retrieve from is not a healthy pool.
+
+    Reservation only ever picks from the PPR neighbourhood of the seeds, so a
+    producer-made node with no edges is unreachable in every query — it can
+    never take the slot it is counted for. A census that says
+    ``ExpertiseProfile=5/5`` reports the one pool that cannot be served as the
+    healthiest one in the graph.
+    """
+    profiles = [
+        _node(
+            f"p{i}",
+            "ExpertiseProfile",
+            f"Expertise: agent-{i}",
+            metadata={"agent": f"claude-code:acct:agent-{i}"},
+        )
+        for i in range(5)
+    ]
+    runbook = _node(
+        "rb1",
+        "Runbook",
+        "Runbook: release",
+        metadata={
+            "extractor": "memory.distill.run_distillation_pass",
+            "member_ids": ["f1"],
+        },
+    )
+    finding = _node("f1", "SessionInsight", "cut the release from CI")
+    graph = {
+        "nodes": profiles + [runbook, finding],
+        "edges": [{"source": "rb1", "target": "f1", "type": "derived_from"}],
+    }
+    report = WikiLinter(_scaffold(tmp_path, graph=graph)).run()
+
+    matches = [f for f in report.findings if f.code == "PROCEDURAL_POOLS"]
+    assert len(matches) == 1, f"expected one PROCEDURAL_POOLS finding; got {matches}"
+    message = matches[0].message
+    assert "ExpertiseProfile=0/5/5" in message, (
+        "the histogram must lead with how many producer-made nodes are "
+        f"reachable at all; got {message}"
+    )
+    assert "Runbook=1/1/1" in message, message
+    assert "ExpertiseProfile" in (matches[0].suggested_fix or "") + message, message
+    assert "unreachable" in message.lower(), (
+        f"an isolated pool must be named as unservable; got {message}"
+    )
