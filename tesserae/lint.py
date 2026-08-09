@@ -33,6 +33,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Optional, Set, Tuple
 
+from .research_graph import CAUSAL_EDGE_TYPES
+
 
 # --------------------------------------------------------------------------- types
 
@@ -58,6 +60,11 @@ _REASONING_EDGE_TYPES: FrozenSet[str] = frozenset(
         "optimizes_for",
         "extends",
     }
+    # A causal edge asserts the strongest reason the graph can carry — "this
+    # succeeded and it recovers that failure" — so it is reasoning by
+    # construction. Derived, not spelled out, so the ratchet counts the next
+    # causal type automatically.
+    | set(CAUSAL_EDGE_TYPES)
 )
 
 # A RATCHET, not an aspiration: 7.5% is the value measured on a real

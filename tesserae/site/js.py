@@ -1030,7 +1030,13 @@ JS_GRAPH = r"""
       supports_claim: 1, contradicts_claim: 1, attributes_improvement_to: 1,
       has_limitation: 1, evidenced_by: 1, rising_in: 1, declining_in: 1,
       emerged_after: 1, synthesizes: 1, summarizes: 1, user_link: 1,
-      discussed_in: 1, references: 1, supersedes: 1, discusses: 1
+      discussed_in: 1, references: 1, supersedes: 1, discusses: 1,
+      // Causal layer (research_graph.CAUSAL_EDGE_TYPES). This blob is a raw JS
+      // string so the set cannot be interpolated from Python; the Python side
+      // is pinned by tests/test_session_recovery.py instead, because an
+      // unlisted causal edge silently renders as a faint structural line —
+      // the visual opposite of what it is.
+      recovers: 1
     };
     function edgeClassOf(link){
       var t = (link && (link.type || link.relation)) || '';

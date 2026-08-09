@@ -1824,6 +1824,7 @@ class ProjectWiki:
 
         if event_pass_enabled(cfg):
             from .session_event import extract_events
+            from .session_recovery import detect_recoveries
 
             findings_by_session: Dict[str, List[ResearchNode]] = {}
             for _node in session_slice.nodes:
@@ -1838,6 +1839,12 @@ class ProjectWiki:
                 )
                 session_slice.nodes.extend(_ev_nodes)
                 session_slice.edges.extend(_ev_edges)
+                # The causal layer (roadmap step 6). ``recovers`` edges join two
+                # of the Events just minted — a failure and the success that
+                # fixed it — so this runs here, on the same list, and is gated
+                # by the same switch: without Events there is nothing to join.
+                # LLM-free, session-local and deterministic, like the pass above.
+                session_slice.edges.extend(detect_recoveries(_session, _ev_nodes))
 
         if not session_slice.nodes and not session_slice.edges:
             return graph

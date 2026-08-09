@@ -38,6 +38,60 @@ import re
 HOME_PATH = re.compile(r"/(?:Users|home)/[^/\s]+")
 
 
+#: Credential shapes. These lived privately in :mod:`tesserae.harness_sessions`,
+#: applied at ingest to every stored turn, and nowhere else — which is the exact
+#: shape of the omission this module's docstring describes. They are here so a
+#: producer that publishes transcript-derived text can reach them without
+#: importing the ingest layer.
+SECRET_PATTERNS = (
+    re.compile(r"(?i)(api[_-]?key|token|secret|password|passwd|authorization|bearer)\s*[:=]\s*[^\s,;]+"),
+    re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+\-/=]+"),
+    re.compile(r"sk-[A-Za-z0-9]{12,}"),
+    # ...and the vendor-prefixed form the rule above cannot see. An Anthropic
+    # key is ``sk-ant-<version>-<blob>``: the hyphens break ``[A-Za-z0-9]{12,}``
+    # after three characters, so the single most likely credential on a machine
+    # running this codebase passed the redactor untouched. Segment names are
+    # spelled out rather than admitting any hyphenated word after ``sk-``,
+    # which would start redacting ordinary file names.
+    re.compile(r"sk[-_](?:ant|proj|live|test)[-_][A-Za-z0-9_\-]{8,}"),
+    # A credential passed as a FLAG value. The generic rule above needs ``:``
+    # or ``=``; ``--api-key <value>`` is separated by a space, and widening the
+    # generic rule to accept whitespace would redact the word after every
+    # occurrence of "token" in ordinary prose — in a corpus that discusses
+    # tokens constantly. A leading ``--`` is the whole difference.
+    re.compile(r"(?i)--(?:api[-_]?key|token|secret|password|passwd)[=\s]+\S+"),
+    re.compile(r"ghp_[A-Za-z0-9]{20,}"),
+    re.compile(r"xox[baprs]-[A-Za-z0-9-]+"),
+)
+
+REDACTED = "[REDACTED]"
+
+
+def redact_secrets(text: str) -> str:
+    """Replace credential-shaped substrings with ``[REDACTED]``.
+
+    Applied at ingest to every stored turn, and again by any producer that
+    copies transcript text into a node or edge. Re-applying is harmless: the
+    replacement contains no credential shape.
+    """
+    if not text:
+        return ""
+    redacted = text
+    for pattern in SECRET_PATTERNS:
+        redacted = pattern.sub(REDACTED, redacted)
+    return redacted
+
+
+def redact_published_text(text: str) -> str:
+    """Both rules, in the order ingest applies them: secrets, then home paths.
+
+    The one call a producer should make on any string it is about to write into
+    ``graph.json``, the vault or the site. Secrets first so a home path inside a
+    credential-bearing fragment is not what survives.
+    """
+    return redact_home_paths(redact_secrets(text))
+
+
 def redact_home_paths(text: str) -> str:
     """Replace ``/Users/<name>`` / ``/home/<name>`` with ``~``.
 
