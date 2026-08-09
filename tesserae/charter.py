@@ -26,6 +26,59 @@ from .community_summaries import detect_communities
 from .hierarchy import undirected_degrees
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 
+# ---------------------------------------------------------------------------
+# CH-04, decided in advance of the code that will enforce it (roadmap step 6)
+# ---------------------------------------------------------------------------
+# CH-04 — "a note that names nothing cannot rise" — IS NOT IMPLEMENTED. There is
+# no specificity check, no note-rising machinery and no ``render_brief`` in this
+# module or anywhere else; only CH-01 is asserted. The charter-structure plan
+# says so itself. What follows is therefore a DESIGN COMMITMENT about unwritten
+# code, recorded here because the causal layer (``tesserae.session_recovery``)
+# is the first producer whose nodes CH-04 would have judged, and because the
+# choice was made against measurement rather than taste.
+#
+# The question step 6 had to settle: when CH-04 exists, are procedural and
+# causal notes EXEMPT from it, or must they name a tool and a file as tokens
+# that resolve to L0 node names?
+#
+# NEITHER. Both options are wrong, and the second is the worse of the two
+# because it looks stricter while blocking everything. Measured on the live
+# 47,132-node graph:
+#
+#   * File paths do not resolve. There are ZERO code-layer nodes of any kind
+#     (the code layer is opt-in and off), and only 19 nodes graph-wide have a
+#     name ending in a source-file extension — all EvidenceSpan / SourceDocument
+#     / Repository, not files.
+#   * Tool names barely resolve, and only by accident. Of a dozen common tool
+#     names exactly two are node names — ``Bash`` and ``WebFetch`` — and both
+#     are TechnicalTerm nodes that document extraction happened to mint from a
+#     CLAUDE.md routing-rules file. A structural rule that passes only because a
+#     config file got ingested is not a rule.
+#   * Whole-name matching defeats itself from both ends. SessionInsight names
+#     run a median of 24 words and Runbook titles a median of 3, so a Runbook
+#     can essentially never contain a session finding's name as a token; and a
+#     producer Event is named ``Event {turn_id}: {actor} · {action}``, which is
+#     turn-scoped and so can never appear in a general note either.
+#
+# So requiring tool+file as name-resolvable tokens would silently stop every
+# procedural and causal note from rising — a worse exemption than the exemption,
+# and a silent one.
+#
+# THE DECISION: keep CH-04's rule exactly as specified — a note that names
+# nothing cannot rise — and widen what a token is allowed to resolve AGAINST for
+# procedural and causal nodes, from member NAMES alone to
+#
+#     {names of L0 members}
+#   ∪ {metadata["tool"] of L0 Event members}          (session_event.py)
+#   ∪ {file paths in L0 member metadata}
+#
+# This preserves the argument CH-04 rests on — a recovery note that names
+# ``exec_command`` and an operand is executable, while "we improved reliability
+# at scale" still names nothing and still cannot rise — and it is satisfiable
+# today, because ``metadata["tool"]`` is already stamped on every tool Event by
+# the session producer and ``metadata["anchor"]`` on every ``recovers`` edge.
+# Widen the resolvable set, not the rule.
+
 #: Split threshold, in rendered member-block characters. A LITERAL, not
 #: ``CHUNK_CHAR_BUDGET // 2``: deriving it would let an env override of
 #: TESSERAE_LLM_CHUNK_CHARS reshape the tree, which is exactly the
