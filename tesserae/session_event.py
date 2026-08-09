@@ -59,11 +59,12 @@ PRECEDES_EDGE = "precedes"
 DERIVED_FROM_EDGE = "derived_from"
 """Links a session-finding node to the Event(s) at its ``turn_ids``."""
 
-# Roles whose turns can become events. ``tool`` turns are always significant
-# (a tool call IS a state transition); ``assistant`` turns are significant only
-# when they carry enough text to describe an action (filtered below). Pure
-# ``user`` / ``system`` chatter is skipped.
-_ACTION_ROLES = frozenset({"assistant", "tool"})
+# Roles whose turns can become events. ``tool`` and ``tool_result`` turns are
+# always significant (an invocation and its OUTCOME are two distinct state
+# transitions — see the outcome stamps below); ``assistant`` turns are
+# significant only when they carry enough text to describe an action (filtered
+# below). Pure ``user`` / ``system`` chatter is skipped.
+_ACTION_ROLES = frozenset({"assistant", "tool", "tool_result"})
 
 # Minimum stripped-text length for an assistant turn to count as a substantive
 # action (shorter ones are acknowledgements / chatter). Tool turns bypass this.
@@ -187,6 +188,9 @@ def extract_events(
         tool_name = str(turn.get("name") or "").strip()
         if tool_name:
             metadata["tool"] = tool_name
+        # The OUTCOME of the transition, stamped only where one genuinely
+        # exists. See :func:`_outcome` for why silence is the honest default.
+        metadata.update(_outcome(turn))
         # ``first_seen_at`` derives from the turn / session timestamp ONLY —
         # never ``datetime.now()`` — so graph.json stays byte-stable.
         if timestamp:
@@ -244,9 +248,10 @@ def _significant_turns(session: object) -> List[Tuple[int, Mapping[str, object]]
             continue
         text = str(turn.get("text") or "").strip()
         tool_name = str(turn.get("name") or "").strip()
-        # A tool turn IS a transition even with terse text. An assistant turn
-        # must carry substantive prose to count as an action.
-        if role == "tool":
+        # A tool turn IS a transition even with terse text, and so is its
+        # result — an image-only or empty tool_result still records that the
+        # call returned. An assistant turn must carry substantive prose.
+        if role in ("tool", "tool_result"):
             if not (tool_name or text):
                 continue
         else:  # assistant
@@ -266,6 +271,39 @@ def _actor(turn: Mapping[str, object]) -> str:
     return role or "agent"
 
 
+def _outcome(turn: Mapping[str, object]) -> Dict[str, object]:
+    """The ``{status, exit_code}`` stamps a turn has EARNED, and no others.
+
+    ``tesserae.verify`` states its own ceiling in source: "this tool can say a
+    document says so, never this ran and passed", and names this as the missing
+    link. So the point of these two keys is to let a later pass promote a
+    finding on a *zero exit code* — which makes over-claiming the one failure
+    mode that matters. Three rules, in order:
+
+    * an ``exit_code`` is stamped only where the harness reported one. Measured
+      on the ingest corpus: 95.8% of Codex ``function_call_output`` payloads
+      carry a literal ``Process exited with code N`` line; **no** Claude tool
+      result carries an exit code anywhere — not in the ``tool_result`` block
+      and not in the row-level ``toolUseResult`` sibling. Any promotion on a
+      zero exit code therefore fires on Codex-derived Events only.
+    * ``is_error`` gives a status without an exit code. Claude sets it on 41.3%
+      of results and true on 3.5%.
+    * the ABSENCE of ``is_error`` is not success. It is simply omitted for every
+      non-Bash tool, so a turn carrying neither signal is stamped with NEITHER
+      key — its metadata stays byte-identical to what this pass minted before
+      outcomes existed, and a reader gets silence instead of a false pass.
+    """
+    out: Dict[str, object] = {}
+    exit_code = turn.get("exit_code")
+    is_error = turn.get("is_error")
+    if isinstance(exit_code, int) and not isinstance(exit_code, bool):
+        out["exit_code"] = exit_code
+        out["status"] = "ok" if exit_code == 0 else "error"
+    elif isinstance(is_error, bool):
+        out["status"] = "error" if is_error else "ok"
+    return out
+
+
 def _action(turn: Mapping[str, object]) -> str:
     """A short, deterministic label for the transition.
 
@@ -276,7 +314,7 @@ def _action(turn: Mapping[str, object]) -> str:
     role = str(turn.get("role") or "").lower()
     tool_name = str(turn.get("name") or "").strip()
     text = redact_home_paths(str(turn.get("text") or "").strip())
-    if role == "tool" and tool_name:
+    if role in ("tool", "tool_result") and tool_name:
         return tool_name
     if text:
         return truncate(text, 80)
@@ -289,9 +327,25 @@ def _event_name(turn_id: int, actor: str, action: str) -> str:
 
 def _template_description(turn: Mapping[str, object], actor: str, action: str) -> str:
     """Deterministic one-line state-change description (the always-safe path)."""
+    role = str(turn.get("role") or "").lower()
     tool_name = str(turn.get("name") or "").strip()
     text = redact_home_paths(str(turn.get("text") or "").strip())
-    if str(turn.get("role") or "").lower() == "tool" and tool_name:
+    if role == "tool_result" and tool_name:
+        # The result text is truncated to 120 chars here exactly as an
+        # invocation's is, so a 2 MB tool result renders no larger a block than
+        # any other Event and charter.mass() stays a function of Event COUNT.
+        detail = truncate(text, 120)
+        outcome = _outcome(turn)
+        if "exit_code" in outcome:
+            verb = f"{tool_name} exited {outcome['exit_code']}"
+        elif outcome.get("status") == "error":
+            verb = f"{tool_name} failed"
+        elif outcome.get("status") == "ok":
+            verb = f"{tool_name} succeeded"
+        else:
+            verb = f"{tool_name} returned"
+        return f"{verb}: {detail}" if detail else verb
+    if role == "tool" and tool_name:
         detail = truncate(text, 120) if text else ""
         if detail:
             return f"{actor} invoked {tool_name}: {detail}"

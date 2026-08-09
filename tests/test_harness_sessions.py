@@ -1058,3 +1058,267 @@ def test_the_tally_is_not_reachable_as_module_state(tmp_path):
     assert not hasattr(hs, "_DROPPED_CONTENT_BLOCKS")
     assert not hasattr(hs, "reset_dropped_content_blocks")
     assert not hasattr(hs, "dropped_content_block_counts")
+
+
+# ---------------------------------------------------------------------------
+# Roadmap step 5 — tool results survive ingest.
+#
+# verify.py says of this codebase, in source: "tool_result is parsed solely to
+# map subagent ids and never becomes a turn, so no exit code survives ingest
+# ... this tool can say a document says so, never this ran and passed."
+#
+# Every test below asserts on the CONTENT of the minted turn list — the
+# behaviour verify.py names as missing — not on the existence of a helper.
+# ---------------------------------------------------------------------------
+
+
+def _claude_tool_rows(result_block, *, tool="Bash", tool_input=None):
+    """An assistant tool_use row followed by the user row carrying its result."""
+    return [
+        {
+            "type": "assistant",
+            "timestamp": "2026-08-09T10:00:00Z",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_1",
+                        "name": tool,
+                        "input": tool_input or {"command": "pytest"},
+                    }
+                ]
+            },
+        },
+        {
+            "type": "user",
+            "timestamp": "2026-08-09T10:00:05Z",
+            "message": {"content": [{**result_block, "tool_use_id": "toolu_1"}]},
+        },
+    ]
+
+
+def test_a_claude_tool_result_becomes_its_own_turn_naming_the_tool_that_ran():
+    from tesserae.harness_sessions import _claude_turns
+
+    rows = _claude_tool_rows(
+        {"type": "tool_result", "content": "1 failed, 4 passed", "is_error": True}
+    )
+    turns = _claude_turns(rows)
+
+    assert [t["role"] for t in turns] == ["tool", "tool_result"]
+    result = turns[1]
+    # The tool_result block carries only tool_use_id; the NAME has to be
+    # resolved back through the invocation or the outcome is unattributable.
+    assert result["name"] == "Bash"
+    assert "1 failed, 4 passed" in str(result["text"])
+    assert result["is_error"] is True
+
+
+def test_a_claude_tool_result_without_is_error_is_not_recorded_as_a_success():
+    """`is_error` is omitted for every non-Bash tool, so its ABSENCE is not
+    evidence of success. Stamping ok here would manufacture the exact claim
+    verify.py refuses to make."""
+    from tesserae.harness_sessions import _claude_turns
+
+    turns = _claude_turns(
+        _claude_tool_rows({"type": "tool_result", "content": "file contents"}, tool="Read")
+    )
+    result = next(t for t in turns if t["role"] == "tool_result")
+    assert "is_error" not in result
+    assert "exit_code" not in result
+
+
+def test_a_claude_tool_result_text_is_capped_like_a_tool_turn():
+    """Results are an order of magnitude larger than inputs (measured max: a
+    2 MB single block). Uncapped they would be stored verbatim."""
+    from tesserae.harness_sessions import _claude_turns
+
+    turns = _claude_turns(
+        _claude_tool_rows({"type": "tool_result", "content": "x" * 50_000})
+    )
+    result = next(t for t in turns if t["role"] == "tool_result")
+    assert len(str(result["text"])) <= 1201  # 1200 + the ellipsis
+
+
+def _codex_tool_rows(output):
+    return [
+        {
+            "timestamp": "2026-08-09T10:00:00Z",
+            "payload": {
+                "type": "function_call",
+                "name": "shell",
+                "call_id": "call_1",
+                "arguments": '{"command":["pytest"]}',
+            },
+        },
+        {
+            "timestamp": "2026-08-09T10:00:05Z",
+            "payload": {
+                "type": "function_call_output",
+                "call_id": "call_1",
+                "output": output,
+            },
+        },
+    ]
+
+
+def test_a_codex_function_call_output_turn_carries_the_process_exit_code():
+    """Codex is the only harness that reports a real exit status, and it does
+    so as a header line inside a plain output string."""
+    from tesserae.harness_sessions import _codex_turns
+
+    turns = _codex_turns(
+        _codex_tool_rows(
+            "Chunk ID: 861f8c\nWall time: 0.4 seconds\nProcess exited with code 2\n"
+            "Output:\n---\nE   assert 1 == 2\n"
+        )
+    )
+    assert [t["role"] for t in turns] == ["tool", "tool_result"]
+    result = turns[1]
+    assert result["name"] == "shell"
+    assert result["exit_code"] == 2
+    assert "assert 1 == 2" in str(result["text"])
+
+
+def test_a_codex_output_with_no_exit_line_carries_no_exit_code():
+    """apply_patch and MCP tools emit no exit line (measured: 54 of 1,286).
+    Defaulting those to 0 would silently rot coverage into a false pass."""
+    from tesserae.harness_sessions import _codex_turns
+
+    turns = _codex_turns(_codex_tool_rows("Success. Updated the following files:\nM foo.py"))
+    result = next(t for t in turns if t["role"] == "tool_result")
+    assert "exit_code" not in result
+
+
+def test_a_zero_exit_code_is_recorded_as_zero_not_dropped_as_falsey():
+    from tesserae.harness_sessions import _codex_turns
+
+    turns = _codex_turns(_codex_tool_rows("Process exited with code 0\nOutput:\nok\n"))
+    result = next(t for t in turns if t["role"] == "tool_result")
+    assert result["exit_code"] == 0
+
+
+def test_a_session_records_its_failures_in_the_errors_field(tmp_path):
+    """`HarnessSession.errors` has been declared and round-tripped since it was
+    written and populated by nothing — 0 of the 211 live records carry one."""
+    from tesserae import harness_sessions as hs
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    root = tmp_path / "claude"
+    directory = root / "projects" / hs._claude_project_dir(project.resolve())
+    directory.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "type": "user",
+            "cwd": str(project.resolve()),
+            "timestamp": "2026-08-09T09:59:00Z",
+            "sessionId": "s1",
+            "message": {"role": "user", "content": "run the suite"},
+        }
+    ] + [
+        {**row, "cwd": str(project.resolve()), "sessionId": "s1"}
+        for row in _claude_tool_rows(
+            {"type": "tool_result", "content": "ERROR: 1 failed", "is_error": True}
+        )
+    ]
+    path = directory / "s1.jsonl"
+    path.write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
+    )
+
+    session = hs._parse_claude_session(project.resolve(), root, path)
+    assert session is not None
+    assert session.errors, "a failing tool result must land in session.errors"
+    assert any("Bash" in e for e in session.errors)
+    # and it must survive the store round-trip it was already wired for
+    assert hs.HarnessSession.from_dict(session.to_dict()).errors == session.errors
+
+
+def test_a_session_with_no_failures_records_no_errors(tmp_path):
+    from tesserae import harness_sessions as hs
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    root = tmp_path / "claude"
+    directory = root / "projects" / hs._claude_project_dir(project.resolve())
+    directory.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {**row, "cwd": str(project.resolve()), "sessionId": "s2"}
+        for row in _claude_tool_rows({"type": "tool_result", "content": "ok", "is_error": False})
+    ]
+    path = directory / "s2.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+    session = hs._parse_claude_session(project.resolve(), root, path)
+    assert session is not None
+    assert session.errors == []
+
+
+def test_the_self_capture_guard_reads_past_tool_results_to_find_the_signature():
+    """v0.29.0 exists because Tesserae harvested its own LLM calls — 98.4% of
+    the store. The guard anchors on the first three turns; widening ingest adds
+    turns that can DISPLACE the signature out of that window. The window must be
+    defined over conversation turns, not over whatever ingest happens to mint."""
+    from tesserae.harness_sessions import (
+        HarnessSession,
+        _TESSERAE_PROMPT_SIGNATURES,
+        is_tesserae_internal_session,
+    )
+
+    signature = _TESSERAE_PROMPT_SIGNATURES[0]
+    session = HarnessSession(
+        id="x",
+        slug="x",
+        harness="claude-code",
+        agent_label="Claude Code",
+        project_name="p",
+        project_root="/tmp/p",
+        started_at="2026-08-09T10:00:00Z",
+        title="unrelated",
+        summary="unrelated",
+        redacted_preview="unrelated",
+        metadata={
+            "turns": [
+                {"role": "tool", "name": "Read", "text": "{}"},
+                {"role": "tool_result", "name": "Read", "text": "some file"},
+                {"role": "tool", "name": "Bash", "text": "{}"},
+                {"role": "tool_result", "name": "Bash", "text": "output"},
+                {"role": "user", "text": signature + " and then some"},
+            ]
+        },
+    )
+    assert is_tesserae_internal_session(session) is True
+
+
+def test_a_tool_result_quoting_a_tesserae_prompt_does_not_drop_a_real_session():
+    """The guard's own docstring: "False positives (dropping real work) are
+    worse than false negatives here." A Read of a prompt constant echoes a
+    signature verbatim at position 0 of the result text."""
+    from tesserae.harness_sessions import (
+        HarnessSession,
+        _TESSERAE_PROMPT_SIGNATURES,
+        is_tesserae_internal_session,
+    )
+
+    signature = _TESSERAE_PROMPT_SIGNATURES[0]
+    session = HarnessSession(
+        id="y",
+        slug="y",
+        harness="claude-code",
+        agent_label="Claude Code",
+        project_name="p",
+        project_root="/tmp/p",
+        started_at="2026-08-09T10:00:00Z",
+        title="fix the extractor prompt",
+        summary="fix the extractor prompt",
+        redacted_preview="fix the extractor prompt",
+        metadata={
+            "turns": [
+                {"role": "user", "text": "show me the extractor prompt"},
+                {"role": "tool", "name": "Read", "text": '{"file_path": "prompts.py"}'},
+                {"role": "tool_result", "name": "Read", "text": signature},
+            ]
+        },
+    )
+    assert is_tesserae_internal_session(session) is False

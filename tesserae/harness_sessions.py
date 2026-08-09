@@ -758,13 +758,35 @@ def is_tesserae_internal_session(session: HarnessSession) -> bool:
     raw turns are also checked (anchored) in case a leading boilerplate turn pushed
     the prompt out of the title. False positives (dropping real work) are worse
     than false negatives here, so the anchor is deliberate.
+
+    The turn window is defined over CONVERSATION turns — what was said, not
+    what ingest happened to mint from it. Tool invocations and their results
+    are excluded from it in both directions, and both matter:
+
+    * a tool loop must not DISPLACE the signature past the window. Today no
+      Tesserae internal call uses tools (a ``claude -p`` one-shot has no tool
+      loop; measured, 700 of 700 self-capture transcripts carry the signature
+      at turn 0 and 2 carry any tool result at all), so the guard survives on
+      a property of how Tesserae currently calls the model rather than on
+      anything the guard itself enforces. An agentic extraction or a retrieval
+      planner with MCP access would break that, silently, by re-admitting the
+      record. Excluding tool turns makes it an invariant instead.
+    * a tool RESULT must not match. A ``Read`` of a prompt constant, a ``cat``
+      of ``prompts/``, or a subagent result that echoes one puts a signature at
+      position 0 of the result text — and dropping real work is the failure
+      this docstring already calls the worse one.
     """
     blobs = [session.title or "", session.summary or "", session.redacted_preview or ""]
     turns = (session.metadata or {}).get("turns") if isinstance(session.metadata, dict) else None
     if isinstance(turns, list):
-        for turn in turns[:3]:
-            if isinstance(turn, Mapping):
-                blobs.append(str(turn.get("text") or ""))
+        spoken = [
+            turn
+            for turn in turns
+            if isinstance(turn, Mapping)
+            and str(turn.get("role") or "") not in ("tool", "tool_result")
+        ]
+        for turn in spoken[:3]:
+            blobs.append(str(turn.get("text") or ""))
     return any(
         blob.lstrip().startswith(_TESSERAE_PROMPT_SIGNATURES) for blob in blobs
     )
@@ -1183,10 +1205,12 @@ def _parse_claude_session(
     subagents = _claude_subagent_summaries(
         project, root, path, session_id, _claude_subagent_types(rows), dropped=dropped
     )
-    metadata: Dict[str, object] = {"config_root": str(root), "transcript": str(path), "turns": _claude_turns(rows)}
+    claude_turns = _claude_turns(rows)
+    metadata: Dict[str, object] = {"config_root": str(root), "transcript": str(path), "turns": claude_turns}
     if subagents:
         metadata["subagents"] = subagents
     return HarnessSession(
+        errors=_errors_from_turns(claude_turns),
         id=f"claude-code:{session_id}:{path.stem}",
         slug=slug,
         harness="claude-code",
@@ -1329,7 +1353,9 @@ def _parse_codex_session(
     model = ""
     if isinstance(session_meta, dict):
         model = str(session_meta.get("model") or session_meta.get("model_slug") or session_meta.get("model_provider") or "")
+    codex_turns = _codex_turns(rows)
     return HarnessSession(
+        errors=_errors_from_turns(codex_turns),
         id=f"codex:{session_id}",
         slug=slug,
         harness="codex",
@@ -1348,7 +1374,7 @@ def _parse_codex_session(
         commands_run=_dedupe(commands)[:50],
         raw_transcript_path=str(path),
         redacted_preview=preview,
-        metadata={"config_root": str(root), "transcript": str(path), "turns": _codex_turns(rows)},
+        metadata={"config_root": str(root), "transcript": str(path), "turns": codex_turns},
     )
 
 
@@ -1464,8 +1490,111 @@ def _turn_text(text: str, limit: int = 2400) -> str:
 _TURN_LIMIT_BACKSTOP = 100_000
 
 
+# A tool RESULT is minted as its own turn, with the same 1200-char cap the
+# invocation gets. Both numbers are load-bearing.
+#
+# WHY a turn at all: ``tesserae.verify`` says of this codebase, in source, that
+# "tool_result is parsed solely to map subagent ids and never becomes a turn,
+# so no exit code survives ingest ... this tool can say a document says so,
+# never this ran and passed". Everything downstream that wants to know whether
+# a command PASSED — the Event outcome stamps, the ``failure`` finding kind —
+# reads turns, so the fix has to be here.
+#
+# WHY the same cap: results are an order of magnitude larger and far more
+# skewed than inputs. Measured over the 2,331 results on the ingest corpus:
+# median 1,825 chars, p99 40,082, max 2,044,054 — 14.7 MB raw, 2.0 MB at this
+# cap. ``_TURN_LIMIT_BACKSTOP`` counts TURNS and gives no protection against
+# bytes, so this is the only thing bounding what a runaway result stores.
+# Routing through ``_turn_text`` also applies ``_redact_text``, so a secret
+# echoed back by a tool is redacted on the way in.
+_TOOL_TURN_LIMIT = 1200
+
+#: Codex reports the exit status of a shell tool as a header line inside a
+#: plain ``output`` string — it is a display convention, not a schema, so it is
+#: matched rather than looked up, and a miss must stay a miss (see
+#: ``_codex_exit_code``). Claude has no equivalent anywhere.
+_CODEX_EXIT_CODE_RE = re.compile(r"^Process exited with code (-?\d+)$", re.MULTILINE)
+
+#: Only the header is scanned. A result body can legitimately contain the
+#: sentence (a transcript of another run, this very comment), and the header is
+#: always within the first few lines.
+_CODEX_EXIT_SCAN_CHARS = 2048
+
+
+def _codex_exit_code(output: str) -> Optional[int]:
+    """The exit code Codex reported, or None when it reported none.
+
+    None is a real answer, not a fallback: 4.2% of outputs (apply_patch, MCP
+    tools) carry no exit line at all. Returning 0 for those would manufacture
+    the "this ran and passed" claim that the whole change exists to make
+    honest, and would let the coverage rot silently the day Codex changes its
+    output framing.
+    """
+    match = _CODEX_EXIT_CODE_RE.search(output[:_CODEX_EXIT_SCAN_CHARS])
+    if match is None:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:  # pragma: no cover - the group is \d+ by construction
+        return None
+
+
+def _tool_result_turn(
+    *,
+    timestamp: str,
+    name: str,
+    text: str,
+    is_error: object = None,
+    exit_code: Optional[int] = None,
+) -> Dict[str, object]:
+    """Build a ``tool_result`` turn, omitting every signal that is absent.
+
+    ``is_error`` and ``exit_code`` are TYPED FIELDS, not something to recover
+    from the truncated text: measured, only 2.18% of results carry ``is_error``
+    and only 1.64% of result text so much as mentions an exit code, so
+    re-parsing a 1,200-char-capped string would lose most of the signal this
+    exists to carry. An absent key means "not reported" — never "succeeded".
+    """
+    turn: Dict[str, object] = {
+        "role": "tool_result",
+        "timestamp": timestamp,
+        "name": name,
+        "text": _turn_text(text, limit=_TOOL_TURN_LIMIT),
+    }
+    if isinstance(is_error, bool):
+        turn["is_error"] = is_error
+    if exit_code is not None:
+        turn["exit_code"] = exit_code
+    return turn
+
+
+def _claude_tool_names(rows: Sequence[Mapping[str, object]]) -> Dict[str, str]:
+    """``tool_use_id -> tool name``.
+
+    A ``tool_result`` block names only the id of the call it answers, so
+    without this map an outcome is unattributable — you would know something
+    failed but not what.
+    """
+    names: Dict[str, str] = {}
+    for row in rows:
+        msg = row.get("message")
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            if not isinstance(item, dict) or item.get("type") != "tool_use":
+                continue
+            tool_use_id = item.get("id")
+            if isinstance(tool_use_id, str):
+                names[tool_use_id] = str(item.get("name") or "tool")
+    return names
+
+
 def _claude_turns(rows: Sequence[Mapping[str, object]], limit: int = _TURN_LIMIT_BACKSTOP) -> List[Dict[str, object]]:
     turns: List[Dict[str, object]] = []
+    tool_names = _claude_tool_names(rows)
     for row in rows:
         role = row.get("type")
         if role not in {"user", "assistant"}:
@@ -1480,10 +1609,30 @@ def _claude_turns(rows: Sequence[Mapping[str, object]], limit: int = _TURN_LIMIT
             turns.append({"role": str(role), "timestamp": timestamp, "text": _turn_text(text)})
         if isinstance(content, list):
             for item in content:
-                if isinstance(item, dict) and item.get("type") == "tool_use":
+                if not isinstance(item, dict):
+                    continue
+                if item.get("type") == "tool_use":
                     name = str(item.get("name") or "tool")
-                    tool_text = _turn_text(json.dumps(item.get("input", {}), ensure_ascii=False, sort_keys=True), limit=1200)
+                    tool_text = _turn_text(json.dumps(item.get("input", {}), ensure_ascii=False, sort_keys=True), limit=_TOOL_TURN_LIMIT)
                     turns.append({"role": "tool", "timestamp": timestamp, "name": name, "text": tool_text})
+                elif item.get("type") == "tool_result":
+                    tool_use_id = item.get("tool_use_id")
+                    # ``content`` here is a bare string 89.5% of the time and a
+                    # block list otherwise (usually images, which flatten to "").
+                    result = item.get("content")
+                    result_text = (
+                        result if isinstance(result, str) else _content_to_text(result)
+                    )
+                    turns.append(
+                        _tool_result_turn(
+                            timestamp=timestamp,
+                            name=tool_names.get(tool_use_id, "tool")
+                            if isinstance(tool_use_id, str)
+                            else "tool",
+                            text=result_text,
+                            is_error=item.get("is_error"),
+                        )
+                    )
         if len(turns) >= limit:
             break
     return turns
@@ -1491,6 +1640,7 @@ def _claude_turns(rows: Sequence[Mapping[str, object]], limit: int = _TURN_LIMIT
 
 def _codex_turns(rows: Sequence[Mapping[str, object]], limit: int = _TURN_LIMIT_BACKSTOP) -> List[Dict[str, object]]:
     turns: List[Dict[str, object]] = []
+    call_names: Dict[str, str] = {}
     for row in rows:
         timestamp = row.get("timestamp") if isinstance(row.get("timestamp"), str) else ""
         payload = row.get("payload")
@@ -1502,12 +1652,62 @@ def _codex_turns(rows: Sequence[Mapping[str, object]], limit: int = _TURN_LIMIT_
                 turns.append({"role": str(payload.get("role")), "timestamp": timestamp, "text": _turn_text(text)})
         elif payload.get("type") == "function_call":
             name = str(payload.get("name") or "function_call")
-            tool_text = _turn_text(str(payload.get("arguments") or ""), limit=1200)
+            call_id = payload.get("call_id")
+            if isinstance(call_id, str):
+                call_names[call_id] = name
+            tool_text = _turn_text(str(payload.get("arguments") or ""), limit=_TOOL_TURN_LIMIT)
             if tool_text:
                 turns.append({"role": "tool", "timestamp": timestamp, "name": name, "text": tool_text})
+        elif payload.get("type") == "function_call_output":
+            output = payload.get("output")
+            output_text = output if isinstance(output, str) else _content_to_text(output)
+            call_id = payload.get("call_id")
+            turns.append(
+                _tool_result_turn(
+                    timestamp=timestamp,
+                    name=call_names.get(call_id, "function_call")
+                    if isinstance(call_id, str)
+                    else "function_call",
+                    text=output_text,
+                    exit_code=_codex_exit_code(output_text),
+                )
+            )
         if len(turns) >= limit:
             break
     return turns
+
+
+#: What a failing tool result contributes to ``HarnessSession.errors``: enough
+#: to recognise the failure, never the whole result. Bounded on both axes
+#: because ``errors`` is serialized into every stored record.
+_ERROR_TEXT_LIMIT = 200
+_MAX_SESSION_ERRORS = 50
+
+
+def _errors_from_turns(turns: Sequence[Mapping[str, object]]) -> List[str]:
+    """The failures a session actually recorded, newest last.
+
+    ``HarnessSession.errors`` was declared and round-tripped from the day it
+    was written and populated by nothing — 0 of the 211 live records carried
+    one. This is its only writer. A turn counts as a failure on POSITIVE
+    evidence only: ``is_error`` true, or a non-zero exit code. Silence is not
+    failure, and it is not success either.
+    """
+    errors: List[str] = []
+    for turn in turns:
+        if str(turn.get("role") or "") != "tool_result":
+            continue
+        exit_code = turn.get("exit_code")
+        failed_exit = isinstance(exit_code, int) and not isinstance(exit_code, bool) and exit_code != 0
+        if not (turn.get("is_error") is True or failed_exit):
+            continue
+        name = str(turn.get("name") or "tool")
+        detail = " ".join(str(turn.get("text") or "").split())[:_ERROR_TEXT_LIMIT]
+        prefix = f"{name} exited {exit_code}" if failed_exit else f"{name} failed"
+        errors.append(f"{prefix}: {detail}" if detail else prefix)
+        if len(errors) >= _MAX_SESSION_ERRORS:
+            break
+    return errors
 
 
 def _title_and_preview_from_claude(rows: Sequence[Mapping[str, object]]) -> Tuple[str, str]:

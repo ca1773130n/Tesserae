@@ -388,3 +388,130 @@ def test_home_path_redaction_does_not_depend_on_who_runs_the_compile():
     assert [(n.id, n.name, n.description) for n in first[0]] == [
         (n.id, n.name, n.description) for n in second[0]
     ]
+
+
+# ---------------------------------------------------------------------------
+# Roadmap step 5 — the outcome of a tool call, stamped deterministically.
+#
+# Without this an Event says only that a tool was INVOKED. verify.py's ceiling
+# ("this tool can say a document says so, never this ran and passed") is set
+# here: a finding can only be promoted on a zero exit code if a zero exit code
+# reached the graph.
+# ---------------------------------------------------------------------------
+
+
+def _tool_pair(result: dict) -> List[dict]:
+    return [
+        {"role": "user", "timestamp": "2026-08-09T10:00:00Z", "text": "run the suite"},
+        {
+            "role": "tool",
+            "timestamp": "2026-08-09T10:00:01Z",
+            "name": "Bash",
+            "text": '{"command": "pytest"}',
+        },
+        {
+            "role": "tool_result",
+            "timestamp": "2026-08-09T10:00:09Z",
+            "name": "Bash",
+            "text": "1 failed, 4 passed",
+            **result,
+        },
+    ]
+
+
+def _events(turns: List[dict]) -> List[ResearchNode]:
+    nodes, _ = extract_events(_session(turns))
+    return nodes
+
+
+def test_a_tool_result_turn_becomes_an_event_of_its_own():
+    nodes = _events(_tool_pair({"exit_code": 1}))
+    actors = [n.metadata.get("actor") for n in nodes]
+    assert "tool_result" in actors, "the outcome of a tool call is a transition"
+
+
+def test_a_failing_exit_code_is_stamped_onto_event_metadata():
+    nodes = _events(_tool_pair({"exit_code": 1}))
+    result = next(n for n in nodes if n.metadata.get("actor") == "tool_result")
+    assert result.metadata["exit_code"] == 1
+    assert result.metadata["status"] == "error"
+
+
+def test_a_zero_exit_code_is_stamped_as_a_pass():
+    """The one thing verify.py says it cannot currently do."""
+    nodes = _events(_tool_pair({"exit_code": 0, "text": "5 passed"}))
+    result = next(n for n in nodes if n.metadata.get("actor") == "tool_result")
+    assert result.metadata["exit_code"] == 0
+    assert result.metadata["status"] == "ok"
+
+
+def test_an_is_error_flag_stamps_status_without_inventing_an_exit_code():
+    """Claude carries no exit code anywhere — not in the tool_result block and
+    not in the row-level toolUseResult sibling. Only Codex can supply one."""
+    nodes = _events(_tool_pair({"is_error": True}))
+    result = next(n for n in nodes if n.metadata.get("actor") == "tool_result")
+    assert result.metadata["status"] == "error"
+    assert "exit_code" not in result.metadata
+
+
+def test_an_outcome_with_no_signal_is_left_unstamped_not_called_a_pass():
+    """is_error is omitted for every non-Bash tool (measured: present on 41.3%
+    of Claude results). Reading its absence as success is the false claim."""
+    nodes = _events(_tool_pair({}))
+    result = next(n for n in nodes if n.metadata.get("actor") == "tool_result")
+    assert "status" not in result.metadata
+    assert "exit_code" not in result.metadata
+
+
+def test_a_tool_result_event_does_not_collide_with_its_invocation_event():
+    """Sharing an id would make events_by_turn map one turn to two events and
+    double every finding's derived_from fan-out."""
+    nodes = _events(_tool_pair({"exit_code": 0}))
+    ids = [n.id for n in nodes]
+    assert len(ids) == len(set(ids))
+    invoke = next(n for n in nodes if n.metadata.get("actor") == "tool")
+    result = next(n for n in nodes if n.metadata.get("actor") == "tool_result")
+    assert invoke.id != result.id
+    assert invoke.metadata["turn_id"] != result.metadata["turn_id"]
+
+
+def test_an_ordinary_turn_stamps_exactly_what_it_stamped_before():
+    """A turn carrying no outcome must produce byte-identical metadata, so the
+    new stamps cannot silently move any existing Event's serialized bytes."""
+    nodes = _events(
+        [
+            {"role": "user", "timestamp": "2026-08-09T10:00:00Z", "text": "go"},
+            {
+                "role": "tool",
+                "timestamp": "2026-08-09T10:00:01Z",
+                "name": "Bash",
+                "text": '{"command": "pytest"}',
+            },
+        ]
+    )
+    (only,) = nodes
+    assert set(only.metadata) == {
+        "session_id",
+        "turn_id",
+        "actor",
+        "action",
+        "extractor",
+        "tool",
+        "first_seen_at",
+    }
+
+
+def test_a_tool_result_description_says_the_outcome_not_just_the_tool():
+    nodes = _events(_tool_pair({"exit_code": 2, "text": "E   assert 1 == 2"}))
+    result = next(n for n in nodes if n.metadata.get("actor") == "tool_result")
+    assert "2" in result.description
+    assert "assert 1 == 2" in result.description
+
+
+def test_a_tool_result_event_is_home_path_redacted_like_every_other_event():
+    nodes = _events(
+        _tool_pair({"exit_code": 1, "text": "FAILED /Users/rivka/proj/tests/test_x.py"})
+    )
+    result = next(n for n in nodes if n.metadata.get("actor") == "tool_result")
+    assert "/Users/rivka" not in result.description
+    assert "~/proj/tests/test_x.py" in result.description
