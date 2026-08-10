@@ -311,6 +311,34 @@ section——若无此项，检测会悄悄把它们弄丢。
 
 如果你需要代码级浏览，直接把 LSP / 调用图工具指向源码树——那是与"这个项目知道什么的 wiki"不同的问题。
 
+## OKF v0.2 导出/导入
+
+[`tesserae/okf.py`](../../tesserae/okf.py) 把图谱投影成一个 [Google **OKF v0.2**](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) 包——一棵由带 YAML frontmatter 的 Markdown 文件组成的目录树，其唯一必填键是非空的 `type`。`tesserae export okf` **写 v0.2**；`tesserae export okf --import DIR` **读 v0.1 与 v0.2**。这个包是 `graph.json` 的纯投影：没有挂钟、没有 `os.stat()`、没有环境依赖，因此同一张图导出两次逐字节相同。
+
+Tesserae 输出什么，以及每个值诚实地来自哪里：
+
+| Frontmatter | §  | 来源 |
+|---|---|---|
+| `type` | §4.1 | 节点类型，或保存在 `metadata.okf_type` 中的外部类型 |
+| `title` | §4.1 | `node.name` —— v0.1 写的是非规范的 `name`，见下方的破坏性变更 |
+| `description` | §4.1 | 节点描述的首句，带长度上限 |
+| `resource` | §4.1 | `arxiv_id` → `https://arxiv.org/abs/<id>`，否则 `repo_url` / `github_repo` |
+| `generated: {by, at}` | §5.2 | `by` 取自 `agent_key` → `<key>/tesserae-agent-write`，否则 `extractor` → `process:tesserae-<extractor>`，否则 `process:tesserae-compile`；`at` 取自 [`temporal.py`](../../tesserae/temporal.py) 中共用的来源时间戳阶梯 |
+| `sources[]` | §5.1 | 转为项目根相对路径的 `source_path`，外加 `author`（单个 `authored_by`）、`last_modified`（`frontmatter_date` / `analysis_date`）、`usage_count`（去重后的 `discussed_in` 会话数） |
+| `usage_window` | §5.1 | 上述会话 `started_at` / `ended_at` 的最小值与最大值 |
+| `status: deprecated`、`stale_after` | §5.4, §5.5 | 被 `supersedes` 边指向的节点；`stale_after` 是取代方节点的日期，若它早于被取代节点自身的日期则省略 |
+| `x_tesserae` | 扩展 | 真实节点 id、别名、`source_path`、元数据、有类型的边——无损往返通道 |
+
+`index.md` 遵循 §8（frontmatter 恰好是 `okf_version: '0.2'`，这是 §12 唯一允许之处），`log.md` 遵循 §9（无 frontmatter，`## YYYY-MM-DD` 分组，最新在前）。在 Tesserae 项目图谱（5197 节点 / 15284 边）上，这会产生 5195 个文件：全部 5193 个概念都带 `generated`，3934 个带 `sources`，1264 个带 `usage_window`，1749 个带 `description`，822 个带 `resource`，25 个带 `status`/`stale_after`。
+
+**刻意不输出的东西。** 没有 `verified` 键（§5.2），因此也没有高于 `unverified` 的信任层级（§5.3）：编译后的图谱里没有任何东西是带行为者与时间戳的验证*事件*。`verify_claim` 与重新接地都是对图谱的查询期函数，而 `lint --verify-claims` 是一个 LLM 裁判——[`verify.py`](../../tesserae/verify.py) 自己就说那不是证据。边的 provenance 类别描述的是图谱在多大程度上认可一个*三元组*，而 OKF 的信任家族是逐*概念*的确认。把二者对映，等于给无人确认的内容贴上机器已确认的层级，所以 `generated.by` 永远不能以 `human:` 开头——有测试钉住这一点。同理也没有 Attested Computation 家族（§10）：Tesserae 没有受认可的计算、执行器、回执或证明者 ABI，而 §10.5 要求消费者以证明作为*门禁*，所以空壳脚手架等于宣传一份无法兑现的契约。另有一些因缺乏诚实来源而缺席：`tags`（没有节点级标签字段——`aliases` 是别名，不是分类）、逐条主张的 `[^id]` 脚注、`status: draft`（`metadata.confidence` 是抽取置信度，不是评审状态），以及任何存储的可信度评分（§5.1 记录的是信号，不是判定）。`last_modified` 来自图谱内的文档日期，**绝不**来自文件 mtime——那个看起来很顺手的 `os.stat()` 捷径，正是此前在这里破坏过逐字节幂等性的环境泄漏。
+
+**读取。** 按 §11，导入器什么都不拒绝：未知的 `type` 值、未知的 frontmatter 键、缺失的可选家族、断掉的交叉链接，以及缺失的 `index.md`，一律容忍；只有 `type` 为空的文件会被跳过。Tesserae 自己的包经由 `x_tesserae` 无损往返。外部包则把 `type` 映射到匹配的节点种类或 `Concept`，正文链接映射为 `references` 边，所有无法识别的 frontmatter 键进入 `metadata.okf`（§4.1 的往返 SHOULD），裸的 `verified` 归一化为单元素列表（§11 MUST）。v0.1 回退（§13.1）：遗留的 `timestamp` 落到 `metadata["updated_at"]`（时间戳阶梯本就会读的一级），遗留正文中的 `# Citations` 列表变成 `metadata["okf"]["sources"]`，并从描述中剥离，而不是被当作散文吞下。重新导出时，被保留的桶会*覆盖式*合并到 Tesserae 推导出的内容之上，因此重新导出他人的包绝不会用我们的 provenance 或信任主张覆盖他们的；`--import` 会打印信任层级直方图，让混合包显形而非静默。层级在读取时由 `okf_trust_tier` 推断，从不存储。
+
+**相对 Tesserae v0.1 输出的破坏性变更。** `name:` 变为 `title:`（`name` 在两个版本中从来都不是 OKF 键；读取器仍在 `title` 之后接受它）。`index.md` 与 `log.md` 失去各自的 `type:` / `name:` frontmatter（§8、§9），于是把它们当作有类型概念的消费者会少掉两个幽灵条目——而这正是目的；相关地，它们现在在层级的*任意*一级都是保留名（§3.1），不只在包根。每个概念文件的字节都会变化，所以首次 v0.2 导出会重写整个包。
+
+**已知限制。** `usage_count` 统计的是转录中触及过该文档的去重后 agent/工作会话数，而不是人类的页面浏览量——§5.1 已经提醒该信号很粗糙；请把它读作活跃度，而不是热门度。生命周期家族只对被 `supersedes` 边指向的节点触发（此处是 5197 中的 25 个）；真正的覆盖需要 `TemporalFactProjector` 在查询期推导的时间有效区间，而在导出器内部对 15k 条边跑那套逻辑被判定为超出范围而否决。`generated.by` 刻意使用 `process:tesserae-<extractor>` 而非 §7 的 `<producer>/<version>`：带版本的行为者会让约 5200 个概念文件在每次发布时全部重写，而语义毫无变化。任何路径取值的 OKF 字段（`resource`、`sources[].resource`）都绝不携带绝对路径——无法转为项目根相对的路径会被省略而非原样输出，因为按 §6.2 消费者会把它读成相对于包的路径——不过绝对路径仍可能出现在 `x_tesserae.source_path`（节点的真实身份，外部消费者会忽略）之内，以及恰好引用了某个路径的节点正文之中。
+
 ## 幂等性故事
 
 重设计的目标是**在输入不变的情况下，两次连续 `project compile` 运行产生逐字节相同的输出**。构成要素：

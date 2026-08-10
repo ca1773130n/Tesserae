@@ -316,6 +316,34 @@ site/
 
 코드 수준 탐색이 필요하면 소스 트리에 LSP / call-graph 도구를 직접 대세요 — 그것은 "이 프로젝트가 아는 것의 위키"와는 다른 문제입니다.
 
+## OKF v0.2 내보내기/가져오기
+
+[`tesserae/okf.py`](../../tesserae/okf.py)는 그래프를 [Google **OKF v0.2**](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) 번들로 투영합니다 — YAML frontmatter를 가진 마크다운 파일의 디렉터리 트리이며, 필수 키는 비어 있지 않은 `type` 하나뿐입니다. `tesserae export okf`는 **v0.2를 씁니다**; `tesserae export okf --import DIR`는 **v0.1과 v0.2를 읽습니다**. 번들은 `graph.json`의 순수한 투영입니다: 벽시계도, `os.stat()`도, 환경도 없으므로 하나의 그래프를 두 번 내보내면 바이트까지 동일합니다.
+
+Tesserae가 무엇을 내보내고, 각 값이 정직하게 어디서 오는지:
+
+| Frontmatter | §  | 유래 |
+|---|---|---|
+| `type` | §4.1 | 노드 타입, 또는 `metadata.okf_type`에 보존된 외부 타입 |
+| `title` | §4.1 | `node.name` — v0.1은 스펙에 없는 `name`을 썼습니다. 아래 파괴적 변경을 보세요 |
+| `description` | §4.1 | 노드 설명의 첫 문장, 길이 제한 적용 |
+| `resource` | §4.1 | `arxiv_id` → `https://arxiv.org/abs/<id>`, 없으면 `repo_url` / `github_repo` |
+| `generated: {by, at}` | §5.2 | `by`는 `agent_key` → `<key>/tesserae-agent-write`, 없으면 `extractor` → `process:tesserae-<extractor>`, 없으면 `process:tesserae-compile`; `at`은 [`temporal.py`](../../tesserae/temporal.py)의 공용 소스 타임스탬프 사다리에서 |
+| `sources[]` | §5.1 | 프로젝트 루트 상대 경로로 만든 `source_path`, 그리고 `author`(단독 `authored_by`), `last_modified`(`frontmatter_date` / `analysis_date`), `usage_count`(고유한 `discussed_in` 세션 수) |
+| `usage_window` | §5.1 | 위에서 센 세션들의 `started_at` / `ended_at` 최소·최대 |
+| `status: deprecated`, `stale_after` | §5.4, §5.5 | `supersedes` 엣지가 가리키는 노드들. `stale_after`는 대체하는 노드의 날짜이며, 그것이 대체된 노드 자신의 날짜보다 앞설 경우 생략됩니다 |
+| `x_tesserae` | 확장 | 실제 노드 id, 별칭, `source_path`, 메타데이터, 타입 지정 엣지 — 무손실 왕복 채널 |
+
+`index.md`는 §8을 따르고(frontmatter는 정확히 `okf_version: '0.2'`이며, §12가 이를 허용하는 유일한 자리입니다) `log.md`는 §9를 따릅니다(frontmatter 없음, `## YYYY-MM-DD` 그룹, 최신순). Tesserae 프로젝트 그래프(노드 5197 / 엣지 15284)에서는 5195개 파일이 만들어지고, 5193개 개념 전부가 `generated`를, 3934개가 `sources`를, 1264개가 `usage_window`를, 1749개가 `description`을, 822개가 `resource`를, 25개가 `status`/`stale_after`를 지닙니다.
+
+**의도적으로 내보내지 않는 것.** `verified` 키(§5.2)가 없고, 따라서 `unverified`보다 높은 신뢰 등급(§5.3)도 없습니다: 컴파일된 그래프의 그 무엇도 행위자와 타임스탬프를 가진 검증 *이벤트*가 아니기 때문입니다. `verify_claim`과 리그라운딩은 그래프에 대한 질의 시점 함수이고, `lint --verify-claims`는 LLM 심판인데 [`verify.py`](../../tesserae/verify.py) 스스로 그것은 증거가 아니라고 말합니다. 엣지 provenance 클래스는 그래프가 *트리플*을 얼마나 강하게 승인하는지를 기술하지만, OKF의 신뢰 계열은 *개념* 단위의 확인입니다. 하나를 다른 하나에 대응시키면 아무도 확인하지 않은 내용에 기계가 확인한 등급을 붙이게 되므로, `generated.by`는 결코 `human:`으로 시작할 수 없습니다 — 테스트가 이를 고정합니다. 마찬가지로 Attested Computation 계열(§10)도 없습니다: Tesserae에는 승인된 계산, 실행기, 영수증, 증명자 ABI가 없고, §10.5는 소비자에게 증명을 *게이트로 삼으라*고 말하므로, 빈 껍데기는 지킬 수 없는 계약을 광고하는 셈이 됩니다. 정직한 출처가 없어 빠진 것들도 있습니다: `tags`(노드 단위 태그 필드가 없습니다 — `aliases`는 대체 이름이지 분류가 아닙니다), 주장별 `[^id]` 각주, `status: draft`(`metadata.confidence`는 추출 신뢰도이지 검토 상태가 아닙니다), 그리고 저장된 신뢰도 점수 일체(§5.1은 신호를 기록하지 판정을 기록하지 않습니다). `last_modified`는 그래프 안의 문서 날짜에서 오며, **결코** 파일 mtime에서 오지 않습니다 — 그럴듯해 보이는 `os.stat()` 지름길이야말로 여기서 이전에 바이트 멱등성을 깨뜨린 바로 그 환경 누출입니다.
+
+**읽기.** §11에 따라 임포터는 아무것도 거부하지 않습니다: 알 수 없는 `type` 값, 알 수 없는 frontmatter 키, 없는 선택적 계열, 깨진 상호 링크, 없는 `index.md` 모두 관용됩니다. 비어 있지 않은 `type`이 없는 파일만 건너뜁니다. Tesserae 자신의 번들은 `x_tesserae`를 통해 무손실로 왕복합니다. 외부 번들은 `type` → 대응하는 노드 종류 또는 `Concept`, 본문 링크 → `references` 엣지로 매핑되고, 인식되지 않는 모든 frontmatter 키는 `metadata.okf`로 들어가며(§4.1의 왕복 SHOULD), 맨 `verified`는 한 원소짜리 리스트로 정규화됩니다(§11 MUST). v0.1 폴백(§13.1): 레거시 `timestamp`는 `metadata["updated_at"]`에 안착하고(타임스탬프 사다리가 이미 읽는 단), 레거시 본문의 `# Citations` 목록은 `metadata["okf"]["sources"]`가 되어 산문으로 삼켜지는 대신 설명에서 떼어집니다. 다시 내보낼 때 보존된 버킷은 Tesserae가 유도한 것 *위로* 병합되므로, 남의 번들을 다시 내보내도 그들의 provenance나 신뢰 주장을 우리 것으로 덮어쓰지 않습니다. `--import`는 신뢰 등급 히스토그램을 출력하므로 혼합 번들이 조용히 지나가지 않고 드러납니다. 등급은 읽는 시점에 `okf_trust_tier`가 추론하며 저장되지 않습니다.
+
+**Tesserae v0.1 출력 대비 파괴적 변경.** `name:`이 `title:`이 됩니다(`name`은 두 버전 어디에서도 OKF 키였던 적이 없습니다. 리더는 `title` 뒤에서 여전히 받아 줍니다). `index.md`와 `log.md`는 `type:` / `name:` frontmatter를 잃습니다(§8, §9). 그래서 그것들을 타입 지정 개념으로 취급하던 소비자는 유령 항목 두 개를 잃는데, 바로 그것이 목적입니다. 관련해서 이 둘은 이제 번들 루트뿐 아니라 계층의 *어느* 수준에서도 예약됩니다(§3.1). 모든 개념 파일의 바이트가 바뀌므로 첫 v0.2 내보내기는 번들 전체를 다시 씁니다.
+
+**알려진 한계.** `usage_count`는 문서를 건드린 트랜스크립트를 가진 고유 에이전트/작업 세션의 수이지 사람의 페이지 조회수가 아닙니다 — §5.1도 이 신호가 거칠다고 경고합니다. 인기가 아니라 생존 신호로 읽으세요. 수명 주기 계열은 `supersedes` 엣지가 가리키는 노드에만 발동하며(여기서는 5197 중 25), 실제 커버리지를 갖추려면 `TemporalFactProjector`가 질의 시점에 유도하는 시간 유효 구간이 필요한데, 그것을 15k 엣지에 대해 익스포터 안에서 돌리는 것은 범위 밖으로 판단해 기각했습니다. `generated.by`는 §7의 `<producer>/<version>` 대신 `process:tesserae-<extractor>`를 일부러 씁니다: 버전을 담은 행위자는 의미상 아무 변화가 없어도 릴리스마다 약 5200개 개념 파일 전부를 다시 쓰게 만들기 때문입니다. 경로 값을 갖는 OKF 필드(`resource`, `sources[].resource`)는 결코 절대 경로를 담지 않습니다 — 프로젝트 루트 상대로 만들 수 없는 것은 날것으로 내보내는 대신 생략하는데, §6.2대로라면 소비자가 그것을 번들 상대 경로로 읽을 것이기 때문입니다 — 다만 절대 경로는 `x_tesserae.source_path`(노드의 실제 정체성이며 외부 소비자는 무시합니다) 안과, 우연히 경로를 인용한 노드 내용 안에는 여전히 나타날 수 있습니다.
+
 ## 멱등성 이야기
 
 리디자인은 **변경되지 않은 입력에 대해 연속된 두 번의 `project compile` 실행이 바이트 단위로 동일한 출력**을 목표로 합니다. 구성 요소:
