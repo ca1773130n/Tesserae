@@ -13,7 +13,7 @@ The CLI is grouped: a handful of everyday verbs at the top level, plus groups
 whole tree:
 
 ```text
-tesserae 0.30.0 — a context engine
+tesserae 0.31.0 — a context engine
 
 usage: tesserae <command> [options]
 

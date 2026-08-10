@@ -12,7 +12,7 @@ CLI сгруппирован: горстка повседневных глаго
 `lab`) для остального. Запустите `tesserae --help`, чтобы увидеть всё дерево:
 
 ```text
-tesserae 0.30.0 — a context engine
+tesserae 0.31.0 — a context engine
 
 usage: tesserae <command> [options]
 

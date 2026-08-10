@@ -12,7 +12,7 @@ Die CLI ist gruppiert: eine Handvoll alltäglicher Verben auf oberster Ebene, pl
 `lab`) für den Rest. Führe `tesserae --help` aus, um den ganzen Baum zu sehen:
 
 ```text
-tesserae 0.30.0 — a context engine
+tesserae 0.31.0 — a context engine
 
 usage: tesserae <command> [options]
 

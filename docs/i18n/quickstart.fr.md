@@ -13,7 +13,7 @@ des groupes (`sessions`, `vault`, `export`, `code`, `config`, `projects`, `agent
 complet :
 
 ```text
-tesserae 0.30.0 — a context engine
+tesserae 0.31.0 — a context engine
 
 usage: tesserae <command> [options]
 

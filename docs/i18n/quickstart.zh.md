@@ -10,7 +10,7 @@
 CLI 是分组的：顶层是少数几个日常动词，其余归入分组（`sessions`、`vault`、`export`、`code`、`config`、`projects`、`agents`、`domains`、`integrations`、`lab`）。运行 `tesserae --help` 查看整棵命令树：
 
 ```text
-tesserae 0.30.0 — a context engine
+tesserae 0.31.0 — a context engine
 
 usage: tesserae <command> [options]
 

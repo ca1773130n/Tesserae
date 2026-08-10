@@ -13,7 +13,7 @@ CLI는 그룹화되어 있습니다: 최상위에 몇 가지 일상 동사, 그�
 실행하세요:
 
 ```text
-tesserae 0.30.0 — a context engine
+tesserae 0.31.0 — a context engine
 
 usage: tesserae <command> [options]
 
