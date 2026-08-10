@@ -14,7 +14,7 @@ Status legend: ✅ shipped · ⚠ in-progress / partial.
 > lives in [`docs/release-notes/`](release-notes/), which is the authoritative
 > changelog. This map covers the shape of the system, not every commit.
 
-## Cognitive memory & scope — v0.29.0 → v0.30.0 (August 2026)
+## Cognitive memory & scope — v0.29.0 → v0.31.0 (August 2026)
 
 The cycle that made the graph *know what happened*, not just what was written:
 outcomes survive ingest, one causal edge is derived from them, and the

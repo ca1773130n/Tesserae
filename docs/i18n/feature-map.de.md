@@ -15,7 +15,7 @@ Status-Legende: ✅ ausgeliefert · ⚠ in Arbeit / teilweise.
 > maßgeblichen Änderungsprotokoll. Diese Karte beschreibt die Gestalt des
 > Systems, nicht jeden Commit.
 
-## Kognitives Gedächtnis und Geltungsbereich — v0.29.0 → v0.30.0 (August 2026)
+## Kognitives Gedächtnis und Geltungsbereich — v0.29.0 → v0.31.0 (August 2026)
 
 Der Zyklus, der den Graphen *wissen* ließ, was geschehen ist, und nicht nur, was
 geschrieben wurde: Ergebnisse überleben die Aufnahme, aus ihnen wird eine kausale

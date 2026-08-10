@@ -15,7 +15,7 @@ Légende de statut : ✅ livré · ⚠ en cours / partiel.
 > [`docs/release-notes/`](../release-notes/), qui fait foi comme journal des
 > changements. Cette carte décrit la forme du système, pas chaque commit.
 
-## Mémoire cognitive et périmètre — v0.29.0 → v0.30.0 (août 2026)
+## Mémoire cognitive et périmètre — v0.29.0 → v0.31.0 (août 2026)
 
 Le cycle qui a fait que le graphe *sait ce qui s'est passé*, et pas seulement ce
 qui a été écrit : les résultats survivent à l'ingestion, une arête causale en est

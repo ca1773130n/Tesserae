@@ -15,7 +15,7 @@ Leyenda de estado: ✅ entregado · ⚠ en progreso / parcial.
 > el registro de cambios autoritativo. Este mapa cubre la forma del sistema, no
 > cada commit.
 
-## Memoria cognitiva y alcance — v0.29.0 → v0.30.0 (agosto 2026)
+## Memoria cognitiva y alcance — v0.29.0 → v0.31.0 (agosto 2026)
 
 El ciclo que hizo que el grafo *supiera qué ocurrió*, y no solo qué se escribió:
 los resultados sobreviven a la ingesta, de ellos se deriva una arista causal, y
