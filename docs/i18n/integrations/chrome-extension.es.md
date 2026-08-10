@@ -90,7 +90,7 @@ python3 -m tesserae serve --project /path/to/project --port 8765
 `tesserae serve` expone el sitio estático **más** dos rutas JSON en el
 mismo origen:
 
-- `POST /api/ask`  — preguntas y respuestas (ver [mcp.md](mcp.md))
+- `POST /api/ask`  — preguntas y respuestas (ver [mcp.md](mcp.es.md))
 - `POST /api/clip` — ingesta de web-clip (esta característica)
 
 Mantenlo en ejecución mientras navegas; cada clip golpea `/api/clip`.
@@ -168,7 +168,7 @@ un navegador:
 
 Ingiere al **proyecto activo** (resuelve con `activate_project`
 o pasa `project`) y retorna el mismo informe `{status, path, tldr, node_count,
-edge_count}`. Ver [mcp.md](mcp.md) para configuración de MCP.
+edge_count}`. Ver [mcp.md](mcp.es.md) para configuración de MCP.
 
 ---
 

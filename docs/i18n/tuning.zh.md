@@ -90,6 +90,7 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 | `TESSERAE_LLM_PROVIDER` | `claude` | `codex`、`claude`、`anthropic`、`custom` |
 | `TESSERAE_LLM_MODEL` | 特定于提供商 | 由提供商作用域，使得 claude 形状的模型永远不会落在 codex 路径上 |
 | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | 结构化提取不需要您可能为交互工作设置的 `xhigh`——`xhigh` 使多文档编译慢数倍 |
+| `TESSERAE_CLAUDE_CONFIG_DIRS` | — | 以 `os.pathsep` 分隔的 Claude 配置目录（按轮换顺序）——即重复 `--claude-config-dir` 的环境变量通道。只有*显式配置*的列表才具有权威性；环境中的 `CLAUDE_CONFIG_DIR` 刻意不具权威性，因为固定到它会让多账号轮换塌缩为单账号 |
 
 `tesserae config status` 打印解析后的后端并对其进行活性检测。
 

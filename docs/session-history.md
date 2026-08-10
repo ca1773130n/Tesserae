@@ -49,6 +49,50 @@ harness transcript directories on its own.
 
 Imported session records are local project artifacts. Review them before publishing a public site, especially if your transcripts may include secrets, private paths, customer data, or unreleased code.
 
+Turn text is copied into node names and descriptions, and those are serialized
+into `graph.json` and every projection of it — so **home directories are
+redacted on the way in**. `/Users/<name>` and `/home/<name>` never reach the
+graph, which matters because a path is the one PII that appears in almost every
+transcript without anyone intending it to.
+
+## What a session turn becomes
+
+For every *significant* transition in a session — a tool call, or a substantive
+assistant action, not chatter — the LLM-free `Event` pass mints one node
+capturing `{turn_id, actor, action, brief state-change}` and links consecutive
+events with `precedes` edges, so a session's dynamic state can be replayed in
+order. The pass never calls a model, never raises on bad input, and is
+byte-idempotent: every minted id, body and `first_seen_at` is content-derived,
+so a rerun produces identical nodes and edges.
+
+**A tool result is a turn.** Exit codes and error flags survive ingest and land
+on the `Event` node, so the graph can distinguish a command that *failed* from
+one that merely ran. Before this, an agent reading its own history saw that it
+had run `pytest` and had no idea whether the suite passed — which is the
+difference between a log and a memory.
+
+### The `recovers` edge
+
+From two **observed** outcomes in a single session, Tesserae derives the one
+causal edge in its vocabulary: a tool call that reported failure, and a later
+call — same tool, same program family, same working directory, same operand,
+with no success on that operand in between — that reported success. The
+succeeding `Event` is the source, the failing one the target; both turn ids are
+named in the evidence, and `metadata["basis"]` names every dimension the two
+calls had to agree on.
+
+`CAUSAL_EDGE_TYPES` contains exactly one member, and that is deliberate. A
+survey of four leading agent-memory systems found that not one of them derives
+a causal edge: two infer their strongest link from co-occurrence, one takes an
+LLM's word for an open vocabulary of relation labels with no verification, and
+one has no edges at all. The failure this narrowness exists to avoid is
+shipping a `caused_by` that is really a `happened_near` — in a graph the two
+are indistinguishable, and the wrong one gets read as evidence.
+
+The anchor is the **operand**, not the command, because commands vary in ways
+that don't matter (flags, ordering) while the thing being acted on is what a
+retry is actually retrying.
+
 ## Discover and import local sessions
 
 From the project root:

@@ -157,6 +157,41 @@ verb는 그 공간을 회수하는 쪽이며, SQLite는 `DELETE`만으로는 파
 | `1` | 경고 존재 |
 | `2` | 오류 존재 |
 
+## `tesserae lint` — 발견 코드
+
+`doctor`는 lint에서 사소하게 고칠 수 있는 부분집합만 실행합니다. 전체를
+실행하는 것은 `tesserae lint`이고, 상세한 내용은 여기에 있습니다. 모든 발견은
+안정적인 코드를 지니므로 보고서를 grep하거나 CI를 특정 코드에 걸 수 있습니다.
+`--severity {info,warning,error}`는 **종료 코드**의 기준선을 정합니다 — 그
+아래 발견도 여전히 보고됩니다.
+
+| 코드 | 심각도 | 의미 |
+|---|---|---|
+| `AGENT_METADATA_KEY` | error | 에이전트 노드가 통제된 집합 밖의 메타데이터 키를 지니고 있습니다. 유일한 error 등급 코드이며, 잘못된 에이전트는 스코프 뷰를 망가뜨립니다. |
+| `ORPHAN_PAPER` | warning | 나가는 엣지가 없고 들어오는 것은 `mentioned_in`뿐인 Paper — 수집되었지만 결코 연결되지 않았습니다. |
+| `MISSING_IMPLEMENTED_IN` | warning | Paper와 Repository가 `arxiv_id`를 공유하는데 `implemented_in` 엣지가 둘을 잇지 않습니다. `--fix-trivial`이 추가합니다. |
+| `STALE_CITATION` | warning | 위키 페이지가 존재하지 않는 페이지로 링크합니다. |
+| `DANGLING_HTML_LINK` | warning | 생성된 HTML이 없는 파일을 가리킵니다. |
+| `GRAPH_WIKI_DRIFT` | warning | 그래프와 위키가 어긋납니다 — 페이지 없는 공개 노드, 또는 노드 없는 페이지. |
+| `CONTRADICTING_CLAIMS` | warning · info | 두 주장이 서로 모순되었습니다. 어떻게 해소되었는지 보고합니다. |
+| `REASONING_EDGE_RATIO` | warning | 추론을 담은 엣지가 너무 적습니다. 맨 `mentions`뿐인 그래프는 지식 베이스가 아니라 검색 색인입니다. |
+| `SYNTHESIS_GHOST_INPUT` | warning | 합성 frontmatter가 더 이상 존재하지 않는 노드 id를 인용합니다. `--fix-trivial`이 정리합니다. |
+| `AGENT_FORGET_LEDGER` | warning | 마지막 distill이 발견들을 강등했습니다 — 에이전트가 무엇을 더 이상 노출하지 않게 되었는지의 원장입니다. |
+| `INTERVAL_COVERAGE` | info | *`valid_from`이 없는 사실이 얼마나 되는지* — 시간 기반 답변에서 맨 뒤로 정렬되는 것들입니다. 이전에는 조용했고, 이제 백분율로 말합니다. |
+| `LINT_PROBE_FAILED` | info | 그래프를 읽을 수 없어 `INTERVAL_COVERAGE`가 실행되지 못했습니다 — 검사가 기권했다는 사실을 기본적으로 통과시키는 대신 소리내어 말합니다. |
+| `PROCEDURAL_POOLS` | info | 생산자 소유의 절차적 계층이 실제로 얼마나 생성되었는지. 예약된 절차적 검색 슬롯은 출처로 얻는 것이며, 이 코드는 그것을 정직하게 채울 수 없을 때를 보고합니다. |
+| `AGENT_UNDISTILLED_BACKLOG` | info | 에이전트가 distill 워터마크를 한참 넘겨 스코프 발견을 쌓아 두었습니다. |
+| `LOW_TITLE_QUALITY` | info | Paper의 제목이 제목이라기보다 파일명이나 조각처럼 보입니다. |
+| `SUGGESTED_MERGE` | info | 여러 Repository 노드가 같은 `github_repo` URL을 공유합니다 — 병합 후보이며, 자동으로 병합하지는 않습니다. |
+| `STALE_BUILD_HISTORY` | info | 90일보다 오래된 빌드 히스토리 항목. |
+| `CODE_GRAPH_BEHIND` · `CODE_GRAPH_HEAD_UNRESOLVED` · `CODE_GRAPH_STALE_FILE` | info | 선택형 코드 계층이 `HEAD`와 어긋났습니다 — 더 오래된 커밋에서 컴파일되었거나, git이 더 이상 해석할 수 없는 커밋이거나, 이후 변경된 파일들 위에서 컴파일되었습니다. |
+| `CLAIM_SUPPORT_SKIPPED` · `CLAIM_SUPPORT_SUMMARY` | info | 선택형 `--verify-claims` 패스의 결과: 무엇을 표본으로 삼아 어떤 점수가 나왔는지, 또는 왜 실행되지 않았는지. |
+
+`--fix-trivial`은 안전한 복구(`MISSING_IMPLEMENTED_IN`,
+`SYNTHESIS_GHOST_INPUT`)만 적용합니다. 나머지는 사람이 판단하도록 보고만
+합니다. `--verify-claims`는 선택 사항이고 LLM 백엔드가 필요하며, 배치 호출
+1회의 비용이 듭니다.
+
 ## 보고서 아티팩트
 
 매 실행마다 두 가지 형태의 보고서를 워크스페이스에 기록합니다:

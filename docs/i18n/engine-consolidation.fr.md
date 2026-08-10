@@ -8,7 +8,7 @@ Le cerveau consolide la mémoire pendant le repos. Pendant que vous dormez, l'ex
 
 Jusqu'à présent, ce passage n'était exécuté que lorsque vous le demandiez — `tesserae refresh` sous pression mémoire, ou un `tesserae distill` explicite. Le moteur recompilait à chaque fichier et événement de session, mais ne consolidait jamais automatiquement. Le **cycle de sommeil** comble cet écart : laissez `tesserae engine` s'exécuter et la consolidation se produit pendant le repos, sans aucune commande à retenir.
 
-Comme tout dans le système de [mémoire en couches](agent-memory.md), c'est **un non-op à moins que vous ne participiez** — le daemon consolide en inactivité, mais la distillation en dessous ne fonctionne que lorsque `TESSERAE_AGENT_DISTILL` est défini.
+Comme tout dans le système de [mémoire en couches](agent-memory.fr.md), c'est **un non-op à moins que vous ne participiez** — le daemon consolide en inactivité, mais la distillation en dessous ne fonctionne que lorsque `TESSERAE_AGENT_DISTILL` est défini.
 
 ## Quand cela se déclenche
 
@@ -31,7 +31,7 @@ Appelle le même point d'entrée `maybe_distill_on_refresh` que `tesserae refres
 2. **Repère par agent** — un agent dont les conclusions n'ont pas changé depuis sa dernière distillation est ignoré.
 3. **Pression mémoire par agent** — seuls les agents dont les conclusions non distillées ne rentrent plus dans la moitié d'une lecture de contexte sont consolidés (déclencheur de style MemGPT).
 
-Donc, même lorsque la consolidation **se déclenche** selon un calendrier, elle ne **fonctionne** que pour les agents qui ont opted in et qui ont réellement accumulé suffisamment de nouvelle mémoire pour le justifier. Consultez [Mémoire d'agent en couches](agent-memory.md) pour ce que produit la distillation.
+Donc, même lorsque la consolidation **se déclenche** selon un calendrier, elle ne **fonctionne** que pour les agents qui ont opted in et qui ont réellement accumulé suffisamment de nouvelle mémoire pour le justifier. Consultez [Mémoire d'agent en couches](agent-memory.fr.md) pour ce que produit la distillation.
 
 ### 2. Oublier par non-utilisation — décroissance LRU à la récupération, pas seulement par âge
 

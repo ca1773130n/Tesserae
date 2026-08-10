@@ -70,7 +70,7 @@ python3 -m tesserae serve --project /path/to/project --port 8765
 
 `tesserae serve` stellt die statische Website **plus** zwei JSON-Routen auf denselben Ursprung bereit:
 
-- `POST /api/ask`  — Beantwortung von Fragen (siehe [mcp.md](mcp.md))
+- `POST /api/ask`  — Beantwortung von Fragen (siehe [mcp.md](mcp.de.md))
 - `POST /api/clip` — Web-Clip-Aufnahme (diese Funktion)
 
 Lassen Sie es laufen, während Sie surfen; jeder Clip trifft `/api/clip`.
@@ -133,7 +133,7 @@ Derselbe Aufnahmepfad wird den Agenten über den Tesserae MCP-Server als `ingest
 | `tags`    | nein     | Metadaten-Tags. |
 | `tldr`    | nein     | Standard `true`. |
 
-Es wird in das **aktive Projekt** aufgenommen (aufgelöst mit `activate_project` oder Übergabe von `project`) und gibt denselben Bericht `{status, path, tldr, node_count, edge_count}` zurück. Siehe [mcp.md](mcp.md) für MCP-Setup.
+Es wird in das **aktive Projekt** aufgenommen (aufgelöst mit `activate_project` oder Übergabe von `project`) und gibt denselben Bericht `{status, path, tldr, node_count, edge_count}` zurück. Siehe [mcp.md](mcp.de.md) für MCP-Setup.
 
 ---
 

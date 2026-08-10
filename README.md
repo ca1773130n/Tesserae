@@ -108,6 +108,15 @@ about the project become first-class nodes — insights, decisions, questions,
 TODOs — linked to the files they touched. The knowledge from a session outlives
 the session.
 
+**Remembers what actually happened, not just what was said.** A tool result is
+a turn: exit codes and error flags survive ingest and land on `Event` nodes, so
+the graph knows a command failed rather than only that it was run. From two
+observed outcomes in one session — a call that failed, then a later call that
+succeeded on the same operand — Tesserae derives a `recovers` edge. It is the
+only causal edge in the vocabulary, and it is derived, never asserted by a
+model, because `caused_by` that is really `happened_near` reads as evidence and
+is worse than no edge at all.
+
 **Serves cited context on demand.** The context compiler runs Personalized
 PageRank from your query's seed nodes, packs the most relevant subgraph under a
 character budget, and returns a cited document ready to paste — or streams it to
@@ -186,10 +195,13 @@ Codex, or any MCP client. Every graph-reading tool accepts `graph_path` /
 | `compile_context` | Tailored, cited context doc for a query or seed nodes (deterministic; `preview=N` returns a handle instead of the full body) |
 | `get_handle` | Page a large payload in slices, so the agent never holds it all in context at once |
 | `ask` · `query` · `search_nodes` · `node_context` | Planned answers, raw retrieval, and graph navigation over the compiled base |
-| `graph_ppr` · `search_facts` · `timeline` | Personalized-PageRank expansion, temporal facts, and chronology |
-| `find_session_findings` · `fresh_insights` | Session-derived memory, decay-ranked and deduplicated |
+| `graph_map` | Budgeted Descent: navigate the graph top-down by scope instead of guessing search terms — the canonical entry point |
+| `graph_ppr` · `search_facts` · `timeline` | Personalized-PageRank expansion, temporal facts, and chronology. `search_facts` takes `current_only` (live facts) **or** `as_of` (as of a past date) — never both, they are different clocks |
+| `verify_claim` | Does the graph license this triple? A deterministic verdict, not a generated opinion |
+| `find_session_findings` · `fresh_insights` · `activity_summary` · `query_decisions` | Session-derived memory, decay-ranked and deduplicated; digests and the decision record |
 | `agent_view_explain` · `drill_down` | Resolve an agent's scoped view; escalate a distilled note to its raw evidence (audited) |
-| `ingest` | Merge raw web/text (e.g. a browser clip) straight into the graph |
+| `ingest` · `graph_write` | Merge raw web/text (e.g. a browser clip) into the graph; let an agent write attributed nodes back |
+| `doctor_run` · `doctor_report` · `lint_report` | Health checks and graph lint, from inside the agent loop |
 
 ## Everyday commands
 
@@ -201,12 +213,17 @@ Run `tesserae --help` for the grouped list, `tesserae <cmd> --help` for flags.
 | `tesserae compile` | Rebuild the graph and all projections. `compile <paths>` ad-hoc ingests extra files. |
 | `tesserae ask "<q>"` | LLM-planned, cited answer over the base. A smart router picks the target project; `--scope federated` merges them into one answer. |
 | `tesserae query "<q>"` | Raw retrieval — BM25/semantic search, no LLM synthesis. |
-| `tesserae context "<q>"` | On-demand cited context doc via PPR under `--budget`. |
+| `tesserae context "<q>"` | On-demand cited context doc via PPR under `--budget`. Reserves a slot for **procedural** memory — what was actually run and what came of it — when the graph has provenance to earn it. |
+| `tesserae graph-map` | Budgeted Descent: walk the graph top-down by scope rather than by search term. `--scope org:root` for the agent org tree. |
+| `tesserae verify-claim` | Deterministic verdict on whether the graph licenses a triple. JSON out. |
 | `tesserae engine [--all]` | Supervised refresh daemon — watch, debounce, recompile, and consolidate agent memory on idle (the sleep cycle; `--no-consolidate` to disable). `--all` keeps every registered project fresh in one process. |
 | `tesserae refresh` | One-shot: import new sessions → compile → sync vault. |
 | `tesserae agents …` | `init` (infer the org) · `tree` · `show` · `drill` — the layered-memory org tools. |
 | `tesserae distill` | Compact each agent's sessions into its bounded L1 memory layer. |
 | `tesserae doctor` | Health checks; `--fix` applies safe repairs. Exit `0/1/2` = healthy/warnings/errors. |
+| `tesserae lint` | Graph lint — orphans, stale citations, wiki drift, thin interval coverage, unearned procedural pools. `--fix-trivial` for the safe ones. |
+| `tesserae domains status` | Print the chartered domain tree (divisions → departments → teams). See [architecture](docs/architecture.md#the-charter). |
+| `tesserae federation status` | Inspect cross-project federation — what `--scope federated` will actually reach. |
 | `tesserae serve` | Serve every registered project — landing at `/`, each at `/<alias>/`, with a live ask widget. |
 | `tesserae export site \| okf` | Build the static site, or export a portable [Google OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog) bundle. |
 | `tesserae projects …` | Multi-project registry: `register`, `list`, `mcp-config`. |
@@ -297,8 +314,15 @@ See the [release notes](docs/release-notes/) for the current version. Honestly:
   linearly. Incremental compile (`--changed-only`) ships but is experimental.
 - Without the `semantic` extra, hybrid retrieval degrades to a non-semantic stub
   (with a loud warning).
+- The **code layer is opt-in** as of 0.30.0 — `compile` no longer ingests code
+  symbols unless you ask, because on a large repo they crowded out everything
+  else. `tesserae code ingest` still wires CodeGraph in deliberately.
+- The **charter** (`tesserae domains status`) is built and tested but not yet
+  produced by `compile`; the command reports "no charter yet" until it is.
 - RAG-Anything image description is not yet wired end-to-end.
-- The MCP tool set is stable; the graph schema still gains node types.
+- The MCP tool set is stable; the graph schema still gains node types. The
+  causal vocabulary is deliberately one edge wide — `recovers` — and derived
+  only from observed outcomes, never asserted by a model.
 
 ## Project layout
 
@@ -307,7 +331,7 @@ tesserae/     # the package — CLI, compiler, engine, MCP server, adapters
 docs/         # English docs + docs/i18n/ for seven other languages
 ontology/     # node/edge schemas the compiler validates against
 prompts/      # extraction and synthesis prompts
-tests/        # pytest suite (2,500+ tests)
+tests/        # pytest suite (3,400+ tests)
 evals/        # graph-quality eval harnesses
 ```
 

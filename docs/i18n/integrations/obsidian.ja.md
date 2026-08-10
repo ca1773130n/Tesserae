@@ -191,7 +191,7 @@ tesserae vault sync --watch
 tesserae vault sync --prune-orphans
 ```
 
-フィールドごとの所有権マトリクスと設計の根拠の全体は [obsidian-sync.md](obsidian-sync.md) を参照してください。
+フィールドごとの所有権マトリクスと設計の根拠の全体は [obsidian-sync.md](obsidian-sync.ja.md) を参照してください。
 
 ## 静的サイトとの使い分け
 

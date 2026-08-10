@@ -118,17 +118,13 @@ def test_mcp_tool_docs_match_the_real_tool_list() -> None:
     phantom = sorted(documented - served)
     assert not phantom, f"documented but NOT served (agents will call these and fail): {phantom}"
 
-    # The other direction is a discoverability gap, not a broken call, and it
-    # predates this guard — mcp.md has never listed these 14. Frozen as a
-    # ratchet rather than an assertion of zero: the set may SHRINK freely, and
-    # anything new must be documented. Documenting the existing 14 is worth
-    # doing, but it is not this test's job to hold a release hostage to it.
-    KNOWN_UNDOCUMENTED = {
-        "activity_summary", "agent_view_explain", "doctor_report", "doctor_run",
-        "drill_down", "graph_map", "graph_write", "ingest", "list_projects",
-        "query", "query_decisions", "register_project", "unregister_project",
-        "verify_claim",
-    }
+    # The other direction is a discoverability gap rather than a broken call,
+    # and it predates this guard: mcp.md had never listed 14 of the served
+    # tools. The set was frozen as a ratchet — free to SHRINK, never to grow —
+    # and the 0.30.0 docs pass emptied it. It stays here, empty, because the
+    # assertions below are what keep it empty: a new tool must be documented,
+    # and an exemption may not outlive its documentation.
+    KNOWN_UNDOCUMENTED: set = set()
     newly_undocumented = sorted(served - documented - KNOWN_UNDOCUMENTED)
     assert not newly_undocumented, (
         f"new tool(s) served but not documented in mcp.md: {newly_undocumented}"

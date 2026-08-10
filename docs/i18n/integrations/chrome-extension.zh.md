@@ -70,7 +70,7 @@ python3 -m tesserae serve --project /path/to/project --port 8765
 
 `tesserae serve` 在同一来源上公开静态站点**加上**两个 JSON 路由：
 
-- `POST /api/ask` — 问题回答（参见 [mcp.md](mcp.md)）
+- `POST /api/ask` — 问题回答（参见 [mcp.md](mcp.zh.md)）
 - `POST /api/clip` — 网页剪辑摄入（此功能）
 
 在浏览时让它保持运行；每个剪辑都会点击 `/api/clip`。
@@ -133,7 +133,7 @@ python3 -m tesserae serve --project /path/to/project --port 8765
 | `tags`    | no   | 前置元数据标签。 |
 | `tldr`    | no   | 默认值 `true`。 |
 
-它摄入到**活跃项目**（使用 `activate_project` 解析或传递 `project`）并返回相同的 `{status, path, tldr, node_count, edge_count}` 报告。有关 MCP 设置，请参见 [mcp.md](mcp.md)。
+它摄入到**活跃项目**（使用 `activate_project` 解析或传递 `project`）并返回相同的 `{status, path, tldr, node_count, edge_count}` 报告。有关 MCP 设置，请参见 [mcp.md](mcp.zh.md)。
 
 ---
 

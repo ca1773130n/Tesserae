@@ -191,7 +191,7 @@ tesserae vault sync --watch
 tesserae vault sync --prune-orphans
 ```
 
-Die vollständige Feld-für-Feld-Eigentümermatrix und die Designbegründung findest du in [obsidian-sync.md](obsidian-sync.md).
+Die vollständige Feld-für-Feld-Eigentümermatrix und die Designbegründung findest du in [obsidian-sync.md](obsidian-sync.de.md).
 
 ## Wann das vs. die statische Site einsetzen
 

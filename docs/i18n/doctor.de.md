@@ -164,6 +164,42 @@ Dieselbe Konvention wie `tesserae lint`:
 | `1` | Warnungen vorhanden |
 | `2` | Fehler vorhanden |
 
+## `tesserae lint` — die Befundcodes
+
+`doctor` führt nur die trivial reparierbare Teilmenge des Lints aus; den
+gesamten Satz führt `tesserae lint` aus, und dort liegt auch das Detail. Jeder
+Befund trägt einen stabilen Code, sodass Sie einen Bericht greppen oder die CI
+an einem einzelnen Code aufhängen können. `--severity {info,warning,error}` legt
+die Schwelle für den **Exit-Code** fest — Befunde darunter werden weiterhin
+berichtet.
+
+| Code | Schweregrad | Bedeutung |
+|---|---|---|
+| `AGENT_METADATA_KEY` | error | Ein Agent-Knoten trägt einen Metadatenschlüssel außerhalb des kontrollierten Satzes. Der einzige Code auf Fehlerstufe; ein fehlerhafter Agent zerstört bereichsbeschränkte Sichten. |
+| `ORPHAN_PAPER` | warning | Ein Paper ohne ausgehende Kanten und mit nichts außer `mentioned_in` eingehend — aufgenommen, nie verbunden. |
+| `MISSING_IMPLEMENTED_IN` | warning | Ein Paper und ein Repository teilen sich eine `arxiv_id`, doch keine `implemented_in`-Kante verbindet sie. `--fix-trivial` ergänzt sie. |
+| `STALE_CITATION` | warning | Eine Wiki-Seite verlinkt auf eine Seite, die es nicht gibt. |
+| `DANGLING_HTML_LINK` | warning | Erzeugtes HTML zeigt auf eine Datei, die nicht existiert. |
+| `GRAPH_WIKI_DRIFT` | warning | Graph und Wiki widersprechen sich — ein öffentlicher Knoten ohne Seite oder eine Seite ohne Knoten. |
+| `CONTRADICTING_CLAIMS` | warning · info | Zwei Behauptungen widersprachen einander; meldet, wie das aufgelöst wurde. |
+| `REASONING_EDGE_RATIO` | warning | Zu wenige Kanten tragen Begründung. Ein Graph aus blanken `mentions` ist ein Suchindex, keine Wissensbasis. |
+| `SYNTHESIS_GHOST_INPUT` | warning | Das Frontmatter einer Synthese zitiert eine Knoten-ID, die es nicht mehr gibt. `--fix-trivial` entfernt sie. |
+| `AGENT_FORGET_LEDGER` | warning | Die letzte Destillation hat Befunde herabgestuft — das Register dessen, was ein Agent nicht mehr zeigt. |
+| `INTERVAL_COVERAGE` | info | *Wie viele Fakten kein `valid_from` tragen* und deshalb in jeder zeitlichen Antwort zuletzt einsortiert werden. Früher stumm, jetzt als Prozentsatz ausgesprochen. |
+| `LINT_PROBE_FAILED` | info | `INTERVAL_COVERAGE` konnte nicht laufen, weil sich der Graph nicht laden ließ — die Prüfung enthält sich, und das wird gesagt, statt es stillschweigend als bestanden zu werten. |
+| `PROCEDURAL_POOLS` | info | Wie viel der produzenteneigenen prozeduralen Schicht tatsächlich erzeugt wurde. Der reservierte prozedurale Platz wird durch Provenienz verdient; dieser Code meldet, wenn er nicht ehrlich gefüllt werden kann. |
+| `AGENT_UNDISTILLED_BACKLOG` | info | Ein Agent hat Befunde weit über seine Destillationsmarke hinaus angesammelt. |
+| `LOW_TITLE_QUALITY` | info | Der Titel eines Papers wirkt eher wie ein Dateiname oder ein Fragment als wie ein Titel. |
+| `SUGGESTED_MERGE` | info | Mehrere Repository-Knoten teilen sich eine `github_repo`-URL — Zusammenführungskandidaten, die nie automatisch zusammengeführt werden. |
+| `STALE_BUILD_HISTORY` | info | Ein Build-History-Eintrag, der älter als 90 Tage ist. |
+| `CODE_GRAPH_BEHIND` · `CODE_GRAPH_HEAD_UNRESOLVED` · `CODE_GRAPH_STALE_FILE` | info | Die optionale Code-Schicht ist nicht mehr im Takt mit `HEAD` — auf einem älteren Commit kompiliert, auf einem Commit, den git nicht mehr auflöst, oder über Dateien, die sich seither geändert haben. |
+| `CLAIM_SUPPORT_SKIPPED` · `CLAIM_SUPPORT_SUMMARY` | info | Ergebnisse des optionalen `--verify-claims`-Laufs: was gezogen wurde und wie es abschnitt, oder warum er nicht lief. |
+
+`--fix-trivial` wendet nur die sicheren Reparaturen an (`MISSING_IMPLEMENTED_IN`,
+`SYNTHESIS_GHOST_INPUT`). Alles andere wird berichtet, damit ein Mensch
+entscheidet. `--verify-claims` ist optional, braucht ein LLM-Backend und kostet
+einen gebündelten Aufruf.
+
 ## Bericht-Artefakte
 
 Jeder Lauf schreibt beide Berichtsformen in den Workspace:

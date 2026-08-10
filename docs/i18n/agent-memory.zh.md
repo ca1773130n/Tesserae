@@ -52,7 +52,7 @@ tesserae distill --full               # 忽略水位标，从头重新蒸馏
 你不必记得蒸馏。像大脑在休息中整合记忆一样，始终在线的 `tesserae engine` 守护程序在项目**闲置**时自动整合(几分钟内没有编辑或会话)，加上定期的上限，因此持续繁忙的项目仍然会整合。每次运行执行三项操作：它**压缩和遗忘**(下面的蒸馏通过)，让未检索的知识**因不使用而衰减**(上面的 LRU 衰减)，并**发现存活下来的内容之间的新连接**。蒸馏步骤完全包装上面描述的 `maybe_distill_on_refresh` 触发器——相同的可选择门、每个代理水位标和内存压力检查——因此循环是无操作，除非 `TESSERAE_AGENT_DISTILL` 被设置、在编译门下运行且不干扰确定性工件。
 
 完整行为、CLI 标志(`--consolidate-idle` / `--consolidate-every` / `--consolidate-check`)和车队笔记：
-[docs/engine-consolidation.md](engine-consolidation.md)。
+[docs/engine-consolidation.md](engine-consolidation.zh.md)。
 
 ## 遗忘 — 永不删除
 
@@ -64,7 +64,7 @@ tesserae distill --full               # 忽略水位标，从头重新蒸馏
 ## 发现的连接
 
 除了压缩和遗忘外，整合还会**发现蒸馏笔记之间的新连接**——跨项目内的代理，而不仅仅是在一个代理内。它嵌入笔记并将接近的对链接为 `shares_concept_with` 边(带有 `federation_semantic` 标记)。发现被**嵌入门控**——仅当配置了真实嵌入后端时运行，并跳过哈希存根——因此它永远不会制造虚假链接。边被写入到 `.tesserae` 下累积的**边车覆盖层**，*永远*不会进入 `graph.json`，并在查询/PPR/联合读取时在内存中合并(完全像范围视图覆盖)。每个整合周期对之前周期发现的内容进行去重和扩展。有关运行它的睡眠周期操作，请参见
-[docs/engine-consolidation.md](engine-consolidation.md)。
+[docs/engine-consolidation.md](engine-consolidation.zh.md)。
 
 ## 读取作用域视图
 

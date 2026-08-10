@@ -8,7 +8,7 @@ Das Gehirn konsolidiert Erinnerungen während des Schlafs. Während Sie schlafen
 
 Bislang wurde dieser Durchgang nur ausgeführt, wenn Sie ihn anforderten — `tesserae refresh` unter Speicherdruck oder ein explizites `tesserae distill`. Die Engine recompilierte bei jeder Datei und jedem Sessionsereignis, konsolidierte sich aber nie automatisch. Der **Schlafzyklus** schließt diese Lücke: Lassen Sie `tesserae engine` laufen und die Konsolidierung findet während der Ruhe statt, ohne dass Sie sich einen Befehl merken müssen.
 
-Wie alles im System der [geschichteten Erinnerungen](agent-memory.md) ist dies **ein Noop, wenn Sie nicht teilnehmen** — der Daemon konsolidiert im Leerlauf, aber die Destillation darunter funktioniert nur, wenn `TESSERAE_AGENT_DISTILL` eingestellt ist.
+Wie alles im System der [geschichteten Erinnerungen](agent-memory.de.md) ist dies **ein Noop, wenn Sie nicht teilnehmen** — der Daemon konsolidiert im Leerlauf, aber die Destillation darunter funktioniert nur, wenn `TESSERAE_AGENT_DISTILL` eingestellt ist.
 
 ## Wann es auslöst
 
@@ -31,7 +31,7 @@ Ruft denselben `maybe_distill_on_refresh`-Einstiegspunkt auf, den `tesserae refr
 2. **Pro-Agent-Wasserstand** — ein Agent, dessen Ergebnisse sich seit der letzten Destillation nicht geändert haben, wird übersprungen.
 3. **Pro-Agent-Speicherdruck** — nur Agenten, deren undestillierte Ergebnisse nicht mehr in die Hälfte einer Kontextlesung passen, werden konsolidiert (MemGPT-Stil-Auslöser).
 
-Also auch wenn die Konsolidierung nach einem Zeitplan **auslöst**, **funktioniert** sie nur für Agenten, die sich angemeldet haben und tatsächlich genug neue Erinnerungen angesammelt haben, um sie zu rechtfertigen. Siehe [Geschichtete Agent-Erinnerung](agent-memory.md) für das, was Destillation produziert.
+Also auch wenn die Konsolidierung nach einem Zeitplan **auslöst**, **funktioniert** sie nur für Agenten, die sich angemeldet haben und tatsächlich genug neue Erinnerungen angesammelt haben, um sie zu rechtfertigen. Siehe [Geschichtete Agent-Erinnerung](agent-memory.de.md) für das, was Destillation produziert.
 
 ### 2. Durch Nichtverwendung vergessen — LRU-Abbau beim Abrufen, nicht nur nach Alter
 

@@ -81,6 +81,11 @@ query / seeds
         retrieval.ppr.personalized_pagerank ranks the depth-bounded k-hop neighbourhood;
         empty result (disconnected seeds) → fall back to seed order (bundle is never empty)
      │
+     ▼  2b. 手続き的予約（与えられるのではなく獲得される）
+        PROCEDURAL_POOL_ORDER の順にプールごと 1 枠: Runbook, Gotcha, Event,
+        DistilledNote, ExpertiseProfile。枠は、その型で最上位かつプロデューサーの
+        provenance を持つノードに与えられる — 型名だけでは足りない
+     │
      ▼  3. Budget-bound selection
         walk PPR order, include each node's cited body until the next would overflow
         `budget` chars (budget <= 0 = uncapped; over-budget marker on a word boundary)
@@ -99,6 +104,18 @@ query / seeds
 ```
 
 既定値: `depth=2`、`budget=32000`。決定的なアセンブリ（ステップ 1–4）が契約であり、LLM 合成は純粋に加算的です。同じパイプラインが `project context` CLI コマンド、`compile_context` MCP ツール、トピックスコープのエクスポートスライス（`slice_export_context_for_topic`、トピックスコープの `llms.txt`）を支えています。
+
+**手続き的な枠が provenance によって獲得される理由。** 五つの手続き的型は、
+エージェントが何をしたか、何をできるようになったか、何が得意かを名指します — が、
+文書抽出にもそれらを生成することが許されているため、投稿募集を読んだ LLM が
+「CVPR 2026」という型付き `Event` を正当に作ります。予約は*加算的*です: 近傍の
+どこにあってもノードを予算ウォークの先頭へ引き上げます。したがって型だけで予約
+すると、学会の締切がその枠を実際に獲得したセッションの発見を追い出しかねません。
+両者を分けるのが `has_producer_provenance` であり、予約は枠に対する主張であって
+その証明ではありません — `delivered` は予算ウォークのあとで確定するので、呼び出し
+側は「手続き的記憶が予約された」と「手続き的記憶が届いた」を区別できます。
+`PROCEDURAL_POOLS` lint コードがその差を報告します。
+
 
 ## モジュールマップ
 
@@ -264,6 +281,32 @@ site/
   manifest.json               sha256 + size for every emitted file
 ```
 
+## 憲章
+
+コミュニティ検出はドメイン語彙を**提案**し、憲章
+（[`tesserae/charter.py`](../../tesserae/charter.py)）は明示的な再編のあいだ、
+それを**所有**します。この分担があるのは、検出が決定的ではあっても安定では
+ないからです: 同じ入力は 1,649 のコミュニティすべてを正確に再現しますが、
+15 ノードの文書ひとつでメンバーの約 29% がコミュニティ間を移動し、大きな
+コミュニティの Jaccard は 0.39〜0.60 まで落ちます。したがってコミュニティ所属を
+キーにするものはすべて、取り込みのたびにほぼ全面的なキャッシュミスを被ります —
+そしてこのコーパスは毎日取り込みます。
+
+そこで憲章が制度を固定します: セクションを検出し、商グラフ（セクションごとに
+1 ノード、セクション間の L0 エッジごとに 1 本の `part_of` エッジ）へ畳み、
+**規模ではなくサブコミュニティによって**部門 → 部 → チームへ分割します。各
+ドメインのアンカーは次数最大のメンバーで、二つのドメインが同じものを共有しない
+よう貪欲に選ばれ、人が目にするスラッグはそのアンカーから一度だけ作られて固定
+されます。再編をまたぐときは `succeed` がアンカー一致でスラッグを引き継ぐので、
+その下のメンバーが入れ替わっても安定した名前は生き残ります。すべてのノードは
+ちょうど一つのドメインに収まります: `intake_members` が、検出なら黙って失って
+いたはずの捨てられた単独ノードとエッジ的に孤立したセクションを受け止めます。
+
+`tesserae domains status [--json]` がツリーを表示します。**状態:** モジュールと
+CLI の動詞は出荷済みでテストにも覆われていますが、`compile` はまだ憲章を書きま
+せん — それまでこのコマンドは "no charter yet" と報告して 0 で終了します。これは
+一読分の下限を下回るプロジェクトにとっても正直な答えです。
+
 ## 意図的に除外されているもの
 
 再設計は明示的な線を引きました: コードクラスとコード関数のノードは `graph.json` に留まります（そのため MCP と Graphiti のコンシューマーからは引き続き見えます）が、HTML ページを持つことはなく、`search-index.json` に現れることもなく、ナビゲーションに現れることもありません。これがユーザー向けの契約です — この wiki はドキュメントファーストのナレッジベースであり、関数ブラウザではありません。
@@ -275,6 +318,34 @@ site/
 
 コードレベルのブラウジングが必要なら、LSP / コールグラフツールをソースツリーに直接向けてください — それは「このプロジェクトが知っていることの wiki」とは別の問題です。
 
+## OKF v0.2 エクスポート / インポート
+
+[`tesserae/okf.py`](../../tesserae/okf.py) はグラフを [Google **OKF v0.2**](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) バンドルへ投影します — YAML frontmatter を持つマークダウンファイルのディレクトリツリーで、必須キーは空でない `type` ただ一つです。`tesserae export okf` は **v0.2 を書き**、`tesserae export okf --import DIR` は **v0.1 と v0.2 を読みます**。バンドルは `graph.json` の純粋な投影です: 壁時計も `os.stat()` も環境も使わないので、同じグラフを二度エクスポートすればバイト単位で同一になります。
+
+Tesserae が何を出力し、それぞれの値が正直にどこから来るのか:
+
+| Frontmatter | §  | 由来 |
+|---|---|---|
+| `type` | §4.1 | ノード型、または `metadata.okf_type` に保存された外部型 |
+| `title` | §4.1 | `node.name` — v0.1 は仕様にない `name` を書いていました。下の破壊的変更を参照 |
+| `description` | §4.1 | ノード説明の最初の一文、上限付き |
+| `resource` | §4.1 | `arxiv_id` → `https://arxiv.org/abs/<id>`、なければ `repo_url` / `github_repo` |
+| `generated: {by, at}` | §5.2 | `by` は `agent_key` → `<key>/tesserae-agent-write`、なければ `extractor` → `process:tesserae-<extractor>`、なければ `process:tesserae-compile`。`at` は [`temporal.py`](../../tesserae/temporal.py) の共通ソースタイムスタンプ・ラダーから |
+| `sources[]` | §5.1 | プロジェクトルート相対にした `source_path`、加えて `author`（単独の `authored_by`）、`last_modified`（`frontmatter_date` / `analysis_date`）、`usage_count`（重複を除いた `discussed_in` セッション数） |
+| `usage_window` | §5.1 | 上で数えたセッションの `started_at` / `ended_at` の最小・最大 |
+| `status: deprecated`, `stale_after` | §5.4, §5.5 | `supersedes` エッジに指されたノード。`stale_after` は置き換える側のノードの日付で、それが置き換えられる側自身の日付より前になる場合は省略されます |
+| `x_tesserae` | 拡張 | 実際のノード id、エイリアス、`source_path`、メタデータ、型付きエッジ — 無損失の往復チャネル |
+
+`index.md` は §8 に従い（frontmatter はちょうど `okf_version: '0.2'` で、§12 がそれを許す唯一の場所です）、`log.md` は §9 に従います（frontmatter なし、`## YYYY-MM-DD` のグループ、新しい順）。Tesserae のプロジェクトグラフ（5197 ノード / 15284 エッジ）では 5195 ファイルが生成され、5193 の概念すべてが `generated` を、3934 が `sources` を、1264 が `usage_window` を、1749 が `description` を、822 が `resource` を、25 が `status`/`stale_after` を持ちます。
+
+**意図的に出力しないもの。** `verified` キー（§5.2）はなく、したがって `unverified` より上の信頼ティア（§5.3）もありません: コンパイル済みグラフの中に、行為者とタイムスタンプを伴う検証*イベント*であるものは一つもないからです。`verify_claim` と再グラウンディングはグラフに対するクエリ時の関数であり、`lint --verify-claims` は LLM の審判で、[`verify.py`](../../tesserae/verify.py) 自身がそれは証拠ではないと述べています。エッジの provenance クラスはグラフが*トリプル*をどれだけ強く是認するかを表しますが、OKF の信頼ファミリーは*概念*ごとの確認です。片方をもう片方に写像すれば、誰も確認していない内容に機械確認済みのティアを与えることになるので、`generated.by` が `human:` で始まることは決してありません — テストがそれを固定しています。同様に Attested Computation ファミリー（§10）もありません: Tesserae には認可された計算も、実行器も、レシートも、アテスター ABI もなく、§10.5 は消費者にアテステーションで*ゲートせよ*と告げているため、空の足場は履行できない契約を宣伝することになります。正直な出所がないために欠けているものもあります: `tags`（ノード単位のタグ項目がありません — `aliases` は別名であって分類ではありません）、主張ごとの `[^id]` 脚注、`status: draft`（`metadata.confidence` は抽出の確信度であってレビュー状態ではありません）、そして保存された信頼度スコアの類（§5.1 が記録するのはシグナルであって判定ではありません）。`last_modified` はグラフ内の文書日付から来るのであって、**決して**ファイルの mtime からではありません — もっともらしい `os.stat()` の近道こそ、ここで以前にバイト冪等性を壊した環境リークそのものです。
+
+**読み取り。** §11 に従い、インポーターは何も拒否しません: 未知の `type` 値、未知の frontmatter キー、欠けたオプションファミリー、壊れた相互リンク、`index.md` の欠如、いずれも許容されます。スキップされるのは空でない `type` を持たないファイルだけです。Tesserae 自身のバンドルは `x_tesserae` を通じて無損失で往復します。外部バンドルは `type` を対応するノード種別または `Concept` へ、本文リンクを `references` エッジへ写し、認識できない frontmatter キーはすべて `metadata.okf` に入れ（§4.1 の往復 SHOULD）、裸の `verified` は 1 要素のリストに正規化されます（§11 MUST）。v0.1 フォールバック（§13.1）: 旧来の `timestamp` は `metadata["updated_at"]` に着地し（タイムスタンプ・ラダーが既に読む段）、旧来の本文の `# Citations` リストは `metadata["okf"]["sources"]` となり、散文として飲み込まれる代わりに説明から取り除かれます。再エクスポート時、保存されたバケットは Tesserae が導出したものの*上に*マージされるため、他人のバンドルを再エクスポートしても彼らの provenance や信頼の主張をこちらのもので上書きすることはありません。`--import` は信頼ティアのヒストグラムを表示するので、混在バンドルは黙って通り過ぎずに可視化されます。ティアは読み取り時に `okf_trust_tier` が推論し、保存されません。
+
+**Tesserae の v0.1 出力からの破壊的変更。** `name:` は `title:` になります（`name` はどちらのバージョンでも OKF のキーであったことはありません。リーダーは `title` の後ろで今も受け付けます）。`index.md` と `log.md` は `type:` / `name:` の frontmatter を失うので（§8, §9）、それらを型付き概念として扱っていた消費者は幽霊エントリ二つを失います — それが狙いです。関連して、この二つはバンドルのルートだけでなく階層の*どの*レベルでも予約されるようになりました（§3.1）。すべての概念ファイルのバイトが変わるため、最初の v0.2 エクスポートはバンドル全体を書き直します。
+
+**既知の限界。** `usage_count` が数えるのは、その文書に触れたトランスクリプトを持つ重複除去済みのエージェント / 作業セッション数であって、人間のページ閲覧数ではありません — §5.1 もこのシグナルが粗いと警告しています。人気ではなく生存性として読んでください。ライフサイクル・ファミリーは `supersedes` エッジに指されたノードにのみ発火し（ここでは 5197 中 25）、本当の網羅には `TemporalFactProjector` がクエリ時に導く時間的妥当区間が要りますが、それを 15k エッジに対してエクスポーター内部で走らせるのはスコープ外として却下されました。`generated.by` は §7 の `<producer>/<version>` ではなく `process:tesserae-<extractor>` を意図的に使います: バージョンを帯びた行為者は、意味が何も変わらないのにリリースごとに約 5200 の概念ファイル全部を書き換えさせるからです。パス値を取る OKF フィールド（`resource`, `sources[].resource`）が絶対パスを運ぶことは決してありません — プロジェクトルート相対にできないものは生のまま出さずに省略します。§6.2 のもとでは消費者がそれをバンドル相対として読んでしまうからです — ただし絶対パスは `x_tesserae.source_path`（ノードの実体としての識別子で、外部の消費者は無視します）の中と、たまたまパスを引用しているノード本文の中には依然として現れ得ます。
+
 ## 冪等性の話
 
 再設計は、**未変更の入力に対する連続 2 回の `project compile` 実行でバイト単位に同一な出力**を目指しています。その構成要素:
@@ -283,6 +354,7 @@ site/
 2. **wiki レイヤーの書き込み**はボディレベルで冪等です。`WikiPageStore.write_page` は既存ファイルを読み、frontmatter を剥がし、ボディを sha256 し、新しいボディが同じハッシュになる場合は — 新しい frontmatter の `generated_at` タイムスタンプが違っていても — ショートサーキットします。これが再ビルド時の git 差分を小さく保つ鍵となるトリックです。
 3. **統合（synthesis）出力**は frontmatter に `content_hash: sha256-…` を持ちます。ボディハッシュは `generated_at` 抜きで計算されるため、同じグラフに対する繰り返しのコンパイルは同じハッシュを生み、`Synthesis` ノードはグラフメタデータに同じ `content_hash` を持ちます。
 4. **サイトレンダリング**は `write_site` の最初に `site/` を消去し、その後決定的に書き込みます: ルートはソートされ、辞書は `sort_keys=True` でダンプされ、`manifest.json` は `sorted(rglob("*"))` で走査されます。2 回の実行はマニフェストを含めてバイト単位に同一なファイルを生みます。
+5. **ノードの日付はソース由来です。** ノードの `first_seen_at` は、そのソースが取り込まれたパスから決まり、コンパイル時の壁時計からは決まりません。時計を読めば再実行のたびに差分が出るため、これを素朴に実装すると 1 番が壊れます。同じ規則が `Event` パスをバイト冪等に保ちます: 生成されるあらゆる id・本文・日付が内容から導かれ、481 セッションのコーパスで検証済みです。
 
 これは `tests/test_site_pages.py` と、`tests/test_project_e2e_redesign.py` のエンドツーエンドスモーク（2 回コンパイルし、サイトを diff し、ファイル差分ゼロを期待する）で検証されています。
 

@@ -8,7 +8,7 @@ El cerebro consolida la memoria durante el descanso. Mientras duermes, la experi
 
 Hasta ahora, ese paso solo se ejecutaba cuando lo solicitabas — `tesserae refresh` bajo presión de memoria, o un `tesserae distill` explícito. El motor recompilaba en cada archivo y evento de sesión, pero nunca se consolidaba automáticamente. El **ciclo de sueño** cierra esa brecha: deja `tesserae engine` en funcionamiento y la consolidación ocurre durante el descanso, sin ningún comando que recordar.
 
-Como todo en el sistema de [memoria en capas](agent-memory.md), esto es **no-op a menos que optes** — el demonio consolida en inactividad, pero la destilación debajo solo funciona cuando se establece `TESSERAE_AGENT_DISTILL`.
+Como todo en el sistema de [memoria en capas](agent-memory.es.md), esto es **no-op a menos que optes** — el demonio consolida en inactividad, pero la destilación debajo solo funciona cuando se establece `TESSERAE_AGENT_DISTILL`.
 
 ## Cuándo se dispara
 
@@ -31,7 +31,7 @@ Llama al mismo punto de entrada `maybe_distill_on_refresh` que usa `tesserae ref
 2. **Marca de agua por agente** — un agente cuyas conclusiones no han cambiado desde su última destilación se omite.
 3. **Presión de memoria por agente** — solo los agentes cuyas conclusiones no destiladas ya no caben en la mitad de una lectura de contexto se consolidan (disparador estilo MemGPT).
 
-Entonces, incluso cuando la consolidación se *dispara* en un cronograma, solo *funciona* para los agentes que se incluyeron y realmente acumularon suficiente memoria nueva para justificarlo. Consulta [Memoria de agente en capas](agent-memory.md) para lo que produce la destilación.
+Entonces, incluso cuando la consolidación se *dispara* en un cronograma, solo *funciona* para los agentes que se incluyeron y realmente acumularon suficiente memoria nueva para justificarlo. Consulta [Memoria de agente en capas](agent-memory.es.md) para lo que produce la destilación.
 
 ### 2. Olvidar por desuso — decaimiento LRU en recuperación, no solo por edad
 

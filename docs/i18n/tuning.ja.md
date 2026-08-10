@@ -106,6 +106,7 @@ export TESSERAE_LLM_CACHE=0   # 常に再度質問
 | `TESSERAE_LLM_PROVIDER` | `claude` | `codex`、`claude`、`anthropic`、`custom` |
 | `TESSERAE_LLM_MODEL` | プロバイダー固有 | プロバイダーによってスコープされるため、claude 型のモデルが codex パスに落ちることはありません |
 | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | 構造化抽出は、インタラクティブな作業のために設定される可能性のある `xhigh` を必要としません—`xhigh` はマルチドキュメントコンパイルを何倍も遅くします |
+| `TESSERAE_CLAUDE_CONFIG_DIRS` | — | `os.pathsep` 区切りの Claude 設定ディレクトリ（ローテーション順）— 繰り返し指定する `--claude-config-dir` の環境変数チャネルです。*設定された*リストのみが権威を持ちます。周囲の `CLAUDE_CONFIG_DIR` は意図的に権威を持ちません。そこに固定するとマルチアカウントのローテーションが 1 アカウントに潰れるからです |
 
 `tesserae config status` は解決されたバックエンドを出力し、生存性をチェックします。
 

@@ -90,6 +90,7 @@ export TESSERAE_LLM_CACHE=0   # 항상 re-ask
 | `TESSERAE_LLM_PROVIDER` | `claude` | `codex`, `claude`, `anthropic`, `custom` |
 | `TESSERAE_LLM_MODEL` | provider-specific | provider로 scoped하여 claude-shaped model이 절대 codex path에 landing하지 않음 |
 | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | Structured extraction은 interactive work에 설정할 수 있는 `xhigh`를 필요로 하지 않습니다 — `xhigh`는 multi-document compile을 여러 배 느리게 만듭니다 |
+| `TESSERAE_CLAUDE_CONFIG_DIRS` | — | `os.pathsep`으로 구분된 Claude 설정 디렉터리 목록(로테이션 순서) — 반복된 `--claude-config-dir`의 환경 변수 통로입니다. *설정된* 목록만 권위를 가집니다. 주변 환경의 `CLAUDE_CONFIG_DIR`는 의도적으로 권위가 없는데, 거기에 고정하면 다중 계정 로테이션이 한 계정으로 붕괴하기 때문입니다 |
 
 `tesserae config status`는 resolved backend를 print하고 liveness를 위해 ping합니다.
 

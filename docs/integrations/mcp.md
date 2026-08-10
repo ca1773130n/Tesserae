@@ -62,6 +62,7 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 
 | Tool | Purpose |
 |---|---|
+| `graph_map` | **Start here.** Budgeted map of the graph hierarchy — the Descent entry point. No scope returns the root card set (counts, top hubs, one card per coarsest community); `scope='<card scope_id>'` descends a dendrogram level; `org:root` walks the agent org tree. Orients an agent without it having to guess search terms |
 | `schema` | Controlled node, edge, and wiki-kind vocabulary |
 | `graph_summary` | Node + edge counts and type distributions for the resolved project |
 | `search_nodes` | Filter public graph nodes by `query`, `type`/`types`, `kind`, `limit`, hybrid `mode`/`weights`; `include_superseded` to surface retired nodes |
@@ -72,7 +73,10 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 | `graph_ppr` | Personalized PageRank seeded at one or more `seed_node_id`s; returns the top-K most relevant nodes with tunable `alpha`, `directed`, `edge_type_weights` |
 | `wiki_page` | The compiled markdown page body for a node, plus the internal links it references |
 | `raw_source` | The original source markdown (capped at 16 KB) |
+| `verify_claim` | Verify ONE triple against the graph — exact lookup, no LLM, no fuzzy matching, no ranked results. Returns `{verdict, reason, triple, citation, provenance, advisory}`; `verdict` is `SUPPORTED` (the edge exists **and** its evidence is a verbatim document span), `PRESENT_UNEVIDENCED`, or a refusal. Chain `search_nodes` → `verify_claim` when you only have prose |
 | `lint_report` | The latest compile-time lint findings (capped at 64 KB) |
+| `doctor_run` | Run the health checks and return the report as JSON (`findings`, `exit_code` 0/1/2). **Always read-only** — fixes never run over MCP; use `tesserae doctor --fix` on the CLI |
+| `doctor_report` | The contents of `.tesserae/doctor-report.md` (capped at 64 KB); empty until `tesserae doctor` has run |
 
 **On-demand context compiler** (Phase 7)
 
@@ -90,13 +94,27 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 | `list_sessions` | Session envelopes (id, started_at, title, files_touched, finding counts) for the resolved project; `since`, `limit` |
 | `find_session_findings` | Every Session-derived finding linked to `node_id` via `discussed_in` / `references`, optionally filtered to `kinds` (insight / decision / question / todo / hypothesis / takeaway) |
 | `find_code_symbol_mentions` | Expand a session finding into the `CodeFunction`/`CodeClass`/`CodeMethod` symbols it mentions, via `discusses` edges from the opt-in insight↔symbol link pass. The code layer is opt-in: with no `external_tools` entry for `codegraph`, this returns nothing |
+| `activity_summary` | Daily/weekly digest across registered projects — sessions, findings, git commits, PRs, ingested docs — each windowed by **its own** timestamp, never a session's `started_at`. Deterministic markdown, with an LLM narrative prepended unless disabled |
+| `query_decisions` | Decisions across registered projects in a time range: explicit **human** choices parsed deterministically from Claude Code's `AskUserQuestion` (the question and the option chosen), plus agent decisions mined from the conversation |
+
+**Agent memory & writeback** (see [agent-memory.md](../agent-memory.md))
+
+| Tool | Purpose |
+|---|---|
+| `agent_view_explain` | Explain an agent-scoped view *without loading it*: resolution mode (worker / manager / org), member agents, each L1 artifact's path, node count, and the `distilled_through` staleness watermark |
+| `drill_down` | Resolve a distillate `member_ref` back to its raw L0 node — the manager's explicit, audit-logged escalation past distilled visibility. Returns status `alive` / `changed` / `absorbed` / `gone`; every call is logged to the sidecar |
+| `graph_write` | Write typed nodes + edges into the graph directly — no markdown, no extraction pass. Appended to an append-only overlay and replayed as a compile producer, so the write **survives recompilation**. Strict: unknown types, an edge without evidence, or an endpoint outside the payload are all refused |
 
 **Q&A & registry**
 
 | Tool | Purpose |
 |---|---|
 | `ask` | Natural-language Q&A. Omit `scope` and a smart router picks the target across your registered projects (federated fallback) and reroutes across consecutive questions (pass `conversation_id` to isolate a thread). Explicit `scope`: `current` (one project), `all-registered` (one answer per project), `federated` (ONE merged, cross-referenced answer; `semantic` on by default). Plus `backend`, `top_k`, `scope_aliases`, `claude_config_dir` |
-| `list_projects` / `register_project` / `unregister_project` | Multi-project registry control (no privileged "active" project) |
+| `query` | Raw retrieval, no LLM — mirrors `tesserae query`. `backend='wiki'` (default) is deterministic BM25/semantic search over the compiled wiki, returning ranked hits with excerpts; `backend='raganything'` queries the optional multimodal RAG index when the project has it enabled. Use `ask` for a synthesized, cited answer |
+| `ingest` | Ingest raw web/text content (e.g. a browser clip) into the resolved project's knowledge graph |
+| `list_projects` | List the registered projects |
+| `register_project` | Add a project to the registry |
+| `unregister_project` | Remove a project from the registry (no privileged "active" project exists) |
 
 **Guided setup**
 

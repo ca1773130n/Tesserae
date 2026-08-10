@@ -70,7 +70,7 @@ python3 -m tesserae serve --project /path/to/project --port 8765
 
 `tesserae serve` は静的サイト**プラス** 2 つの JSON ルートを同じオリジンで公開します：
 
-- `POST /api/ask` — 質問応答（[mcp.md](mcp.md) を参照）
+- `POST /api/ask` — 質問応答（[mcp.md](mcp.ja.md) を参照）
 - `POST /api/clip` — ウェブクリップ取り込み（この機能）
 
 ブラウジング中は実行したままにします。各クリップは `/api/clip` にヒットします。
@@ -133,7 +133,7 @@ python3 -m tesserae serve --project /path/to/project --port 8765
 | `tags`    | いいえ | フロントマター タグ。 |
 | `tldr`    | いいえ | デフォルト `true`。 |
 
-**アクティブプロジェクト**（`activate_project` で解決するか `project` を渡します）に取り込み、同じ `{status, path, tldr, node_count, edge_count}` レポートを返します。MCP セットアップについては [mcp.md](mcp.md) を参照してください。
+**アクティブプロジェクト**（`activate_project` で解決するか `project` を渡します）に取り込み、同じ `{status, path, tldr, node_count, edge_count}` レポートを返します。MCP セットアップについては [mcp.md](mcp.ja.md) を参照してください。
 
 ---
 

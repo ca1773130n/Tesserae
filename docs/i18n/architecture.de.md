@@ -81,6 +81,11 @@ query / seeds
         retrieval.ppr.personalized_pagerank rankt die tiefenbegrenzte k-Hop-Nachbarschaft;
         leeres Ergebnis (unverbundene Seeds) → Rückfall auf die Seed-Reihenfolge (Bundle nie leer)
      │
+     ▼  2b. Prozedurale Reservierung (verdient, nicht gewährt)
+        ein Platz je Pool, in der Reihenfolge von PROCEDURAL_POOL_ORDER: Runbook, Gotcha,
+        Event, DistilledNote, ExpertiseProfile. Der Platz geht an den höchstplatzierten
+        Knoten dieses Typs mit PRODUZENTEN-Provenienz — nicht bloß an den Typnamen
+     │
      ▼  3. Budgetbegrenzte Auswahl
         PPR-Reihenfolge durchlaufen, jeden zitierten Knoten-Body aufnehmen, bis der nächste Body
         `budget` Zeichen überschreiten würde (budget <= 0 = unbegrenzt; Überlaufmarker an Wortgrenze)
@@ -99,6 +104,21 @@ query / seeds
 ```
 
 Standardwerte: `depth=2`, `budget=32000`. Der deterministische Zusammenbau (Schritte 1–4) ist der Vertrag; die LLM-Synthese ist rein additiv. Dieselbe Pipeline trägt den CLI-Befehl `project context`, das MCP-Werkzeug `compile_context` und die themenbezogenen Export-Slices (`slice_export_context_for_topic`, themenbezogene `llms.txt`).
+
+**Warum der prozedurale Platz durch Provenienz verdient wird.** Die fünf
+prozeduralen Typen benennen, was ein Agent getan, gelernt und worin er gut ist —
+doch auch die Dokumentextraktion darf sie erzeugen, sodass ein LLM beim Lesen
+eines Call for Papers völlig legitim ein typisiertes `Event` namens „CVPR 2026"
+erzeugt. Die Reservierung ist *additiv*: Sie hebt einen Knoten von irgendwo aus
+der Nachbarschaft an den Anfang des Budgetdurchlaufs. Eine Reservierung allein
+nach Typ ließe deshalb eine Konferenzdeadline jenen Sitzungsbefund verdrängen,
+der den Platz tatsächlich verdient hat. Getrennt werden beide durch
+`has_producer_provenance`, und eine Reservierung ist ein Anspruch auf einen
+Platz, nicht der Beweis dafür: `delivered` entscheidet sich erst nach dem
+Budgetdurchlauf, sodass die aufrufende Seite „prozedurales Gedächtnis wurde
+reserviert" von „prozedurales Gedächtnis kam an" unterscheiden kann. Der
+Lint-Code `PROCEDURAL_POOLS` meldet die Lücke.
+
 
 ## Modul-Karte
 
@@ -264,6 +284,36 @@ site/
   manifest.json               sha256 + size for every emitted file
 ```
 
+## Die Charta
+
+Die Community-Erkennung **schlägt** ein Domänenvokabular vor; die Charta
+([`tesserae/charter.py`](../../tesserae/charter.py)) **besitzt** es zwischen
+ausdrücklichen Reorganisationen. Diese Trennung existiert, weil die Erkennung
+zwar deterministisch, aber nicht stabil ist: Identische Eingaben reproduzieren
+alle 1.649 Communities exakt, doch ein einziges Dokument mit 15 Knoten verschiebt
+rund 29 % der Mitglieder zwischen Communities und drückt große Communities auf
+einen Jaccard von 0,39–0,60. Alles, was auf Community-Zugehörigkeit schlüsselt,
+erleidet damit pro Aufnahme einen nahezu vollständigen Cache-Miss — und dieses
+Korpus nimmt täglich auf.
+
+Also fixiert die Charta die Institution: Abschnitte werden erkannt, zu einem
+Quotientengraphen zusammengefaltet (ein Knoten je Abschnitt, eine `part_of`-Kante
+je abschnittsübergreifender L0-Kante) und **nach Sub-Community, nie nach Größe**
+in Bereiche → Abteilungen → Teams zerlegt. Der Anker jeder Domäne ist ihr
+Mitglied mit dem höchsten Grad, gierig gewählt, sodass keine zwei Domänen
+denselben teilen; der für Menschen sichtbare Slug wird einmal aus diesem Anker
+geprägt und festgehalten. Über eine Reorganisation hinweg trägt `succeed` die
+Slugs weiter, indem es über den Anker zuordnet — ein stabiler Name überlebt also
+das Durchmischen der Mitglieder darunter. Jeder Knoten landet in genau einer
+Domäne: `intake_members` fängt die verworfenen Singletons und kantenisolierten
+Abschnitte auf, die die Erkennung sonst stillschweigend verlöre.
+
+`tesserae domains status [--json]` gibt den Baum aus. **Stand:** Das Modul und
+sein CLI-Verb sind ausgeliefert und durch Tests abgedeckt, doch `compile`
+schreibt noch keine Charta — bis dahin meldet der Befehl „no charter yet" und
+endet mit 0, was auch für ein Projekt unterhalb der Ein-Lesevorgang-Schwelle die
+ehrliche Antwort ist.
+
 ## Was bewusst ausgeschlossen ist
 
 Das Redesign hat eine klare Linie gezogen: Code-Class- und Code-Function-Knoten bleiben in `graph.json` (damit MCP- und Graphiti-Consumer sie weiterhin sehen), bekommen aber nie HTML-Seiten, tauchen nie in `search-index.json` auf und erscheinen nie in der Navigation. Das ist der Vertrag nach außen — das Wiki ist eine dokument-zentrierte Wissensdatenbank, kein Function-Browser.
@@ -275,6 +325,34 @@ Konkret überspringt `StaticSiteBuilder` jeden Knoten, dessen Typ nicht in der L
 
 Wenn du Code-Level-Browsing brauchst, richte ein LSP- / Call-Graph-Tool direkt auf den Source-Tree — das ist ein anderes Problem als „Wiki von dem, was dieses Projekt weiß“.
 
+## OKF-v0.2-Export/-Import
+
+[`tesserae/okf.py`](../../tesserae/okf.py) projiziert den Graphen in ein [Google-**OKF-v0.2**](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)-Bundle — einen Verzeichnisbaum aus Markdown-Dateien mit YAML-Frontmatter, dessen einzige Pflichtangabe ein nicht leerer `type` ist. `tesserae export okf` **schreibt v0.2**; `tesserae export okf --import DIR` **liest v0.1 und v0.2**. Das Bundle ist eine reine Projektion von `graph.json`: keine Wanduhr, kein `os.stat()`, keine Umgebung — zwei Exporte desselben Graphen sind daher byteidentisch.
+
+Was Tesserae ausgibt, und woher jeder Wert ehrlicherweise stammt:
+
+| Frontmatter | §  | Abgeleitet aus |
+|---|---|---|
+| `type` | §4.1 | Der Knotentyp oder ein fremder Typ, bewahrt in `metadata.okf_type` |
+| `title` | §4.1 | `node.name` — v0.1 schrieb ein spezifikationsfremdes `name`; siehe die brechenden Änderungen weiter unten |
+| `description` | §4.1 | Erster Satz der Knotenbeschreibung, gedeckelt |
+| `resource` | §4.1 | `arxiv_id` → `https://arxiv.org/abs/<id>`, sonst `repo_url` / `github_repo` |
+| `generated: {by, at}` | §5.2 | `by` aus `agent_key` → `<key>/tesserae-agent-write`, sonst `extractor` → `process:tesserae-<extractor>`, sonst `process:tesserae-compile`; `at` aus der gemeinsamen Quell-Zeitstempelleiter in [`temporal.py`](../../tesserae/temporal.py) |
+| `sources[]` | §5.1 | `source_path`, relativ zur Projektwurzel gemacht, plus `author` (ein einzelnes `authored_by`), `last_modified` (`frontmatter_date` / `analysis_date`), `usage_count` (verschiedene `discussed_in`-Sitzungen) |
+| `usage_window` | §5.1 | Min/Max von `started_at` / `ended_at` der oben gezählten Sitzungen |
+| `status: deprecated`, `stale_after` | §5.4, §5.5 | Knoten, auf die eine `supersedes`-Kante zeigt; `stale_after` ist das Datum des ablösenden Knotens und entfällt, wenn es vor dem Datum des abgelösten läge |
+| `x_tesserae` | Erweiterung | Echte Knoten-ID, Aliase, `source_path`, Metadaten, typisierte Kanten — der verlustfreie Rückweg-Kanal |
+
+`index.md` folgt §8 (das Frontmatter ist exakt `okf_version: '0.2'`, die einzige Stelle, an der §12 es erlaubt) und `log.md` folgt §9 (kein Frontmatter, `## YYYY-MM-DD`-Gruppen, neueste zuerst). Auf dem Projektgraphen von Tesserae (5197 Knoten / 15284 Kanten) sind das 5195 Dateien, mit `generated` auf allen 5193 Konzepten, `sources` auf 3934, `usage_window` auf 1264, `description` auf 1749, `resource` auf 822 und `status`/`stale_after` auf 25.
+
+**Bewusst nicht ausgegeben.** Kein `verified`-Schlüssel (§5.2) und damit keine Vertrauensstufe oberhalb von `unverified` (§5.3): Nichts im kompilierten Graphen ist ein aufgezeichnetes Verifikations-*Ereignis* mit Akteur und Zeitstempel. `verify_claim` und das Neu-Erden sind Funktionen zur Abfragezeit über dem Graphen, und `lint --verify-claims` ist ein LLM-Richter, von dem [`verify.py`](../../tesserae/verify.py) selbst sagt, er sei kein Beleg. Kanten-Provenienzklassen beschreiben, wie stark der Graph ein *Tripel* zulässt; OKFs Vertrauensfamilie ist eine Bestätigung pro *Konzept*. Das eine auf das andere abzubilden setzte eine maschinell bestätigte Stufe auf Inhalte, die niemand bestätigt hat — deshalb darf `generated.by` nie mit `human:` beginnen; ein Test hält das fest. Ebenso keine Attested-Computation-Familie (§10): Tesserae hat keine sanktionierten Berechnungen, keinen Executor, keine Quittung und keine Attester-ABI, und §10.5 weist Konsumenten an, auf Attestierung zu *gaten* — leeres Gerüst würde also einen Vertrag bewerben, der nicht eingehalten werden kann. Mangels ehrlicher Quelle fehlen ebenfalls: `tags` (es gibt kein Tag-Feld auf Knotenebene — `aliases` sind Alternativnamen, keine Kategorien), `[^id]`-Fußnoten je Behauptung, `status: draft` (`metadata.confidence` ist Extraktionskonfidenz, kein Review-Status) und jeder gespeicherte Glaubwürdigkeitswert (§5.1 hält Signale fest, keine Urteile). `last_modified` stammt aus Dokumentdaten im Graphen, **nie** aus der mtime der Datei — die naheliegend wirkende `os.stat()`-Abkürzung ist genau jenes Umgebungsleck, das hier schon einmal die byteweise Idempotenz zerstört hat.
+
+**Lesen.** Gemäß §11 weist der Importer nichts zurück: unbekannte `type`-Werte, unbekannte Frontmatter-Schlüssel, fehlende optionale Familien, kaputte Querverweise und eine fehlende `index.md` werden alle toleriert; übersprungen wird nur eine Datei ohne nicht leeren `type`. Tesserae-eigene Bundles laufen über `x_tesserae` verlustfrei hin und zurück. Fremde Bundles bilden `type` → die passende Knotenart oder `Concept` ab, Links im Text → `references`-Kanten, und jeden unbekannten Frontmatter-Schlüssel nach `metadata.okf` (das Round-Trip-SHOULD aus §4.1), wobei ein nacktes `verified` zu einer einelementigen Liste normalisiert wird (MUST aus §11). v0.1-Rückfälle (§13.1): Ein altes `timestamp` landet in `metadata["updated_at"]` (eine Sprosse, die die Zeitstempelleiter ohnehin liest), und eine alte `# Citations`-Liste im Text wird zu `metadata["okf"]["sources"]` und aus der Beschreibung herausgelöst, statt als Prosa verschluckt zu werden. Beim Re-Export wird der bewahrte Eimer *über* alles gemischt, was Tesserae abgeleitet hat — der Re-Export eines fremden Bundles überschreibt deren Provenienz oder Vertrauensaussagen also nie mit unseren; `--import` gibt ein Histogramm der Vertrauensstufen aus, sodass ein gemischtes Bundle sichtbar statt stumm ist. Die Stufen werden beim Lesen von `okf_trust_tier` abgeleitet und nie gespeichert.
+
+**Brechende Änderungen gegenüber Tesseraes v0.1-Ausgabe.** Aus `name:` wird `title:` (`name` war in keiner der beiden Versionen je ein OKF-Schlüssel; der Reader akzeptiert es weiterhin, hinter `title`). `index.md` und `log.md` verlieren ihr `type:`/`name:`-Frontmatter (§8, §9), sodass ein Konsument, der sie als typisierte Konzepte behandelte, zwei Phantomeinträge verliert — was genau der Punkt ist; damit zusammenhängend sind sie nun auf *jeder* Ebene der Hierarchie reserviert (§3.1), nicht nur in der Bundle-Wurzel. Die Bytes jeder Konzeptdatei ändern sich, der erste v0.2-Export schreibt das ganze Bundle also neu.
+
+**Bekannte Grenzen.** `usage_count` zählt verschiedene Agenten-/Arbeitssitzungen, deren Transkript das Dokument berührt hat, nicht menschliche Seitenaufrufe — §5.1 warnt bereits, dass das Signal grob ist; lesen Sie es als Lebendigkeit, nicht als Beliebtheit. Die Lebenszyklus-Familie greift nur bei Knoten, auf die eine `supersedes`-Kante zeigt (hier 25 von 5197); echte Abdeckung bräuchte die zeitlichen Gültigkeitsintervalle, die `TemporalFactProjector` zur Abfragezeit ableitet, und das im Exporter über 15k Kanten laufen zu lassen wurde als Scope-Überschreitung verworfen. `generated.by` verwendet absichtlich `process:tesserae-<extractor>` statt des `<producer>/<version>` aus §7: Ein versionstragender Akteur würde alle ~5200 Konzeptdateien bei jedem Release neu schreiben, ohne dass sich semantisch irgendetwas ändert. Kein pfadwertiges OKF-Feld (`resource`, `sources[].resource`) trägt je einen absoluten Pfad — einer, der sich nicht relativ zur Projektwurzel machen lässt, wird ausgelassen statt roh ausgegeben, da §6.2 einen Konsumenten dazu brächte, ihn als bundle-relativ zu lesen — auch wenn absolute Pfade weiterhin innerhalb von `x_tesserae.source_path` (die echte Identität des Knotens, die ein fremder Konsument ignoriert) und in Knoteninhalten auftauchen können, die zufällig einen zitieren.
+
 ## Idempotenz-Story
 
 Das Redesign zielt auf **byte-identischen Output über zwei aufeinanderfolgende `project compile`-Läufe bei unveränderten Inputs**. Die Bausteine:
@@ -283,6 +361,7 @@ Das Redesign zielt auf **byte-identischen Output über zwei aufeinanderfolgende 
 2. **Wiki-Layer-Writes** sind auf Body-Ebene idempotent. `WikiPageStore.write_page` liest die existierende Datei, entfernt Frontmatter, sha256t den Body und kurzschließt, wenn der neue Body denselben Hash ergibt — auch wenn das neue Frontmatter einen anderen `generated_at`-Timestamp hat. Das ist der Schlüsseltrick, der git-Diffs beim Rebuild eng hält.
 3. **Synthesis-Output** trägt einen `content_hash: sha256-…` im Frontmatter. Der Body-Hash wird ohne `generated_at` berechnet, sodass wiederholte Compiles auf demselben Graph denselben Hash erzeugen, und `Synthesis`-Knoten tragen denselben `content_hash` in den Graph-Metadaten.
 4. **Site-Rendering** löscht `site/` zu Beginn von `write_site` und schreibt dann deterministisch: Routen sind sortiert, Dicts werden mit `sort_keys=True` gedumpt, `manifest.json` läuft über `sorted(rglob("*"))`. Zwei Läufe erzeugen byte-identische Dateien inklusive Manifest.
+5. **Knotendaten sind quellenabgeleitet.** Das `first_seen_at` eines Knotens stammt aus dem Pfad, unter dem seine Quelle aufgenommen wurde, nicht aus der Wanduhr zur Kompilierzeit. Eine Uhrzeit zu lesen machte jeden erneuten Lauf zu einem Diff — genau deshalb zerstört die naive Variante dieses Punkts Punkt 1. Dieselbe Regel hält den `Event`-Lauf byteweise idempotent: Jede erzeugte ID, jeder Text und jedes Datum ist inhaltsabgeleitet, verifiziert über ein Korpus von 481 Sitzungen.
 
 Das wird durch `tests/test_site_pages.py` und den End-to-End-Smoke in `tests/test_project_e2e_redesign.py` verifiziert (zweimal compilen, Sites diffen, null Deltas erwarten).
 

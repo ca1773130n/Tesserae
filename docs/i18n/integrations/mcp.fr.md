@@ -64,6 +64,7 @@ Chaque outil accepte un `graph_path` ou un `project` (alias du registre) optionn
 
 | Outil | Rôle |
 |---|---|
+| `graph_map` | **Commencez ici.** Carte budgétée de la hiérarchie du graphe — le point d'entrée de Descent. Sans portée, renvoie l'ensemble de cartes racine (compteurs, principaux hubs, une carte par communauté la plus grossière) ; `scope='<scope_id d'une carte>'` descend d'un niveau du dendrogramme ; `org:root` parcourt l'arbre organisationnel des agents. Oriente l'agent sans qu'il ait à deviner des termes de recherche |
 | `schema` | Vocabulaire contrôlé des nœuds, arêtes et wiki-kinds |
 | `graph_summary` | Compteurs de nœuds et d'arêtes ainsi que distributions de types pour le projet actif |
 | `search_nodes` | Filtre les nœuds publics du graphe par `query`, `type`/`types`, `kind`, `limit`, `mode`/`weights` hybrides ; `include_superseded` affiche les nœuds retirés |
@@ -74,6 +75,9 @@ Chaque outil accepte un `graph_path` ou un `project` (alias du registre) optionn
 | `graph_ppr` | PageRank personnalisé amorcé sur un ou plusieurs `seed_node_id` ; renvoie les top-K nœuds les plus pertinents avec `alpha`, `directed`, `edge_type_weights` réglables |
 | `wiki_page` | Le corps de la page markdown compilée pour un nœud, plus les liens internes qu'elle référence |
 | `raw_source` | Le markdown source d'origine (plafonné à 16 KB) |
+| `verify_claim` | Vérifie UN triplet contre le graphe — recherche exacte, sans LLM, sans correspondance floue, sans résultats classés. Renvoie `{verdict, reason, triple, citation, provenance, advisory}` ; `verdict` vaut `SUPPORTED` (l'arête existe **et** sa preuve est un extrait littéral de document), `PRESENT_UNEVIDENCED`, ou un refus. Enchaînez `search_nodes` → `verify_claim` quand vous n'avez que de la prose |
+| `doctor_run` | Exécute les contrôles de santé et renvoie le rapport en JSON (`findings`, `exit_code` 0/1/2). **Toujours en lecture seule** — les réparations ne s'exécutent jamais via MCP ; utilisez `tesserae doctor --fix` en CLI |
+| `doctor_report` | Le contenu de `.tesserae/doctor-report.md` (plafonné à 64 KB) ; vide tant que `tesserae doctor` n'a pas tourné |
 | `lint_report` | Les derniers résultats de lint produits à la compilation (plafonné à 64 KB) |
 
 **Compilateur de contexte à la demande** (Phase 7)
@@ -81,23 +85,38 @@ Chaque outil accepte un `graph_path` ou un `project` (alias du registre) optionn
 | Outil | Rôle |
 |---|---|
 | `compile_context` | Compile un document de contexte **avec citations** sur mesure pour une `query` ou des `seeds` explicites. Parcourt un sous-graphe de profondeur bornée (`depth`, 1–10, défaut 2), classe via PPR et remplit un `budget` de caractères (défaut 32000 ; `0` pour illimité). Déterministe par défaut ; avec `synthesize: true`, produit une tranche narrative "topic" rédigée par le LLM. Renvoie `body`, `citations`, `selected_node_ids` et `char_budget_used` |
+| `get_handle` | Pagine par tranches (`offset`, `limit`) une charge volumineuse renvoyée précédemment sous forme de `handle` (p. ex. `compile_context` avec `preview`) — en récupérer davantage à la demande plutôt que de tout déverser dans le contexte |
 | `list_communities` | Liste les nœuds `COMMUNITY_SUMMARY` créés par la passe post-compilation, classés par nombre de membres (`min_size`, `limit`) ; avec `node_context`, suivez les arêtes `summarizes` jusqu'aux membres |
 | `fresh_insights` | Constats de session classés par un score de décroissance à la Ebbinghaus (les plus récents et les plus consultés d'abord) ; écarte ceux remplacés par des quasi-doublons plus récents. `kind`, `limit`, `include_superseded` optionnels |
 
-**Mémoire de session** (voir [sessions.md](sessions.md))
+**Mémoire de session** (voir [sessions.md](sessions.fr.md))
 
 | Outil | Rôle |
 |---|---|
 | `list_sessions` | Enveloppes de session (id, started_at, title, files_touched, compteurs de constats) pour le projet actif ; `since`, `limit` |
 | `find_session_findings` | Tous les constats de session liés à `node_id` via `discussed_in` / `references`, filtrables par `kinds` (insight / decision / question / todo / hypothesis / takeaway) |
 | `find_code_symbol_mentions` | Étend un constat de session aux symboles `CodeFunction`/`CodeClass`/`CodeMethod` qu'il mentionne, via les arêtes `discusses` de la passe optionnelle de liaison insight↔symbole. La couche de code est optionnelle : sans entrée `external_tools` pour `codegraph`, ceci ne renvoie rien |
+| `activity_summary` | Digest quotidien/hebdomadaire des projets enregistrés — sessions, constats, commits git, PR et documents ingérés, chacun fenêtré par **son propre** horodatage, jamais par le `started_at` d'une session. Rend un markdown déterministe et, sauf désactivation, y ajoute en tête un récit produit par le LLM |
+| `query_decisions` | Décisions prises dans les projets enregistrés sur une plage de temps : choix **humains** explicites, analysés de façon déterministe depuis l'`AskUserQuestion` de Claude Code (la question et l'option retenue), plus les décisions d'agent extraites de la conversation |
+
+**Mémoire d'agent et écriture en retour** (voir [agent-memory.fr.md](../agent-memory.fr.md))
+
+| Outil | Rôle |
+|---|---|
+| `agent_view_explain` | Explique une vue restreinte à un agent *sans la charger* : mode de résolution (worker / manager / org), agents membres, chemin et nombre de nœuds de chaque artefact L1, ainsi que le repère d'obsolescence `distilled_through` |
+| `drill_down` | Résout un `member_ref` de distillat jusqu'à son nœud L0 brut — l'escalade explicite et journalisée d'un responsable au-delà de la visibilité distillée. Renvoie l'état `alive` / `changed` / `absorbed` / `gone` ; chaque appel est consigné dans le sidecar |
+| `graph_write` | Écrit des nœuds et arêtes typés directement dans le graphe — sans markdown, sans passe d'extraction. L'écriture est ajoutée à une surcouche append-only et rejouée comme producteur de compilation : elle **survit donc à la recompilation**. C'est strict : types inconnus, arête sans preuve ou extrémité hors de la charge utile sont refusés |
 
 **Questions-réponses et registre**
 
 | Outil | Rôle |
 |---|---|
 | `ask` | Questions-réponses en langage naturel via le backend de mémoire configuré (raganything, cognee, ou wiki compilé). `backend`, `top_k` ; diffusion multi-vault via `scope`/`scope_aliases` ; `claude_config_dir` pour le routage multi-comptes |
-| `list_projects` / `register_project` / `activate_project` / `unregister_project` | Contrôle du registre multi-projets |
+| `query` | Recherche brute, sans LLM — miroir de `tesserae query`. `backend='wiki'` (par défaut) effectue une recherche déterministe BM25/sémantique sur le wiki compilé et renvoie des résultats classés avec extraits ; `backend='raganything'` interroge l'index RAG multimodal optionnel lorsque le projet l'a activé. Utilisez `ask` pour une réponse synthétisée et citée |
+| `ingest` | Ingère du contenu web/texte brut (p. ex. un extrait de navigateur) dans le graphe de connaissances du projet résolu |
+| `list_projects` | Liste les projets enregistrés |
+| `register_project` | Ajoute un projet au registre |
+| `unregister_project` | Retire un projet du registre (il n'existe pas de projet « actif » privilégié) |
 
 **Configuration guidée**
 

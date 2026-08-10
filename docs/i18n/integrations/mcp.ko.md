@@ -64,6 +64,7 @@ tesserae projects mcp-config
 
 | Tool | 용도 |
 |---|---|
+| `graph_map` | **여기서 시작하세요.** 그래프 계층의 예산 지도 — Descent의 진입점. 스코프 없이 호출하면 루트 카드 집합(카운트, 상위 허브, 가장 거친 커뮤니티당 카드 하나), `scope='<카드의 scope_id>'`는 덴드로그램을 한 단계 내려가고, `org:root`는 에이전트 조직 트리를 걷습니다. 검색어를 추측하지 않고도 에이전트의 방향을 잡아 줍니다 |
 | `schema` | 통제된 node, edge, wiki-kind 어휘 |
 | `graph_summary` | 활성 프로젝트의 노드 및 엣지 개수와 타입 분포 |
 | `search_nodes` | 공개 그래프 노드를 `query`, `type`/`types`, `kind`, `limit`, 하이브리드 `mode`/`weights`로 필터링. `include_superseded`로 폐기된 노드도 노출 |
@@ -74,6 +75,9 @@ tesserae projects mcp-config
 | `graph_ppr` | 하나 이상의 `seed_node_id`에서 시드된 개인화 PageRank로 가장 관련성 높은 top-K 노드 반환; `alpha`, `directed`, `edge_type_weights` 조정 가능 |
 | `wiki_page` | 노드에 대해 컴파일된 markdown 페이지 본문과 참조하는 내부 링크 |
 | `raw_source` | 원본 소스 markdown (16 KB로 제한) |
+| `verify_claim` | 트리플 하나를 그래프에 대해 검증합니다 — 정확한 조회이며 LLM도, 퍼지 매칭도, 순위 결과도 없습니다. `{verdict, reason, triple, citation, provenance, advisory}`를 반환하며 `verdict`는 `SUPPORTED`(엣지가 존재하고 **그 증거가 문서의 축자 구간**), `PRESENT_UNEVIDENCED`, 또는 거부입니다. 산문만 있다면 `search_nodes` → `verify_claim`으로 이어 부르세요 |
+| `doctor_run` | 헬스 체크를 실행하고 보고서를 JSON(`findings`, `exit_code` 0/1/2)으로 반환합니다. **항상 읽기 전용** — MCP에서는 수정이 실행되지 않으며, 복구는 CLI의 `tesserae doctor --fix`를 쓰세요 |
+| `doctor_report` | `.tesserae/doctor-report.md`의 내용(64 KB 제한). `tesserae doctor`를 실행하기 전까지는 비어 있습니다 |
 | `lint_report` | 가장 최근의 컴파일 시점 lint 결과 (64 KB로 제한) |
 
 **온디맨드 컨텍스트 컴파일러** (Phase 7)
@@ -81,23 +85,38 @@ tesserae projects mcp-config
 | Tool | 용도 |
 |---|---|
 | `compile_context` | `query` 또는 명시적 `seeds`에 대해 맞춤형 **인용 포함** 컨텍스트 문서를 컴파일. 깊이 제한 서브그래프(`depth`, 1–10, 기본 2)를 탐색하고 PPR로 랭킹한 뒤 문자 `budget`(기본 32000; `0`이면 무제한)를 채움. 기본은 결정론적이며 `synthesize: true`면 LLM이 작성한 서사형 "topic" 슬라이스를 생성. `body`, `citations`, `selected_node_ids`, `char_budget_used` 반환 |
+| `get_handle` | 앞서 `handle`로 반환된 큰 페이로드(예: `preview`를 쓴 `compile_context`)를 조각(`offset`, `limit`)으로 페이징합니다 — 전부를 컨텍스트에 쏟아 넣는 대신 필요할 때 더 가져옵니다 |
 | `list_communities` | 후처리 패스가 생성한 `COMMUNITY_SUMMARY` 노드를 멤버 수 기준으로 나열(`min_size`, `limit`); `node_context`로 `summarizes` 엣지를 따라 멤버로 회귀 |
 | `fresh_insights` | 에빙하우스 스타일 감쇠 점수(최신 + 최다 접근 우선)로 랭킹된 세션 발견; 폐기된 근사 중복은 제외. 선택적 `kind`, `limit`, `include_superseded` |
 
-**세션 메모리** ([sessions.md](sessions.md) 참조)
+**세션 메모리** ([sessions.md](sessions.ko.md) 참조)
 
 | Tool | 용도 |
 |---|---|
 | `list_sessions` | 활성 프로젝트의 세션 엔벨로프(id, started_at, title, files_touched, 발견 개수); `since`, `limit` |
 | `find_session_findings` | `discussed_in` / `references`를 통해 `node_id`에 연결된 모든 세션 발견. `kinds`(insight / decision / question / todo / hypothesis / takeaway)로 필터 가능 |
 | `find_code_symbol_mentions` | 세션 발견을 그것이 언급하는 `CodeFunction`/`CodeClass`/`CodeMethod` 심볼로 확장(옵트인 insight↔symbol 연결 패스의 `discusses` 엣지 사용). 코드 레이어는 옵트인입니다. `codegraph`에 대한 `external_tools` 항목이 없으면 아무것도 반환하지 않습니다 |
+| `activity_summary` | 등록된 프로젝트 전반의 일간/주간 다이제스트 — 세션, 발견, git 커밋, PR, 수집된 문서. 각 항목은 세션의 `started_at`이 아니라 **자기 자신의** 타임스탬프로 창을 잡습니다. 결정적 마크다운이며, 끄지 않는 한 LLM 서사가 앞에 붙습니다 |
+| `query_decisions` | 기간 내 등록된 프로젝트들의 결정: Claude Code의 `AskUserQuestion`에서 결정적으로 파싱한 명시적 **인간** 선택(질문과 고른 선택지), 그리고 대화에서 캐낸 에이전트 결정 |
+
+**에이전트 메모리와 되쓰기** ([agent-memory.ko.md](../agent-memory.ko.md) 참고)
+
+| 도구 | 용도 |
+|---|---|
+| `agent_view_explain` | 에이전트 스코프 뷰를 *로드하지 않고* 설명합니다: 해석 모드(worker / manager / org), 구성원 에이전트, 각 L1 아티팩트의 경로와 노드 수, 그리고 `distilled_through` 신선도 워터마크 |
+| `drill_down` | 증류본의 `member_ref`를 원본 L0 노드로 되돌립니다 — 증류된 가시성을 넘어서는 관리자의 명시적이고 감사 기록되는 에스컬레이션. 상태는 `alive` / `changed` / `absorbed` / `gone`이며 모든 호출이 사이드카에 기록됩니다 |
+| `graph_write` | 타입 지정 노드와 엣지를 그래프에 직접 씁니다 — 마크다운도, 추출 패스도 없습니다. append-only 오버레이에 추가되어 컴파일 생산자로 재생되므로 **재컴파일을 견딥니다**. 엄격합니다: 알 수 없는 타입, 증거 없는 엣지, 페이로드 밖의 엔드포인트는 모두 거부됩니다 |
 
 **Q&A 및 레지스트리**
 
 | Tool | 용도 |
 |---|---|
 | `ask` | 구성된 메모리 백엔드(raganything, cognee, 또는 컴파일된 위키)를 통한 자연어 Q&A. `backend`, `top_k`; `scope`/`scope_aliases`로 다중 vault 팬아웃; 다중 계정 라우팅용 `claude_config_dir` |
-| `list_projects` / `register_project` / `activate_project` / `unregister_project` | 다중 프로젝트 레지스트리 제어 |
+| `query` | LLM 없는 원시 검색 — `tesserae query`를 그대로 반영합니다. `backend='wiki'`(기본)는 컴파일된 위키에 대한 결정적 BM25/시맨틱 검색으로 발췌가 달린 순위 결과를 돌려주고, `backend='raganything'`은 프로젝트가 활성화한 경우 선택형 멀티모달 RAG 인덱스에 질의합니다. 합성된 인용 답변은 `ask`를 쓰세요 |
+| `ingest` | 원시 웹/텍스트 콘텐츠(예: 브라우저 클립)를 해석된 프로젝트의 지식 그래프로 수집합니다 |
+| `list_projects` | 등록된 프로젝트 목록 |
+| `register_project` | 레지스트리에 프로젝트 추가 |
+| `unregister_project` | 레지스트리에서 프로젝트 제거 (특권적인 "활성" 프로젝트는 없습니다) |
 
 **가이드 설정**
 

@@ -52,6 +52,56 @@ son propre chef.
 
 Les enregistrements de session importés sont des artefacts locaux du projet. Passez-les en revue avant de publier un site public, surtout si vos transcriptions peuvent contenir des secrets, des chemins privés, des données clients ou du code non publié.
 
+Le texte d'un tour est copié dans les noms et descriptions de nœuds, lesquels
+sont sérialisés dans `graph.json` et dans chacune de ses projections — les
+**répertoires personnels sont donc caviardés à l'entrée**. `/Users/<nom>` et
+`/home/<nom>` n'atteignent jamais le graphe, ce qui compte parce qu'un chemin est
+la seule donnée personnelle qui apparaît dans presque toutes les transcriptions
+sans que personne l'ait voulu.
+
+## Ce que devient un tour de session
+
+Pour chaque transition *significative* d'une session — un appel d'outil ou une
+action substantielle de l'assistant, pas du bavardage — la passe `Event`, qui
+n'utilise aucun LLM, crée exactement un nœud portant `{turn_id, actor, action,
+bref changement d'état}` et relie les événements consécutifs par des arêtes
+`precedes`, si bien que l'état dynamique d'une session peut être rejoué dans
+l'ordre. Cette passe n'appelle jamais de modèle, ne lève jamais d'exception sur
+une entrée malformée, et est idempotente à l'octet près : chaque id, corps et
+`first_seen_at` produit dérive du contenu, donc une réexécution donne des nœuds
+et des arêtes identiques.
+
+**Un résultat d'outil est un tour.** Les codes de sortie et les indicateurs
+d'erreur survivent à l'ingestion et se posent sur le nœud `Event` : le graphe
+distingue donc une commande qui a *échoué* d'une commande qui a seulement été
+lancée. Avant cela, un agent relisant son propre historique voyait qu'il avait
+lancé `pytest` sans savoir si la suite était passée — c'est toute la différence
+entre un journal et une mémoire.
+
+### L'arête `recovers`
+
+À partir de deux résultats **observés** dans une même session, Tesserae dérive
+la seule arête causale de son vocabulaire : un appel d'outil ayant signalé un
+échec, puis un appel ultérieur — même outil, même famille de programme, même
+répertoire de travail, même opérande, sans aucun succès observé sur cet opérande
+entre les deux — ayant signalé un succès. L'`Event` qui réussit est la source,
+celui qui a échoué la cible ; les deux ids de tour sont nommés dans la preuve, et
+`metadata["basis"]` nomme chaque dimension sur laquelle les deux appels devaient
+concorder.
+
+`CAUSAL_EDGE_TYPES` compte exactement un membre, et c'est délibéré. Une revue de
+quatre systèmes de mémoire d'agents parmi les plus avancés a montré qu'aucun ne
+dérive d'arête causale : deux déduisent leur lien le plus fort de la
+co-occurrence, un prend pour argent comptant un vocabulaire ouvert d'étiquettes
+de relation fourni par un LLM sans vérification, et un n'a aucune arête. L'échec
+que cette étroitesse vise à éviter, c'est de livrer un `caused_by` qui n'est en
+réalité qu'un `happened_near` : dans un graphe, les deux sont indiscernables, et
+le mauvais est lu comme une preuve.
+
+L'ancre est l'**opérande**, pas la commande, car les commandes varient sur ce
+qui n'a pas d'importance (options, ordre) tandis que la chose sur laquelle on
+agit est ce qu'une nouvelle tentative rejoue réellement.
+
 ## Découvrir et importer les sessions locales
 
 Depuis la racine du projet :

@@ -9,6 +9,30 @@ Tesserae est un **moteur de contexte** reposant sur trois piliers : (1) la surve
 
 Légende de statut : ✅ livré · ⚠ en cours / partiel.
 
+> **Ordre de lecture.** Les sections ci-dessous sont des jalons, du plus récent
+> au plus ancien. Les versions entre la v0.12.0 et la v0.28.7 ne sont pas
+> reprises ici : leur détail version par version vit dans
+> [`docs/release-notes/`](../release-notes/), qui fait foi comme journal des
+> changements. Cette carte décrit la forme du système, pas chaque commit.
+
+## Mémoire cognitive et périmètre — v0.29.0 → v0.31.0 (août 2026)
+
+Le cycle qui a fait que le graphe *sait ce qui s'est passé*, et pas seulement ce
+qui a été écrit : les résultats survivent à l'ingestion, une arête causale en est
+dérivée, et les dégradations autrefois silencieuses se signalent.
+
+| Fonctionnalité | État | Sources | Notes |
+|---|---|---|---|
+| Couche code optionnelle | ✅ | `cli.py`, [`tesserae/code_graph.py`](../../tesserae/code_graph.py) | `compile` n'ingère plus les symboles de code par défaut. Sur un gros dépôt, ils écrasaient tout le reste en nombre et évinçaient la recherche ; `tesserae code ingest` branche toujours CodeGraph délibérément. Voir [ingest](ingest.fr.md). |
+| Surface de recherche dévoilée | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | Les paramètres bitemporels et de sélection de vue étaient écrits et testés, mais inatteignables via MCP. `search_facts` accepte désormais `as_of` (répondre à une date passée) aux côtés de `current_only` — **refusés ensemble**, ce sont deux horloges — et signale `undated_included` pour dire combien des lignes renvoyées n'ont pas de date. |
+| Dégradations sonores | ✅ | [`tesserae/lint.py`](../../tesserae/lint.py), [`tesserae/ingest/fetch.py`](../../tesserae/ingest/fetch.py), [`tesserae/ingest/orchestrator.py`](../../tesserae/ingest/orchestrator.py) | Trois échecs silencieux rendus explicites : une ingestion binaire qui n'a rien produit, la couverture d'intervalles non datée (`INTERVAL_COVERAGE`) et le contenu non textuel abandonné. Le silence se lisait comme un succès ; ce n'est plus le cas. |
+| `first_seen_at` dérivé de la source | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py), [`tesserae/session_graph.py`](../../tesserae/session_graph.py) | Un nœud est daté par le chemin sous lequel sa source a été ingérée, et non par l'horloge au moment de compiler — une réexécution le date donc à l'identique et l'idempotence à l'octet survit. |
+| Pool procédural de recherche | ✅ | [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py), [`tesserae/research_graph.py`](../../tesserae/research_graph.py) | `context` réserve une place à la mémoire procédurale — ce qui a été exécuté et ce qu'il en est advenu — **méritée par la provenance**, pas accordée par défaut. Le code de lint `PROCEDURAL_POOLS` signale quand la place ne peut être remplie honnêtement. |
+| Un résultat d'outil est un tour | ✅ | [`tesserae/session_event.py`](../../tesserae/session_event.py), [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | Les codes de sortie et indicateurs d'erreur survivent à l'ingestion et se posent sur les nœuds `Event`. Le graphe distingue une commande qui a échoué d'une commande qui a seulement tourné. Les répertoires personnels sont caviardés à l'entrée. |
+| L'arête `recovers` | ✅ | [`tesserae/session_recovery.py`](../../tesserae/session_recovery.py) | La seule arête causale : « ceci a réussi après que cela a échoué », dérivée de deux résultats **observés** dans une même session, concordants sur l'outil, la famille de programme, le répertoire de travail et l'opérande. `CAUSAL_EDGE_TYPES` ne compte délibérément qu'un élément. Voir [historique des sessions](session-history.fr.md). |
+| Structure de domaines par charte | ⚠ | [`tesserae/charter.py`](../../tesserae/charter.py), `cli.py` | La détection de communautés *propose* un vocabulaire de domaines ; la charte le *possède* entre deux réorganisations explicites, car la détection est déterministe mais pas stable (un seul document de 15 nœuds déplace ~29 % des membres). `tesserae domains status` la lit. **`compile` ne la produit pas encore** — d'ici là, la commande renvoie « no charter yet ». |
+| Multi-hôtes sur disque partagé | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | `TESSERAE_HOST_ID` restreint l'élagage et l'écrasement selon *qui a écrit un enregistrement*, de sorte que N serveurs sur un même disque cessent d'effacer mutuellement leur historique de sessions. Voir [historique des sessions](session-history.fr.md). |
+
 ## Inter-projets & UX — v0.11.0 (juin 2026)
 
 | Fonctionnalité | Statut | Source | Notes |

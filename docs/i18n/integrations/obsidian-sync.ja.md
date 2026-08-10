@@ -6,7 +6,7 @@
 
 > **ステータス: 出荷済み (Tier 1, v0.5.0)。** 以下で説明するオーバーレイリーダー、ユーザーノート追記ゾーン、ウォッチモード、孤立ページの削除は、`tesserae vault sync` の背後で実際に動作します。本ページは設計の根拠とユーザーガイドを兼ねます。マルチヴォルト連合 (Tier 3) は依然としてスコープ外です。
 
-以前の [Obsidian エクスポート](obsidian.md)は厳密に一方向でした: `.tesserae/graph.json` 内の型付きグラフがヴォルトへ射影され、`project compile` が射影されたファイルを上書きします。`obsidian-sync` は逆方向を追加します — Obsidian で説明を編集すると、再コンパイル後もそれが残ります。
+以前の [Obsidian エクスポート](obsidian.ja.md)は厳密に一方向でした: `.tesserae/graph.json` 内の型付きグラフがヴォルトへ射影され、`project compile` が射影されたファイルを上書きします。`obsidian-sync` は逆方向を追加します — Obsidian で説明を編集すると、再コンパイル後もそれが残ります。
 
 このドキュメントは、データモデルを破綻させずにそれがどう動作するかを明文化します。
 
@@ -160,4 +160,4 @@ tesserae vault sync --prune-orphans --force-prune-with-notes
 
 ## これを `obsidian.md` でどう露出するか
 
-ユーザー向けガイドは「ヴォルトを読んでクエリできる」に焦点を絞り続け、1 行サマリ「Obsidian でフィールドを編集すれば再コンパイル後も残ります。完全なモデルは [obsidian-sync.md](obsidian-sync.md) を参照。」とともに往復の話のためにここへリンクします。
+ユーザー向けガイドは「ヴォルトを読んでクエリできる」に焦点を絞り続け、1 行サマリ「Obsidian でフィールドを編集すれば再コンパイル後も残ります。完全なモデルは [obsidian-sync.md](obsidian-sync.ja.md) を参照。」とともに往復の話のためにここへリンクします。
