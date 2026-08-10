@@ -12,7 +12,7 @@ CLI はグループ化されています: 最上位にはいくつかの日常�
 `lab`）です。`tesserae --help` を実行するとツリー全体が表示されます:
 
 ```text
-tesserae 0.30.0 — a context engine
+tesserae 0.31.0 — a context engine
 
 usage: tesserae <command> [options]
 
