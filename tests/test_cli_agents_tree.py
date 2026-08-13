@@ -23,6 +23,7 @@ from tesserae.agent_distill import distill_agent
 from tesserae.cli import main
 from tesserae.harness_sessions import HarnessSession, HarnessSessionStore
 from tesserae.project import ProjectWiki
+from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 
 from tests.test_agent_distill import AGENT, OTHER_AGENT, StubSummarizer, _base_graph
 
@@ -255,6 +256,36 @@ def test_agents_drill_alive(tmp_path, capsys):
     assert "status: alive" in out
     assert "node: SessionInsight:f1" in out
     assert "drill_down_audit" in out
+
+
+def test_agents_drill_prints_artifact_asset_reference(tmp_path, capsys):
+    """MCP parity: subprocess-only consumers read these fields off stdout, so
+    whatever drill_down reports over MCP has to print here too."""
+    project, graph = _project_with_l0(tmp_path)
+    digest = "ab" * 32
+    figure = ResearchNode(
+        id="Artifact:fig",
+        name="Figure: Pipeline",
+        type=ResearchNodeType.ARTIFACT,
+        description="Pipeline",
+        metadata={
+            "parser": "raganything",
+            "kind": "image",
+            "content_hash": digest,
+            "asset_path": ".tesserae/external/raganything/parsed/deadbeef/x.png",
+        },
+    )
+    (project / ".tesserae" / "graph.json").write_text(
+        ResearchGraph(nodes=[*graph.nodes, figure], edges=list(graph.edges)).to_json(indent=2),
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert main(["agents", "drill", "Artifact:fig", "--project", str(project)]) == 0
+    out = capsys.readouterr().out
+    assert "asset_path=.tesserae/external/raganything/parsed/deadbeef/x.png" in out
+    assert f"asset_sha256={digest}" in out
+    assert f"asset_site_path=raw-assets/{digest[:16]}.png" in out
 
 
 def test_agents_drill_gone(tmp_path, capsys):

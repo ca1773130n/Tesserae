@@ -861,6 +861,41 @@ def test_raw_source_returns_markdown_body(tmp_path):
     assert out["byte_count"] > 0
 
 
+def test_raw_source_refuses_binary_instead_of_returning_mojibake(tmp_path):
+    """``errors="ignore"`` used to drop every non-UTF-8 byte and hand back the
+    wreckage with no signal. Detection is by DECODE, not by extension."""
+    project_root, graph_path = _project_with_wiki_and_lint(tmp_path)
+    (project_root / "figure.png").write_bytes(b"\x89PNG\r\n\x1a\n\xff\xd8binary")
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    with pytest.raises(ValueError, match="not UTF-8 text"):
+        server.call_tool("raw_source", {"source_path": "figure.png"})
+
+    # ...and a .svg, which IS text, still reads back fine — the old extension
+    # allowlist would have refused it.
+    (project_root / "diagram.svg").write_text("<svg>ø</svg>", encoding="utf-8")
+    out = server.call_tool("raw_source", {"source_path": "diagram.svg"})
+    assert out["body"] == "<svg>ø</svg>"
+
+
+def test_raw_source_survives_a_multibyte_char_split_by_the_cap(tmp_path):
+    """The cap can land mid-codepoint. A legitimate UTF-8 file must not be
+    mistaken for binary just because byte 16384 is half a character."""
+    from tesserae.mcp_server import RAW_SOURCE_BYTE_CAP
+
+    project_root, graph_path = _project_with_wiki_and_lint(tmp_path)
+    # "가" is 3 bytes: pad so the cap slices it, then keep writing past it.
+    filler = "a" * (RAW_SOURCE_BYTE_CAP - 2)
+    (project_root / "long.md").write_text(filler + "가" * 100, encoding="utf-8")
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    out = server.call_tool("raw_source", {"source_path": "long.md"})
+
+    assert out["truncated"] is True
+    assert out["body"].startswith("aaa")
+    assert len(out["body"].encode("utf-8")) <= RAW_SOURCE_BYTE_CAP
+
+
 def test_raw_source_rejects_path_escape(tmp_path):
     _, graph_path = _project_with_wiki_and_lint(tmp_path)
     server = LLMWikiMCPServer(default_graph_path=graph_path)

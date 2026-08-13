@@ -23,6 +23,7 @@ import gzip
 import hashlib
 import io
 import json
+import logging
 import re
 import shutil
 from dataclasses import dataclass
@@ -31,7 +32,7 @@ from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 from ..harness_sessions import HarnessSessionStore
-from ..research_graph import ResearchGraph
+from ..research_graph import ResearchGraph, ResearchNodeType
 from ..wiki_store import WikiPage, WikiPageStore
 from .exports import (
     ExportContext,
@@ -80,12 +81,14 @@ from .raw_view import (
     RAW_ROUTE_DIR,
     WikiLinkResolver,
     build_wiki_link_resolver,
+    copy_artifact_asset,
     copy_raw_asset,
     derive_project_root,
     is_binary_extension,
     is_markdown_source_path,
     iter_markdown_binary_assets,
     iter_raw_sources,
+    relativize_source_path,
     render_raw_view,
 )
 
@@ -95,6 +98,8 @@ from .tokens import CSS
 
 
 __all__ = ["StaticSiteBuilder"]
+
+_LOG = logging.getLogger(__name__)
 
 
 # Wiki-layer kinds we render index pages + detail pages for.
@@ -534,6 +539,31 @@ class StaticSiteBuilder:
                             for s in sources_field:
                                 if isinstance(s, str) and s:
                                     seen_paths.append(s)
+            # Artifact assets (figures a document parser extracted) reach
+            # NEITHER inlet above: an Artifact's ``source_path`` is its owning
+            # document, and the assertion layer gives it no wiki page — so the
+            # bytes the graph asserts exist would never be emitted. Feed the
+            # declared ``metadata['asset_path']`` in as a source of its own and
+            # remember the declared hash so the copy is content-addressed.
+            artifact_hash_by_rel: Dict[str, str] = {}
+            for node in graph.nodes:
+                if node.type is not ResearchNodeType.ARTIFACT:
+                    continue
+                metadata = node.metadata or {}
+                asset_rel = metadata.get("asset_path")
+                asset_hash = metadata.get("content_hash")
+                # Tables and equations carry no ``asset_path`` at all (their
+                # content IS the node description), and an out-of-tree asset
+                # deliberately drops the key at import — both are correctly
+                # unservable, not errors.
+                if not isinstance(asset_rel, str) or not asset_rel:
+                    continue
+                if not isinstance(asset_hash, str) or not asset_hash:
+                    continue
+                rel = relativize_source_path(asset_rel, project_root=project_root)
+                if rel:
+                    artifact_hash_by_rel[rel] = asset_hash
+                    seen_paths.append(rel)
             sources_inventory = iter_raw_sources(seen_paths, project_root)
             linked_asset_paths: list[str] = []
             for _rel_path, _slug, absolute in sources_inventory:
@@ -544,6 +574,22 @@ class StaticSiteBuilder:
             if linked_asset_paths:
                 seen_paths.extend(linked_asset_paths)
                 sources_inventory = iter_raw_sources(seen_paths, project_root)
+            if artifact_hash_by_rel:
+                # The graph ASSERTS these bytes exist — the node only exists
+                # because they were hashed at import — so a silent skip lets
+                # the site quietly lack evidence the graph promises. Failing
+                # the build would be worse and would be the COMMON case: the
+                # parser's cache directory is gitignored, so a fresh clone
+                # compiles with every artifact asset absent. One aggregated
+                # line, never per-asset spam.
+                emitted = {rel for rel, _slug, _abs in sources_inventory}
+                missing = sum(1 for rel in artifact_hash_by_rel if rel not in emitted)
+                if missing:
+                    _LOG.warning(
+                        "%d artifact assets referenced by the graph are missing on "
+                        "disk; those figures will not render",
+                        missing,
+                    )
             if sources_inventory:
                 raw_dir.mkdir(parents=True, exist_ok=True)
             raw_nav_counts: Dict[str, int] = {
@@ -566,7 +612,16 @@ class StaticSiteBuilder:
             for rel_path, slug, absolute in sources_inventory:
                 asset_filename: Optional[str] = None
                 if is_binary_extension(absolute.suffix):
-                    asset_filename = copy_raw_asset(absolute, slug, assets_dir)
+                    artifact_hash = artifact_hash_by_rel.get(rel_path)
+                    if artifact_hash:
+                        asset_filename = copy_artifact_asset(
+                            absolute, artifact_hash, assets_dir
+                        )
+                    else:
+                        # Path-derived name, unchanged: markdown link rewriting
+                        # recomputes it from the path alone and has neither the
+                        # bytes nor a hash to work from.
+                        asset_filename = copy_raw_asset(absolute, slug, assets_dir)
                 raw_html_path = raw_dir / f"{slug}.html"
                 # Highlight the active leaf in the doc-tree rail. The tree
                 # walker keys off ``node.source_path`` strings; the raw-view
