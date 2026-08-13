@@ -466,12 +466,17 @@ def test_compile_context_reports_whether_the_procedural_pools_ran(tmp_path):
 
 
 def test_compile_context_advertises_the_view_knob():
-    """``view`` follows the step-1 rule: advertised in the schema (a closed
-    enum — the registry names the only valid values) or unreachable at all."""
+    """``view`` follows the step-1 rule: advertised in the schema (closed
+    enums — the registry names the only valid values) or unreachable at all.
+    Step 8 widens the shape: one name, or an array of names to fuse."""
     by_name = {t["name"]: t for t in LLMWikiMCPServer().list_tools()}
     props = by_name["compile_context"]["inputSchema"]["properties"]
 
-    assert props["view"]["enum"] == ["semantic", "temporal", "causal", "entity"]
+    single, many = props["view"]["anyOf"]
+    assert single["enum"] == ["semantic", "temporal", "causal", "entity"]
+    assert many["type"] == "array"
+    assert many["items"]["enum"] == ["semantic", "temporal", "causal", "entity"]
+    assert many["minItems"] == 1
     # No default key: absence means the full graph, same as scope.
     assert "default" not in props["view"]
 
@@ -515,3 +520,46 @@ def test_compile_context_rejects_an_unknown_view_as_a_tool_error(tmp_path):
     assert "error" in result
     assert "provenance" in result["error"]
     assert "body" not in result
+
+
+def test_compile_context_fuses_an_array_of_views(tmp_path):
+    """An array runs one walk per view and fuses. Every edge here is semantic,
+    so the entity lane holds only the seed — the fused result keeps the
+    semantic membership, and each citation says which lanes reached it."""
+    graph_path, _ = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+    call = {"seeds": ["Paper:focal"], "depth": 2}
+
+    default = server.call_tool("compile_context", dict(call))
+    fused = server.call_tool(
+        "compile_context", dict(call, view=["semantic", "entity"])
+    )
+
+    assert set(fused["selected_node_ids"]) == set(default["selected_node_ids"])
+    assert fused["knobs"]["view"] == ["semantic", "entity"]
+    by_id = {c["node_id"]: c for c in fused["citations"]}
+    # The seed is reachable in BOTH lanes (a seed is always in its own
+    # neighbourhood); the hop nodes only through semantic edges.
+    assert by_id["Paper:focal"]["via_views"] == ("semantic", "entity")
+    assert by_id["Method:hop1"]["via_views"] == ("semantic",)
+
+
+def test_compile_context_citations_omit_via_views_when_no_view_ran(tmp_path):
+    """The non-preview response shape is documented back-compat for
+    byte-sensitive callers: a call that never heard of views must get
+    citation dicts byte-identical to the pre-via_views ones — the key is
+    omitted, not emitted empty."""
+    graph_path, _ = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    result = server.call_tool(
+        "compile_context",
+        {"seeds": ["Paper:focal"], "query": "focal paper method", "depth": 2},
+    )
+
+    assert result["citations"]
+    for citation in result["citations"]:
+        assert "via_views" not in citation
+        assert set(citation) == {
+            "node_id", "node_name", "source_path", "wiki_kind"
+        }

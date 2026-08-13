@@ -1586,21 +1586,39 @@ class LLMWikiMCPServer:
                             ),
                         },
                         "view": {
-                            "type": "string",
                             # The registry is the single source of the names —
                             # a view added there is advertised here for free.
-                            "enum": _view_names(),
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "enum": _view_names(),
+                                },
+                                {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "items": {
+                                        "type": "string",
+                                        "enum": _view_names(),
+                                    },
+                                },
+                            ],
                             "description": (
-                                "Restrict the walk to one named edge partition: "
+                                "Restrict the walk to named edge partitions: "
                                 "'semantic' (what is X / how do ideas relate), "
                                 "'temporal' (when — sessions, supersedence, trends), "
                                 "'causal' (why did this break / what fixed it), "
                                 "'entity' (which named things — people, orgs, code "
-                                "symbols, composition). Resolves to zero-weights "
-                                "for every out-of-view edge type plus the matching "
-                                "depth-neighbourhood restriction; explicit "
-                                "edge_type_weights still win over the view. Absent "
-                                "= the full graph (default, unchanged behaviour)."
+                                "symbols, composition). One name = a view-scoped "
+                                "walk (zero-weights for every out-of-view edge "
+                                "type plus the matching depth-neighbourhood "
+                                "restriction; explicit edge_type_weights still "
+                                "win). An array = one walk per view over the same "
+                                "seeds, fused with weighted RRF. Whenever a view "
+                                "is requested — one name or several — each "
+                                "citation carries via_views, the views whose walk "
+                                "actually reached it. Absent = the full graph "
+                                "(default, unchanged behaviour; citations then "
+                                "omit via_views)."
                             ),
                         },
                         "tame_hubs": {
@@ -2658,7 +2676,7 @@ class LLMWikiMCPServer:
             )
             return result
         if name == "compile_context":
-            from .context_compiler import compile_context
+            from .context_compiler import citation_dict, compile_context
 
             graph, project_root = self._load_requested_graph_with_root(args)
             query = str(args.get("query") or "")
@@ -2688,7 +2706,13 @@ class LLMWikiMCPServer:
             )
             tame_hubs = bool(args.get("tame_hubs", False))
             view_arg = args.get("view")
-            view = str(view_arg) if view_arg else None
+            view: Optional[object]
+            if isinstance(view_arg, (list, tuple)):
+                view = [str(v) for v in view_arg]
+            elif view_arg:
+                view = str(view_arg)
+            else:
+                view = None
             recency_arg = args.get("recency_weight")
             recency_weight = 0.0 if recency_arg is None else float(recency_arg)
             # compile_context gates the whole recency block on
@@ -2752,7 +2776,7 @@ class LLMWikiMCPServer:
                     "total_chars": len(bundle.body),
                     "truncated": True,
                     "hint": f"Body truncated. Fetch more with get_handle(handle='{handle}', offset=...).",
-                    "citations": [dataclasses.asdict(c) for c in bundle.citations],
+                    "citations": [citation_dict(c) for c in bundle.citations],
                     "selected_node_ids": bundle.selected_nodes,
                     "char_budget_used": bundle.char_budget_used,
                     "synthesized": bundle.synthesized,
@@ -2762,7 +2786,7 @@ class LLMWikiMCPServer:
             # body first — back-compat for byte/order-sensitive callers.
             return {
                 "body": bundle.body,
-                "citations": [dataclasses.asdict(c) for c in bundle.citations],
+                "citations": [citation_dict(c) for c in bundle.citations],
                 "selected_node_ids": bundle.selected_nodes,
                 "char_budget_used": bundle.char_budget_used,
                 "synthesized": bundle.synthesized,

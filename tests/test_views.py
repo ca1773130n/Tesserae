@@ -111,7 +111,9 @@ def test_the_view_names_have_one_source_of_truth() -> None:
 
     by_name = {t["name"]: t for t in LLMWikiMCPServer().list_tools()}
     schema_prop = by_name["compile_context"]["inputSchema"]["properties"]["view"]
-    assert schema_prop["enum"] == list(VIEWS)
+    single, many = schema_prop["anyOf"]
+    assert single["enum"] == list(VIEWS)
+    assert many["items"]["enum"] == list(VIEWS)
 
     parser = _build_context_parser()
     view_action = next(a for a in parser._actions if a.dest == "view")

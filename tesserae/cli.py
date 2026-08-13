@@ -2837,7 +2837,8 @@ def _build_context_parser() -> argparse.ArgumentParser:
         "--view",
         default=None,
         choices=list(VIEWS),
-        help="Restrict the walk to one named edge partition: semantic (what/how ideas relate), temporal (when), causal (why it broke / what fixed it), entity (which named things). Default: the full graph.",
+        action="append",
+        help="Restrict the walk to a named edge partition: semantic (what/how ideas relate), temporal (when), causal (why it broke / what fixed it), entity (which named things). Repeat the flag to fuse several views (weighted RRF; citations then carry per-view provenance). Default: the full graph.",
     )
     parser.add_argument("--output", "-o", help="Write the doc to a file instead of stdout")
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
