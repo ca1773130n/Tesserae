@@ -453,7 +453,10 @@ def test_init_yes_defaults_disable_optional_integrations(tmp_path, monkeypatch):
         (["projects", "mcp-config"], "_handle_projects_mcp_config"),
         (["integrations", "refresh", "raganything"], "_handle_integrations_refresh"),
         (["lab", "evolve"], "_handle_lab_evolve"),
-        (["lab", "schema-drift"], "_handle_lab_schema_drift"),
+        # schema-drift was promoted out of `lab` to a first-class verb
+        # (roadmap step 12); the old spelling now routes through
+        # MOVED_COMMANDS, covered by tests/test_cli_tree.py.
+        (["schema-drift"], "_handle_schema_drift"),
         (["extract", "x.md"], "_handle_extract"),
         (["code", "ingest"], "_handle_code_ingest"),
         (["code", "sync"], "_handle_code_sync"),

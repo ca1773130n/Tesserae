@@ -1319,3 +1319,102 @@ def test_lint_procedural_pools_reports_reachability_not_just_census(
     assert "unreachable" in message.lower(), (
         f"an isolated pool must be named as unservable; got {message}"
     )
+
+
+# --- SUGGESTED_SUBTYPE: the ontology-growth loop's last rung (step 12) -------
+
+
+def _write_ledger(project_root: Path, records: list[dict] | str) -> Path:
+    from tesserae.schema_drift import PROPOSAL_LEDGER_NAME
+
+    path = project_root / ".tesserae" / PROPOSAL_LEDGER_NAME
+    payload = records if isinstance(records, str) else json.dumps(records, indent=2)
+    path.write_text(payload, encoding="utf-8")
+    return path
+
+
+def _proposal(**overrides) -> dict:
+    record = {
+        "approved": False,
+        "cluster_key": "a" * 64,
+        "description": "A section of a paper.",
+        "host_type": "SourceDocument",
+        "name": "PaperSection",
+        "node_ids": ["p0", "p1", "p2", "p3", "p4"],
+        "proposed_type": "PaperSection",
+    }
+    record.update(overrides)
+    return record
+
+
+def test_suggested_subtype_reports_a_pending_proposal(tmp_path):
+    project = _scaffold(tmp_path)
+    _write_ledger(project, [_proposal()])
+
+    report = WikiLinter(project).run()
+
+    findings = [f for f in report.findings if f.code == "SUGGESTED_SUBTYPE"]
+    assert len(findings) == 1
+    finding = findings[0]
+    assert "5 SourceDocument nodes" in finding.message
+    assert "'PaperSection'" in finding.message
+    assert "p0, p1, p2" in finding.message  # first three, sorted
+    assert finding.node_id == "p0"
+    # The loop is only discoverable if the finding names BOTH halves of the
+    # human step: the enum edit and the approval flag.
+    assert "research_graph.py" in finding.suggested_fix
+    assert "approved" in finding.suggested_fix
+
+
+def test_suggested_subtype_is_info_and_never_fails_strict(tmp_path):
+    """The remedy is a human editing an enum inside the Tesserae package —
+    a gate whose remedy is outside the tripping project's control is not a
+    gate, it is a broken build."""
+    project = _scaffold(tmp_path)
+    _write_ledger(project, [_proposal()])
+
+    report = WikiLinter(project).run()
+
+    assert all(f.severity == "info" for f in report.findings if f.code == "SUGGESTED_SUBTYPE")
+    assert not report.has_warnings()
+    assert not report.has_errors()
+
+
+def test_no_ledger_is_silent(tmp_path):
+    """Schema drift is opt-in: a 'never ran' row in every project is noise."""
+    project = _scaffold(tmp_path)
+
+    report = WikiLinter(project).run()
+
+    assert not [f for f in report.findings if f.code == "SUGGESTED_SUBTYPE"]
+    assert not [f for f in report.findings if f.code == "LINT_PROBE_FAILED"]
+
+
+def test_an_approved_proposal_is_no_longer_pending(tmp_path):
+    project = _scaffold(tmp_path)
+    _write_ledger(project, [_proposal(approved=True), _proposal(name="CodeSnippet",
+                                                               proposed_type="CodeSnippet",
+                                                               cluster_key="b" * 64)])
+
+    report = WikiLinter(project).run()
+
+    findings = [f for f in report.findings if f.code == "SUGGESTED_SUBTYPE"]
+    assert len(findings) == 1
+    assert "CodeSnippet" in findings[0].message
+
+
+def test_an_unreadable_ledger_says_so_instead_of_going_quiet(tmp_path):
+    """Absent and unreadable are DIFFERENT states — collapsing them into the
+    same silence is exactly what LINT_PROBE_FAILED exists to prevent."""
+    project = _scaffold(tmp_path)
+    _write_ledger(project, "{not json at all")
+
+    report = WikiLinter(project).run()
+
+    probe_failures = [
+        f for f in report.findings
+        if f.code == "LINT_PROBE_FAILED" and "SUGGESTED_SUBTYPE" in f.message
+    ]
+    assert len(probe_failures) == 1
+    assert probe_failures[0].severity == "info"
+    assert "not zero" in probe_failures[0].message

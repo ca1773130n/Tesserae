@@ -250,7 +250,12 @@ def propose_subtypes_for_cluster(
         system=_SYSTEM_PROMPT,
         user=_build_user_prompt(host_type, cluster),
         schema_name="schema-drift-subtypes-v1",
-        cache_key=f"schema-drift:{host_type}",
+        # The cluster hash MUST be in the cache key: llm_json digests only
+        # (cache_key, model, schema_name) — never the user prompt — so a
+        # host-only key serves cluster 1's answer to every other cluster of
+        # the same host, and _coerce_proposals then strips the foreign example
+        # ids, leaving proposals that look plausible and cite nothing.
+        cache_key=f"schema-drift:{host_type}:{key}",
     )
     if payload is None:
         # Transient LLM failure (backend error / unparseable JSON). Do NOT
@@ -438,6 +443,110 @@ def apply_schema_drift(
     return ResearchGraph(nodes=new_nodes, edges=list(graph.edges))
 
 
+#: Where human-reviewable sub-type proposals live. A SIDECAR, deliberately not
+#: ``graph.json`` node metadata: compile republishes graph.json wholesale from
+#: the producer-built graph, while the incremental path carries non-stale prior
+#: nodes through verbatim — so a metadata key written out-of-band would survive
+#: an incremental compile and vanish on a full one. Mode-dependent presence of
+#: an LLM-derived field is exactly the byte-idempotence blind spot this repo
+#: has hit four times. The key NAME the roadmap asked for (``proposed_type``)
+#: lives inside each record.
+PROPOSAL_LEDGER_NAME = "schema-drift-proposals.json"
+
+
+def build_proposal_ledger(reports: Sequence["HostTypeReport"]) -> List[dict]:
+    """Flatten host reports into records ``apply_schema_drift`` consumes AS-IS.
+
+    Each record carries exactly the keys the apply pass already reads —
+    ``approved`` (the human gate), ``proposed_type`` (the human-editable
+    target) and ``node_ids`` (the WHOLE cluster, not the <=3 LLM examples, so
+    approving one record retypes the cluster it was derived from rather than
+    three samples of it). ``(host_type, cluster_key, name)`` is the merge
+    identity.
+    """
+    records: List[dict] = []
+    for report in reports:
+        for cluster, proposals in report.clusters:
+            cluster_key = _cluster_cache_key(cluster)
+            node_ids = sorted(n.id for n in cluster)
+            for proposal in proposals:
+                name = str(proposal.get("name") or "").strip()
+                if not name:
+                    continue
+                records.append(
+                    {
+                        "approved": False,
+                        "cluster_key": cluster_key,
+                        "description": str(proposal.get("description") or ""),
+                        "host_type": report.host_type,
+                        "name": name,
+                        "node_ids": node_ids,
+                        "proposed_type": name,
+                    }
+                )
+    records.sort(key=lambda r: (r["host_type"], r["cluster_key"], r["name"]))
+    return records
+
+
+def _merge_proposal_ledger(existing: List[dict], fresh: List[dict]) -> List[dict]:
+    """Fresh findings, with every human decision preserved.
+
+    A re-run must never silently revert an ``approved: true`` — the human's
+    edit and the enum edit it pairs with are separated in time, so the revert
+    would be invisible until a later compile quietly retyped nothing. Records
+    this run did not rediscover are RETAINED rather than dropped: the cluster
+    key is a hash over member ids, so ingesting one document remints it and
+    would otherwise orphan the decision attached to the old key.
+    """
+    by_identity = {
+        (str(r.get("host_type")), str(r.get("cluster_key")), str(r.get("name"))): dict(r)
+        for r in existing
+        if isinstance(r, dict)
+    }
+    for record in fresh:
+        identity = (record["host_type"], record["cluster_key"], record["name"])
+        prior = by_identity.get(identity)
+        if prior is None:
+            by_identity[identity] = dict(record)
+            continue
+        merged = dict(record)
+        # The two human-editable fields win over anything this run produced.
+        merged["approved"] = bool(prior.get("approved"))
+        if prior.get("proposed_type"):
+            merged["proposed_type"] = prior["proposed_type"]
+        by_identity[identity] = merged
+    return [by_identity[k] for k in sorted(by_identity)]
+
+
+def write_proposal_ledger(tesserae_dir: Path, reports: Sequence["HostTypeReport"]) -> Path:
+    """Merge this run's proposals into the ledger and persist it."""
+    path = Path(tesserae_dir) / PROPOSAL_LEDGER_NAME
+    existing: List[dict] = []
+    if path.exists():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(payload, list):
+                existing = [r for r in payload if isinstance(r, dict)]
+        except (OSError, json.JSONDecodeError):
+            existing = []
+    merged = _merge_proposal_ledger(existing, build_proposal_ledger(reports))
+    _atomic_write(
+        path,
+        json.dumps(merged, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+    )
+    return path
+
+
+def read_proposal_ledger(tesserae_dir: Path) -> List[dict]:
+    """The ledger, or ``[]`` when absent/unreadable. Never raises."""
+    path = Path(tesserae_dir) / PROPOSAL_LEDGER_NAME
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return [r for r in payload if isinstance(r, dict)] if isinstance(payload, list) else []
+
+
 def analyze_schema_drift(
     graph: ResearchGraph,
     *,
@@ -490,4 +599,8 @@ def analyze_schema_drift(
         report_path,
         render_report(reports, min_cluster_size=min_cluster_size) + "\n",
     )
+    # The machine-readable half of the same run: the markdown is for a human
+    # to read, the ledger is what the lint probe surfaces and what the apply
+    # pass consumes once a human sets ``approved``.
+    write_proposal_ledger(tesserae_dir, reports)
     return report_path, reports

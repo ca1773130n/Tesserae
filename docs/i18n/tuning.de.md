@@ -161,7 +161,7 @@ das Sie cross-project navigieren, den eifrigen Pass ein.
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | aus | Gibt den kombinierten Cross-Project-Graph aus |
 | `TESSERAE_FLEET_PIDFILE` | — | Engine-Fleet-Pidfile |
 | `TESSERAE_CLIP_TOKEN` | — | Gemeinsames Secret für den Web-Clipper |
-| `TESSERAE_SCHEMA_DRIFT_APPLY` | aus | Wendet Schema-Drift-Vorschläge an (`tesserae lab`) |
+| `TESSERAE_SCHEMA_DRIFT_APPLY` | aus | Wendet die **genehmigten** Einträge in `.tesserae/schema-drift-proposals.json` zur Kompilierungszeit an (deterministisch, kein LLM). Schreiben Sie Vorschläge mit `tesserae schema-drift`; einen genehmigen bedeutet zunächst `ResearchNodeType` zu editieren, dann `"approved": true` zu setzen — ein nicht auflösbarer Name retypisiert nichts. |
 
 ---
 

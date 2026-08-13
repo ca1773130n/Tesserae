@@ -161,7 +161,7 @@ export TESSERAE_LLM_CACHE=0   # 常に再度質問
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | オフ | 結合されたクロスプロジェクトグラフを出力 |
 | `TESSERAE_FLEET_PIDFILE` | — | エンジンフリート pidfile |
 | `TESSERAE_CLIP_TOKEN` | — | Web クリッパーの共有シークレット |
-| `TESSERAE_SCHEMA_DRIFT_APPLY` | オフ | スキーマドリフト提案を適用（`tesserae lab`） |
+| `TESSERAE_SCHEMA_DRIFT_APPLY` | オフ | `.tesserae/schema-drift-proposals.json` の**承認済み**レコードをコンパイル時に適用（決定論的、LLM なし）。`tesserae schema-drift` で提案を記述し、承認は `ResearchNodeType` を先に編集してから `"approved": true` に設定することを意味する — 解決不可能な名前は何も再型付けしない。 |
 
 ---
 

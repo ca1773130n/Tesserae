@@ -145,7 +145,7 @@ cross-project navigate하는 project는 eager pass를 원합니다.
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | off | combined cross-project graph emit |
 | `TESSERAE_FLEET_PIDFILE` | — | Engine fleet pidfile |
 | `TESSERAE_CLIP_TOKEN` | — | web clipper용 shared secret |
-| `TESSERAE_SCHEMA_DRIFT_APPLY` | off | schema-drift proposals 적용 (`tesserae lab`) |
+| `TESSERAE_SCHEMA_DRIFT_APPLY` | off | `.tesserae/schema-drift-proposals.json`의 **approved** 레코드를 컴파일 시점에 적용합니다 (결정론적, LLM 없음). `tesserae schema-drift`로 제안을 작성하며, 하나를 승인한다는 것은 먼저 `ResearchNodeType`을 편집하고 그다음 `"approved": true`로 설정하는 것을 의미합니다 — 해석할 수 없는 이름은 아무것도 다시 타이핑하지 않습니다. |
 
 ---
 

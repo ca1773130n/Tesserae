@@ -287,9 +287,10 @@ def test_compile_byte_idempotent_with_confidence_and_supersedes(tmp_path: Path) 
     # NO node carries a sidecar-baked confidence in graph.json (byte-idempotence
     # invariant — the corpus never sets it, so assert absence outright).
     for node in graph["nodes"]:
-        assert "confidence" not in (node.get("metadata") or {}), (
-            f"node {node['id']} leaked confidence into graph.json metadata"
-        )
+        for field_name in ("confidence", "proposed_type"):
+            assert field_name not in (node.get("metadata") or {}), (
+                f"node {node['id']} leaked {field_name} into graph.json metadata"
+            )
 
     # Second compile over the unchanged corpus -> byte-identical.
     wiki.compile(session_options=opts, vault_pull=False)

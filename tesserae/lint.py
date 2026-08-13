@@ -308,6 +308,7 @@ class WikiLinter:
         findings.extend(self._check_low_title_quality(nodes_by_id))
         findings.extend(self._check_synthesis_ghost_inputs(nodes_by_id))
         findings.extend(self._check_suggested_merges(nodes_by_id))
+        findings.extend(self._check_suggested_subtypes())
         findings.extend(self._check_stale_build_history())
         findings.extend(self._check_code_graph_staleness(nodes_by_id))
         findings.extend(self._check_agent_metadata_allowlist(nodes_by_id))
@@ -1231,6 +1232,83 @@ class WikiLinter:
                 ),
                 node_id=sorted(ids)[0],
                 suggested_fix="Run canonicalization, or merge the Person nodes by id.",
+            )
+
+    def _check_suggested_subtypes(self) -> Iterable[LintFinding]:
+        """Surface pending sub-type proposals from the schema-drift ledger.
+
+        The last rung of the ontology-growth loop, and deliberately the
+        quietest one: clustering plus an LLM can NOTICE that a host type is
+        carrying two populations, but promoting a name into
+        ``ResearchNodeType`` stays a human edit to ``research_graph.py``. An
+        LLM-minted enum member would break two of the things this project is
+        genuinely ahead on — ``ResearchEdge.__post_init__``'s fail-loud
+        contract and ``verify_claim``'s ``predicate_not_in_ontology`` refusal.
+
+        Reads ONE sidecar file: no graph traversal, no LLM, no network, so
+        ``tesserae lint`` stays deterministic, offline and free. Absent file =
+        silence (schema drift is opt-in, and a "never ran" row in every
+        project is noise); present-but-unreadable is a DIFFERENT state and
+        says so, rather than being collapsed into the same silence.
+        """
+        try:
+            from .schema_drift import PROPOSAL_LEDGER_NAME
+
+            ledger_path = self.wiki_root / PROPOSAL_LEDGER_NAME
+            if not ledger_path.is_file():
+                return
+            payload = json.loads(ledger_path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001 — lint never dies on sidecar trouble
+            yield LintFinding(
+                severity="info",
+                code="LINT_PROBE_FAILED",
+                message=(
+                    f"SUGGESTED_SUBTYPE did not run: the schema-drift ledger "
+                    f"could not be read ({type(exc).__name__}: {exc}). Pending "
+                    f"proposals are unknown for this project, not zero."
+                ),
+                suggested_fix=(
+                    "Re-run `tesserae schema-drift` to rewrite "
+                    f".tesserae/{PROPOSAL_LEDGER_NAME}, or delete it."
+                ),
+            )
+            return
+        if not isinstance(payload, list):
+            return
+        pending = [
+            record
+            for record in payload
+            if isinstance(record, dict) and not record.get("approved")
+        ]
+        pending.sort(
+            key=lambda r: (
+                str(r.get("host_type") or ""),
+                str(r.get("proposed_type") or ""),
+                (sorted(r.get("node_ids") or []) or [""])[0],
+            )
+        )
+        for record in pending[:30]:
+            node_ids = sorted(str(i) for i in (record.get("node_ids") or []))
+            name = str(record.get("proposed_type") or record.get("name") or "")
+            host_type = str(record.get("host_type") or "")
+            if not name or not node_ids:
+                continue
+            sample = ", ".join(node_ids[:3])
+            yield LintFinding(
+                severity="info",
+                code="SUGGESTED_SUBTYPE",
+                message=(
+                    f"{len(node_ids)} {host_type} nodes cluster as candidate "
+                    f"sub-type {name!r}: {sample}"
+                    + ("…" if len(node_ids) > 3 else "")
+                ),
+                node_id=node_ids[0],
+                path=str(ledger_path),
+                suggested_fix=(
+                    "Promotion is a human edit — add the member to "
+                    "ResearchNodeType in tesserae/research_graph.py, then set "
+                    f'"approved": true in .tesserae/{PROPOSAL_LEDGER_NAME}.'
+                ),
             )
 
     def _check_stale_build_history(self) -> Iterable[LintFinding]:

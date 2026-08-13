@@ -145,7 +145,7 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | 关闭 | 发出组合跨项目图 |
 | `TESSERAE_FLEET_PIDFILE` | — | 引擎舰队 pidfile |
 | `TESSERAE_CLIP_TOKEN` | — | Web clipper 的共享密钥 |
-| `TESSERAE_SCHEMA_DRIFT_APPLY` | 关闭 | 应用模式漂移提案（`tesserae lab`） |
+| `TESSERAE_SCHEMA_DRIFT_APPLY` | 关闭 | 在编译时应用 `.tesserae/schema-drift-proposals.json` 中的 **approved** 记录（确定性、无 LLM）。使用 `tesserae schema-drift` 编写提案；批准一个意味着首先编辑 `ResearchNodeType`，然后设置 `"approved": true` — 无法解析的名称不会重新键入任何内容。 |
 
 ---
 

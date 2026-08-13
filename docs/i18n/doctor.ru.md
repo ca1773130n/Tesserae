@@ -190,6 +190,7 @@ provenance переписываются каждой компиляцией, т�
 | `AGENT_UNDISTILLED_BACKLOG` | info | У агента накопились находки далеко за его отметкой дистилляции. |
 | `LOW_TITLE_QUALITY` | info | Заголовок Paper похож на имя файла или обрывок, а не на название. |
 | `SUGGESTED_MERGE` | info | Несколько узлов Repository делят один `github_repo` — кандидаты на слияние, но автоматически они не сливаются. |
+| `SUGGESTED_SUBTYPE` | info | Кластер узлов одного типа, для которого schema-drift предложил подтип — выявлен, но никогда не применён автоматически. Продвижение — это ручное редактирование `ResearchNodeType`, затем `"approved": true` в `.tesserae/schema-drift-proposals.json`. |
 | `STALE_BUILD_HISTORY` | info | Запись истории сборок старше 90 дней. |
 | `CODE_GRAPH_BEHIND` · `CODE_GRAPH_HEAD_UNRESOLVED` · `CODE_GRAPH_STALE_FILE` | info | Опциональный слой кода разошёлся с `HEAD` — собран на более старом коммите, на коммите, который git уже не разрешает, или по файлам, изменившимся с тех пор. |
 | `CLAIM_SUPPORT_SKIPPED` · `CLAIM_SUPPORT_SUMMARY` | info | Результаты опционального прохода `--verify-claims`: что было выбрано и как оценено, либо почему он не запускался. |

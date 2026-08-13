@@ -329,3 +329,166 @@ def test_render_report_interpolates_custom_min_cluster_size():
     text = render_report([rpt], min_cluster_size=7)
     assert "_No clusters of size >= 7 found" in text
     assert ">= 5" not in text
+
+
+# --- proposal ledger (roadmap step 12) --------------------------------------
+
+
+def _two_proposals():
+    return [
+        {"subtypes": [{"name": "PaperSection", "description": "A section of a paper.",
+                       "examples": ["p0", "p1", "p2"]}]},
+        {"subtypes": [{"name": "CodeSnippet", "description": "An inline code block.",
+                       "examples": ["c0", "c1", "c2"]}]},
+    ]
+
+
+def test_analyze_writes_a_ledger_of_unapproved_proposals(tmp_path):
+    """The machine-readable half of a drift run: every proposal starts
+    unapproved and carries the WHOLE cluster, not the <=3 LLM examples."""
+    import json
+
+    from tesserae.schema_drift import PROPOSAL_LEDGER_NAME
+
+    graph = _build_two_cluster_graph()
+    llm = _ScriptedLLM(_two_proposals())
+    analyze_schema_drift(
+        graph, tesserae_dir=tmp_path, llm=llm, min_volume=5, min_cluster_size=3
+    )
+
+    ledger = json.loads((tmp_path / PROPOSAL_LEDGER_NAME).read_text(encoding="utf-8"))
+    assert {r["name"] for r in ledger} == {"PaperSection", "CodeSnippet"}
+    for record in ledger:
+        assert record["approved"] is False
+        assert record["proposed_type"] == record["name"]
+        assert record["host_type"] == "SourceDocument"
+        # The whole cluster, so approving retypes what it was derived from.
+        assert len(record["node_ids"]) == 5
+        assert record["cluster_key"]
+
+
+def test_the_ledger_is_byte_stable_and_the_second_run_calls_no_llm(tmp_path):
+    from tesserae.schema_drift import PROPOSAL_LEDGER_NAME
+
+    graph = _build_two_cluster_graph()
+    path = tmp_path / PROPOSAL_LEDGER_NAME
+    analyze_schema_drift(
+        graph, tesserae_dir=tmp_path, llm=_ScriptedLLM(_two_proposals()),
+        min_volume=5, min_cluster_size=3,
+    )
+    first = path.read_bytes()
+
+    llm2 = _ScriptedLLM([])  # any call raises
+    analyze_schema_drift(
+        graph, tesserae_dir=tmp_path, llm=llm2, min_volume=5, min_cluster_size=3
+    )
+    assert llm2.calls == []
+    assert path.read_bytes() == first
+
+
+def test_a_human_approval_survives_a_re_run(tmp_path):
+    """The most expensive failure this feature could have: silently reverting
+    an approval, invisible until a later compile quietly retypes nothing."""
+    import json
+
+    from tesserae.schema_drift import PROPOSAL_LEDGER_NAME
+
+    graph = _build_two_cluster_graph()
+    path = tmp_path / PROPOSAL_LEDGER_NAME
+    analyze_schema_drift(
+        graph, tesserae_dir=tmp_path, llm=_ScriptedLLM(_two_proposals()),
+        min_volume=5, min_cluster_size=3,
+    )
+    ledger = json.loads(path.read_text(encoding="utf-8"))
+    for record in ledger:
+        if record["name"] == "PaperSection":
+            record["approved"] = True
+            record["proposed_type"] = "Paper"  # the human retargeted it
+    path.write_text(json.dumps(ledger, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    analyze_schema_drift(
+        graph, tesserae_dir=tmp_path, llm=_ScriptedLLM([]),
+        min_volume=5, min_cluster_size=3,
+    )
+
+    after = {r["name"]: r for r in json.loads(path.read_text(encoding="utf-8"))}
+    assert after["PaperSection"]["approved"] is True
+    assert after["PaperSection"]["proposed_type"] == "Paper"
+    assert after["CodeSnippet"]["approved"] is False
+
+
+def test_analyze_writes_no_graph_bytes(tmp_path):
+    """Proposals live in a sidecar, never in graph.json — a metadata key
+    written out-of-band would survive an incremental compile and vanish on a
+    full one, which is the mode-dependent leak class this repo keeps hitting."""
+    import hashlib
+
+    graph = _build_two_cluster_graph()
+    graph_path = tmp_path / "graph.json"
+    graph_path.write_text(graph.to_json(indent=2), encoding="utf-8")
+    before = hashlib.sha256(graph_path.read_bytes()).hexdigest()
+
+    analyze_schema_drift(
+        graph, tesserae_dir=tmp_path, llm=_ScriptedLLM(_two_proposals()),
+        min_volume=5, min_cluster_size=3,
+    )
+
+    assert hashlib.sha256(graph_path.read_bytes()).hexdigest() == before
+    assert "proposed_type" not in graph_path.read_text(encoding="utf-8")
+
+
+def test_each_cluster_gets_its_own_llm_cache_key(tmp_path):
+    """llm_json digests only (cache_key, model, schema_name) — never the user
+    prompt — so a host-only key would serve cluster 1's answer to every other
+    cluster of the same host."""
+    graph = _build_two_cluster_graph()
+    llm = _ScriptedLLM(_two_proposals())
+    analyze_schema_drift(
+        graph, tesserae_dir=tmp_path, llm=llm, min_volume=5, min_cluster_size=3
+    )
+    keys = [c["cache_key"] for c in llm.calls]
+    assert len(keys) == 2 and len(set(keys)) == 2
+    assert all(k.startswith("schema-drift:SourceDocument:") for k in keys)
+
+
+def test_a_ledger_record_is_consumable_by_apply_verbatim(tmp_path):
+    """The ledger IS the apply input — no adapter in between to drift."""
+    import json
+
+    from tesserae.schema_drift import PROPOSAL_LEDGER_NAME, apply_schema_drift
+
+    graph = _build_two_cluster_graph()
+    analyze_schema_drift(
+        graph, tesserae_dir=tmp_path, llm=_ScriptedLLM(_two_proposals()),
+        min_volume=5, min_cluster_size=3,
+    )
+    ledger = json.loads((tmp_path / PROPOSAL_LEDGER_NAME).read_text(encoding="utf-8"))
+    record = next(r for r in ledger if r["name"] == "PaperSection")
+    # A human approves it and retargets it at a type that EXISTS in the enum.
+    record["approved"] = True
+    record["proposed_type"] = "Paper"
+
+    applied = apply_schema_drift(graph, [record])
+
+    retyped = [n for n in applied.nodes if n.type is ResearchNodeType.PAPER]
+    assert {n.id for n in retyped} == set(record["node_ids"])
+
+
+def test_no_llm_minted_name_can_enter_the_ontology(tmp_path):
+    """The hard boundary: promotion is a human edit to research_graph.py.
+    An approved record naming a type the enum does not have retypes NOTHING."""
+    from tesserae.schema_drift import apply_schema_drift
+
+    graph = _build_two_cluster_graph()
+    rogue = {
+        "approved": True,
+        "proposed_type": "PaperSection",  # never promoted into the enum
+        "node_ids": ["p0", "p1"],
+        "host_type": "SourceDocument",
+        "name": "PaperSection",
+    }
+
+    applied = apply_schema_drift(graph, [rogue])
+
+    assert all(n.type is ResearchNodeType.SOURCE_DOCUMENT for n in applied.nodes)
+    assert "PaperSection" not in {t.value for t in ResearchNodeType}
