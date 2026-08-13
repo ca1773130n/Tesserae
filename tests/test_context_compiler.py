@@ -657,3 +657,50 @@ def test_view_none_is_the_identity() -> None:
         view=None,
     )
     assert before == after
+
+
+def test_view_still_surfaces_the_winner_of_a_suppressed_seed() -> None:
+    """Arbitration is epistemic bookkeeping, not view semantics. The winner
+    of a suppressed seed rides supersedes/resolved_by — edges most views
+    cannot traverse — so under a view it must be surfaced explicitly, or the
+    bundle silently contains neither the stale claim nor the current one."""
+    def _claim(nid: str, name: str) -> ResearchNode:
+        return ResearchNode(
+            id=nid,
+            name=name,
+            type=ResearchNodeType.PERFORMANCE_CLAIM,
+            description=f"{name} body. " * 8,
+        )
+
+    graph = ResearchGraph(
+        nodes=[
+            _claim("A", "Stale Claim"),
+            _claim("A2", "Winning Claim"),
+            _claim("B", "Losing Claim"),
+            _claim("B2", "Resolving Claim"),
+        ],
+        edges=[
+            # source supersedes target -> target (A) is the loser.
+            ResearchEdge(source="A2", target="A", type="supersedes"),
+            # source resolved_by target -> source (B) is the loser.
+            ResearchEdge(source="B", target="B2", type="resolved_by"),
+        ],
+    )
+
+    # View-less: emergent via traversal (the existing contract).
+    walked = compile_context(
+        graph, project_root=None, query="", seeds=["A"], backend=_backend()
+    )
+    assert walked.selected_nodes == ["A2"]
+
+    # Under a view that cannot traverse the arbitration edges: explicit.
+    for seed, winner in (("A", "A2"), ("B", "B2")):
+        bundle = compile_context(
+            graph, project_root=None, query="", seeds=[seed],
+            backend=_backend(), view="semantic",
+        )
+        assert bundle.selected_nodes == [winner], (
+            f"seed {seed}: expected its winner {winner}, "
+            f"got {bundle.selected_nodes}"
+        )
+        assert seed not in bundle.ranked_nodes

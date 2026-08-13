@@ -369,6 +369,18 @@ AS_OF_WITH_CURRENT_ONLY_ERROR = (
 DEFAULT_REGISTRY_PATH = Path.home() / ".tesserae" / "registry.json"
 
 
+def _view_names() -> List[str]:
+    """The view registry's names, in registry order.
+
+    Read through a function so the single source of truth stays
+    ``tesserae.retrieval.views`` at call time — the schema enum, the CLI
+    choices and the registry itself must never drift apart.
+    """
+    from .retrieval.views import VIEWS
+
+    return list(VIEWS)
+
+
 def _sanitize_project_name(raw: str) -> str:
     cleaned = "".join(c if c.isalnum() or c in "-_" else "_" for c in raw.strip().lower())
     cleaned = cleaned.strip("_-")
@@ -1575,7 +1587,9 @@ class LLMWikiMCPServer:
                         },
                         "view": {
                             "type": "string",
-                            "enum": ["semantic", "temporal", "causal", "entity"],
+                            # The registry is the single source of the names —
+                            # a view added there is advertised here for free.
+                            "enum": _view_names(),
                             "description": (
                                 "Restrict the walk to one named edge partition: "
                                 "'semantic' (what is X / how do ideas relate), "

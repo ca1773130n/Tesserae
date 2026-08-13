@@ -100,3 +100,19 @@ def test_every_view_is_a_real_subgraph() -> None:
     for heavy in ("summarizes", "evidenced_by"):
         assert heavy in VIEW_EXCLUDED_EDGE_TYPES
         assert all(heavy not in members for members in VIEWS.values())
+
+
+def test_the_view_names_have_one_source_of_truth() -> None:
+    """The registry's names surface in two more places — the MCP schema enum
+    and the CLI --view choices. Both must read from VIEWS, so a view added
+    to the registry is advertised and accepted everywhere for free."""
+    from tesserae.cli import _build_context_parser
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    by_name = {t["name"]: t for t in LLMWikiMCPServer().list_tools()}
+    schema_prop = by_name["compile_context"]["inputSchema"]["properties"]["view"]
+    assert schema_prop["enum"] == list(VIEWS)
+
+    parser = _build_context_parser()
+    view_action = next(a for a in parser._actions if a.dest == "view")
+    assert list(view_action.choices) == list(VIEWS)

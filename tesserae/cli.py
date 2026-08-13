@@ -2829,10 +2829,14 @@ def _build_context_parser() -> argparse.ArgumentParser:
         message="context: --synthesize has moved → --llm",
     )
     parser.add_argument("--multi-pool", dest="multi_pool", action="store_true", help="AgentRunbook multi-pool retrieval: decompose the query and reserve slots for Runbook/Gotcha/Event memory")
+    # The registry is the single source of the view names — a view added
+    # there is accepted here for free.
+    from .retrieval.views import VIEWS
+
     parser.add_argument(
         "--view",
         default=None,
-        choices=["semantic", "temporal", "causal", "entity"],
+        choices=list(VIEWS),
         help="Restrict the walk to one named edge partition: semantic (what/how ideas relate), temporal (when), causal (why it broke / what fixed it), entity (which named things). Default: the full graph.",
     )
     parser.add_argument("--output", "-o", help="Write the doc to a file instead of stdout")

@@ -477,6 +477,10 @@ def compile_context(
       ``edge_type_weights``, so an explicit caller weight can still
       resurrect or silence a type) plus the matching restriction on the
       depth-neighbourhood BFS. Unknown views fail loud with the valid names.
+      Arbitration survives the restriction: the winner of a suppressed seed
+      rides ``supersedes``/``resolved_by`` edges most views cannot traverse,
+      so under a view those winners are surfaced explicitly rather than
+      silently dropping both the stale claim and its replacement.
 
     Both ``scope`` and ``strategy="hierarchical"`` require ``project_root``
     (the sidecar lives under it); the ``budget=0`` uncapped invariant is
@@ -667,6 +671,37 @@ def compile_context(
     ranked = in_nb[:cap]
     if not ranked:  # PITFALL 1: disconnected seeds -> fall back to seed order.
         ranked = [(sid, 0.0) for sid in seed_ids if sid not in suppressed]
+
+    # Arbitration is epistemic bookkeeping, not view semantics. View-less,
+    # the read-path contract (docstring above) is emergent: a stale seed
+    # seeds the walk and its winner is one supersedes/resolved_by hop away.
+    # Under a view those edges are usually zero-weighted (supersedes is
+    # temporal, resolved_by causal), so the loser is suppressed AND its
+    # winner unreachable — the bundle would silently contain neither the
+    # stale claim nor the current one. Surface the winners of suppressed
+    # seeds explicitly: walk results keep their order, winners append after
+    # them with score 0.0 (no walk reached them). Deterministic — edge-list
+    # order, no set iteration.
+    if view is not None and suppressed:
+        _seed_set = set(seed_ids)
+        _present = {nid for nid, _ in ranked}
+        _winners: List[str] = []
+        for edge in graph.edges:
+            if edge.type == "supersedes" and edge.target in _seed_set:
+                _winner = edge.source
+            elif edge.type == "resolved_by" and edge.source in _seed_set:
+                _winner = edge.target
+            else:
+                continue
+            if (
+                _winner in node_index
+                and _winner not in suppressed
+                and _winner not in _present
+                and _winner not in _winners
+            ):
+                _winners.append(_winner)
+        if _winners:
+            ranked = ranked + [(wid, 0.0) for wid in _winners]
     ranked_nodes = [nid for nid, _ in ranked]
 
     # Multi-pool reservation: guarantee the most relevant distilled-memory node
