@@ -85,7 +85,7 @@ Manual package installs are still available for advanced workflows:
 pip install kuzu graphiti-core
 ```
 
-- `kuzu` — Kuzu graph persistence.
+- `kuzu` — the Kuzu **export** (`tesserae export kuzu`), alongside OKF and Graphiti. One way: `graph.json` stays the source of truth and nothing reads a Kuzu database back. Kuzu is deliberately not a Tesserae store — see [architecture.md](architecture.md#kuzu-export).
 - RAG-Anything — installed via `pip install 'raganything[all]'` (`tesserae setup --install raganything`); Tesserae stores a managed refresh wrapper for multimodal parser runs.
 - `graphiti-core` — live Graphiti/Neo4j sync. `export graphiti` and `export graphiti --sync --dry-run` work without it.
 

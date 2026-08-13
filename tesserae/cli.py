@@ -21,7 +21,7 @@ from .ingest.orchestrator import UnsupportedSourceError, ingest_sources
 from .llm_extractor import ClaudeCLIResearchExtractor, LLMResearchExtractor
 from .locking import CompileLockHeldError
 from .markdown_projection import GraphMarkdownProjector
-from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
+from .persistence import SQLiteResearchGraphStore
 from .graphiti_adapter import GraphitiSyncUnavailableError
 from .project import ProjectWiki, SessionExtractionOptions, iter_markdown_files, load_graph_file as _load_graph_file, resolve_project_input
 from .project_setup import refresh_configured_external_tools
@@ -4119,10 +4119,37 @@ def _handle_export_okf(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_export_kuzu(args: argparse.Namespace) -> int:
+    """`export kuzu` — project the graph into a Kuzu database.
+
+    One way, like `export okf` and `export graphiti`. Kuzu is deliberately NOT
+    a Tesserae store: nothing reads this database back, so it can never drift
+    into disagreeing with `graph.json`. See :mod:`tesserae.kuzu_adapter`.
+    """
+    from .kuzu_adapter import KuzuExportUnavailableError, KuzuResearchGraphAdapter
+
+    if args.graph:
+        source = Path(args.graph)
+        default_out = source.parent / (source.stem + ".kuzu")
+    else:
+        wiki = ProjectWiki.load(args.project)
+        source = Path(wiki.paths.graph)
+        default_out = source.parent / "graph.kuzu"
+    graph = _load_graph_file(source)
+    out = Path(args.output) if args.output else default_out
+    try:
+        KuzuResearchGraphAdapter(out).write_graph(graph, replace=True)
+    except KuzuExportUnavailableError as exc:
+        print(f"export kuzu: {exc}", file=sys.stderr)
+        return 2
+    print(f"Exported Kuzu database: nodes={len(graph.nodes)} edges={len(graph.edges)} path={out}")
+    return 0
+
+
 def _build_export_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae export",
-        description="Artifact exports: harness | graphiti | site | okf.",
+        description="Artifact exports: harness | graphiti | site | okf | kuzu.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
@@ -4200,6 +4227,24 @@ def _build_export_parser() -> argparse.ArgumentParser:
     p_okf.add_argument("--output", help="Export: bundle dir (default .tesserae/okf). Import: graph.json path (default .tesserae/okf-imported.graph.json)")
     p_okf.add_argument("--import", dest="import_dir", metavar="DIR", help="Read an OKF bundle DIR into a graph.json instead of exporting")
     p_okf.set_defaults(_handler="_handle_export_okf")
+
+    p_kuzu = sub.add_parser(
+        "kuzu",
+        help="Export the graph as a Kuzu database (one-way; graph.json stays the source of truth).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae export kuzu\n"
+            "  tesserae export kuzu --output ./graph.kuzu\n"
+            "  tesserae export kuzu --graph ./extracted.graph.json\n"
+        ),
+    )
+    p_kuzu.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_kuzu.add_argument("--output", help="Kuzu database path; defaults to .tesserae/graph.kuzu")
+    # --graph is what the removed `extract --kuzu-output` was for: exporting a
+    # bare graph.json that was never compiled into a project.
+    p_kuzu.add_argument("--graph", help="Export this graph.json instead of the project's compiled graph")
+    p_kuzu.set_defaults(_handler="_handle_export_kuzu")
     return parser
 
 
@@ -6000,7 +6045,17 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     parser.add_argument("--apply-review-decisions", help="Apply review decisions JSON after canonicalization; implies --canonicalize")
     parser.add_argument("--project-markdown", help="Write a human-readable markdown projection of the final graph to this directory")
     parser.add_argument("--sqlite-output", help="Persist the final graph to a local SQLite database")
-    parser.add_argument("--kuzu-output", help="Persist the final graph to a local Kuzu database")
+    # Kuzu is an export, not a store, so it lives on `export` with OKF and
+    # Graphiti rather than as a second "persist to" flag beside --sqlite-output.
+    # SQLite stays here because Tesserae reads it back; nothing reads Kuzu back.
+    parser.add_argument(
+        "--kuzu-output",
+        action=_RemovedFlagAction,
+        message=(
+            "extract: --kuzu-output was removed in 0.32 — Kuzu is an export, not a store. "
+            "Use: tesserae extract … -o graph.json && tesserae export kuzu --graph graph.json"
+        ),
+    )
     # Removed backend (0.19): the cognee bundle export / cognify pass no longer
     # exist. Every --cognee-* flag is a clean-break stub (exit 2, one line).
     for _removed in (
@@ -6221,8 +6276,6 @@ def _handle_extract(args: argparse.Namespace) -> int:
         GraphMarkdownProjector().write_projection(graph, Path(args.project_markdown))
     if args.sqlite_output:
         SQLiteResearchGraphStore(Path(args.sqlite_output)).write_graph(graph, replace=True)
-    if args.kuzu_output:
-        KuzuResearchGraphStore(Path(args.kuzu_output)).write_graph(graph, replace=True)
     if args.report_output:
         report = GraphReporter().render_markdown(GraphReporter().summarize(graph))
         Path(args.report_output).parent.mkdir(parents=True, exist_ok=True)

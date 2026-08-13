@@ -1,7 +1,7 @@
 import json
 import sqlite3
 
-from tesserae.persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
+from tesserae.persistence import SQLiteResearchGraphStore
 from tesserae.research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 
 
@@ -41,17 +41,4 @@ def test_sqlite_store_can_roundtrip_graph(tmp_path):
     loaded = store.read_graph()
 
     assert [node.name for node in loaded.nodes] == ["Paper A", "Gaussian Splatting"]
-    assert loaded.edges[0].type == "uses"
-
-
-def test_kuzu_store_writes_nodes_edges_and_can_count(tmp_path):
-    db_path = tmp_path / "research_graph.kuzu"
-    store = KuzuResearchGraphStore(db_path)
-    store.write_graph(sample_graph(), replace=True)
-
-    counts = store.counts()
-
-    assert counts == {"nodes": 2, "edges": 1}
-    loaded = store.read_graph()
-    assert {node.name for node in loaded.nodes} == {"Paper A", "Gaussian Splatting"}
     assert loaded.edges[0].type == "uses"

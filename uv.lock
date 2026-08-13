@@ -4876,6 +4876,9 @@ ingest-url = [
     { name = "httpx" },
     { name = "markdownify" },
 ]
+kuzu = [
+    { name = "kuzu" },
+]
 raganything = [
     { name = "raganything" },
 ]
@@ -4897,7 +4900,6 @@ synthesis-llm = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "kuzu" },
     { name = "pytest" },
 ]
 
@@ -4905,6 +4907,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", marker = "extra == 'synthesis-llm'", specifier = ">=0.40" },
     { name = "httpx", marker = "extra == 'ingest-url'", specifier = ">=0.24" },
+    { name = "kuzu", marker = "extra == 'kuzu'", specifier = ">=0.6" },
     { name = "markdownify", marker = "extra == 'ingest-url'", specifier = ">=0.11" },
     { name = "model2vec", marker = "extra == 'semantic'", specifier = ">=0.3" },
     { name = "networkx", specifier = ">=3.0" },
@@ -4917,13 +4920,10 @@ requires-dist = [
     { name = "rich", specifier = ">=13" },
     { name = "sentence-transformers", marker = "extra == 'raganything-semantic'", specifier = ">=3.0" },
 ]
-provides-extras = ["synthesis-llm", "raganything", "raganything-all", "raganything-semantic", "semantic", "ingest-url"]
+provides-extras = ["synthesis-llm", "raganything", "raganything-all", "raganything-semantic", "semantic", "ingest-url", "kuzu"]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "kuzu", specifier = ">=0.6" },
-    { name = "pytest", specifier = ">=8" },
-]
+dev = [{ name = "pytest", specifier = ">=8" }]
 
 [[package]]
 name = "threadpoolctl"

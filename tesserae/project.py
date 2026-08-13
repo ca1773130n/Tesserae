@@ -2466,12 +2466,40 @@ class ProjectWiki:
             f"      PYTHONPATH: \"{python_path}\"\n"
         )
 
-    def export_graphiti(self, group_id: Optional[str] = None, output: Optional[str | Path] = None) -> dict:
+    def _memory_by_id(self) -> dict:
+        """Load the ``node_memory`` sidecar for the temporal projector.
+
+        Best-effort by design: a missing or locked sidecar must degrade an
+        export to heuristic confidence, never fail it. Compile passes its
+        in-hand rows instead of calling this, because at that point the
+        sidecar has only just been written.
+        """
+        try:
+            from .memory.store import read_memory
+
+            return read_memory(self.paths.sqlite)
+        except Exception:  # pragma: no cover — defensive
+            logger.exception("read_memory failed; exporting heuristic confidence")
+            return {}
+
+    def export_graphiti(
+        self,
+        group_id: Optional[str] = None,
+        output: Optional[str | Path] = None,
+        memory_by_id: Optional[dict] = None,
+    ) -> dict:
         cfg = self.config()
         graph = load_graph_file(self.paths.graph)
         target = Path(output) if output else self.paths.graphiti_episodes
         adapter = GraphitiResearchGraphAdapter(group_id=group_id or cfg.get("name") or self.project_root.name)
-        episodes = adapter.write_episodes(graph, target)
+        # Feed the memory sidecar in, exactly as temporal_facts.jsonl does.
+        # Without it the episodes carried infer_confidence()'s heuristic label
+        # while temporal_facts.jsonl — same projector, same graph, same compile
+        # — carried the reinforced numeric one, so the two artifacts disagreed
+        # and the external consumer got the number Tesserae does not use.
+        episodes = adapter.write_episodes(
+            graph, target, memory_by_id=self._memory_by_id() if memory_by_id is None else memory_by_id
+        )
         return {"episodes": len(episodes), "path": str(target), "group_id": adapter.group_id}
 
     def export_agent_harness(self, targets: Optional[Iterable[str]] = None, output: Optional[str | Path] = None, install_pointer: bool = False) -> dict:
@@ -2672,6 +2700,7 @@ class ProjectWiki:
             neo4j_user=neo4j_user or "neo4j",
             neo4j_password=neo4j_password or "password",
             dry_run=dry_run,
+            memory_by_id=self._memory_by_id(),
         )
 
     def reproject_after_vault_change(self) -> "VaultWatchResult":
@@ -3677,7 +3706,9 @@ class ProjectWiki:
         TemporalFactProjector().write_jsonl(
             graph, self.paths.temporal_facts, memory_by_id=mem_by_id
         )
-        self.export_graphiti()
+        # Same mem_by_id temporal_facts.jsonl just used: the sidecar was written
+        # moments ago, so pass the rows in hand rather than re-reading them.
+        self.export_graphiti(memory_by_id=mem_by_id)
         self.export_agent_harness()
         self.export_obsidian()
         self.build_site()

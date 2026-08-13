@@ -13,7 +13,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .research_graph import ResearchGraph, stable_id
 from .temporal import TemporalFactProjector
@@ -50,8 +50,18 @@ class GraphitiResearchGraphAdapter:
     def __init__(self, group_id: str = "tesserae") -> None:
         self.group_id = sanitize_graphiti_group_id(group_id)
 
-    def episodes(self, graph: ResearchGraph) -> List[GraphitiEpisode]:
-        facts = TemporalFactProjector().project(graph)
+    def episodes(
+        self,
+        graph: ResearchGraph,
+        memory_by_id: Optional[Dict[str, Any]] = None,
+    ) -> List[GraphitiEpisode]:
+        # memory_by_id is NOT optional in spirit. Without it every exported
+        # confidence falls back to infer_confidence()'s heuristic label, so an
+        # external Graphiti consumer read numbers Tesserae itself does not use
+        # — temporal_facts.jsonl, written from the same projector three lines
+        # earlier in compile, carries the reinforced value. Same graph, same
+        # fact, two different confidences in two .tesserae/ artifacts.
+        facts = TemporalFactProjector().project(graph, memory_by_id=memory_by_id)
         episodes: List[GraphitiEpisode] = []
         for fact in facts:
             content = (
@@ -87,8 +97,13 @@ class GraphitiResearchGraphAdapter:
             )
         return episodes
 
-    def write_episodes(self, graph: ResearchGraph, path: str | Path) -> List[GraphitiEpisode]:
-        episodes = self.episodes(graph)
+    def write_episodes(
+        self,
+        graph: ResearchGraph,
+        path: str | Path,
+        memory_by_id: Optional[Dict[str, Any]] = None,
+    ) -> List[GraphitiEpisode]:
+        episodes = self.episodes(graph, memory_by_id=memory_by_id)
         output = Path(path)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(
@@ -104,8 +119,9 @@ class GraphitiResearchGraphAdapter:
         neo4j_user: str,
         neo4j_password: str,
         dry_run: bool = False,
+        memory_by_id: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, object]:
-        episodes = self.episodes(graph)
+        episodes = self.episodes(graph, memory_by_id=memory_by_id)
         if dry_run:
             return {"dry_run": True, "episodes": len(episodes), "group_id": self.group_id}
         ensure_graphiti_available()

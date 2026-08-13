@@ -449,6 +449,8 @@ def test_init_yes_defaults_disable_optional_integrations(tmp_path, monkeypatch):
         (["export", "harness"], "_handle_export_harness"),
         (["export", "graphiti"], "_handle_export_graphiti_cmd"),
         (["export", "site"], "_handle_export_site"),
+        (["export", "okf"], "_handle_export_okf"),
+        (["export", "kuzu"], "_handle_export_kuzu"),
         (["projects", "list"], "_handle_projects_list"),
         (["projects", "mcp-config"], "_handle_projects_mcp_config"),
         (["integrations", "refresh", "raganything"], "_handle_integrations_refresh"),
