@@ -16,7 +16,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType, stable_id
+from .research_graph import (RETRACTION_EDGE_TYPES, ResearchGraph, ResearchNode,
+                             ResearchNodeType, stable_id)
 
 
 CLAIM_TYPES = {
@@ -45,7 +46,11 @@ CLAIM_TYPES = {
 # ``session_graph._finding_first_seen_at`` dates a finding from its own turns'
 # timestamps, so findings in one long-running session no longer share a
 # boundary.
-INVALIDATING_PREDICATES = {"contradicts_claim", "supersedes", "invalidates"}
+INVALIDATING_PREDICATES = {
+    "contradicts_claim",
+    "supersedes",
+    "invalidates",
+} | set(RETRACTION_EDGE_TYPES)
 
 # Timestamp ladder for ``valid_from`` — most-specific observation first.
 #

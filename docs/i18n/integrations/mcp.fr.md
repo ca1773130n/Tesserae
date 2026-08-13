@@ -105,7 +105,7 @@ Chaque outil accepte un `graph_path` ou un `project` (alias du registre) optionn
 |---|---|
 | `agent_view_explain` | Explique une vue restreinte à un agent *sans la charger* : mode de résolution (worker / manager / org), agents membres, chemin et nombre de nœuds de chaque artefact L1, ainsi que le repère d'obsolescence `distilled_through` |
 | `drill_down` | Résout un `member_ref` de distillat jusqu'à son nœud L0 brut — l'escalade explicite et journalisée d'un responsable au-delà de la visibilité distillée. Renvoie l'état `alive` / `changed` / `absorbed` / `gone` ; chaque appel est consigné dans le sidecar |
-| `graph_write` | Écrit des nœuds et arêtes typés directement dans le graphe — sans markdown, sans passe d'extraction. L'écriture est ajoutée à une surcouche append-only et rejouée comme producteur de compilation : elle **survit donc à la recompilation**. C'est strict : types inconnus, arête sans preuve ou extrémité hors de la charge utile sont refusés |
+| `graph_write` | Écrit des nœuds et arêtes typés directement dans le graphe — sans markdown, sans passe d'extraction. L'écriture est ajoutée à une surcouche append-only et rejouée comme producteur de compilation : elle **survit donc à la recompilation**. C'est strict : types inconnus, arête sans preuve ou extrémité qui n'est ni dans la charge utile ni un id de nœud existant sont refusés. **Pour rétracter** quelque chose de simplement faux, sans inventer de remplacement : pointez une arête `retracts` sur le nœud erroné **par id** — la cible est supprimée de toute lecture par défaut (`search_nodes`, `fresh_insights`, `node_context`, `compile_context`), reste accessible avec `include_superseded: true`, et rien n'est effacé |
 
 **Questions-réponses et registre**
 

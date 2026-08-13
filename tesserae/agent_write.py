@@ -191,8 +191,21 @@ class ValidatedWrite:
         }
 
 
-def validate_write(payload: Mapping[str, Any], agent_key: str) -> ValidatedWrite:
-    """Strict pre-pass. Refuses; never coerces, never silently drops."""
+def validate_write(
+    payload: Mapping[str, Any],
+    agent_key: str,
+    graph: Optional[ResearchGraph] = None,
+) -> ValidatedWrite:
+    """Strict pre-pass. Refuses; never coerces, never silently drops.
+
+    ``graph`` (when given) additionally lets an edge endpoint be an EXISTING
+    node id rather than a node declared in this payload — the mechanism a
+    retraction needs. Without it, saying "that session finding is wrong"
+    required re-declaring the finding by name, which ``NEVER_ALIGNED_TYPES``
+    rightly refuses to align: an agent's re-typed copy would fork beside the
+    real finding and retract the fork. An id endpoint resolves exactly or
+    refuses, mirroring ``resolve_existing_id``'s refuse-on-ambiguity posture.
+    """
     agent_key = str(agent_key or "").strip()
     if not agent_key:
         raise GraphJSONValidationError("graph_write requires a non-empty 'agent'")
@@ -216,6 +229,7 @@ def validate_write(payload: Mapping[str, Any], agent_key: str) -> ValidatedWrite
             "the graph itself cannot be verified against anything outside it"
         )
 
+    existing_ids = {n.id for n in graph.nodes} if graph is not None else set()
     nodes: List[Dict[str, Any]] = []
     names: Dict[str, str] = {}
     for raw in raw_nodes:
@@ -281,11 +295,20 @@ def validate_write(payload: Mapping[str, Any], agent_key: str) -> ValidatedWrite
             )
         source = str(raw.get("source") or "").strip()
         target = str(raw.get("target") or "").strip()
-        if source not in names or target not in names:
-            missing = source if source not in names else target
+        # Payload-declared names win over graph ids: an endpoint is resolved
+        # against this payload first, so a node named like an id cannot be
+        # hijacked into pointing somewhere else.
+        id_endpoints = sorted(
+            side
+            for side, value in (("source", source), ("target", target))
+            if value not in names and value in existing_ids
+        )
+        for side, value in (("source", source), ("target", target)):
+            if value in names or value in existing_ids:
+                continue
             raise GraphJSONValidationError(
-                f"graph_write: edge endpoint {missing!r} is not one of the nodes "
-                "in this payload"
+                f"graph_write: edge {side} {value!r} is neither one of the "
+                "nodes in this payload nor an existing node id in the graph"
             )
         evidence = str(raw.get("evidence") or "").strip()
         if not evidence:
@@ -293,14 +316,20 @@ def validate_write(payload: Mapping[str, Any], agent_key: str) -> ValidatedWrite
                 f"graph_write: edge {source!r} -{edge_type}-> {target!r} needs "
                 "non-empty evidence"
             )
-        edges.append(
-            {
-                "source": source,
-                "target": target,
-                "type": edge_type,
-                "evidence": evidence,
-            }
-        )
+        edge: Dict[str, Any] = {
+            "source": source,
+            "target": target,
+            "type": edge_type,
+            "evidence": evidence,
+        }
+        if id_endpoints:
+            # Only present when an endpoint IS an id, so every pre-existing
+            # write hashes to the same ``write_id`` it always did. Replay
+            # reads this instead of guessing, so a hand-edited record with a
+            # typo'd NAME still fails loudly rather than silently becoming a
+            # dangling id edge.
+            edge["id_endpoints"] = id_endpoints
+        edges.append(edge)
 
     return ValidatedWrite(
         agent=agent_key,
@@ -363,7 +392,39 @@ def _graph_from_record(record: Mapping[str, Any]) -> ResearchGraph:
             # the node as ``agent_write_id``; it does not belong here.
             evidence=f"written by agent {agent_key}",
         )
+    id_edges: List[ResearchEdge] = []
     for raw in record.get("edges") or []:
+        id_sides = set(raw.get("id_endpoints") or [])
+        if id_sides:
+            # An endpoint recorded as an existing node id: the target lives in
+            # the MAIN graph, not in this slice, so the edge is emitted raw
+            # AFTER the slice is validated (the validator rightly rejects an
+            # endpoint absent from its own graph). Everything else about it —
+            # write_id-sorted replay, (source, type, target) dedup, the
+            # agent_write_id marker — is unchanged.
+            resolved: Dict[str, str] = {}
+            for side in ("source", "target"):
+                ref = str(raw[side])
+                if side in id_sides:
+                    resolved[side] = ref
+                else:
+                    node = by_ref.get(ref)
+                    if node is None:
+                        raise GraphJSONValidationError(
+                            f"agent write {write_id}: edge endpoint missing "
+                            "from record"
+                        )
+                    resolved[side] = node.id
+            id_edges.append(
+                ResearchEdge(
+                    source=resolved["source"],
+                    target=resolved["target"],
+                    type=str(raw["type"]),
+                    evidence=str(raw.get("evidence") or ""),
+                    metadata={"agent_write_id": write_id, "agent_key": agent_key},
+                )
+            )
+            continue
         source = by_ref.get(str(raw["source"]))
         target = by_ref.get(str(raw["target"]))
         if source is None or target is None:
@@ -398,6 +459,10 @@ def _graph_from_record(record: Mapping[str, Any]) -> ResearchGraph:
         )
     graph = builder.build()
     validate_research_graph(graph)
+    if id_edges:
+        graph = ResearchGraph(
+            nodes=list(graph.nodes), edges=[*graph.edges, *id_edges]
+        )
     return graph
 
 
@@ -666,7 +731,7 @@ def record_agent_write(
     lock_dir: Optional[str | Path] = None,
 ) -> Dict[str, Any]:
     """Validate + append one write. Returns the MCP response body."""
-    validated = validate_write(payload, agent_key)
+    validated = validate_write(payload, agent_key, graph)
     write_id = validated.write_id
     file_path = Path(path)
     file_path.parent.mkdir(parents=True, exist_ok=True)

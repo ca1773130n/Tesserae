@@ -103,7 +103,7 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 |---|---|
 | `agent_view_explain` | Explain an agent-scoped view *without loading it*: resolution mode (worker / manager / org), member agents, each L1 artifact's path, node count, and the `distilled_through` staleness watermark |
 | `drill_down` | Resolve a distillate `member_ref` back to its raw L0 node — the manager's explicit, audit-logged escalation past distilled visibility. Returns status `alive` / `changed` / `absorbed` / `gone`; every call is logged to the sidecar |
-| `graph_write` | Write typed nodes + edges into the graph directly — no markdown, no extraction pass. Appended to an append-only overlay and replayed as a compile producer, so the write **survives recompilation**. Strict: unknown types, an edge without evidence, or an endpoint outside the payload are all refused |
+| `graph_write` | Write typed nodes + edges into the graph directly — no markdown, no extraction pass. Appended to an append-only overlay and replayed as a compile producer, so the write **survives recompilation**. Strict: unknown types, an edge without evidence, or an endpoint that is neither in the payload nor an existing node id are all refused. **To retract** something simply wrong, without inventing a replacement: point a `retracts` edge at the wrong node **by id** — the target is suppressed from every default read (`search_nodes`, `fresh_insights`, `node_context`, `compile_context`) while staying reachable with `include_superseded: true`, and nothing is deleted |
 
 **Q&A & registry**
 

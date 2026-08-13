@@ -105,7 +105,7 @@ Cada tool acepta un `graph_path` o `project` (alias del registro) opcional, de m
 |---|---|
 | `agent_view_explain` | Explica una vista con ámbito de agente *sin cargarla*: modo de resolución (worker / manager / org), agentes miembros, la ruta y el recuento de nodos de cada artefacto L1, y la marca de obsolescencia `distilled_through` |
 | `drill_down` | Resuelve un `member_ref` de un destilado hasta su nodo L0 original: la escalada explícita y registrada del responsable más allá de la visibilidad destilada. Devuelve el estado `alive` / `changed` / `absorbed` / `gone`; cada llamada queda registrada en el sidecar |
-| `graph_write` | Escribe nodos y aristas tipados directamente en el grafo: sin markdown, sin pasada de extracción. La escritura se añade a una capa append-only y se reproduce como productor de compilación, así que **sobrevive a la recompilación**. Es estricto: tipos desconocidos, aristas sin evidencia o extremos fuera de la carga se rechazan |
+| `graph_write` | Escribe nodos y aristas tipados directamente en el grafo: sin markdown, sin pasada de extracción. La escritura se añade a una capa append-only y se reproduce como productor de compilación, así que **sobrevive a la recompilación**. Es estricto: tipos desconocidos, aristas sin evidencia o extremos que no están ni en la carga ni son un id de nodo existente se rechazan. **Para retractar** algo simplemente erróneo, sin inventar un reemplazo: apunta una arista `retracts` al nodo equivocado **por id** — el destino queda suprimido de toda lectura por defecto (`search_nodes`, `fresh_insights`, `node_context`, `compile_context`), sigue siendo alcanzable con `include_superseded: true`, y no se borra nada |
 
 **Preguntas y registro**
 
