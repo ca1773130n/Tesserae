@@ -327,3 +327,73 @@ def test_string_similarity_items_carry_no_band():
         score=0.99,
     )
     assert review_band(item) == (0, "")
+
+
+# ------------------------------------------------- shared embedding-vector cache
+
+
+class _CountingStubBackend(_StubBackend):
+    """``_StubBackend`` that records the texts it was actually asked to embed."""
+
+    def __init__(self, table, default=(0.0, 1.0)):
+        super().__init__(table, default)
+        self.embedded = []
+
+    def embed(self, texts):
+        self.embedded.extend(texts)
+        return super().embed(texts)
+
+
+def _cache(tmp_path):
+    from tesserae.retrieval.vector_cache import VectorCache
+
+    (tmp_path / ".tesserae").mkdir(exist_ok=True)
+    return VectorCache.for_project(tmp_path)
+
+
+def test_semantic_review_items_are_identical_with_a_cold_and_warm_cache(tmp_path):
+    """The cache changes what the pass COSTS, not which candidates it emits."""
+    graph = _aldrin_graph()
+    cache = _cache(tmp_path)
+
+    cold_backend = _CountingStubBackend({"Edwin Aldrin": (1.0, 0.0), "Buzz Aldrin": (1.0, 0.02)})
+    cold = GraphCanonicalizer(
+        semantic=True, embedding_backend=cold_backend, vector_cache=cache
+    ).canonicalize(graph)
+    warm_backend = _CountingStubBackend({"Edwin Aldrin": (1.0, 0.0), "Buzz Aldrin": (1.0, 0.02)})
+    warm = GraphCanonicalizer(
+        semantic=True, embedding_backend=warm_backend, vector_cache=_cache(tmp_path)
+    ).canonicalize(graph)
+
+    assert [item.model_dump() for item in warm.review_items] == [
+        item.model_dump() for item in cold.review_items
+    ]
+    assert cold_backend.embedded  # the cold run paid the model call
+    assert warm_backend.embedded == []  # the warm run paid nothing
+
+
+def test_canonicalization_and_federation_share_one_cached_vector(tmp_path):
+    """Both passes embed a node as the SAME text, so one cache serves both.
+
+    They used to build that string inline in two places and match only by
+    coincidence; ``node_embedding_text`` makes it true by construction. If the
+    two ever drift apart, federation re-embeds here and this fails.
+    """
+    from tesserae.federation import add_semantic_links
+
+    graph = _aldrin_graph()
+    cache = _cache(tmp_path)
+    table = {"Edwin Aldrin": (1.0, 0.0), "Buzz Aldrin": (1.0, 0.02)}
+
+    canon_backend = _CountingStubBackend(table)
+    GraphCanonicalizer(
+        semantic=True, embedding_backend=canon_backend, vector_cache=cache
+    ).canonicalize(graph)
+    assert sorted(canon_backend.embedded) == ["Buzz Aldrin.", "Edwin Aldrin."]
+
+    fed_backend = _CountingStubBackend(table)
+    _enriched, stats = add_semantic_links(
+        graph, backend=fed_backend, scope="intra", vector_cache=_cache(tmp_path)
+    )
+    assert stats["semantic_added"] >= 1  # the pass really ran
+    assert fed_backend.embedded == []  # ...on vectors canonicalization had cached

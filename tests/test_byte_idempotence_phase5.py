@@ -41,6 +41,14 @@ _MEMORY_FIELDS = (
     # survive an incremental compile and vanish on a full one — a wall clock
     # one indirection removed, the exact leak class this file guards.
     "proposed_type",
+    # Sidecar-only, same as the rest: cached embedding vectors live in the
+    # node_vectors SQLite table, keyed on the embedded TEXT rather than on a
+    # node id precisely so they never need a home in the artifact. A vector or
+    # its key baked into node metadata would survive an incremental compile and
+    # vanish on a full one — the leak class this file exists to catch.
+    "node_vectors",
+    "embedding_vector",
+    "text_sha256",
 )
 
 

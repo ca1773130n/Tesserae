@@ -258,3 +258,59 @@ def test_store_still_satisfies_protocol(tmp_path: Path) -> None:
     """The extended adapter still satisfies the runtime-checkable protocol."""
     store = SqliteGraphStore(tmp_path / "graph.sqlite")
     assert isinstance(store, GraphStore)
+
+
+# ---------------------------------------------------------------------------
+# node_vectors sidecar (embedding cache)
+# ---------------------------------------------------------------------------
+
+
+def test_node_vectors_round_trip_is_exact(tmp_path: Path) -> None:
+    """A cached vector must decode to the EXACT floats that were stored.
+
+    The cache is only allowed to change what retrieval costs, never what it
+    returns — a lossy encoding (float32, rounded JSON) would make a warm cache
+    score differently from a cold one, which is a wrong answer, not a slow one.
+    """
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+    vector = [0.1, -1.0 / 3.0, 2.718281828459045, 0.0, 1e-17]
+    store.write_node_vectors_many("model:x", len(vector), [("abc123", vector)])
+
+    got = store.read_node_vectors("model:x", len(vector), ["abc123"])
+    assert got["abc123"] == vector
+
+
+def test_node_vectors_never_cross_backend_keys(tmp_path: Path) -> None:
+    """Two backends' vectors live in different spaces and must not be shared."""
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+    store.write_node_vectors_many("model:a", 3, [("hash1", [1.0, 0.0, 0.0])])
+
+    assert store.read_node_vectors("model:b", 3, ["hash1"]) == {}
+    assert store.read_node_vectors("model:a", 4, ["hash1"]) == {}
+    assert store.read_node_vectors("model:a", 3, ["hash1"]) == {"hash1": [1.0, 0.0, 0.0]}
+    assert store.count_node_vectors("model:a", 3) == 1
+    assert store.count_node_vectors("model:b", 3) == 0
+
+
+def test_node_vectors_rewrite_keeps_first_value(tmp_path: Path) -> None:
+    """The row is a pure function of its key, so a re-insert is a no-op.
+
+    ``insert or ignore`` is what makes two concurrent writers safe: they wrote
+    the same bytes, so there is nothing to reconcile.
+    """
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+    store.write_node_vectors_many("model:a", 2, [("k", [1.0, 2.0])])
+    store.write_node_vectors_many("model:a", 2, [("k", [1.0, 2.0])])
+
+    assert store.count_node_vectors("model:a", 2) == 1
+
+
+def test_node_vectors_read_handles_more_than_one_chunk(tmp_path: Path) -> None:
+    """A corpus-sized hash list must not blow SQLite's bound-parameter limit."""
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+    rows = [(f"hash-{i:04d}", [float(i), 0.5]) for i in range(1200)]
+    store.write_node_vectors_many("model:a", 2, rows)
+
+    got = store.read_node_vectors("model:a", 2, [key for key, _ in rows])
+    assert len(got) == 1200
+    assert got["hash-1199"] == [1199.0, 0.5]

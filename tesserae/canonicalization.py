@@ -87,10 +87,15 @@ class GraphCanonicalizer:
         embedding_top_k: int = 2,
         max_semantic_items: int = 200,
         max_block: int = 1500,
+        vector_cache: Optional[object] = None,
     ) -> None:
         self.similarity_threshold = similarity_threshold
         self.semantic = semantic
         self.embedding_backend = embedding_backend
+        # Optional VectorCache (see tesserae.retrieval.vector_cache). Cost
+        # only: the embedding pass emits the same candidates and the same
+        # cosines cached or not.
+        self.vector_cache = vector_cache
         self.embedding_min_cosine = embedding_min_cosine
         self.embedding_top_k = embedding_top_k
         self.max_semantic_items = max_semantic_items
@@ -226,6 +231,7 @@ class GraphCanonicalizer:
         # numpy is imported only AFTER the stub-skip so `--canonicalize-semantic`
         # on a base install degrades cleanly instead of crashing on the import.
         from .retrieval.hybrid import HashEmbeddingBackend, active_embedding_backend
+        from .retrieval.vector_cache import embed_texts, node_embedding_text
 
         backend = self.embedding_backend or active_embedding_backend()
         backend_name = getattr(backend, "name", type(backend).__name__)
@@ -264,7 +270,11 @@ class GraphCanonicalizer:
             if len(block) < 2:
                 continue
             vectors = np.asarray(
-                backend.embed([f"{n.name}. {(n.description or '').strip()}".strip() for n in block]),
+                embed_texts(
+                    backend,
+                    [node_embedding_text(n) for n in block],
+                    self.vector_cache,
+                ),
                 dtype="float64",
             )
             # L2-normalize defensively: EmbeddingBackend does not promise unit

@@ -112,6 +112,7 @@ def discover_links(
     top_k: int = DEFAULT_ASSOCIATE_TOP_K,
     min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE,
     max_candidates: int = DEFAULT_ASSOCIATE_MAX_CANDIDATES,
+    vector_cache=None,
 ) -> List[Tuple[str, str, float]]:
     """Discover NEW ``shares_concept_with`` links over ``graph``.
 
@@ -126,7 +127,8 @@ def discover_links(
     it is deterministic given a fixed ``backend`` (id-sorted, canonical
     ``source < target`` direction, existing edges suppressed) and an honest no-op
     on the hash-bucket stub backend (returns ``[]``). The result is sorted, so
-    equal inputs yield byte-identical output.
+    equal inputs yield byte-identical output — and ``vector_cache`` cannot
+    change that, since it returns the vectors the backend already produced.
     """
     work = graph
     if agents:
@@ -141,6 +143,7 @@ def discover_links(
         top_k=top_k,
         min_cosine=min_cosine,
         max_candidates=max_candidates,
+        vector_cache=vector_cache,
     )
     if stats.get("semantic_skipped"):
         return []  # stub backend / numpy absent → honest no-op
@@ -291,6 +294,8 @@ def consolidate_associations(
                 "associate_added": 0,
                 "associate_skipped": "no real embedding backend (install tesserae[semantic])",
             }
+        from ..retrieval.vector_cache import VectorCache
+
         links = discover_links(
             graph,
             backend=backend,
@@ -298,6 +303,11 @@ def consolidate_associations(
             top_k=top_k,
             min_cosine=min_cosine,
             max_candidates=max_candidates,
+            # The sleep cycle re-runs this pass over a graph that mostly did
+            # not change, so its candidate corpus is the same text every tick.
+            # Cache in the project's own sidecar; None when there is no
+            # .tesserae/ to write to (discovery still runs, uncached).
+            vector_cache=VectorCache.for_project(project_root),
         )
         if not links:
             return {"associate_added": 0, "associate_overlay_size": len(_load_overlay_raw(project_root))}

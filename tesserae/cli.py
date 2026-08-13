@@ -6180,7 +6180,15 @@ def _handle_extract(args: argparse.Namespace) -> int:
         graph = ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=args.min_trend_sources)
     canonicalize_semantic = bool(getattr(args, "canonicalize_semantic", False))
     if canonicalize_semantic or args.canonicalize or args.review_output or args.apply_review_decisions or args.review_markdown_output or args.review_jsonl_output or args.review_decisions_template:
-        canonicalization = GraphCanonicalizer(semantic=canonicalize_semantic).canonicalize(graph)
+        # Cache the embedding pass's vectors when --output lands in a project's
+        # .tesserae/ layout; an ad-hoc output path has nowhere to persist, and
+        # the pass runs uncached there rather than creating a sidecar for it.
+        from .retrieval.vector_cache import VectorCache
+
+        canonicalization = GraphCanonicalizer(
+            semantic=canonicalize_semantic,
+            vector_cache=VectorCache.for_graph_path(args.output) if canonicalize_semantic else None,
+        ).canonicalize(graph)
         graph = canonicalization.graph
         if canonicalize_semantic:
             # Say plainly whether the pass RAN — "skipped" must never read as
