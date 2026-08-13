@@ -541,6 +541,28 @@ VERIFIED_PAPER_TITLE_QUALITIES: Set[str] = {
 #: ``session_recovery``).
 CAUSAL_EDGE_TYPES: FrozenSet[str] = frozenset({"recovers"})
 
+#: Edge types that RETRACT their target — "this is wrong", asserted without
+#: authoring a replacement (roadmap step 10).
+#:
+#: THE ONE SOURCE OF TRUTH for "which edges retract". ``ALLOWED_EDGE_TYPES``,
+#: ``EXTRACTABLE_EDGE_TYPES``, ``graph_filters.retracted_ids``,
+#: ``temporal.INVALIDATING_PREDICATES`` and ``retrieval.views`` all derive from
+#: this name.
+#:
+#: WHY it has to exist: the overlay is append-only, and until now the only
+#: correction routes were supersession — which forces the agent to invent a
+#: replacement claim it may not have — and decay, which only waits, only
+#: touches session findings, and is actively counteracted by ``reinforce``
+#: raising confidence on RECURRENCE. A wrong fact re-derived from the same
+#: wrong document therefore got MORE confident over time, with no way to say
+#: plainly that it is wrong.
+#:
+#: Orientation, canonical: ``source retracts target`` — the TARGET is the
+#: retracted node, mirroring ``supersedes``. Nothing is deleted: the node and
+#: the edge both stay in the graph, and ``include_superseded=True`` still
+#: reaches them. That is the same tombstone posture CHARTER takes.
+RETRACTION_EDGE_TYPES: FrozenSet[str] = frozenset({"retracts"})
+
 ALLOWED_EDGE_TYPES: Set[str] = {
     "is_a",
     "part_of",
@@ -648,7 +670,7 @@ ALLOWED_EDGE_TYPES: Set[str] = {
     # ``derived_from`` edge above — deliberately no ``distills_to``.
     "performed_by",
     "reports_to",
-} | set(CAUSAL_EDGE_TYPES)
+} | set(CAUSAL_EDGE_TYPES) | set(RETRACTION_EDGE_TYPES)
 
 #: What the DOCUMENT-EXTRACTION LLM may assert. Everything except the causal
 #: layer.
@@ -662,7 +684,16 @@ ALLOWED_EDGE_TYPES: Set[str] = {
 #: that owns them. A causal edge asserted by a model reading a paper would be
 #: indistinguishable, in the graph, from one derived from an observed failure
 #: and an observed success; the whole value of ``recovers`` is that it is not.
-EXTRACTABLE_EDGE_TYPES: FrozenSet[str] = frozenset(ALLOWED_EDGE_TYPES) - CAUSAL_EDGE_TYPES
+#: ``retracts`` is subtracted for a different reason than the causal layer:
+#: not "the model cannot observe it" but "the model must not be able to
+#: SILENCE things". A retraction suppresses its target from every read
+#: surface, so an extraction pass misreading "we retract our earlier claim"
+#: could quietly delete curated knowledge from every answer. It stays
+#: agent-writable on purpose — an agent saying "this is wrong" against an
+#: external anchor is exactly what the edge is for.
+EXTRACTABLE_EDGE_TYPES: FrozenSet[str] = (
+    frozenset(ALLOWED_EDGE_TYPES) - CAUSAL_EDGE_TYPES - RETRACTION_EDGE_TYPES
+)
 
 
 @dataclass(frozen=True)

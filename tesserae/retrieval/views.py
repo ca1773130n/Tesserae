@@ -88,6 +88,11 @@ TEMPORAL_VIEW: FrozenSet[str] = frozenset({
     "discussed_in",
     "emerged_after",
     "precedes",
+    # ``retracts`` (step 10) sits here for the same reason
+    # ``contradicts_claim`` does: it ends its target's validity — it is in
+    # ``temporal.INVALIDATING_PREDICATES`` — and "what was true when" is the
+    # question a retraction answers.
+    "retracts",
     "rising_in",
     "supersedes",
 })

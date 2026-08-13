@@ -9,10 +9,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Set
 
+from .research_graph import RETRACTION_EDGE_TYPES
+
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard for type checkers
     from .research_graph import ResearchGraph
 
-__all__ = ["superseded_ids"]
+__all__ = ["retracted_ids", "superseded_ids", "suppressed_ids"]
 
 
 def superseded_ids(graph: "ResearchGraph") -> Set[str]:
@@ -32,3 +34,35 @@ def superseded_ids(graph: "ResearchGraph") -> Set[str]:
     return {edge.target for edge in graph.edges if edge.type == "supersedes"} | {
         edge.source for edge in graph.edges if edge.type == "resolved_by"
     }
+
+
+def retracted_ids(graph: "ResearchGraph") -> Set[str]:
+    """Ids of nodes an agent has retracted — "this is wrong" (step 10).
+
+    ``source retracts target``: the TARGET is the retracted node, the same
+    orientation ``supersedes`` uses. Kept separate from
+    :func:`superseded_ids` because the two say different things — superseded
+    means *a winner replaced it*, retracted means *nobody replaced it and it
+    should not have been asserted* — and a caller that wants one rarely wants
+    the distinction blurred.
+
+    Nothing is deleted. The node and the retraction edge both stay in the
+    graph, so ``include_superseded=True`` still reaches them and the
+    retraction itself remains readable evidence.
+    """
+    return {
+        edge.target
+        for edge in graph.edges
+        if edge.type in RETRACTION_EDGE_TYPES
+    }
+
+
+def suppressed_ids(graph: "ResearchGraph") -> Set[str]:
+    """Every node a default read must not serve as current knowledge.
+
+    The union of :func:`superseded_ids` and :func:`retracted_ids` — ONE call
+    for every read surface, so a future suppression class is picked up by
+    search_nodes / fresh_insights / node_context / compile_context the day it
+    is added here rather than in six places that drift apart.
+    """
+    return superseded_ids(graph) | retracted_ids(graph)

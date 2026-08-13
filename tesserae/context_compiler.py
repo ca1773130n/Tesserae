@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import (Any, Callable, Dict, FrozenSet, List, Mapping, Optional,
                     Sequence, Set, Tuple, Union)
 
-from .graph_filters import superseded_ids
+from .graph_filters import suppressed_ids
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 from .retrieval.hybrid import hybrid_search
 from .retrieval.ppr import personalized_pagerank
@@ -615,7 +615,7 @@ def compile_context(
         graph = _induced_subgraph(graph, restrict)
 
     node_index = {n.id: n for n in graph.nodes}
-    suppressed: Set[str] = set() if include_superseded else superseded_ids(graph)
+    suppressed: Set[str] = set() if include_superseded else suppressed_ids(graph)
 
     # --- Step 1: seed resolution (explicit first, then hybrid, deduped) ------
     seed_ids: List[str] = []

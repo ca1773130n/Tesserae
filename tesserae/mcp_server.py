@@ -618,7 +618,9 @@ def _project_root_for_graph_path(graph_path: str | Path) -> Optional[Path]:
 # Suppression set shared by every read path (search_nodes, fresh_insights,
 # node_context, compile_context): supersedes targets + resolved_by sources.
 # Lives in graph_filters so the context compiler suppresses the same losers.
+from .graph_filters import retracted_ids as _retracted_ids
 from .graph_filters import superseded_ids as _superseded_ids
+from .graph_filters import suppressed_ids as _suppressed_ids
 
 
 def _extract_internal_links(body: str) -> List[JSONDict]:
@@ -1716,15 +1718,23 @@ class LLMWikiMCPServer:
                     "to an append-only overlay and replayed as a compile producer, "
                     "so it SURVIVES recompilation instead of being erased by it. "
                     "Strict: an unknown node/edge type, an edge without evidence, "
-                    "an edge endpoint not in this payload, or a provenance block "
-                    "without an external anchor (url | file | commit | session_id) "
-                    "is REFUSED — nothing is silently dropped. Node types owned by "
+                    "an edge endpoint that is neither in this payload nor an "
+                    "existing node id, or a provenance block without an external "
+                    "anchor (url | file | commit | session_id) is REFUSED — "
+                    "nothing is silently dropped. Node types owned by "
                     "compile producers (Session, CodeFile, CommunitySummary, "
                     "Agent, ...) are refused too. Writes are durable immediately "
                     "and appear in the graph on the next compile; pass "
                     "materialize=true to compile now and read them back. Check the "
                     "`existing` flag per node: false means you minted a NEW node "
-                    "rather than attaching to the one you meant."
+                    "rather than attaching to the one you meant. TO RETRACT "
+                    "something that is simply WRONG, without inventing a "
+                    "replacement for it: write your finding as a node and point a "
+                    "`retracts` edge at the wrong node BY ID (from search_nodes / "
+                    "node_context). The target is then suppressed from every "
+                    "default read — search_nodes, fresh_insights, node_context, "
+                    "compile_context — while staying reachable via "
+                    "include_superseded=true, and nothing is deleted."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -1748,12 +1758,18 @@ class LLMWikiMCPServer:
                         },
                         "edges": {
                             "type": "array",
-                            "description": "Edges between nodes in this payload. `evidence` is required.",
+                            "description": (
+                                "Edges between nodes in this payload — or onto an "
+                                "EXISTING node by id (that is how a `retracts` "
+                                "edge reaches a session finding the same-name "
+                                "alignment rules deliberately refuse to fuse). "
+                                "`evidence` is required."
+                            ),
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "source": {"type": "string", "description": "A node `name` from this payload."},
-                                    "target": {"type": "string", "description": "A node `name` from this payload."},
+                                    "source": {"type": "string", "description": "A node `name` from this payload, or an existing node id."},
+                                    "target": {"type": "string", "description": "A node `name` from this payload, or an existing node id."},
                                     "type": {"type": "string", "description": "Member of the edge-type ontology (see `schema`)."},
                                     "evidence": {"type": "string", "description": "Why this edge holds. Required, non-empty."},
                                 },
@@ -3830,7 +3846,7 @@ class LLMWikiMCPServer:
         # This matches the canonical orientation chosen by
         # tesserae.memory.supersede and is shared with
         # search_nodes/node_context via the helper.
-        superseded_ids: set = set() if include_superseded else _superseded_ids(graph)
+        superseded_ids: set = set() if include_superseded else _suppressed_ids(graph)
 
         # KB-02 byte-idempotence: access state (access_count/last_accessed_at/
         # decay) lives ONLY in the node_memory sidecar, never on
@@ -3970,7 +3986,7 @@ class LLMWikiMCPServer:
         """
         type_filter = {str(item) for item in types or []}
         kind_filter = {str(item).lower() for item in kinds or []}
-        suppressed = set() if include_superseded else _superseded_ids(graph)
+        suppressed = set() if include_superseded else _suppressed_ids(graph)
         public_nodes = [n for n in graph.nodes if not is_code_graph_node(n)]
         candidates: List[ResearchNode] = []
         for node in public_nodes:
@@ -4465,7 +4481,7 @@ class LLMWikiMCPServer:
         # format stable. ``budget_chars=0`` = uncapped
         # (``_clamp_payload_item`` no-ops on ``cap <= 0``).
         per_entry_cap = budget_chars // 8 if budget_chars > 0 else 0
-        suppressed = set() if include_superseded else _superseded_ids(graph)
+        suppressed = set() if include_superseded else _suppressed_ids(graph)
         node_by_id = {candidate.id: candidate for candidate in graph.nodes}
         # Incident edges whose OTHER endpoint is suppressed are dropped along
         # with the suppressed neighbour itself — otherwise an edge would leak a
@@ -4517,6 +4533,7 @@ class LLMWikiMCPServer:
             neighbors, continuation = _fit_payload_list(neighbors, budget_chars)
             node_payload = node_to_dict(node)
             node_payload["superseded"] = node.id in _superseded_ids(graph)
+            node_payload["retracted"] = node.id in _retracted_ids(graph)
             node_payload = _clamp_payload_item(node_payload, per_entry_cap, "description")
             # LRU: the focal node AND the neighbourhood actually RETURNED are
             # reads (budget-dropped neighbours were not surfaced).
@@ -4554,6 +4571,7 @@ class LLMWikiMCPServer:
         neighbors, continuation = _fit_payload_list(neighbors, budget_chars)
         node_payload = node_to_dict(node)
         node_payload["superseded"] = node.id in _superseded_ids(graph)
+        node_payload["retracted"] = node.id in _retracted_ids(graph)
         node_payload = _clamp_payload_item(node_payload, per_entry_cap, "description")
         # KB-02/LRU: record that an agent actually read this node AND the live
         # neighbours surfaced alongside it (the nodes actually RETURNED —

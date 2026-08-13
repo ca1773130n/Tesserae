@@ -105,7 +105,7 @@ tesserae projects mcp-config
 |---|---|
 | `agent_view_explain` | 에이전트 스코프 뷰를 *로드하지 않고* 설명합니다: 해석 모드(worker / manager / org), 구성원 에이전트, 각 L1 아티팩트의 경로와 노드 수, 그리고 `distilled_through` 신선도 워터마크 |
 | `drill_down` | 증류본의 `member_ref`를 원본 L0 노드로 되돌립니다 — 증류된 가시성을 넘어서는 관리자의 명시적이고 감사 기록되는 에스컬레이션. 상태는 `alive` / `changed` / `absorbed` / `gone`이며 모든 호출이 사이드카에 기록됩니다 |
-| `graph_write` | 타입 지정 노드와 엣지를 그래프에 직접 씁니다 — 마크다운도, 추출 패스도 없습니다. append-only 오버레이에 추가되어 컴파일 생산자로 재생되므로 **재컴파일을 견딥니다**. 엄격합니다: 알 수 없는 타입, 증거 없는 엣지, 페이로드 밖의 엔드포인트는 모두 거부됩니다 |
+| `graph_write` | 타입 지정 노드와 엣지를 그래프에 직접 씁니다 — 마크다운도, 추출 패스도 없습니다. append-only 오버레이에 추가되어 컴파일 생산자로 재생되므로 **재컴파일을 견딥니다**. 엄격합니다: 알 수 없는 타입, 증거 없는 엣지, 이 페이로드에도 없고 기존 노드 id도 아닌 엔드포인트는 모두 거부됩니다. 그냥 틀린 것을 대체물을 지어내지 않고 **철회하려면**: `retracts` 엣지를 틀린 노드에 **id로** 겨누십시오 — 대상은 모든 기본 읽기(`search_nodes`, `fresh_insights`, `node_context`, `compile_context`)에서 억제되지만 `include_superseded: true`로는 여전히 닿을 수 있고, 아무것도 삭제되지 않습니다 |
 
 **Q&A 및 레지스트리**
 
