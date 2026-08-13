@@ -466,7 +466,9 @@ def _graph_from_record(record: Mapping[str, Any]) -> ResearchGraph:
     return graph
 
 
-def _read_records(file_path: Path) -> Dict[str, Dict[str, Any]]:
+def _read_records(
+    file_path: Path, skips: Optional[List[Dict[str, Any]]] = None
+) -> Dict[str, Dict[str, Any]]:
     """Parse the JSONL overlay, skipping unreadable lines with a warning.
 
     Skip-and-warn, exactly like ``BatchIngestRunner._load_manifest`` does for a
@@ -474,6 +476,11 @@ def _read_records(file_path: Path) -> Dict[str, Dict[str, Any]]:
     brick EVERY future compile of the whole corpus: the read path is not the
     place to enforce write-path validity, and the write path already refuses
     malformed payloads at the door.
+
+    Every skip is ALSO recorded into ``skips`` when a sink is passed, because a
+    dropped agent write that exists only as a stderr line is a lost write
+    nobody reads — ``WikiLinter._check_agent_write_skips`` turns the sink into
+    a finding.
     """
     records: Dict[str, Dict[str, Any]] = {}
     if not file_path.exists():
@@ -492,6 +499,8 @@ def _read_records(file_path: Path) -> Dict[str, Dict[str, Any]]:
                 f"{exc}; skipping",
                 file=sys.stderr,
             )
+            if skips is not None:
+                skips.append({"line": lineno, "reason": f"unreadable: {exc}"})
             continue
         if not isinstance(record, Mapping):
             print(
@@ -499,21 +508,29 @@ def _read_records(file_path: Path) -> Dict[str, Dict[str, Any]]:
                 "object; skipping",
                 file=sys.stderr,
             )
+            if skips is not None:
+                skips.append({"line": lineno, "reason": "not a JSON object"})
             continue
         records[str(record.get("write_id") or "")] = dict(record)
     return records
 
 
-def replay_agent_writes(path: str | Path) -> ResearchGraph:
+def replay_agent_writes(
+    path: str | Path, skips: Optional[List[Dict[str, Any]]] = None
+) -> ResearchGraph:
     """Replay the JSONL overlay into a graph. Pure function of the file bytes.
 
     Records are replayed **sorted by write_id**, not in append order, so two
     agents appending in either interleaving converge on the same merge order —
     and therefore the same ``prefer_research_node`` winners and the same
     ``graph.json`` bytes.
+
+    ``skips`` is an optional sink collecting every record this replay dropped;
+    the returned graph is identical either way, so passing it can never change
+    compile bytes.
     """
     file_path = Path(path)
-    records = _read_records(file_path)
+    records = _read_records(file_path, skips)
     nodes: Dict[str, Any] = {}
     edges: Dict[Tuple[str, str, str], Any] = {}
     for write_id in sorted(records):
@@ -529,6 +546,8 @@ def replay_agent_writes(path: str | Path) -> ResearchGraph:
                 f"{file_path}: {exc}; skipping",
                 file=sys.stderr,
             )
+            if skips is not None:
+                skips.append({"write_id": write_id, "reason": f"unusable: {exc}"})
             continue
         for node in slice_graph.nodes:
             nodes.setdefault(node.id, node)
@@ -745,11 +764,11 @@ def record_agent_write(
     # ``provisional`` when it is not in the graph yet (see ``_resolve_node_ids``).
     resolved = _resolve_node_ids(validated.nodes, graph)
 
-    # Short flock on a DEDICATED file: a read-dedupe-append costs ~1 ms and
-    # must not queue behind a multi-minute compile.
-    # ponytail: on Windows ``compile_lock`` degrades to a no-op (no ``fcntl``),
-    # so concurrent appends are unprotected there — the same pre-existing
-    # exposure ``compile.lock`` already carries, not made worse.
+    # Short exclusive lock on a DEDICATED file: a read-dedupe-append costs
+    # ~1 ms and must not queue behind a multi-minute compile. This is the one
+    # Tesserae write path that is not a single locked producer, so the lock is
+    # what keeps two appends from interleaving into a torn JSONL line — a line
+    # replay then skips, losing the write.
     with compile_lock(
         lock_dir or file_path.parent, wait_seconds=10.0, name="agent-writes.lock"
     ):
