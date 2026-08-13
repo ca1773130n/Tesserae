@@ -90,7 +90,7 @@ Tesserae는 통합을 깔끔하게 분리합니다:
 
 설정된 도구가 `sync_mode: native_graph`를 사용하면 Tesserae는 compile 중에 파싱된 매니페스트를 네이티브로 가져옵니다.
 
-네이티브 어댑터는 `.tesserae/external/raganything/manifest.json`을 읽고, 파싱된 각 문서를 멀티모달 블록 메타데이터를 갖는 `SourceFile` 노드로 프로젝션하며, 동기화 매니페스트를 기록합니다:
+네이티브 어댑터는 `.tesserae/external/raganything/manifest.json`을 읽고, 파싱된 각 문서를 멀티모달 블록 메타데이터를 갖는 `SourceDocument` 노드로 프로젝션하며 — 해석 가능한 콘텐츠를 갖는 각 figure/table/equation마다 일급 `Artifact` evidence 노드(content-hash id, `part_of` 문서, `evidenced_by`로 타게팅 가능) — 동기화 매니페스트를 기록합니다:
 
 ```text
 .tesserae/external/raganything-sync.json
@@ -100,11 +100,11 @@ Tesserae는 통합을 깔끔하게 분리합니다:
 
 | RAG-Anything | Tesserae 방향 |
 |---|---|
-| `documents[*]` | `SourceFile` 노드, `metadata.parser="raganything"` |
-| `content_list[type=text]` | `SourceFile.description`으로 병합; 개념은 기존 추출기를 통해 |
-| `content_list[type=image]` | `SourceFile.metadata.multimodal_blocks[]` (`img_path`, `caption`) |
-| `content_list[type=table]` | `SourceFile.metadata.multimodal_blocks[]` (`table_body`, `caption`) |
-| `content_list[type=equation]` | `SourceFile.metadata.multimodal_blocks[]`와 `metadata.equations[]` (LaTeX 보존) |
+| `documents[*]` | `SourceDocument` 노드, `metadata.parser="raganything"`, `metadata.content_hash` = source sha256 |
+| `content_list[type=text]` | `SourceDocument.description`으로 병합; 개념은 기존 추출기를 통해 |
+| `content_list[type=image]` | `Artifact` 노드 (asset **bytes** sha256에서 생성된 id, caption을 description으로) + `SourceDocument.metadata.multimodal_blocks[]` (`img_path`, `caption`, `content_hash` join key); 해석할 수 없는 asset은 노드를 건너뜁니다 (sync manifest의 `skipped_blocks` 기록) |
+| `content_list[type=table]` | `Artifact` 노드 (`table_body` sha256에서 생성된 id, body를 description으로) + `multimodal_blocks[]` (`table_body`, `caption`, `content_hash`) |
+| `content_list[type=equation]` | `Artifact` 노드 (`latex` sha256에서 생성된 id, LaTeX을 description으로) + `multimodal_blocks[]`와 `metadata.equations[]` (LaTeX 보존) |
 
 각 노드에 출처가 보존됩니다:
 

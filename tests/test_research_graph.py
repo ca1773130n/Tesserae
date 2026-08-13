@@ -214,10 +214,15 @@ def test_session_findings_skip_aggressive_same_type_dedup():
 
 def test_extractable_vocabulary_excludes_code_types_and_keeps_document_types():
     """``EXTRACTABLE_NODE_TYPES`` is ``ALLOWED_NODE_TYPES`` minus exactly the
-    code-graph layer — no more, and in particular not ``Repository`` /
-    ``Project``, which are document types that only look code-adjacent."""
+    code-graph layer plus ``Artifact`` — no more, and in particular not
+    ``Repository`` / ``Project``, which are document types that only look
+    code-adjacent. ``Artifact`` (roadmap step 9) is producer-owned: its
+    identity is a content hash only the raganything import can compute, so
+    the extraction LLM never gains the type."""
     assert EXTRACTABLE_NODE_TYPES < ALLOWED_NODE_TYPES
-    assert ALLOWED_NODE_TYPES - EXTRACTABLE_NODE_TYPES == {t.value for t in CODE_GRAPH_TYPES}
+    assert ALLOWED_NODE_TYPES - EXTRACTABLE_NODE_TYPES == (
+        {t.value for t in CODE_GRAPH_TYPES} | {ResearchNodeType.ARTIFACT.value}
+    )
 
     for retired in ("CodeFunction", "CodeClass", "SourceFile", "Dependency", "CodeProject"):
         assert retired not in EXTRACTABLE_NODE_TYPES

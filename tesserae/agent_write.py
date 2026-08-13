@@ -105,6 +105,10 @@ DENIED_NODE_TYPES: frozenset = frozenset(
         ResearchNodeType.COMMUNITY_SUMMARY.value,
         ResearchNodeType.STUB.value,
         ResearchNodeType.EVENT.value,
+        # Owned by the raganything import: ids are re-derived from asset
+        # CONTENT hashes each compile — an agent-minted Artifact would carry
+        # no hash and never merge with the producer's node.
+        ResearchNodeType.ARTIFACT.value,
     }
 )
 

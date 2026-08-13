@@ -91,7 +91,7 @@ Die Trennung sorgt dafür, dass `compile` schnell, deterministisch und key-frei 
 
 Tesserae importiert das geparste Manifest nativ während des Compiles, sofern das konfigurierte Tool `sync_mode: native_graph` verwendet.
 
-Der native Adapter liest `.tesserae/external/raganything/manifest.json`, projiziert jedes geparste Dokument in einen `SourceFile`-Node mit Metadaten zu multimodalen Blöcken und schreibt ein Sync-Manifest:
+Der native Adapter liest `.tesserae/external/raganything/manifest.json`, projiziert jedes geparste Dokument in einen `SourceDocument`-Node mit Metadaten zu multimodalen Blöcken — und für jede Abbildung/Tabelle/Gleichung mit auflösbarem Inhalt einen First-Class-`Artifact`-Evidence-Node (Content-Hash-ID, `part_of` des Dokuments, ansprechbar via `evidenced_by`) — und schreibt dann ein Sync-Manifest:
 
 ```text
 .tesserae/external/raganything-sync.json
@@ -101,11 +101,11 @@ Aktuelles Mapping:
 
 | RAG-Anything | Tesserae-Ziel |
 |---|---|
-| `documents[*]` | `SourceFile` node, `metadata.parser="raganything"` |
-| `content_list[type=text]` | in `SourceFile.description` eingefaltet; Concepts über den bestehenden Extractor |
-| `content_list[type=image]` | `SourceFile.metadata.multimodal_blocks[]` (`img_path`, `caption`) |
-| `content_list[type=table]` | `SourceFile.metadata.multimodal_blocks[]` (`table_body`, `caption`) |
-| `content_list[type=equation]` | `SourceFile.metadata.multimodal_blocks[]` und `metadata.equations[]` (LaTeX preserved) |
+| `documents[*]` | `SourceDocument` node, `metadata.parser="raganything"`, `metadata.content_hash` = Quellen-SHA256 |
+| `content_list[type=text]` | eingefaltet in `SourceDocument.description`; Concepts über den bestehenden Extractor |
+| `content_list[type=image]` | `Artifact` node (ID vom Asset-**Bytes**-SHA256, Caption als Beschreibung) + `SourceDocument.metadata.multimodal_blocks[]` (`img_path`, `caption`, `content_hash` Join-Key); nicht auflösbare Assets überspringen den Node mit Warnung (`skipped_blocks` im Sync-Manifest) |
+| `content_list[type=table]` | `Artifact` node (ID vom `table_body` SHA256, Body als Beschreibung) + `multimodal_blocks[]` (`table_body`, `caption`, `content_hash`) |
+| `content_list[type=equation]` | `Artifact` node (ID vom `latex` SHA256, LaTeX als Beschreibung) + `multimodal_blocks[]` und `metadata.equations[]` (LaTeX preserved) |
 
 Die Provenance bleibt an jedem Node erhalten:
 

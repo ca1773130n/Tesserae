@@ -92,7 +92,7 @@ Cette scission signifie que `compile` est rapide, déterministe et sans clé ; s
 
 Tesserae importe le manifest parsé nativement pendant la compilation quand l’outil configuré utilise `sync_mode: native_graph`.
 
-L’adaptateur natif lit `.tesserae/external/raganything/manifest.json`, projette chaque document parsé en un nœud `SourceFile` avec des métadonnées de blocs multimodaux, et écrit un manifest de sync :
+L’adaptateur natif lit `.tesserae/external/raganything/manifest.json`, projette chaque document parsé en un nœud `SourceDocument` avec des métadonnées de blocs multimodaux — et, pour chaque figure/tableau/équation avec contenu résolvable, un nœud `Artifact` comme preuve de première classe (id issu du hachage du contenu, `part_of` son document, adressable par `evidenced_by`) — puis écrit un manifest de sync :
 
 ```text
 .tesserae/external/raganything-sync.json
@@ -102,11 +102,11 @@ Correspondance actuelle :
 
 | RAG-Anything | Direction Tesserae |
 |---|---|
-| `documents[*]` | nœud `SourceFile`, `metadata.parser="raganything"` |
-| `content_list[type=text]` | replié dans `SourceFile.description` ; concepts via l’extracteur existant |
-| `content_list[type=image]` | `SourceFile.metadata.multimodal_blocks[]` (`img_path`, `caption`) |
-| `content_list[type=table]` | `SourceFile.metadata.multimodal_blocks[]` (`table_body`, `caption`) |
-| `content_list[type=equation]` | `SourceFile.metadata.multimodal_blocks[]` et `metadata.equations[]` (LaTeX préservé) |
+| `documents[*]` | nœud `SourceDocument`, `metadata.parser="raganything"`, `metadata.content_hash` = sha256 de la source |
+| `content_list[type=text]` | replié dans `SourceDocument.description` ; concepts via l’extracteur existant |
+| `content_list[type=image]` | nœud `Artifact` (id issu du sha256 des **octets** de l’asset, légende comme description) + `SourceDocument.metadata.multimodal_blocks[]` (`img_path`, `caption`, `content_hash` clé de jointure) ; les assets non-résolubles sautent le nœud bruyamment (`skipped_blocks` dans le manifest de sync) |
+| `content_list[type=table]` | nœud `Artifact` (id issu du sha256 du `table_body`, corps comme description) + `multimodal_blocks[]` (`table_body`, `caption`, `content_hash`) |
+| `content_list[type=equation]` | nœud `Artifact` (id issu du sha256 du `latex`, LaTeX comme description) + `multimodal_blocks[]` et `metadata.equations[]` (LaTeX préservé) |
 
 La provenance est préservée sur chaque nœud :
 

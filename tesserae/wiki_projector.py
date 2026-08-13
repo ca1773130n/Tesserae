@@ -60,6 +60,10 @@ ASSERTION_LAYER_TYPES: FrozenSet[ResearchNodeType] = frozenset({
     ResearchNodeType.LIMITATION_CLAIM,
     ResearchNodeType.CAUSAL_CLAIM,
     ResearchNodeType.EVIDENCE_SPAN,
+    # A figure/table/equation lifted from a parsed document (roadmap step 9):
+    # evidence, like EVIDENCE_SPAN — addressable in the graph and by MCP
+    # drill-down, never a dedicated URL.
+    ResearchNodeType.ARTIFACT,
 })
 
 
