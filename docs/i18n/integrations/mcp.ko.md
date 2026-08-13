@@ -71,7 +71,7 @@ tesserae projects mcp-config
 | `node_context` | 노드 + 인접 엣지 + 이웃 노드. `use_ppr`는 1-홉 탐색 대신 개인화 PageRank로 이웃을 랭킹하며 `include_superseded`, `limit`로 결과를 한정 |
 | `embedding_status` | 하이브리드 검색을 구동하는 활성 임베딩 백엔드 보고 |
 | `search_facts` | 그래프에서 투영된 시간적 사실(Graphiti 스타일); `current_only`는 현재 사실만 필터, `as_of`는 과거 시점 기준으로 응답. 두 옵션의 동시 사용은 거부됩니다(서로 다른 시계를 뜻하므로). `undated_included`는 반환된 행 중 날짜가 없는 건수를 보고합니다 |
-| `timeline` | 종단적 관점을 위해 `valid_from` 기준으로 정렬된 사실 |
+| `timeline` | 종단적 관점을 위해 `valid_from` 기준으로 정렬된 사실; `as_of`는 과거 시점 기준으로 응답합니다(유효 구간에 대한 시점 지정이며 범위 하한이 아닙니다). `undated_included`는 반환된 행 중 날짜가 없는 건수를 보고합니다. 날짜 없는 사실은 `as_of`에서도 유지되므로, 이 수치가 빈약한 답과 완전한 답을 구분해 줍니다 |
 | `graph_ppr` | 하나 이상의 `seed_node_id`에서 시드된 개인화 PageRank로 가장 관련성 높은 top-K 노드 반환; `alpha`, `directed`, `edge_type_weights` 조정 가능 |
 | `wiki_page` | 노드에 대해 컴파일된 markdown 페이지 본문과 참조하는 내부 링크 |
 | `raw_source` | 원본 소스 markdown (16 KB로 제한) |

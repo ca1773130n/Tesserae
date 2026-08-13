@@ -2,7 +2,7 @@
 
 Covers the `valid_from` timestamp ladder, `valid_to` population from
 supersede/contradiction chains, the subject-side invalidation fix, and the
-`facts_as_of` time-travel filter.
+`facts_as_of` time-travel filter alongside its `facts_since` range twin.
 """
 
 import hashlib
@@ -16,7 +16,7 @@ from tesserae.research_graph import (
     ResearchNode,
     ResearchNodeType,
 )
-from tesserae.temporal import TemporalFactProjector, facts_as_of
+from tesserae.temporal import TemporalFactProjector, facts_as_of, facts_since
 
 
 def _finding(node_id, name, **metadata):
@@ -532,6 +532,81 @@ def test_as_of_unparseable_returns_error_not_full_corpus():
 
     with pytest.raises(ValueError):
         facts_as_of(facts, "last tuesday")
+
+
+# ----------------------------------------------------------------- facts_since
+
+
+def test_since_drops_undated_facts_that_sort_after_the_bound_as_strings():
+    """The anti-mutant: "undated" > any ISO date LEXICALLY, so a string
+    compare KEEPS the row a real range filter must drop."""
+    dated = _finding("SessionInsight:a", "A", first_seen_at="2026-08-01")
+    undated = _finding("SessionInsight:b", "B")
+    doc = _doc()
+    graph = ResearchGraph(
+        nodes=[dated, undated, doc],
+        edges=[
+            ResearchEdge(source=dated.id, target=doc.id, type="discussed_in"),
+            ResearchEdge(source=undated.id, target=doc.id, type="discussed_in"),
+        ],
+    )
+    facts = TemporalFactProjector().project(graph)
+    assert "undated" >= "2026-07-01"  # what the string compare believed
+
+    kept, undated_excluded = facts_since(facts, "2026-07-01")
+
+    assert [f.subject_id for f in kept] == ["SessionInsight:a"]
+    assert undated_excluded == 1
+
+
+def test_since_compares_instants_not_strings_across_a_utc_offset():
+    """2026-02-28T23:00-05:00 IS 2026-03-01T04:00Z — inside the window by
+    instant, before it by string. The two implementations disagree in the
+    opposite direction from the undated sentinel above."""
+    finding = _finding("SessionInsight:a", "A", first_seen_at="2026-02-28T23:00:00-05:00")
+    doc = _doc()
+    graph = ResearchGraph(
+        nodes=[finding, doc],
+        edges=[ResearchEdge(source=finding.id, target=doc.id, type="discussed_in")],
+    )
+    facts = TemporalFactProjector().project(graph)
+    assert not "2026-02-28T23:00:00-05:00" >= "2026-03-01"  # what it believed
+
+    kept, _ = facts_since(facts, "2026-03-01")
+
+    assert [f.subject_id for f in kept] == ["SessionInsight:a"]
+
+
+def test_since_includes_a_fact_starting_exactly_on_the_bound():
+    facts = TemporalFactProjector().project(_interval_graph())
+
+    kept, _ = facts_since(facts, "2026-03-01")
+    subjects = {f.subject_id for f in kept if f.predicate == "discussed_in"}
+
+    assert subjects == {"SessionInsight:new"}
+
+
+def test_since_and_as_of_answer_the_same_date_differently():
+    """The two knobs are not interchangeable: at 2026-02-01 the old fact is
+    the one still live (as_of) and the one that has not started yet is the
+    only one a since-window keeps."""
+    facts = TemporalFactProjector().project(_interval_graph())
+
+    live, _ = facts_as_of(facts, "2026-02-01")
+    started, _ = facts_since(facts, "2026-02-01")
+    live_subjects = {f.subject_id for f in live if f.predicate == "discussed_in"}
+    started_subjects = {f.subject_id for f in started if f.predicate == "discussed_in"}
+
+    assert live_subjects == {"SessionInsight:old"}
+    assert started_subjects == {"SessionInsight:new"}
+    assert live_subjects.isdisjoint(started_subjects)
+
+
+def test_since_unparseable_returns_error_not_full_corpus():
+    facts = TemporalFactProjector().project(_interval_graph())
+
+    with pytest.raises(ValueError):
+        facts_since(facts, "last tuesday")
 
 
 def test_as_of_query_does_not_perturb_written_temporal_facts(tmp_path):

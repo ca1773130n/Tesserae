@@ -71,7 +71,7 @@ tesserae projects mcp-config
 | `node_context` | ある node とその接続 edge、隣接 node。`use_ppr` は 1-ホップ走査ではなくパーソナライズド PageRank で隣接をランキングし、`include_superseded`・`limit` で結果を制限 |
 | `embedding_status` | ハイブリッド検索を駆動するアクティブな埋め込みバックエンドを報告 |
 | `search_facts` | グラフから射影された時系列ファクト（Graphiti スタイル）。`current_only` で現行ファクトのみ、`as_of` は過去時点での回答。両者の併用は拒否されます（異なる時計を表すため）。`undated_included` は返された行のうち日付を持たない件数を報告します |
-| `timeline` | `valid_from` で順序付けられたファクトの縦断的ビュー |
+| `timeline` | `valid_from` で順序付けられたファクトの縦断的ビュー。`as_of` は過去時点での回答（有効期間に対する時点指定であり、範囲の下限ではありません）。`undated_included` は返された行のうち日付を持たない件数を報告します。日付のないファクトは `as_of` でも残るため、この件数だけが薄い回答と完全な回答を見分ける手がかりになります |
 | `graph_ppr` | 1 つ以上の `seed_node_id` をシードとするパーソナライズド PageRank で最も関連性の高い top-K node を返す。`alpha`、`directed`、`edge_type_weights` を調整可能 |
 | `wiki_page` | ある node のコンパイル済み markdown ページ本文と、それが参照する内部リンク |
 | `raw_source` | 元のソース markdown（16 KB を上限としてキャップ） |

@@ -57,16 +57,25 @@ _CATALOG: List[Tuple[str, str, str]] = [
     ),
     (
         "timeline",
-        '{"query": str, "since": "YYYY-MM-DD", "limit": int<=50}',
+        '{"query": str, "since": "YYYY-MM-DD", "as_of": "YYYY-MM-DD", "limit": int<=50}',
         "Dated events projected from the graph, ordered by valid_from. Best "
         "for 'what happened', changes over time, when something started. "
-        "query is optional keywords; empty query returns everything in range.",
+        "query is optional keywords; empty query returns everything in range. "
+        "since is a RANGE lower bound (events that STARTED on or after it); "
+        "as_of is a POINT pivot (facts whose validity interval COVERED that "
+        "instant, including ones that started long before and excluding ones "
+        "already superseded by then). They are different questions, never "
+        "synonyms, and either may be used alone. Most facts in this graph "
+        "carry no date: an undated fact is KEPT by as_of and DROPPED by since, "
+        "and the step reports how many either way.",
     ),
     (
         "search_facts",
-        '{"query": str, "limit": int<=20}',
+        '{"query": str, "as_of": "YYYY-MM-DD", "limit": int<=20}',
         "Subject-predicate-object temporal facts with evidence/provenance. "
-        "Best for verifying a specific claim or relation between two things.",
+        "Best for verifying a specific claim or relation between two things. "
+        "as_of is a POINT pivot — what was true at that instant, undated "
+        "facts included — not a range bound; use timeline for a window.",
     ),
     (
         "recent_sessions",
@@ -212,6 +221,38 @@ def _as_int(value: Any, default: int, cap: int) -> int:
         return default
 
 
+def _date_arg(args: Dict[str, Any], key: str) -> Optional[str]:
+    """The normalized date argument ``key``, or None when none was asked for.
+
+    One reader per argument, so "was a filter asked for?" and "apply the
+    filter" can never disagree about a blank string — the reason
+    ``mcp_server._as_of_arg`` exists.
+    """
+    raw = args.get(key)
+    if raw is None or str(raw).strip() == "":
+        return None
+    return str(raw).strip()
+
+
+def _undated_shipped(rows: List[Dict[str, Any]]) -> int:
+    """How many of the rows in THIS step's evidence carry no usable date.
+
+    Counted over the rows the synthesizer is actually handed, never over the
+    population a filter saw upstream: the pivot runs before the query filter
+    and before the limit cap, so a corpus-scoped number here would make a
+    two-row answer claim dozens of undated rows — inverting the "how thin is
+    this?" judgement the counter exists to support (mcp_server._undated_included).
+
+    The predicate is ``temporal._parse_iso``, not a test for the "undated"
+    sentinel ``TemporalFactProjector`` writes, because parseability is exactly
+    what the filters treat as dated; a second opinion would let the count
+    drift from the filter.
+    """
+    from .temporal import _parse_iso
+
+    return sum(1 for row in rows if _parse_iso(row.get("valid_from")) is None)
+
+
 _FINDING_TYPES = {kind: t.value for kind, t in SESSION_FINDING_KIND_TO_TYPE.items()}
 
 
@@ -296,27 +337,89 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
         return _clip(header + body), []
 
     if action == "timeline":
-        from .temporal import timeline
+        from .temporal import (FACT_MATCH_CEILING, _parse_iso, facts_as_of,
+                               facts_since, timeline)
 
-        result = timeline(ctx.facts(), query=str(args.get("query") or ""), limit=_as_int(args.get("limit"), 50, 50))
-        since = str(args.get("since") or "")
-        events = [
-            e for e in result["events"]
-            if not since or str(e.get("valid_from") or "") >= since
-        ]
+        as_of = _date_arg(args, "as_of")
+        since = _date_arg(args, "since")
+        # Both filters run on the FACT LIST, ahead of timeline's own sort and
+        # cap. Filtering the returned events instead put the window BEHIND an
+        # ascending sort and a limit slice: a "since July" question was handed
+        # the oldest 50 rows and then dropped every one of them, answering
+        # "(no timeline events in range)" over a corpus full of July events.
+        #
+        # Two orthogonal knobs, never one in terms of the other and never
+        # defaulted from a wall clock (that is the byte-idempotence leak
+        # compile_context is kept clear of above): as_of pivots on what was
+        # believed at an instant and reads both interval bounds, since bounds
+        # what started inside a window and reads valid_from alone. Either may
+        # raise on an unparseable date — the per-step catch then reports a
+        # failed step rather than a whole-corpus answer wearing a date label.
+        facts = ctx.facts()
+        undated_excluded: Optional[int] = None
+        if as_of is not None:
+            facts, _undated_across_corpus = facts_as_of(facts, as_of)
+        if since is not None:
+            facts, undated_excluded = facts_since(facts, since)
+        result = timeline(facts, query=str(args.get("query") or ""), limit=_as_int(args.get("limit"), 50, 50))
+        events = list(result["events"])
         lines = [
-            f"- {e.get('valid_from') or '(undated)'} {e.get('subject_name')} "
+            # The date column tests PARSEABILITY, not truthiness: the projector
+            # writes the literal string "undated" for an unknown valid_from, so
+            # `valid_from or '(undated)'` never fired and every undated row
+            # rendered as a date the model could read as one.
+            f"- {e.get('valid_from') if _parse_iso(e.get('valid_from')) else '(undated)'} "
+            f"{e.get('subject_name')} "
             f"--{e.get('predicate')}--> {e.get('object_name')}"
             + (f" ({e.get('evidence')})" if e.get("evidence") else "")
             for e in events
         ]
+        # Reported LAST, so a step that raised on a bad date reports no filter
+        # it never applied. `rows`/`undated_included` describe the rendered
+        # events; _clip can still cut the tail off a fat step, so they bound
+        # what the synthesizer read rather than equalling it exactly.
+        entry: Dict[str, Any] = {
+            "rows": len(events),
+            # ALWAYS, not only under a pivot as the MCP dispatcher does: most
+            # facts on a real graph are undated, so an UNFILTERED timeline is
+            # the thin-answer-looking-complete case too.
+            "undated_included": _undated_shipped(events),
+        }
+        if as_of is not None:
+            entry["as_of"] = as_of
+        if since is not None:
+            entry["since"] = since
+            # Corpus-scoped on purpose — by render time these rows are gone and
+            # cannot be recounted — hence the name: `undated_excluded` can never
+            # be read as "rows in this answer", which `undated_included` alone is.
+            entry["undated_excluded"] = undated_excluded
+        if int(result["total_events"]) >= FACT_MATCH_CEILING:
+            # NOT `total_events` under a name like `total`: search_facts clamps
+            # its match list at FACT_MATCH_CEILING, so timeline never sees more
+            # than that many matches and the number is a cap, not a corpus
+            # count. A boolean says "this is not everything" without asserting
+            # a magnitude — the shape the MCP dispatcher's `continuation` uses.
+            entry["capped"] = True
+        ctx.executed.append(entry)
         return _clip("\n".join(lines) or "(no timeline events in range)"), []
 
     if action == "search_facts":
-        from .temporal import search_facts
+        from .temporal import facts_as_of, search_facts
 
-        result = search_facts(ctx.facts(), query=str(args.get("query") or ""), limit=_as_int(args.get("limit"), 10, 20))
-        return _clip(json.dumps(result["facts"], ensure_ascii=False, default=str)), []
+        # as_of is advertised on the catalog entry, so it must be READ here:
+        # an advertised argument the branch ignores is a silent no-op, which is
+        # worse than not offering the knob at all.
+        as_of = _date_arg(args, "as_of")
+        facts = ctx.facts()
+        if as_of is not None:
+            facts, _undated_across_corpus = facts_as_of(facts, as_of)
+        result = search_facts(facts, query=str(args.get("query") or ""), limit=_as_int(args.get("limit"), 10, 20))
+        rows = list(result["facts"])
+        report: Dict[str, Any] = {"rows": len(rows), "undated_included": _undated_shipped(rows)}
+        if as_of is not None:
+            report["as_of"] = as_of
+        ctx.executed.append(report)
+        return _clip(json.dumps(rows, ensure_ascii=False, default=str)), []
 
     if action == "recent_sessions":
         since = str(args.get("since") or "")

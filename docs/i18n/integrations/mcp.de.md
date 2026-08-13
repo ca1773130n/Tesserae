@@ -71,7 +71,7 @@ Jedes Tool akzeptiert ein optionales `graph_path` oder `project` (Registry-Alias
 | `node_context` | Ein Node plus dessen anliegende Edges und Nachbar-Nodes. `use_ppr` rankt Nachbarn per personalisiertem PageRank statt eines 1-Hop-Walks; `include_superseded` und `limit` begrenzen das Ergebnis |
 | `embedding_status` | Meldet das aktive Embedding-Backend, das die Hybridsuche antreibt |
 | `search_facts` | Temporale Fakten, projiziert aus dem Graphen (Graphiti-Stil); `current_only` filtert auf aktuelle Fakten, `as_of` antwortet zu einem vergangenen Stichtag. Beide zusammen werden abgelehnt — sie drücken verschiedene Uhren aus — und `undated_included` meldet, wie viele der gelieferten Zeilen kein Datum tragen |
-| `timeline` | Nach `valid_from` sortierte Fakten für eine longitudinale Sicht |
+| `timeline` | Nach `valid_from` sortierte Fakten für eine longitudinale Sicht; `as_of` antwortet zu einem vergangenen Stichtag — ein Zeitpunkt über Gültigkeitsintervallen, keine Bereichsgrenze — und `undated_included` meldet, wie viele der gelieferten Zeilen kein Datum tragen. Ein undatierter Fakt bleibt unter `as_of` erhalten, deshalb unterscheidet erst dieser Zähler eine dünne Antwort von einer vollständigen |
 | `graph_ppr` | Personalisierter PageRank, ausgehend von einem oder mehreren `seed_node_id`; liefert die top-K relevantesten Nodes mit einstellbaren `alpha`, `directed`, `edge_type_weights` |
 | `wiki_page` | Der kompilierte Markdown-Seiteninhalt für einen Node plus die internen Links, die er referenziert |
 | `raw_source` | Das ursprüngliche Quell-Markdown (auf 16 KB begrenzt) |
