@@ -33,8 +33,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import (Any, Callable, Dict, List, Mapping, Optional, Sequence,
-                    Set, Tuple)
+from typing import (Any, Callable, Dict, FrozenSet, List, Mapping, Optional,
+                    Sequence, Set, Tuple)
 
 from .graph_filters import superseded_ids
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
@@ -318,7 +318,10 @@ def fit_to_budget(
 
 
 def _neighborhood_within_depth(
-    graph: ResearchGraph, seed_ids: Sequence[str], depth: int
+    graph: ResearchGraph,
+    seed_ids: Sequence[str],
+    depth: int,
+    edge_types: Optional[FrozenSet[str]] = None,
 ) -> Set[str]:
     """Return the set of node ids reachable from any seed in ``<= depth`` hops.
 
@@ -326,9 +329,18 @@ def _neighborhood_within_depth(
     ``personalized_pagerank``'s default ``directed=False``). ``depth <= 0``
     collapses to just the seeds themselves. The returned set always contains the
     valid seeds so PPR seeded on them never runs over an empty subgraph.
+
+    ``edge_types`` (default ``None`` = every edge, byte-identical to the
+    pre-view behaviour) restricts the adjacency to those edge types — the
+    mandatory companion of a view-restricted PPR walk. Without it, a node
+    within ``depth`` hops ONLY through a zero-weighted edge class is still
+    admitted here, and if the view's walk reaches it by a longer path it
+    surfaces in the bundle although the view cannot reach it within depth.
     """
     adjacency: Dict[str, Set[str]] = {}
     for edge in graph.edges:
+        if edge_types is not None and edge.type not in edge_types:
+            continue
         adjacency.setdefault(edge.source, set()).add(edge.target)
         adjacency.setdefault(edge.target, set()).add(edge.source)
 
@@ -426,6 +438,7 @@ def compile_context(
     scope: Optional[str] = None,
     strategy: str = "default",
     tame_hubs: bool = False,
+    view: Optional[str] = None,
 ) -> ContextBundle:
     """Compile a tailored, cited context bundle for ``query`` / ``seeds``.
 
@@ -457,6 +470,17 @@ def compile_context(
       wiring the sidecar's precomputed ``hubs`` list into the degree cap
       when the hierarchy is available (best-effort: a missing sidecar just
       falls back to the fanout scan).
+    * ``view=<name>`` (roadmap step 7) restricts the walk to one named edge
+      partition from :mod:`tesserae.retrieval.views` — ``semantic`` /
+      ``temporal`` / ``causal`` / ``entity``. Resolved to explicit
+      zero-weights for every out-of-view edge type (merged under any caller
+      ``edge_type_weights``, so an explicit caller weight can still
+      resurrect or silence a type) plus the matching restriction on the
+      depth-neighbourhood BFS. Unknown views fail loud with the valid names.
+      Arbitration survives the restriction: the winner of a suppressed seed
+      rides ``supersedes``/``resolved_by`` edges most views cannot traverse,
+      so under a view those winners are surfaced explicitly rather than
+      silently dropping both the stale claim and its replacement.
 
     Both ``scope`` and ``strategy="hierarchical"`` require ``project_root``
     (the sidecar lives under it); the ``budget=0`` uncapped invariant is
@@ -467,6 +491,23 @@ def compile_context(
             f"compile_context: unknown strategy {strategy!r} — expected "
             f"'default' or 'hierarchical'."
         )
+
+    # View resolution (roadmap step 7). Deliberately BEFORE Step 0 for the
+    # fail-fast ValueError, but it only takes effect strictly downstream of the
+    # Step 0 scope induction — a view alters PPR edge weights and the BFS
+    # adjacency inside whatever subgraph scope/strategy selected, never which
+    # subgraph is selected (the charter composition rule: a view must not pick
+    # a different domain).
+    nb_edge_types: Optional[FrozenSet[str]] = None
+    if view is not None:
+        from .retrieval.views import traversable_edge_types, weights_for
+
+        merged_weights = weights_for(view)  # ValueError on an unknown view
+        if edge_type_weights:
+            # Caller overrides win — exactly as they do against the defaults.
+            merged_weights.update(edge_type_weights)
+        edge_type_weights = merged_weights
+        nb_edge_types = traversable_edge_types(merged_weights)
 
     # --- Step 0 (Descent §5.4): resolve hierarchy-backed restriction --------
     hierarchy = None
@@ -587,7 +628,9 @@ def compile_context(
     # out-of-depth high-PPR nodes consume the window and valid in-depth nodes get
     # dropped. We request the FULL PPR ranking (``top_k = node count``), filter to
     # the in-depth set, THEN cap, so the cap is filled from in-depth nodes only.
-    in_neighborhood = _neighborhood_within_depth(graph, seed_ids, max(0, depth))
+    in_neighborhood = _neighborhood_within_depth(
+        graph, seed_ids, max(0, depth), edge_types=nb_edge_types
+    )
     cap = max(1, depth) * 10
     full_ranked = personalized_pagerank(
         graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes)),
@@ -628,6 +671,37 @@ def compile_context(
     ranked = in_nb[:cap]
     if not ranked:  # PITFALL 1: disconnected seeds -> fall back to seed order.
         ranked = [(sid, 0.0) for sid in seed_ids if sid not in suppressed]
+
+    # Arbitration is epistemic bookkeeping, not view semantics. View-less,
+    # the read-path contract (docstring above) is emergent: a stale seed
+    # seeds the walk and its winner is one supersedes/resolved_by hop away.
+    # Under a view those edges are usually zero-weighted (supersedes is
+    # temporal, resolved_by causal), so the loser is suppressed AND its
+    # winner unreachable — the bundle would silently contain neither the
+    # stale claim nor the current one. Surface the winners of suppressed
+    # seeds explicitly: walk results keep their order, winners append after
+    # them with score 0.0 (no walk reached them). Deterministic — edge-list
+    # order, no set iteration.
+    if view is not None and suppressed:
+        _seed_set = set(seed_ids)
+        _present = {nid for nid, _ in ranked}
+        _winners: List[str] = []
+        for edge in graph.edges:
+            if edge.type == "supersedes" and edge.target in _seed_set:
+                _winner = edge.source
+            elif edge.type == "resolved_by" and edge.source in _seed_set:
+                _winner = edge.target
+            else:
+                continue
+            if (
+                _winner in node_index
+                and _winner not in suppressed
+                and _winner not in _present
+                and _winner not in _winners
+            ):
+                _winners.append(_winner)
+        if _winners:
+            ranked = ranked + [(wid, 0.0) for wid in _winners]
     ranked_nodes = [nid for nid, _ in ranked]
 
     # Multi-pool reservation: guarantee the most relevant distilled-memory node

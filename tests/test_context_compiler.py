@@ -553,3 +553,154 @@ def test_include_superseded_restores_losers() -> None:
     assert set(bundle.selected_nodes) == {"A", "B", "C"}
     assert "Old Duplicate Claim" in bundle.body
     assert "Contradicted Claim" in bundle.body
+
+
+# --- view= (roadmap step 7): view-restricted traversal ----------------------
+
+
+def _view_leak_graph() -> ResearchGraph:
+    """C is 1 hop from the seed through an EXCLUDED edge (summarizes) but 2
+    semantic hops away (A -uses-> B -uses-> C) — the exact shape where an
+    unfiltered neighbourhood BFS leaks C into a depth-1 semantic walk."""
+    nodes = [
+        ResearchNode(
+            id="A",
+            name="Seed Concept",
+            type=ResearchNodeType.CONCEPT,
+            description="The seed concept under study. " * 8,
+        ),
+        ResearchNode(
+            id="B",
+            name="Bridge Method",
+            type=ResearchNodeType.METHODOLOGICAL_CONCEPT,
+            description="A method the seed concept uses. " * 8,
+        ),
+        ResearchNode(
+            id="C",
+            name="Distant Concept",
+            type=ResearchNodeType.CONCEPT,
+            description="Two semantic hops from the seed. " * 8,
+        ),
+    ]
+    edges = [
+        ResearchEdge(source="A", target="C", type="summarizes"),
+        ResearchEdge(source="A", target="B", type="uses"),
+        ResearchEdge(source="B", target="C", type="uses"),
+    ]
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_view_restricts_the_neighbourhood_not_just_the_ranking() -> None:
+    """The mandatory companion of the view: without the BFS edge filter, C is
+    admitted into the depth-1 neighbourhood through the zero-weighted
+    ``summarizes`` edge, then ranked positive by PPR through the longer
+    semantic path — surfacing a node the view cannot reach within depth."""
+    graph = _view_leak_graph()
+
+    unrestricted = compile_context(
+        graph, project_root=None, query="", seeds=["A"],
+        depth=1, backend=_backend(),
+    )
+    assert "C" in unrestricted.ranked_nodes  # via summarizes, 1 hop
+
+    semantic = compile_context(
+        graph, project_root=None, query="", seeds=["A"],
+        depth=1, backend=_backend(), view="semantic",
+    )
+    assert "B" in semantic.ranked_nodes  # 1 semantic hop
+    assert "C" not in semantic.ranked_nodes  # 2 semantic hops > depth=1
+    assert "C" not in semantic.selected_nodes
+
+    # At depth=2 the semantic path legitimately reaches C.
+    semantic_deep = compile_context(
+        graph, project_root=None, query="", seeds=["A"],
+        depth=2, backend=_backend(), view="semantic",
+    )
+    assert "C" in semantic_deep.ranked_nodes
+
+
+def test_view_explicit_weights_still_win() -> None:
+    """An explicit caller weight resurrects an out-of-view edge class, exactly
+    as it overrides the defaults — the view is a starting point, not a cage."""
+    graph = _view_leak_graph()
+    bundle = compile_context(
+        graph, project_root=None, query="", seeds=["A"],
+        depth=1, backend=_backend(), view="semantic",
+        edge_type_weights={"summarizes": 1.0},
+    )
+    assert "C" in bundle.ranked_nodes  # 1 hop again, through the resurrection
+
+
+def test_view_unknown_fails_loud() -> None:
+    graph = _view_leak_graph()
+    try:
+        compile_context(
+            graph, project_root=None, query="", seeds=["A"],
+            backend=_backend(), view="provenance",
+        )
+    except ValueError as exc:
+        assert "provenance" in str(exc)
+        assert "semantic" in str(exc)
+    else:  # pragma: no cover - the raise is the contract
+        raise AssertionError("unknown view must raise ValueError")
+
+
+def test_view_none_is_the_identity() -> None:
+    """``view=None`` (the default) must leave the bundle byte-identical to a
+    call that never heard of the parameter."""
+    graph = _view_leak_graph()
+    before = compile_context(
+        graph, project_root=None, query="", seeds=["A"], backend=_backend()
+    )
+    after = compile_context(
+        graph, project_root=None, query="", seeds=["A"], backend=_backend(),
+        view=None,
+    )
+    assert before == after
+
+
+def test_view_still_surfaces_the_winner_of_a_suppressed_seed() -> None:
+    """Arbitration is epistemic bookkeeping, not view semantics. The winner
+    of a suppressed seed rides supersedes/resolved_by — edges most views
+    cannot traverse — so under a view it must be surfaced explicitly, or the
+    bundle silently contains neither the stale claim nor the current one."""
+    def _claim(nid: str, name: str) -> ResearchNode:
+        return ResearchNode(
+            id=nid,
+            name=name,
+            type=ResearchNodeType.PERFORMANCE_CLAIM,
+            description=f"{name} body. " * 8,
+        )
+
+    graph = ResearchGraph(
+        nodes=[
+            _claim("A", "Stale Claim"),
+            _claim("A2", "Winning Claim"),
+            _claim("B", "Losing Claim"),
+            _claim("B2", "Resolving Claim"),
+        ],
+        edges=[
+            # source supersedes target -> target (A) is the loser.
+            ResearchEdge(source="A2", target="A", type="supersedes"),
+            # source resolved_by target -> source (B) is the loser.
+            ResearchEdge(source="B", target="B2", type="resolved_by"),
+        ],
+    )
+
+    # View-less: emergent via traversal (the existing contract).
+    walked = compile_context(
+        graph, project_root=None, query="", seeds=["A"], backend=_backend()
+    )
+    assert walked.selected_nodes == ["A2"]
+
+    # Under a view that cannot traverse the arbitration edges: explicit.
+    for seed, winner in (("A", "A2"), ("B", "B2")):
+        bundle = compile_context(
+            graph, project_root=None, query="", seeds=[seed],
+            backend=_backend(), view="semantic",
+        )
+        assert bundle.selected_nodes == [winner], (
+            f"seed {seed}: expected its winner {winner}, "
+            f"got {bundle.selected_nodes}"
+        )
+        assert seed not in bundle.ranked_nodes

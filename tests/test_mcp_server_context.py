@@ -371,6 +371,7 @@ def test_compile_context_reports_which_knobs_ran(tmp_path):
         "scope": None,
         "edge_type_weights": None,
         "tame_hubs": False,
+        "view": None,
         "recency_weight": 0.0,
         "recency_now": None,
         # Exact-dict on purpose: a knob that runs but is not reported is the
@@ -462,3 +463,55 @@ def test_compile_context_reports_whether_the_procedural_pools_ran(tmp_path):
         "DistilledNote": None,
         "ExpertiseProfile": None,
     }, f"got {on['knobs'].get('pool_reservations')!r}"
+
+
+def test_compile_context_advertises_the_view_knob():
+    """``view`` follows the step-1 rule: advertised in the schema (a closed
+    enum — the registry names the only valid values) or unreachable at all."""
+    by_name = {t["name"]: t for t in LLMWikiMCPServer().list_tools()}
+    props = by_name["compile_context"]["inputSchema"]["properties"]
+
+    assert props["view"]["enum"] == ["semantic", "temporal", "causal", "entity"]
+    # No default key: absence means the full graph, same as scope.
+    assert "default" not in props["view"]
+
+
+def test_compile_context_forwards_view_to_the_walk(tmp_path):
+    """The knob has to reach the compiler, not just validate. Every edge in
+    this graph is semantic (uses / supports_claim / extends), so the entity
+    view zeroes them all and the walk collapses to the seed — while the
+    semantic view keeps the default membership.
+
+    Seeds only, no query: hybrid-search hits become seeds themselves, and a
+    view restricts the WALK, never seed admission — with a query the whole
+    graph would enter as seeds and mask the restriction this test proves."""
+    graph_path, _ = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+    call = {"seeds": ["Paper:focal"], "depth": 2}
+
+    default = server.call_tool("compile_context", dict(call))
+    entity = server.call_tool("compile_context", dict(call, view="entity"))
+    semantic = server.call_tool("compile_context", dict(call, view="semantic"))
+
+    assert len(default["selected_node_ids"]) > 1
+    assert entity["selected_node_ids"] == ["Paper:focal"]
+    assert set(semantic["selected_node_ids"]) == set(default["selected_node_ids"])
+    # And what ran is reported, not buried.
+    assert default["knobs"]["view"] is None
+    assert entity["knobs"]["view"] == "entity"
+    assert semantic["knobs"]["view"] == "semantic"
+
+
+def test_compile_context_rejects_an_unknown_view_as_a_tool_error(tmp_path):
+    """The registry validates by raising; an uncaught raise in the dispatcher
+    is a transport fault, not an answerable tool result."""
+    graph_path, _ = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    result = server.call_tool(
+        "compile_context", {"seeds": ["Paper:focal"], "view": "provenance"}
+    )
+
+    assert "error" in result
+    assert "provenance" in result["error"]
+    assert "body" not in result
