@@ -89,7 +89,7 @@ Tesserae 把这项集成干净地拆成两部分：
 
 当配置的工具使用 `sync_mode: native_graph` 时，Tesserae 会在 compile 期间原生导入解析后的 manifest。
 
-原生适配器读取 `.tesserae/external/raganything/manifest.json`，把每个解析后的文档投影为一个带有多模态块元数据的 `SourceFile` node，并写入 sync manifest：
+原生适配器读取 `.tesserae/external/raganything/manifest.json`，将每个解析后的文档投影为一个具有多模态块元数据的 `SourceDocument` node——并且，对于每个具有可解析内容的图/表/公式，创建一个一等的 `Artifact` 证据 node（内容哈希 id，`part_of` 其文档，可通过 `evidenced_by` 定位）——然后写入 sync manifest：
 
 ```text
 .tesserae/external/raganything-sync.json
@@ -99,11 +99,11 @@ Tesserae 把这项集成干净地拆成两部分：
 
 | RAG-Anything | Tesserae 方向 |
 |---|---|
-| `documents[*]` | `SourceFile` node，`metadata.parser="raganything"` |
-| `content_list[type=text]` | 折入 `SourceFile.description`；concepts 通过现有提取器生成 |
-| `content_list[type=image]` | `SourceFile.metadata.multimodal_blocks[]`（`img_path`、`caption`） |
-| `content_list[type=table]` | `SourceFile.metadata.multimodal_blocks[]`（`table_body`、`caption`） |
-| `content_list[type=equation]` | `SourceFile.metadata.multimodal_blocks[]` 和 `metadata.equations[]`（保留 LaTeX） |
+| `documents[*]` | `SourceDocument` node，`metadata.parser="raganything"`，`metadata.content_hash` = 源 sha256 |
+| `content_list[type=text]` | 折入 `SourceDocument.description`；concepts 通过现有提取器生成 |
+| `content_list[type=image]` | `Artifact` node（id 来自资产**字节** sha256，标题作为描述）+ `SourceDocument.metadata.multimodal_blocks[]`（`img_path`、`caption`、`content_hash` 联接键）；无法解析的资产明确跳过该 node（sync manifest 中的 `skipped_blocks`） |
+| `content_list[type=table]` | `Artifact` node（id 来自 `table_body` sha256，主体作为描述）+ `multimodal_blocks[]`（`table_body`、`caption`、`content_hash`） |
+| `content_list[type=equation]` | `Artifact` node（id 来自 `latex` sha256，LaTeX 作为描述）+ `multimodal_blocks[]` 和 `metadata.equations[]`（保留 LaTeX） |
 
 每个节点都保留 provenance：
 

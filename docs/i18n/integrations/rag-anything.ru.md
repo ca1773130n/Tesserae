@@ -91,7 +91,7 @@ Tesserae чисто разделяет интеграцию:
 
 Tesserae импортирует распарсенный манифест нативно во время компиляции, когда настроенный инструмент использует `sync_mode: native_graph`.
 
-Нативный адаптер читает `.tesserae/external/raganything/manifest.json`, проецирует каждый распарсенный документ в узел `SourceFile` с метаданными мультимодальных блоков и пишет манифест синхронизации:
+Нативный адаптер читает `.tesserae/external/raganything/manifest.json`, проецирует каждый распарсенный документ в узел `SourceDocument` с метаданными мультимодальных блоков — и для каждого рисунка/таблицы/уравнения с разрешаемым содержимым создаёт узел `Artifact` первого класса (идентификатор по хешу контента, `part_of` его документа, адресуемый через `evidenced_by`) — затем пишет манифест синхронизации:
 
 ```text
 .tesserae/external/raganything-sync.json
@@ -101,11 +101,11 @@ Tesserae импортирует распарсенный манифест нат
 
 | RAG-Anything | Направление Tesserae |
 |---|---|
-| `documents[*]` | Узел `SourceFile`, `metadata.parser="raganything"` |
-| `content_list[type=text]` | сворачивается в `SourceFile.description`; концепты через существующий экстрактор |
-| `content_list[type=image]` | `SourceFile.metadata.multimodal_blocks[]` (`img_path`, `caption`) |
-| `content_list[type=table]` | `SourceFile.metadata.multimodal_blocks[]` (`table_body`, `caption`) |
-| `content_list[type=equation]` | `SourceFile.metadata.multimodal_blocks[]` и `metadata.equations[]` (LaTeX сохраняется) |
+| `documents[*]` | узел `SourceDocument`, `metadata.parser="raganything"`, `metadata.content_hash` = источник sha256 |
+| `content_list[type=text]` | сворачивается в `SourceDocument.description`; концепты через существующий экстрактор |
+| `content_list[type=image]` | узел `Artifact` (идентификатор по хешу **байтов** актива, подпись как описание) + `SourceDocument.metadata.multimodal_blocks[]` (`img_path`, `caption`, ключ соединения `content_hash`); недоступные активы пропускаются явно (`skipped_blocks` в манифесте синхронизации) |
+| `content_list[type=table]` | узел `Artifact` (идентификатор по хешу `table_body`, тело как описание) + `multimodal_blocks[]` (`table_body`, `caption`, `content_hash`) |
+| `content_list[type=equation]` | узел `Artifact` (идентификатор по хешу `latex`, LaTeX как описание) + `multimodal_blocks[]` и `metadata.equations[]` (LaTeX сохраняется) |
 
 Provenance сохраняется на каждом узле:
 

@@ -88,6 +88,11 @@ def identity_key(node: ResearchNode) -> Optional[tuple]:
     if node.type == ResearchNodeType.SOURCE_DOCUMENT:
         content_hash = str(md.get("content_hash") or "").strip()
         return ("SourceDocument", content_hash) if content_hash else None
+    if node.type == ResearchNodeType.ARTIFACT:
+        # Same figure/table/equation bytes in two projects ARE the same
+        # artifact — identity is the content hash the producer stamped.
+        content_hash = str(md.get("content_hash") or "").strip()
+        return ("Artifact", content_hash) if content_hash else None
     # Agent-layer identities (2026-07-19 layered-agent-kg spec §4). The
     # ``agent_key`` is role-grade (``harness:account:role``); ``lineage_key``
     # hashes the sorted transitive raw L0 member ids underlying a distillate

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
@@ -19,10 +20,15 @@ from .research_graph import (
     ResearchGraphBuilder,
     ResearchNode,
     ResearchNodeType,
+    truncate,
 )
 
+logger = logging.getLogger(__name__)
 
 _MULTIMODAL_BLOCK_TYPES = ("image", "table", "equation")
+
+#: Display label per multimodal block kind for Artifact node names.
+_ARTIFACT_LABELS = {"image": "Figure", "table": "Table", "equation": "Equation"}
 
 
 @dataclass(frozen=True)
@@ -68,6 +74,80 @@ def _block_summary(block: Mapping[str, object]) -> dict:
     return summary
 
 
+def _artifact_content(
+    summary: Mapping[str, object],
+    *,
+    project_root: Path,
+    parsed_dir: str,
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """Resolve a multimodal block to ``(content_hash, asset_rel, skip_reason)``.
+
+    The hash input is the block's CONTENT and nothing else — image bytes,
+    ``table_body`` verbatim, ``latex`` verbatim. No caption, no page index,
+    no path: the hash IS the node's identity seed, and a re-parse into a
+    different working_dir must not move node ids (roadmap step 9's
+    non-negotiable — the same leak class the byte-idempotence suite guards).
+
+    ``asset_rel`` is the resolved image path relative to ``project_root``
+    (forward slashes), returned ONLY when the asset lives under the root —
+    an out-of-tree path never lands in graph.json. Non-image kinds return
+    ``None`` for it. ``skip_reason`` is set when no content is resolvable;
+    the caller skips minting and records the skip loudly.
+
+    Hashing is the import path's FIRST disk dereference of ``img_path``;
+    per-figure reads are cheap, but an adversarial manifest can point at a
+    huge file — acceptable for now.
+    """
+    kind = str(summary.get("type") or "")
+    if kind == "image":
+        raw = str(summary.get("img_path") or "")
+        if not raw:
+            return None, None, "image block has no img_path"
+        candidates: list[Path] = []
+        raw_path = Path(raw)
+        if raw_path.is_absolute():
+            candidates.append(raw_path)
+        elif parsed_dir:
+            # MinerU img_paths are relative to the parsed output dir, and the
+            # producer always writes parsed_dir — so when it is declared, it
+            # is the ONLY legitimate resolution. Falling back to the project
+            # root here would let an unrelated same-named repo file win and
+            # mint an Artifact whose identity describes the wrong bytes
+            # (adversarial-review finding): a missing parsed asset must be a
+            # loud skip, never a silent wrong-file hit.
+            candidates.append(project_root / parsed_dir / raw)
+        else:
+            # No parsed_dir declared (hand-written manifests): the project
+            # root is the only base there is.
+            candidates.append(project_root / raw)
+        for candidate in candidates:
+            if not candidate.is_file():
+                continue
+            try:
+                digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+            except OSError as exc:
+                return None, None, f"unreadable image asset: {exc}"
+            try:
+                rel = str(
+                    candidate.resolve().relative_to(project_root.resolve())
+                ).replace("\\", "/")
+            except ValueError:
+                rel = None  # outside the project root — never store the path
+            return digest, rel, None
+        return None, None, "image asset not found"
+    if kind == "table":
+        body = str(summary.get("table_body") or "")
+        if not body:
+            return None, None, "table block has no table_body"
+        return hashlib.sha256(body.encode("utf-8")).hexdigest(), None, None
+    if kind == "equation":
+        latex = str(summary.get("latex") or "")
+        if not latex:
+            return None, None, "equation block has no latex"
+        return hashlib.sha256(latex.encode("utf-8")).hexdigest(), None, None
+    return None, None, f"unsupported block kind {kind!r}"
+
+
 def _collect_text(content_list: Iterable[Mapping[str, object]]) -> str:
     chunks: list[str] = []
     for block in content_list:
@@ -110,6 +190,7 @@ class RagAnythingGraphAdapter:
             documents = []
         builder = ResearchGraphBuilder()
         doc_to_node: dict[str, ResearchNode] = {}
+        skipped_blocks: list[dict] = []
 
         for doc in documents:
             if not isinstance(doc, dict):
@@ -123,6 +204,34 @@ class RagAnythingGraphAdapter:
                 _block_summary(b) for b in content_list
                 if isinstance(b, dict) and str(b.get("type") or "").lower() in _MULTIMODAL_BLOCK_TYPES
             ]
+            # Resolve each block to its content hash BEFORE the document node
+            # is minted: the hash lands on the block summary as the join key
+            # between metadata['multimodal_blocks'] (kept verbatim for
+            # back-compat) and the first-class Artifact node minted below.
+            parsed_dir = str(doc.get("parsed_dir") or "")
+            block_content: list[tuple[dict, Optional[str], Optional[str]]] = []
+            for summary in blocks:
+                content_hash, asset_rel, skip_reason = _artifact_content(
+                    summary, project_root=self.project_root, parsed_dir=parsed_dir
+                )
+                if content_hash is None:
+                    # Loud degrade, not silent and not fatal: the block stays
+                    # in multimodal_blocks, the skip is logged AND recorded in
+                    # the sync manifest, and no path- or caption-derived
+                    # pseudo-identity is ever minted in place of the hash.
+                    logger.warning(
+                        "raganything: not minting Artifact for %s block in %s: %s",
+                        summary.get("type"), doc_id, skip_reason,
+                    )
+                    skipped_blocks.append({
+                        "doc_id": doc_id,
+                        "type": str(summary.get("type") or ""),
+                        "img_path": str(summary.get("img_path") or ""),
+                        "reason": str(skip_reason or ""),
+                    })
+                    continue
+                summary["content_hash"] = content_hash
+                block_content.append((summary, content_hash, asset_rel))
             description = _collect_text(content_list)
             metadata = {
                 "parser": "raganything",
@@ -132,6 +241,12 @@ class RagAnythingGraphAdapter:
                 "external_refs": [_doc_external_ref(artifact_rel, doc_id)],
                 "multimodal_blocks": blocks,
             }
+            # Content-derived and deterministic — and it is what
+            # federation.identity_key keys SourceDocument merges on, which
+            # until now never fired for raganything documents.
+            doc_sha = str(doc.get("sha256") or "").strip()
+            if doc_sha:
+                metadata["content_hash"] = doc_sha
             equations = [b for b in blocks if b["type"] == "equation"]
             if equations:
                 metadata["equations"] = equations
@@ -150,12 +265,72 @@ class RagAnythingGraphAdapter:
             )
             doc_to_node[doc_id] = node
 
+            # First-class Artifact evidence nodes (roadmap step 9): one per
+            # multimodal block with resolvable content, id seeded from the
+            # CONTENT hash — byte-identical content in one or many documents
+            # collapses to ONE node (graph identity == federation identity),
+            # with a part_of edge to each owning document. The edge mirrors
+            # ``_add_evidence``'s span→paper shape; ``evidenced_by`` from
+            # citing claims is a consumer concern (no claims exist here).
+            seen_artifact_edges: set[tuple[str, str]] = set()
+            for summary, content_hash, asset_rel in block_content:
+                kind = str(summary.get("type") or "")
+                caption_list = [str(c) for c in (summary.get("caption") or [])]
+                first_caption = caption_list[0].strip() if caption_list else ""
+                label = _ARTIFACT_LABELS.get(kind, "Artifact")
+                name = (
+                    f"{label}: {truncate(first_caption, 72)}"
+                    if first_caption
+                    else f"{label} {content_hash[:12]}"
+                )
+                if kind == "table":
+                    artifact_description = str(summary.get("table_body") or "")
+                elif kind == "equation":
+                    artifact_description = str(summary.get("latex") or "")
+                else:
+                    artifact_description = "\n".join(caption_list)
+                artifact_metadata: dict = {
+                    "parser": "raganything",
+                    "kind": kind,
+                    "content_hash": content_hash,
+                    "page": summary.get("page"),
+                    "caption": caption_list,
+                }
+                if asset_rel:
+                    artifact_metadata["asset_path"] = asset_rel
+                # The owning document's path may be ABSOLUTE for registered
+                # out-of-tree sources (raganything_refresh stores those
+                # verbatim). The document node keeps that pre-existing
+                # behaviour, but an Artifact node must never carry a
+                # machine-specific path (adversarial-review finding — the
+                # exact leak class its content-hashed id exists to prevent).
+                artifact_source_path = (
+                    path if path and not Path(path).is_absolute() else None
+                )
+                artifact_node = builder.add_node(
+                    name,
+                    ResearchNodeType.ARTIFACT,
+                    description=artifact_description,
+                    source_path=artifact_source_path,
+                    metadata=artifact_metadata,
+                    id_seed=f"raganything:artifact:{kind}:{content_hash}",
+                )
+                edge_key = (artifact_node.id, node.id)
+                if edge_key not in seen_artifact_edges:
+                    seen_artifact_edges.add(edge_key)
+                    builder.add_edge(artifact_node, "part_of", node)
+
         graph = builder.build()
         manifest = {
             "artifact": artifact_rel,
             "artifact_sha256": artifact_sha256,
             "imported_documents": {doc_id: node.id for doc_id, node in sorted(doc_to_node.items())},
         }
+        if skipped_blocks:
+            manifest["skipped_blocks"] = sorted(
+                skipped_blocks,
+                key=lambda entry: (entry["doc_id"], entry["type"], entry["img_path"]),
+            )
         return graph, manifest
 
 

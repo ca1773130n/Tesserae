@@ -91,7 +91,7 @@ The split means `compile` is fast, deterministic, and key-free; only retrieval-t
 
 Tesserae imports the parsed manifest natively during compile when the configured tool uses `sync_mode: native_graph`.
 
-The native adapter reads `.tesserae/external/raganything/manifest.json`, projects each parsed document into a `SourceFile` node with multimodal block metadata, and writes a sync manifest:
+The native adapter reads `.tesserae/external/raganything/manifest.json`, projects each parsed document into a `SourceDocument` node with multimodal block metadata — and, per figure/table/equation with resolvable content, a first-class `Artifact` evidence node (content-hash id, `part_of` its document, targetable by `evidenced_by`) — then writes a sync manifest:
 
 ```text
 .tesserae/external/raganything-sync.json
@@ -101,11 +101,11 @@ Current mapping:
 
 | RAG-Anything | Tesserae direction |
 |---|---|
-| `documents[*]` | `SourceFile` node, `metadata.parser="raganything"` |
-| `content_list[type=text]` | folded into `SourceFile.description`; concepts via existing extractor |
-| `content_list[type=image]` | `SourceFile.metadata.multimodal_blocks[]` (`img_path`, `caption`) |
-| `content_list[type=table]` | `SourceFile.metadata.multimodal_blocks[]` (`table_body`, `caption`) |
-| `content_list[type=equation]` | `SourceFile.metadata.multimodal_blocks[]` and `metadata.equations[]` (LaTeX preserved) |
+| `documents[*]` | `SourceDocument` node, `metadata.parser="raganything"`, `metadata.content_hash` = source sha256 |
+| `content_list[type=text]` | folded into `SourceDocument.description`; concepts via existing extractor |
+| `content_list[type=image]` | `Artifact` node (id from the asset **bytes** sha256, caption as description) + `SourceDocument.metadata.multimodal_blocks[]` (`img_path`, `caption`, `content_hash` join key); unresolvable assets skip the node loudly (`skipped_blocks` in the sync manifest) |
+| `content_list[type=table]` | `Artifact` node (id from `table_body` sha256, body as description) + `multimodal_blocks[]` (`table_body`, `caption`, `content_hash`) |
+| `content_list[type=equation]` | `Artifact` node (id from `latex` sha256, LaTeX as description) + `multimodal_blocks[]` and `metadata.equations[]` (LaTeX preserved) |
 
 Provenance is preserved on each node:
 

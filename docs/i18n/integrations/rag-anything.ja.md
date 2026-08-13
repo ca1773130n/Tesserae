@@ -86,7 +86,7 @@ Tesserae は統合を明確に分割しています:
 
 設定されたツールが `sync_mode: native_graph` を使う場合、Tesserae はコンパイル中に解析済みマニフェストをネイティブにインポートします。
 
-ネイティブアダプタは `.tesserae/external/raganything/manifest.json` を読み込み、解析された各ドキュメントをマルチモーダルブロックのメタデータ付き `SourceFile` ノードへ射影し、同期マニフェストを書き込みます:
+ネイティブアダプタは `.tesserae/external/raganything/manifest.json` を読み込み、解析された各ドキュメントをマルチモーダルブロックメタデータ付き `SourceDocument` ノードへ射影し、さらに（解決可能な内容を持つ各図表/表/数式ごとに）一級市民の `Artifact` 証拠ノード（content-hash id、`part_of` そのドキュメント、`evidenced_by` でターゲット可能）を生成し、同期マニフェストを書き込みます:
 
 ```text
 .tesserae/external/raganything-sync.json
@@ -96,11 +96,11 @@ Tesserae は統合を明確に分割しています:
 
 | RAG-Anything | Tesserae 側 |
 |---|---|
-| `documents[*]` | `SourceFile` ノード、`metadata.parser="raganything"` |
-| `content_list[type=text]` | `SourceFile.description` に畳み込み; 概念は既存の抽出器経由 |
-| `content_list[type=image]` | `SourceFile.metadata.multimodal_blocks[]`（`img_path`、`caption`） |
-| `content_list[type=table]` | `SourceFile.metadata.multimodal_blocks[]`（`table_body`、`caption`） |
-| `content_list[type=equation]` | `SourceFile.metadata.multimodal_blocks[]` と `metadata.equations[]`（LaTeX を保持） |
+| `documents[*]` | `SourceDocument` ノード、`metadata.parser="raganything"`、`metadata.content_hash` = ソース sha256 |
+| `content_list[type=text]` | `SourceDocument.description` に畳み込み; 概念は既存の抽出器経由 |
+| `content_list[type=image]` | `Artifact` ノード（id はアセット **バイト列** sha256 から、キャプションを説明として）+ `SourceDocument.metadata.multimodal_blocks[]`（`img_path`、`caption`、`content_hash` 結合キー）; 解決不可なアセットはノード生成をスキップ（同期マニフェストの `skipped_blocks` に記録） |
+| `content_list[type=table]` | `Artifact` ノード（id は `table_body` sha256 から、ボディを説明として）+ `multimodal_blocks[]`（`table_body`、`caption`、`content_hash`） |
+| `content_list[type=equation]` | `Artifact` ノード（id は `latex` sha256 から、LaTeX を説明として）+ `multimodal_blocks[]` と `metadata.equations[]`（LaTeX 保持） |
 
 来歴（provenance）は各ノードに保持されます:
 

@@ -41,6 +41,15 @@ class ResearchNodeType(str, Enum):
     PERSON = "Person"
     CODE_PROJECT = "CodeProject"
     SOURCE_FILE = "SourceFile"
+    # A multimodal evidence block lifted out of a parsed document — a figure,
+    # table or equation (roadmap step 9). Producer-owned: minted ONLY by the
+    # raganything import (tesserae/raganything_adapter.py) with an id seeded
+    # from the asset's CONTENT hash, never a parser output path — a re-parse
+    # into a different working_dir must not move node ids. Kept out of
+    # EXTRACTABLE_NODE_TYPES and denied to agent writes for the same reason
+    # ``recovers`` is: an LLM-minted "Figure 3" with no content hash is the
+    # Event failure all over again.
+    ARTIFACT = "Artifact"
     # Code-graph ingest (`tesserae code ingest`): mints a typed
     # symbol graph from Python source via the stdlib `ast` module. See
     # tesserae/code_graph_extractor.py for the producer. CODE_FILE is the
@@ -242,7 +251,12 @@ CODE_GRAPH_TYPES: FrozenSet[ResearchNodeType] = frozenset({
 # producers of code-graph.json wrote node ids under incompatible schemes. So
 # documents and sessions may no longer name a code type at all, while
 # ``ALLOWED_NODE_TYPES`` keeps reading the ones already on disk.
-EXTRACTABLE_NODE_TYPES: Set[str] = ALLOWED_NODE_TYPES - {item.value for item in CODE_GRAPH_TYPES}
+# ``Artifact`` is subtracted for the same reason ``recovers`` is subtracted
+# from EXTRACTABLE_EDGE_TYPES: identity is a content hash only a producer can
+# compute. Leave it in and the extraction LLM gains the type the moment the
+# enum member exists — an LLM-minted "Figure 3" with no hash is exactly how
+# all 226 ``Event`` nodes went wrong.
+EXTRACTABLE_NODE_TYPES: Set[str] = ALLOWED_NODE_TYPES - {item.value for item in CODE_GRAPH_TYPES} - {ResearchNodeType.ARTIFACT.value}
 
 
 # THE source of truth for the session-finding taxonomy: the ``kind`` string the
@@ -1064,6 +1078,14 @@ def _merge_same_type_aliased_duplicates(
         # nodes from two agents are distinct provenance and must never
         # fuse. See the 2026-07-19 layered-agent-kg spec.
         if node.type in AGENT_LAYER_TYPES:
+            continue
+        # Artifact evidence nodes are likewise NOT collapsed by aggressive
+        # same-name dedup. Two figures captioned "Pipeline overview" in two
+        # different papers share a display name but are distinct evidence —
+        # identity lives in ``metadata.content_hash`` (the id seed), exactly
+        # the Runbook/Gotcha rationale above. Byte-identical assets already
+        # collapse upstream through the content-hashed id itself.
+        if node.type == ResearchNodeType.ARTIFACT:
             continue
         key = _aggressive_dedup_key(node.name or "")
         if not key:
