@@ -16,6 +16,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from .memory.contradiction import RESOLVED_BY_EDGE
 from .research_graph import (RETRACTION_EDGE_TYPES, ResearchGraph, ResearchNode,
                              ResearchNodeType, stable_id)
 
@@ -51,6 +52,24 @@ INVALIDATING_PREDICATES = {
     "supersedes",
     "invalidates",
 } | set(RETRACTION_EDGE_TYPES)
+
+# Predicates that end their own SOURCE — the OPPOSITE orientation.
+#
+# ``memory.contradiction`` mints ``loser resolved_by winner``, so the losing
+# claim is the edge's source. Folding it into INVALIDATING_PREDICATES would
+# close the interval on the WINNER, which is a worse answer than the hole it
+# was meant to fill. ``graph_filters.superseded_ids`` already encodes both
+# orientations for the read surfaces; this is the same distinction on the
+# temporal axis, and the two must be read together.
+#
+# Imported rather than re-spelled so the pass that mints the edge stays its
+# one source of truth — the discipline RETRACTION_EDGE_TYPES established.
+RESOLVING_PREDICATES = {RESOLVED_BY_EDGE}
+
+#: Every predicate that closes an interval, in either orientation. Callers that
+#: only need "does this edge end something" ask this; callers that need to know
+#: WHICH endpoint ended ask :func:`_closing_roles`.
+INTERVAL_CLOSING_PREDICATES = INVALIDATING_PREDICATES | RESOLVING_PREDICATES
 
 # Timestamp ladder for ``valid_from`` — most-specific observation first.
 #
@@ -356,6 +375,55 @@ def _boundary_precedes_start(valid_from: Optional[str], valid_to: Optional[str])
     return end <= start
 
 
+def _closing_roles(
+    predicate: str, subject_id: str, object_id: str
+) -> Optional[Tuple[str, str]]:
+    """``(loser_id, winner_id)`` for an interval-closing edge, else ``None``.
+
+    The two orientations are NOT interchangeable and getting them backwards
+    ends the survivor instead of the loser:
+
+    - ``subject supersedes object`` (also ``contradicts_claim`` /
+      ``invalidates`` / ``retracts``) — the TARGET lost.
+    - ``subject resolved_by object`` — the SOURCE lost.
+
+    INVALIDATING_PREDICATES is consulted first; the two sets are disjoint
+    today and a predicate that ever landed in both would be an ontology bug,
+    not a case to arbitrate here.
+    """
+    if predicate in INVALIDATING_PREDICATES:
+        return object_id, subject_id
+    if predicate in RESOLVING_PREDICATES:
+        return subject_id, object_id
+    return None
+
+
+def _winner_precedes_loser(
+    winner_ts: Optional[str], loser_ts: Optional[str]
+) -> bool:
+    """True when the winner is NOT strictly newer than the node it ends.
+
+    Graphiti's contradiction resolution only invalidates when the surviving
+    edge is strictly later, and the reason transfers: a winner observed at or
+    before its loser cannot say when the loser stopped being true — it was
+    already there. Inventing a boundary from it back-dates the loser's death
+    to before its own birth.
+
+    :func:`_boundary_precedes_start` catches the same inversion one layer
+    down, but only after the earliest winner has already been chosen, so a
+    back-dated winner would poison a boundary a later, legitimate winner could
+    have supplied. Filtering candidates here keeps that boundary.
+
+    Unorderable endpoints are not judged: an absent or unparseable timestamp
+    means we cannot tell, and under-claiming a filter is safer than dropping a
+    real boundary on a string we failed to parse.
+    """
+    win, lose = _parse_iso(winner_ts), _parse_iso(loser_ts)
+    if win is None or lose is None:
+        return False
+    return win <= lose
+
+
 @dataclass(frozen=True)
 class TemporalFact:
     id: str
@@ -370,7 +438,8 @@ class TemporalFact:
     valid_from: Optional[str] = None
     valid_to: Optional[str] = None
     # Which edge kind closed the interval: "supersedes" | "invalidates" |
-    # "contradicts_claim" | None. Non-null exactly when ``valid_to`` is.
+    # "contradicts_claim" | "retracts" | "resolved_by" | None. Non-null exactly
+    # when ``valid_to`` is. The enumerated set is INTERVAL_CLOSING_PREDICATES.
     valid_to_basis: Optional[str] = None
     current: bool = True
     invalidated_by: List[str] = field(default_factory=list)
@@ -418,23 +487,30 @@ class TemporalFactProjector:
         # ``invalidated_by`` is additionally SORTED before it is written, so it
         # does not inherit ``graph.edges`` ordering either.
         invalidators: Dict[str, List[str]] = {}
-        # ended node id -> (timestamp, basis predicate, superseder node id)
+        # ended node id -> (timestamp, basis predicate, winner node id)
         ended_by: Dict[str, Tuple[str, str, str]] = {}
         for fact in facts:
-            if fact.predicate not in INVALIDATING_PREDICATES:
+            # Which endpoint lost depends on the predicate's orientation —
+            # ``supersedes`` kills its target, ``resolved_by`` kills its own
+            # source. See _closing_roles.
+            roles = _closing_roles(fact.predicate, fact.subject_id, fact.object_id)
+            if roles is None:
                 continue
-            invalidators.setdefault(fact.object_id, []).append(fact.id)
+            loser_id, winner_id = roles
+            invalidators.setdefault(loser_id, []).append(fact.id)
             # The superseded node ends when its EARLIEST superseder was
             # observed. An undated superseder cannot close the interval:
             # ``current`` still flips (we know it ended) but ``valid_to``
             # stays None (we do not know when) — never a guessed boundary.
-            ts = _source_ts(nodes.get(fact.subject_id), roots)
+            ts = _source_ts(nodes.get(winner_id), roots)
             if ts is None:
                 continue
-            entry = (ts, fact.predicate, fact.subject_id)
-            prior = ended_by.get(fact.object_id)
+            if _winner_precedes_loser(ts, _source_ts(nodes.get(loser_id), roots)):
+                continue
+            entry = (ts, fact.predicate, winner_id)
+            prior = ended_by.get(loser_id)
             if prior is None or _end_sort_key(entry) < _end_sort_key(prior):
-                ended_by[fact.object_id] = entry
+                ended_by[loser_id] = entry
 
         updated: List[TemporalFact] = []
         for fact in facts:
@@ -446,8 +522,13 @@ class TemporalFactProjector:
             # overwhelmingly the SUBJECT of its facts (finding --discussed_in-->
             # doc), so an object-only check left every fact of a superseded
             # finding reading ``current: true``.
-            if fact.predicate in INVALIDATING_PREDICATES:
-                endpoints = [fact.subject_id]
+            #
+            # Stated by orientation rather than by side: the surviving endpoint
+            # is the WINNER, which is the subject of a ``supersedes`` fact and
+            # the object of a ``resolved_by`` one.
+            roles = _closing_roles(fact.predicate, fact.subject_id, fact.object_id)
+            if roles is not None:
+                endpoints = [roles[1]]
             else:
                 endpoints = [fact.subject_id, fact.object_id]
             killers: List[str] = []
@@ -603,7 +684,8 @@ def facts_as_of(
     and the count comes back to the caller. An agent must never receive an
     "as of DATE" answer that is mostly undated rows without being told —
     coverage is thin today (``contradicts_claim`` and ``invalidates`` are
-    empty on a real graph, so every boundary rides on ``supersedes`` edges),
+    empty on a real graph and ``resolved_by`` carries 17 edges, so almost
+    every boundary rides on ``supersedes``),
     and this counter is what keeps the answer honest instead of complete-looking.
 
     Raises ``ValueError`` on an unparseable ``as_of`` rather than silently

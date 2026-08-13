@@ -870,9 +870,9 @@ class WikiLinter:
         """
         try:
             from .research_graph import graph_from_payload
-            from .temporal import (INVALIDATING_PREDICATES,
-                                   _boundary_precedes_start, _end_sort_key,
-                                   _latest_ts, _source_ts, first_string,
+            from .temporal import (_boundary_precedes_start, _closing_roles,
+                                   _end_sort_key, _latest_ts, _source_ts,
+                                   _winner_precedes_loser, first_string,
                                    graph_project_roots)
 
             graph = graph_from_payload(
@@ -937,17 +937,25 @@ class WikiLinter:
             return
 
         # Pass 2: a node ends when its EARLIEST dated superseder was observed.
+        # Which endpoint lost is orientation-dependent (``supersedes`` kills
+        # its target, ``resolved_by`` its own source), so ask _closing_roles
+        # rather than assuming a side — assuming one here would report the
+        # winner's interval as closed.
         ended_by: Dict[str, Tuple[str, str, str]] = {}
         for subject_id, object_id, predicate, _vf in derived:
-            if predicate not in INVALIDATING_PREDICATES:
+            roles = _closing_roles(predicate, subject_id, object_id)
+            if roles is None:
                 continue
-            stamp = source_ts(subject_id)
+            loser_id, winner_id = roles
+            stamp = source_ts(winner_id)
             if stamp is None:
                 continue
-            entry = (stamp, predicate, subject_id)
-            prior = ended_by.get(object_id)
+            if _winner_precedes_loser(stamp, source_ts(loser_id)):
+                continue
+            entry = (stamp, predicate, winner_id)
+            prior = ended_by.get(loser_id)
             if prior is None or _end_sort_key(entry) < _end_sort_key(prior):
-                ended_by[object_id] = entry
+                ended_by[loser_id] = entry
 
         undated = 0
         # ``valid_to_basis`` is non-null exactly when ``valid_to`` is, so
@@ -956,11 +964,8 @@ class WikiLinter:
         for subject_id, object_id, predicate, valid_from in derived:
             if (valid_from or "undated") == "undated":
                 undated += 1
-            endpoints = (
-                [subject_id]
-                if predicate in INVALIDATING_PREDICATES
-                else [subject_id, object_id]
-            )
+            roles = _closing_roles(predicate, subject_id, object_id)
+            endpoints = [roles[1]] if roles is not None else [subject_id, object_id]
             ends = [ended_by[e] for e in endpoints if e in ended_by]
             if ends:
                 best = min(ends, key=_end_sort_key)

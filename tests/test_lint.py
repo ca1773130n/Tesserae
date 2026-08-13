@@ -979,15 +979,18 @@ def _coverage_graph(
     superseded: int,
     edge_dated: int = 0,
     chained: int = 0,
+    resolved: int = 0,
+    backdated: int = 0,
 ) -> dict:
     """Edges whose endpoints carry a first_seen_at get a real ``valid_from``;
     endpoints without one land in the literal ``"undated"`` bucket that
     ``timeline()`` sorts under with no signal to the caller.
 
-    ``edge_dated`` and ``chained`` build the two shapes that the probe's dating
-    and invalidation rules BRANCH on. They default to 0 so the arithmetic in
-    the per-number tests below stays round; the anti-drift test passes both,
-    because a fixture that never reaches a branch cannot pin it. See
+    ``edge_dated``, ``chained``, ``resolved`` and ``backdated`` build the
+    shapes that the probe's dating and invalidation rules BRANCH on. They
+    default to 0 so the arithmetic in the per-number tests below stays round;
+    the anti-drift test passes all of them, because a fixture that never
+    reaches a branch cannot pin it. See
     :func:`test_lint_interval_coverage_matches_the_temporal_projector_exactly`.
     """
     nodes = [_node("hub", "Concept", "hub")]
@@ -1049,6 +1052,42 @@ def _coverage_graph(
         )
         edges.append({"source": f"c_new{i}", "target": f"c_mid{i}", "type": "supersedes"})
         edges.append({"source": f"c_mid{i}", "target": f"c_old{i}", "type": "supersedes"})
+    # ``resolved_by`` runs the OPPOSITE orientation: the edge's SOURCE is the
+    # loser. Reading the endpoints as if it were ``supersedes`` closes the
+    # winner's interval instead, so the probe has to consult _closing_roles
+    # and this arm is what makes that visible in the histogram.
+    for i in range(resolved):
+        nodes.append(
+            _node(f"r_loser{i}", "PerformanceClaim", f"resolved loser {i}",
+                  metadata={"first_seen_at": "2026-01-01"})
+        )
+        nodes.append(
+            _node(f"r_winner{i}", "PerformanceClaim", f"resolved winner {i}",
+                  metadata={"first_seen_at": "2026-03-03"})
+        )
+        edges.append({"source": f"r_loser{i}", "target": f"r_winner{i}", "type": "resolved_by"})
+        edges.append({"source": f"r_loser{i}", "target": "hub", "type": "discussed_in"})
+    # Two winners for one loser, the earlier of them observed BEFORE the loser
+    # it supposedly ended. Only a candidate filter that runs before "earliest
+    # winner wins" keeps the later, genuine boundary; filtering at the fact
+    # level alone drops the interval to ``open``, which is a different
+    # histogram and a different answer.
+    for i in range(backdated):
+        nodes.append(
+            _node(f"bd_old{i}", "SessionInsight", f"backdated old {i}",
+                  metadata={"first_seen_at": "2026-02-02"})
+        )
+        nodes.append(
+            _node(f"bd_early{i}", "SessionInsight", f"backdated early {i}",
+                  metadata={"first_seen_at": "2026-01-01"})
+        )
+        nodes.append(
+            _node(f"bd_late{i}", "SessionInsight", f"backdated late {i}",
+                  metadata={"first_seen_at": "2026-04-04"})
+        )
+        edges.append({"source": f"bd_early{i}", "target": f"bd_old{i}", "type": "supersedes"})
+        edges.append({"source": f"bd_late{i}", "target": f"bd_old{i}", "type": "supersedes"})
+        edges.append({"source": f"bd_old{i}", "target": "hub", "type": "discussed_in"})
     # ``metadata.first_seen_at`` must survive graph_from_payload for the dated
     # arm to be dated at all; if it did not, this fixture would be all-undated
     # and the assertions below would be vacuous.
@@ -1145,18 +1184,23 @@ def test_lint_interval_coverage_matches_the_temporal_projector_exactly(
     TemporalFactProjector's dating or invalidation rules change, this goes red
     rather than the probe quietly reporting a number timeline() disagrees with.
 
-    The fixture must REACH both rules the probe reimplements, or the pin is
+    The fixture must REACH every rule the probe reimplements, or the pin is
     decorative. ``edge_dated`` supplies a fact datable only by the edge's own
     ``analysis_date``; ``chained`` supplies a supersedes edge whose object is
-    itself superseded, the one shape where the subject-only endpoint rule
-    changes the answer. Verified by mutation: deleting the analysis_date term
-    from the probe, and making its endpoints symmetric, each turn this test red.
+    itself superseded, the one shape where the surviving-endpoint rule changes
+    the answer; ``resolved`` supplies the opposite loser orientation; and
+    ``backdated`` supplies a winner observed before the node it ends, which
+    only the candidate filter rejects. Verified by mutation: deleting the
+    analysis_date term from the probe, making its endpoints symmetric, reading
+    ``resolved_by`` as if it were ``supersedes``, and dropping the
+    strictly-later filter each turn this test red.
     """
     from tesserae.research_graph import graph_from_payload
     from tesserae.temporal import TemporalFactProjector
 
     payload = _coverage_graph(
-        dated=3, undated=7, superseded=2, edge_dated=1, chained=1
+        dated=3, undated=7, superseded=2, edge_dated=1, chained=1,
+        resolved=1, backdated=1,
     )
     project = _scaffold(tmp_path, graph=payload)
 
