@@ -599,7 +599,8 @@ def federated_recall(
     )
     from datetime import datetime, timezone
 
-    from .context_compiler import DEFAULT_RECENCY_WEIGHT, compile_context
+    from .context_compiler import (DEFAULT_RECENCY_WEIGHT, citation_dict,
+                                   compile_context)
 
     # Cross-project semantic edges should NUDGE, not dominate: down-weight
     # shares_concept_with in PPR so an identity merge (node collapse) and
@@ -622,7 +623,7 @@ def federated_recall(
         "projects": stats["projects"],
         "stats": stats,
         "body": bundle.body,
-        "citations": [dataclasses.asdict(c) for c in bundle.citations],
+        "citations": [citation_dict(c) for c in bundle.citations],
         "selected_node_ids": bundle.selected_nodes,
         "char_budget_used": bundle.char_budget_used,
         "synthesized": bundle.synthesized,

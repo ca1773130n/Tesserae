@@ -84,7 +84,7 @@ tesserae projects mcp-config
 
 | Tool | 用途 |
 |---|---|
-| `compile_context` | `query` または明示的な `seeds` に対して、調整された**引用付き**コンテキスト文書をコンパイル。深さ制限付きサブグラフ（`depth`、1–10、既定 2）を走査し、PPR でランキングして文字 `budget`（既定 32000、`0` で無制限）を埋める。既定は決定論的で、`synthesize: true` で LLM が書く叙述型 "topic" スライスを生成。`body`、`citations`、`selected_node_ids`、`char_budget_used` を返す |
+| `compile_context` | `query` または明示的な `seeds` に対して、調整された**引用付き**コンテキスト文書をコンパイル。深さ制限付きサブグラフ（`depth`、1–10、既定 2）を走査し、PPR でランキングして文字 `budget`（既定 32000、`0` で無制限）を埋める。既定は決定論的で、`synthesize: true` で LLM が書く叙述型 "topic" スライスを生成。`body`、`citations`、`selected_node_ids`、`char_budget_used` を返す。`view` は名前付きエッジパーティション（`semantic`、`temporal`、`causal`、`entity`）へのウォークを制限します；名前の配列を渡すと各ビューごとに 1 つのウォークを実行して融合させます（加重 RRF）。ビューを要求すると — 名前が 1 つでも複数でも — 各引用はそれに到達したビューを `via_views` で携えます |
 | `get_handle` | 以前に `handle` として返された大きなペイロード（例: `preview` 付きの `compile_context`）をスライス（`offset`, `limit`）で取得します — すべてをコンテキストに流し込むのではなく、必要な分だけ後から取り寄せます |
 | `list_communities` | 後コンパイルパスが生成した `COMMUNITY_SUMMARY` node をメンバー数順に列挙（`min_size`、`limit`）。`node_context` で `summarizes` edge をたどってメンバーへ回帰 |
 | `fresh_insights` | エビングハウス式の減衰スコア（新しく・最もアクセスされた順）でランキングされたセッション発見。廃止された近似重複は除外。任意で `kind`、`limit`、`include_superseded` |

@@ -117,3 +117,15 @@ def test_context_view_flag_compiles_a_view_restricted_doc(tmp_path, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert out.startswith("# Context:")
+
+
+def test_context_view_flag_repeats_to_fuse(tmp_path, capsys):
+    """`--view` repeated fuses the named views (weighted RRF downstream)."""
+    project = _compiled_project(tmp_path, capsys)
+    rc = main([
+        "context", "Gaussian Splatting", "--project", str(project),
+        "--view", "semantic", "--view", "entity",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert out.startswith("# Context:")

@@ -704,3 +704,164 @@ def test_view_still_surfaces_the_winner_of_a_suppressed_seed() -> None:
             f"got {bundle.selected_nodes}"
         )
         assert seed not in bundle.ranked_nodes
+
+
+# --- view=[...] (roadmap step 8): multi-view traversal with rank fusion -----
+
+
+def _fusion_graph() -> ResearchGraph:
+    """One node per lane-reachability class around a single seed S:
+    SEM (semantic edge only), CAU (causal edge only), BOTH (one of each),
+    EXC (excluded edge only — reachable by NO view). The causal edges are
+    ``attributes_improvement_to`` — NOT ``resolved_by``, whose source is an
+    arbitration loser and would suppress the seed itself."""
+    def _node(nid: str, name: str) -> ResearchNode:
+        return ResearchNode(
+            id=nid,
+            name=name,
+            type=ResearchNodeType.CONCEPT,
+            description=f"{name} body text. " * 8,
+        )
+
+    nodes = [
+        _node("S", "Seed"),
+        _node("SEM", "Semantic Neighbour"),
+        _node("CAU", "Causal Neighbour"),
+        _node("BOTH", "Shared Neighbour"),
+        _node("EXC", "Provenance Neighbour"),
+    ]
+    edges = [
+        ResearchEdge(source="S", target="SEM", type="uses"),
+        ResearchEdge(source="S", target="CAU", type="attributes_improvement_to"),
+        ResearchEdge(source="S", target="BOTH", type="uses"),
+        ResearchEdge(source="S", target="BOTH", type="attributes_improvement_to"),
+        ResearchEdge(source="S", target="EXC", type="summarizes"),
+    ]
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_multi_view_fuses_lanes_and_reports_per_view_provenance() -> None:
+    graph = _fusion_graph()
+    bundle = compile_context(
+        graph, project_root=None, query="", seeds=["S"],
+        depth=1, budget=0, backend=_backend(),
+        view=["semantic", "causal"],
+    )
+
+    ranked = bundle.ranked_nodes
+    # The excluded-edge node is reachable by NO selected lane.
+    assert "EXC" not in ranked
+    assert set(ranked) == {"S", "SEM", "CAU", "BOTH"}
+    # RRF: a node two lanes reached outranks the single-lane nodes.
+    assert ranked.index("BOTH") < ranked.index("SEM")
+    assert ranked.index("BOTH") < ranked.index("CAU")
+
+    via = {c.node_id: c.via_views for c in bundle.citations}
+    assert via["S"] == ("semantic", "causal")
+    assert via["BOTH"] == ("semantic", "causal")
+    assert via["SEM"] == ("semantic",)
+    assert via["CAU"] == ("causal",)
+
+
+def test_multi_view_is_deterministic() -> None:
+    graph = _fusion_graph()
+    kwargs = dict(
+        project_root=None, query="", seeds=["S"], depth=1, budget=0,
+        view=["semantic", "causal"],
+    )
+    first = compile_context(graph, backend=_backend(), **kwargs)
+    second = compile_context(graph, backend=_backend(), **kwargs)
+    assert first == second
+
+
+def test_multi_view_dedupes_and_rejects_unknown_names() -> None:
+    graph = _fusion_graph()
+    deduped = compile_context(
+        graph, project_root=None, query="", seeds=["S"], depth=1,
+        backend=_backend(), view=["semantic", "semantic", "causal"],
+    )
+    fused = compile_context(
+        graph, project_root=None, query="", seeds=["S"], depth=1,
+        backend=_backend(), view=["semantic", "causal"],
+    )
+    assert deduped == fused
+
+    try:
+        compile_context(
+            graph, project_root=None, query="", seeds=["S"],
+            backend=_backend(), view=["semantic", "bogus"],
+        )
+    except ValueError as exc:
+        assert "bogus" in str(exc)
+    else:  # pragma: no cover - the raise is the contract
+        raise AssertionError("unknown view in a list must raise ValueError")
+
+    try:
+        compile_context(
+            graph, project_root=None, query="", seeds=["S"],
+            backend=_backend(), view=[],
+        )
+    except ValueError as exc:
+        assert "empty" in str(exc)
+    else:  # pragma: no cover - the raise is the contract
+        raise AssertionError("an empty view list must raise ValueError")
+
+
+def test_via_views_defaults_empty_and_serializes_away() -> None:
+    """The unset path must stay byte-identical: no view -> via_views is ()
+    on the dataclass and ABSENT from the serialized citation dict."""
+    from tesserae.context_compiler import citation_dict
+
+    graph = _fusion_graph()
+    bundle = compile_context(
+        graph, project_root=None, query="", seeds=["S"], backend=_backend()
+    )
+    assert bundle.citations
+    for c in bundle.citations:
+        assert c.via_views == ()
+        payload = citation_dict(c)
+        assert "via_views" not in payload
+        assert set(payload) == {
+            "node_id", "node_name", "source_path", "wiki_kind"
+        }
+
+    with_view = compile_context(
+        graph, project_root=None, query="", seeds=["S"], backend=_backend(),
+        view="semantic",
+    )
+    semantic_citations = [c for c in with_view.citations if c.node_id == "SEM"]
+    assert semantic_citations and semantic_citations[0].via_views == ("semantic",)
+    assert citation_dict(semantic_citations[0])["via_views"] == ("semantic",)
+
+
+def test_multi_view_pool_reservation_walks_the_fused_ranking() -> None:
+    """Step 8 absorbs the multi_pool reservation into the fused ranking: a
+    producer-made Runbook reachable ONLY through the causal lane still earns
+    its slot — one ranking, one reservation pass, one budget."""
+    graph = _fusion_graph()
+    graph.nodes.append(
+        ResearchNode(
+            id="RB",
+            name="Recovery Runbook",
+            type=ResearchNodeType.RUNBOOK,
+            description="How the failure was recovered. " * 8,
+            metadata={"extractor": "memory.distill.run_distillation_pass"},
+        )
+    )
+    graph.edges.append(
+        ResearchEdge(source="S", target="RB", type="attributes_improvement_to")
+    )
+
+    bundle = compile_context(
+        graph, project_root=None, query="", seeds=["S"],
+        depth=1, budget=0, backend=_backend(),
+        view=["semantic", "causal"], multi_pool=True,
+    )
+
+    assert bundle.pool_reservations is not None
+    reservation = bundle.pool_reservations["Runbook"]
+    assert reservation is not None
+    assert reservation["node_id"] == "RB"
+    assert reservation["delivered"] is True
+    via = {c.node_id: c.via_views for c in bundle.citations}
+    assert via["RB"] == ("causal",)

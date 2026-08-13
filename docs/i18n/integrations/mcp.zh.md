@@ -84,7 +84,7 @@ tesserae projects mcp-config
 
 | Tool | 用途 |
 |---|---|
-| `compile_context` | 为 `query` 或显式 `seeds` 编译一份量身定制的**带引用**上下文文档。遍历深度受限的子图（`depth`，1–10，默认 2），用 PPR 排序，并填充字符 `budget`（默认 32000；传 `0` 表示不限）。默认确定性；设 `synthesize: true` 可生成由 LLM 撰写的叙述式 "topic" 切片。返回 `body`、`citations`、`selected_node_ids` 和 `char_budget_used` |
+| `compile_context` | 为 `query` 或显式 `seeds` 编译一份量身定制的**带引用**上下文文档。遍历深度受限的子图（`depth`，1–10，默认 2），用 PPR 排序，并填充字符 `budget`（默认 32000；传 `0` 表示不限）。默认确定性；设 `synthesize: true` 可生成由 LLM 撰写的叙述式 "topic" 切片。返回 `body`、`citations`、`selected_node_ids` 和 `char_budget_used`. `view` 将游走限制在命名的边分割——`semantic`、`temporal`、`causal` 或 `entity`；传递一个名称数组为每个视图各运行一次游走并融合（加权 RRF）。无论何时请求视图——一个名称或多个——每条引用都携带 `via_views`（到达该引用的各视图） |
 | `get_handle` | 分片（`offset`、`limit`）翻阅先前以 `handle` 形式返回的大体积载荷（例如带 `preview` 的 `compile_context`）——按需取用，而不是把全部内容一次性倒进上下文 |
 | `list_communities` | 列出后编译阶段生成的 `COMMUNITY_SUMMARY` 节点，按成员数排序（`min_size`、`limit`）；通过 `node_context` 沿 `summarizes` 边回溯到成员 |
 | `fresh_insights` | 按艾宾浩斯式衰减分数（最新 + 访问最多优先）排序的会话发现；过滤掉被更新近似重复项取代的发现。可选 `kind`、`limit`、`include_superseded` |

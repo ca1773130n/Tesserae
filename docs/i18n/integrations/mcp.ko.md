@@ -84,7 +84,7 @@ tesserae projects mcp-config
 
 | Tool | 용도 |
 |---|---|
-| `compile_context` | `query` 또는 명시적 `seeds`에 대해 맞춤형 **인용 포함** 컨텍스트 문서를 컴파일. 깊이 제한 서브그래프(`depth`, 1–10, 기본 2)를 탐색하고 PPR로 랭킹한 뒤 문자 `budget`(기본 32000; `0`이면 무제한)를 채움. 기본은 결정론적이며 `synthesize: true`면 LLM이 작성한 서사형 "topic" 슬라이스를 생성. `body`, `citations`, `selected_node_ids`, `char_budget_used` 반환 |
+| `compile_context` | `query` 또는 명시적 `seeds`에 대해 맞춤형 **인용 포함** 컨텍스트 문서를 컴파일. 깊이 제한 서브그래프(`depth`, 1–10, 기본 2)를 탐색하고 PPR로 랭킹한 뒤 문자 `budget`(기본 32000; `0`이면 무제한)를 채움. 기본은 결정론적이며 `synthesize: true`면 LLM이 작성한 서사형 "topic" 슬라이스를 생성. `body`, `citations`, `selected_node_ids`, `char_budget_used` 반환. `view`는 walk를 명명된 edge partition으로 제한합니다 — `semantic`, `temporal`, `causal` 또는 `entity`; names의 배열을 전달하여 view당 한 번의 walk를 실행하고 이들을 fuse합니다 (weighted RRF). view를 요청하면 — 이름 하나든 여러 개든 — 각 citation은 `via_views`(그에 도달한 walk의 views)를 가집니다 |
 | `get_handle` | 앞서 `handle`로 반환된 큰 페이로드(예: `preview`를 쓴 `compile_context`)를 조각(`offset`, `limit`)으로 페이징합니다 — 전부를 컨텍스트에 쏟아 넣는 대신 필요할 때 더 가져옵니다 |
 | `list_communities` | 후처리 패스가 생성한 `COMMUNITY_SUMMARY` 노드를 멤버 수 기준으로 나열(`min_size`, `limit`); `node_context`로 `summarizes` 엣지를 따라 멤버로 회귀 |
 | `fresh_insights` | 에빙하우스 스타일 감쇠 점수(최신 + 최다 접근 우선)로 랭킹된 세션 발견; 폐기된 근사 중복은 제외. 선택적 `kind`, `limit`, `include_superseded` |

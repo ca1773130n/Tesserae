@@ -30,11 +30,11 @@ from __future__ import annotations
 import math
 import re
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import (Any, Callable, Dict, FrozenSet, List, Mapping, Optional,
-                    Sequence, Set, Tuple)
+                    Sequence, Set, Tuple, Union)
 
 from .graph_filters import superseded_ids
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
@@ -94,6 +94,7 @@ def _recency_score(node: ResearchNode, now: datetime) -> float:
 
 __all__ = [
     "compile_context",
+    "citation_dict",
     "fit_to_budget",
     "BudgetFit",
     "ContextBundle",
@@ -111,6 +112,28 @@ class ContextCitation:
     node_name: str
     source_path: Optional[str]
     wiki_kind: Optional[str]
+    #: The views whose walk reached this node (roadmap step 8) — per-view
+    #: provenance: "the causal view reached this from your seed" is a far
+    #: stronger statement than "it ranked high". Empty when no view was
+    #: requested, and for disconnected-seed fallback nodes (no walk reached
+    #: them). A tuple, not a list: the dataclass is frozen and must stay
+    #: hashable.
+    via_views: Tuple[str, ...] = ()
+
+
+def citation_dict(citation: ContextCitation) -> Dict[str, Any]:
+    """``asdict`` with unset-feature keys stripped.
+
+    The non-preview MCP response shape is documented back-compat for
+    byte/order-sensitive callers, so a citation produced without views must
+    serialize to exactly the pre-``via_views`` bytes — the same default-off
+    discipline the compile knobs follow. Every transport that serializes
+    citations (MCP ``compile_context``, federation ask) goes through here.
+    """
+    payload = asdict(citation)
+    if not payload.get("via_views"):
+        payload.pop("via_views", None)
+    return payload
 
 
 @dataclass(frozen=True)
@@ -438,7 +461,7 @@ def compile_context(
     scope: Optional[str] = None,
     strategy: str = "default",
     tame_hubs: bool = False,
-    view: Optional[str] = None,
+    view: Optional[Union[str, Sequence[str]]] = None,
 ) -> ContextBundle:
     """Compile a tailored, cited context bundle for ``query`` / ``seeds``.
 
@@ -481,6 +504,15 @@ def compile_context(
       rides ``supersedes``/``resolved_by`` edges most views cannot traverse,
       so under a view those winners are surfaced explicitly rather than
       silently dropping both the stale claim and its replacement.
+    * ``view=[<name>, ...]`` (roadmap step 8) runs the walk once per selected
+      view over the SAME seed set — each lane filtered to its own depth
+      neighbourhood — and fuses the lanes with the existing weighted-RRF
+      machinery (:func:`~tesserae.retrieval.hybrid._fuse`). Whenever a view
+      is requested — one name or several — citations carry ``via_views``:
+      which views' walks actually reached each node (unset = omitted). With
+      ``multi_pool`` the procedural pools walk the FUSED ranking — one
+      ranking, one reservation pass, one budget, never two competing
+      reservation mechanisms over the same window.
 
     Both ``scope`` and ``strategy="hierarchical"`` require ``project_root``
     (the sidecar lives under it); the ``budget=0`` uncapped invariant is
@@ -499,15 +531,31 @@ def compile_context(
     # subgraph is selected (the charter composition rule: a view must not pick
     # a different domain).
     nb_edge_types: Optional[FrozenSet[str]] = None
+    view_names: Tuple[str, ...] = ()
     if view is not None:
         from .retrieval.views import traversable_edge_types, weights_for
 
-        merged_weights = weights_for(view)  # ValueError on an unknown view
-        if edge_type_weights:
-            # Caller overrides win — exactly as they do against the defaults.
-            merged_weights.update(edge_type_weights)
-        edge_type_weights = merged_weights
-        nb_edge_types = traversable_edge_types(merged_weights)
+        _requested = (view,) if isinstance(view, str) else tuple(view)
+        if not _requested:
+            raise ValueError(
+                "compile_context: view= was given but empty — pass one or "
+                "more registry view names, or omit it."
+            )
+        _deduped: List[str] = []
+        for _name in _requested:
+            weights_for(_name)  # ValueError on an unknown view, fail fast
+            if _name not in _deduped:
+                _deduped.append(_name)
+        view_names = tuple(_deduped)
+        if len(view_names) == 1:
+            merged_weights = weights_for(view_names[0])
+            if edge_type_weights:
+                # Caller overrides win — exactly as against the defaults.
+                merged_weights.update(edge_type_weights)
+            edge_type_weights = merged_weights
+            nb_edge_types = traversable_edge_types(merged_weights)
+        # len > 1: per-lane weights are built inside the fusion branch of
+        # Step 2 — the caller's edge_type_weights apply within every lane.
 
     # --- Step 0 (Descent §5.4): resolve hierarchy-backed restriction --------
     hierarchy = None
@@ -628,20 +676,87 @@ def compile_context(
     # out-of-depth high-PPR nodes consume the window and valid in-depth nodes get
     # dropped. We request the FULL PPR ranking (``top_k = node count``), filter to
     # the in-depth set, THEN cap, so the cap is filled from in-depth nodes only.
-    in_neighborhood = _neighborhood_within_depth(
-        graph, seed_ids, max(0, depth), edge_types=nb_edge_types
-    )
     cap = max(1, depth) * 10
-    full_ranked = personalized_pagerank(
-        graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes)),
-        edge_type_weights=edge_type_weights,
-        tame_hubs=tame_hubs, hub_ids=hub_ids,
-    )
-    in_nb = [
-        (nid, score)
-        for nid, score in full_ranked
-        if nid in in_neighborhood and nid not in suppressed
-    ]
+    via_map: Dict[str, Tuple[str, ...]] = {}
+    if len(view_names) > 1:
+        # Multi-view fusion (roadmap step 8): one PPR walk per selected view
+        # over the SAME seed set, each lane filtered to its OWN depth
+        # neighbourhood — so "the causal view reached this from your seed"
+        # is a per-lane fact, not an artefact of a shared BFS — fused with
+        # the existing weighted-RRF machinery. Candidate order is first
+        # appearance across the selected views in selection order, within a
+        # view in PPR order: deterministic, no wall-clock, no set iteration.
+        from .retrieval.hybrid import _fuse
+        from .retrieval.views import traversable_edge_types, weights_for
+
+        per_view_scores: Dict[str, Dict[str, float]] = {}
+        candidates: List[str] = []
+        _seen_c: Set[str] = set()
+        for _v in view_names:
+            _vw = weights_for(_v)
+            if edge_type_weights:
+                # The caller's explicit weights apply within EVERY lane.
+                _vw.update(edge_type_weights)
+            _nb_v = _neighborhood_within_depth(
+                graph, seed_ids, max(0, depth),
+                edge_types=traversable_edge_types(_vw),
+            )
+            _ranked_v = personalized_pagerank(
+                graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes)),
+                edge_type_weights=_vw,
+                tame_hubs=tame_hubs, hub_ids=hub_ids,
+            )
+            _lane = {
+                nid: score
+                for nid, score in _ranked_v
+                if nid in _nb_v and nid not in suppressed
+            }
+            per_view_scores[_v] = _lane
+            for nid, _s in _ranked_v:
+                if nid in _lane and nid not in _seen_c:
+                    candidates.append(nid)
+                    _seen_c.add(nid)
+        lane_scores = {
+            _v: [per_view_scores[_v].get(nid, 0.0) for nid in candidates]
+            for _v in view_names
+        }
+        fused, rank_tables = _fuse(
+            lane_scores, {_v: 1.0 for _v in view_names}, len(candidates)
+        )
+        # Same post-fusion ordering hybrid_search uses: descending fused
+        # score, ascending candidate index.
+        order = sorted(range(len(candidates)), key=lambda i: (-fused[i], i))
+        pre_rank = [(candidates[i], fused[i]) for i in order]
+        # Per-view provenance: the views where the node actually ranked —
+        # _rrf_ranks hands score<=0 docs rank n+1, which is exactly _fuse's
+        # non-contribution criterion, so "rank <= n" == "this lane's walk
+        # reached the node".
+        via_map = {
+            candidates[i]: tuple(
+                _v
+                for _v in view_names
+                if rank_tables[_v][i] <= len(candidates)
+            )
+            for i in range(len(candidates))
+        }
+    else:
+        in_neighborhood = _neighborhood_within_depth(
+            graph, seed_ids, max(0, depth), edge_types=nb_edge_types
+        )
+        full_ranked = personalized_pagerank(
+            graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes)),
+            edge_type_weights=edge_type_weights,
+            tame_hubs=tame_hubs, hub_ids=hub_ids,
+        )
+        pre_rank = [
+            (nid, score)
+            for nid, score in full_ranked
+            if nid in in_neighborhood and nid not in suppressed
+        ]
+        if view_names:
+            # Single view: every walked node was reached by that view.
+            via_map = {nid: view_names for nid, _ in pre_rank}
+    in_nb = pre_rank
 
     # Recency-aware re-rank (OPT-IN). Pure relevance magnets onto old "review of
     # ALL recent work" synthesis nodes for "what's recent" queries — strongest
@@ -720,11 +835,12 @@ def compile_context(
         # Agent-layer pools (spec §9) — distilled knowledge and the per-agent
         # capability card — are in that list for the same reason as the rest.
         _pools = _pool_order()
-        _in_nb_ranked = [
-            (nid, sc)
-            for nid, sc in full_ranked
-            if nid in in_neighborhood and nid not in suppressed
-        ]
+        # One ranking, one reservation walk, one budget (step 8): under
+        # multi-view fusion the pools walk the FUSED ranking rather than
+        # running a second competing PPR pass over the same window. On the
+        # default and single-view paths ``pre_rank`` is byte-identical to
+        # the old rebuild from ``full_ranked``.
+        _in_nb_ranked = pre_rank
         _reserved: List[tuple] = []
         _reserved_ids: set = set()
         pool_reservations = _empty_pool_reservations()
@@ -836,6 +952,7 @@ def compile_context(
                 node_name=node.name,
                 source_path=node.source_path,
                 wiki_kind=kind_for_node(node),
+                via_views=via_map.get(node.id, ()),
             )
         )
     sections.append("\n---\n## Citations\n")
