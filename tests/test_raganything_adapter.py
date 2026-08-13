@@ -330,6 +330,158 @@ def test_identical_content_across_documents_is_one_artifact(tmp_path):
     assert owners == docs and len(docs) == 2
 
 
+def test_shared_artifact_carries_a_distinct_ordinal_per_owner(tmp_path):
+    """The per-document facts ride the EDGE, not the node.
+
+    A shared artifact is ONE doc-agnostic node, so its metadata['page'] is
+    whichever document merged first (prefer_research_node is first-writer-wins)
+    and every later owner's page is lost. Each owner's part_of edge must carry
+    its own ordinal/page/caption — the second document below numbers and pages
+    the same table differently, and both readings have to survive.
+    """
+    payload = _payload()
+    second = json.loads(json.dumps(payload["documents"][0]))
+    second["id"] = "doc-def456"
+    second["path"] = "docs/other.pdf"
+    second["sha256"] = "def456"
+    # Same table bytes, but preceded by another table and printed on a
+    # different page: in this document it is Table 2 on page 9.
+    second["content_list"].insert(
+        1,
+        {"type": "table", "page_idx": 8, "table_body": "| x |\n| - |\n| 9 |", "table_caption": ["Setup"]},
+    )
+    for block in second["content_list"]:
+        if block.get("table_body") == "| a | b |\n| - | - |\n| 1 | 2 |":
+            block["page_idx"] = 9
+            block["table_caption"] = ["Performance, restated"]
+    payload["documents"].append(second)
+
+    graph, _ = RagAnythingGraphAdapter(tmp_path).import_payload(
+        payload, artifact_rel="manifest.json"
+    )
+
+    shared = next(
+        n for n in graph.nodes
+        if n.type == ResearchNodeType.ARTIFACT
+        and n.description == "| a | b |\n| - | - |\n| 1 | 2 |"
+    )
+    docs = {
+        n.metadata["external_id"]: n.id
+        for n in graph.nodes
+        if n.type == ResearchNodeType.SOURCE_DOCUMENT
+    }
+    by_owner = {
+        e.target: e.metadata for e in graph.edges
+        if e.type == "part_of" and e.source == shared.id
+    }
+    assert len(by_owner) == 2  # one node, one edge per owning document
+
+    first = by_owner[docs["doc-abc123"]]
+    assert first["kind"] == "table"
+    assert (first["ordinal"], first["page"]) == (1, 2)
+    assert first["caption"] == ["Performance"]
+
+    other = by_owner[docs["doc-def456"]]
+    assert (other["ordinal"], other["page"]) == (2, 9)
+    assert other["caption"] == ["Performance, restated"]
+
+    # The node itself still carries only the first writer's page — which is
+    # exactly why the edge has to.
+    assert shared.metadata["page"] == 2
+
+
+def test_part_of_edge_ordinals_are_per_kind_and_in_content_list_order(tmp_path):
+    """"Figure 2" counts figures, not blocks: each kind numbers itself."""
+    payload = _payload_with_asset(tmp_path)
+    doc = payload["documents"][0]
+    parsed_dir = tmp_path / ".tesserae" / "external" / "raganything" / "parsed" / "abc123"
+    (parsed_dir / "p2.png").write_bytes(b"\x89PNG\r\n\x1a\nsecond-figure-bytes")
+    doc["content_list"].append(
+        {"type": "image", "page_idx": 4, "img_path": "p2.png", "img_caption": ["Latency"]}
+    )
+
+    graph, _ = RagAnythingGraphAdapter(tmp_path).import_payload(
+        payload, artifact_rel="manifest.json"
+    )
+
+    by_id = {n.id: n for n in graph.nodes}
+    seen = {
+        (e.metadata["kind"], e.metadata["ordinal"]): by_id[e.source].name
+        for e in graph.edges if e.type == "part_of"
+    }
+    assert seen == {
+        ("image", 1): "Figure: Mermaid pipeline",
+        ("image", 2): "Figure: Latency",
+        ("table", 1): "Table: Performance",
+        ("equation", 1): "Equation: Energy",
+    }
+
+
+def test_ordinal_counts_blocks_that_were_skipped(tmp_path):
+    """The paper's own numbering does not skip an unresolvable asset.
+
+    Counting the survivors would renumber every figure after the first skip,
+    and the result would look perfectly well-formed while pointing at the
+    wrong caption.
+    """
+    payload = _payload()  # p1.png is NOT on disk -> figure 1 skips
+    doc = payload["documents"][0]
+    parsed_dir = tmp_path / ".tesserae" / "external" / "raganything" / "parsed" / "abc123"
+    parsed_dir.mkdir(parents=True)
+    (parsed_dir / "p2.png").write_bytes(b"\x89PNG\r\n\x1a\nsecond-figure-bytes")
+    doc["content_list"].append(
+        {"type": "image", "page_idx": 4, "img_path": "p2.png", "img_caption": ["Latency"]}
+    )
+
+    graph, manifest = RagAnythingGraphAdapter(tmp_path).import_payload(
+        payload, artifact_rel="manifest.json"
+    )
+
+    assert manifest["skipped_blocks"][0]["img_path"] == "p1.png"
+    figure_edges = [
+        e for e in graph.edges
+        if e.type == "part_of" and e.metadata["kind"] == "image"
+    ]
+    assert [e.metadata["ordinal"] for e in figure_edges] == [2]
+
+
+def test_a_repeated_asset_in_one_document_keeps_its_first_ordinal(tmp_path):
+    """Identical bytes twice in one document are one edge, not two, and the
+    surviving ordinal is the earlier position — not whichever ran last."""
+    payload = _payload_with_asset(tmp_path)
+    doc = payload["documents"][0]
+    doc["content_list"].append(
+        {"type": "image", "page_idx": 6, "img_path": "p1.png", "img_caption": ["Reprinted"]}
+    )
+
+    graph, _ = RagAnythingGraphAdapter(tmp_path).import_payload(
+        payload, artifact_rel="manifest.json"
+    )
+
+    figure_edges = [
+        e for e in graph.edges
+        if e.type == "part_of" and e.metadata["kind"] == "image"
+    ]
+    assert len(figure_edges) == 1
+    assert figure_edges[0].metadata["ordinal"] == 1
+    assert figure_edges[0].metadata["caption"] == ["Mermaid pipeline"]
+
+
+def test_the_adapter_mints_no_evidenced_by_edge(tmp_path):
+    """Pinned deferral, not an oversight.
+
+    Co-location — an Artifact and a Claim came out of the same document — is
+    not evidence, and the graph could never tell such an edge apart from the
+    text-grounded ``evidenced_by`` population afterwards. The adapter also
+    holds no claims at import time. Minting one has to be a deliberate,
+    argued change, so this fails loudly if one appears.
+    """
+    graph, _ = RagAnythingGraphAdapter(tmp_path).import_payload(
+        _payload_with_asset(tmp_path), artifact_rel="manifest.json"
+    )
+    assert [e.type for e in graph.edges] == ["part_of"] * 3
+
+
 def test_same_named_artifacts_with_different_content_never_fuse(tmp_path):
     """Two figures captioned identically in different papers are distinct
     evidence: the aggressive same-name dedup must skip ARTIFACT (identity

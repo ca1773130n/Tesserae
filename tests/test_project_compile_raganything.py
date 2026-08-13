@@ -90,6 +90,7 @@ def test_project_compile_lands_artifact_nodes_in_the_main_graph(tmp_path):
     wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
 
     wiki.compile()
+    first_bytes = wiki.paths.graph.read_bytes()
 
     graph = load_graph_file(wiki.paths.graph)
     artifacts = [n for n in graph.nodes if n.type == ResearchNodeType.ARTIFACT]
@@ -102,10 +103,16 @@ def test_project_compile_lands_artifact_nodes_in_the_main_graph(tmp_path):
         if n.type == ResearchNodeType.SOURCE_DOCUMENT
         and n.metadata.get("parser") == "raganything"
     )
-    assert any(
-        e.type == "part_of" and e.source == figure.id and e.target == doc.id
-        for e in graph.edges
+    edge = next(
+        e for e in graph.edges
+        if e.type == "part_of" and e.source == figure.id and e.target == doc.id
     )
+    # The per-owner facts have to survive merge_graphs, both dedup passes and
+    # the graph.json round-trip — every one of which rebuilds edges, and any
+    # of which could drop metadata without anything else noticing.
+    assert edge.metadata == {
+        "kind": "image", "ordinal": 1, "page": 0, "caption": ["Pipeline"],
+    }
     # No absolute path anywhere on the ARTIFACT node: the asset path is
     # project-relative and the id is content-seeded. (The compile pipeline
     # stores some absolute source_paths on OTHER nodes; those are prefixed
@@ -118,3 +125,9 @@ def test_project_compile_lands_artifact_nodes_in_the_main_graph(tmp_path):
     assert figure.metadata["asset_path"] == (
         ".tesserae/external/raganything/parsed/deadbeef/x.png"
     )
+
+    # The ordinal is a pure function of content_list order, so a second
+    # compile of the same manifest must reproduce the same bytes — no clock,
+    # no path, nothing that drifts.
+    wiki.compile()
+    assert wiki.paths.graph.read_bytes() == first_bytes
