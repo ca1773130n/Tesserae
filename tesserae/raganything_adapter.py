@@ -204,6 +204,17 @@ class RagAnythingGraphAdapter:
                 _block_summary(b) for b in content_list
                 if isinstance(b, dict) and str(b.get("type") or "").lower() in _MULTIMODAL_BLOCK_TYPES
             ]
+            # "Figure 2" / "Table 3": 1-based within its kind, in content_list
+            # order. Counted here over EVERY multimodal block, before the
+            # unresolvable ones are dropped below — a document numbers its own
+            # figures over all of them, so counting the survivors would shift
+            # every ordinal after the first skip and the misnumbering would be
+            # invisible (the graph stays well-formed, every figure just points
+            # at the wrong caption).
+            kind_counts: dict[str, int] = {}
+            for summary in blocks:
+                kind_counts[summary["type"]] = kind_counts.get(summary["type"], 0) + 1
+                summary["ordinal"] = kind_counts[summary["type"]]
             # Resolve each block to its content hash BEFORE the document node
             # is minted: the hash lands on the block summary as the join key
             # between metadata['multimodal_blocks'] (kept verbatim for
@@ -318,7 +329,30 @@ class RagAnythingGraphAdapter:
                 edge_key = (artifact_node.id, node.id)
                 if edge_key not in seen_artifact_edges:
                     seen_artifact_edges.add(edge_key)
-                    builder.add_edge(artifact_node, "part_of", node)
+                    # ordinal/page/caption are facts about the (artifact,
+                    # document) PAIR, but the node is doc-agnostic by design
+                    # (content-hashed id), so on a shared artifact
+                    # prefer_research_node keeps whichever document merged
+                    # first and every later owner's page silently loses. The
+                    # edge is per-owner by construction — one per owning
+                    # document — so it can carry them without lying, and when
+                    # the same bytes appear twice in ONE document the earlier
+                    # position wins (``seen_artifact_edges``, deterministic).
+                    # The node keeps its copies for back-compat; this adds, it
+                    # does not move. ``evidence`` stays None: every edge.evidence
+                    # in this codebase is a verbatim span that licensed the
+                    # assertion, and a caption asserts nothing.
+                    builder.add_edge(
+                        artifact_node,
+                        "part_of",
+                        node,
+                        metadata={
+                            "kind": kind,
+                            "ordinal": summary.get("ordinal"),
+                            "page": summary.get("page"),
+                            "caption": caption_list,
+                        },
+                    )
 
         graph = builder.build()
         manifest = {
