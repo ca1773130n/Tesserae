@@ -18,10 +18,23 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from .citation_names import NODE_CITATION_RE, rewrite_citations
-from .research_graph import SESSION_FINDING_KIND_TO_TYPE, SESSION_FINDING_KINDS
+from .research_graph import (ALLOWED_EDGE_TYPES, ALLOWED_NODE_TYPES,
+                             SESSION_FINDING_KIND_TO_TYPE,
+                             SESSION_FINDING_KINDS)
+from .retrieval.views import VIEWS
 
 MAX_STEPS = 5
 _EVIDENCE_CLIP = 2500  # chars per evidence block fed to synthesis
+#: The bundle is BUILT to fit the evidence slot, not built large and then
+#: truncated. ``compile_context`` defaults to 32,000 chars while every branch
+#: returns through ``_clip`` — without this ~92% of each bundle would be
+#: computed, paid for and thrown away mid-sentence, and the compiler's own
+#: budget-aware selection would be meaningless because the real cut happens
+#: outside it. The headroom carries the one-line views header inside the clip.
+_CONTEXT_BUDGET = 2_200
+#: A proposal is a suggestion, not a queue: three of each is enough to act on
+#: and small enough that a bad plan cannot flood the envelope.
+_MAX_PROPOSED = 3
 
 # One entry per retrieval primitive: (action, args signature, when to use).
 # This catalog IS the planner prompt — keep descriptions honest about what
@@ -79,6 +92,23 @@ _CATALOG: List[Tuple[str, str, str]] = [
         "Explicit human choices + agent decisions in the window, with the "
         "question asked and the answer picked.",
     ),
+    (
+        "compile_context",
+        # The view union is INTERPOLATED from the registry for the same reason
+        # the kind union above is: a view missing from this signature is a view
+        # the planner is instructed never to select.
+        '{"query": str, "views": [' + "|".join(VIEWS) + '], "depth": int<=3}',
+        "Compiles a cited context bundle by WALKING the graph from seeds "
+        "matched to query — relationships between things, not page text. "
+        "views restricts which edge classes the walk may traverse; several "
+        "views run one walk each over the same seeds and fuse the rankings. "
+        "Best for 'how does X relate to Y', 'why did X change', 'what depends "
+        "on X'. It has NO dates and no as-of pivot — pair it with timeline / "
+        "activity_summary for anything time-bounded. It ranks and selects; it "
+        "does not verify a specific claim (use search_facts). A view NARROWS "
+        "what is reachable: omit views when the question does not clearly "
+        "name one shape.",
+    ),
 ]
 
 _PLANNER_SYSTEM = (
@@ -93,7 +123,30 @@ _PLANNER_SYSTEM = (
     "never wiki_search alone.\n"
     "- Conceptual questions ('what is', 'how does') want wiki_search, "
     "optionally search_facts for verification.\n"
+    "- Relational questions ('how does X relate to Y', 'why did X change', "
+    "'what depends on X', 'what led to X', 'what broke and what fixed it') "
+    "want compile_context — it walks the graph where wiki_search only reads "
+    "page text. It ADDS to the rules above, never replaces them: a 'recently' "
+    "question still needs a dated primitive, and compile_context has no date "
+    "filter of its own.\n"
+    "- Choose views by the SHAPE of the question, most specific first: causal "
+    "for breakage and repair ('why did it break', 'what caused', 'what fixed', "
+    "'regression', 'recovered'); temporal for order and replacement "
+    "('before/after', 'what superseded', 'what replaced'); entity for named "
+    "things and code structure ('who', 'which file/repo/author', 'what calls/"
+    "contains/implements'); semantic for ideas ('how does X relate to Y', "
+    "'improves on', 'similar to'). Two views only when the question genuinely "
+    "has two halves ('why did retrieval regress and who fixed it' -> causal + "
+    "entity). No clear match: omit views and walk the whole graph — never "
+    "guess a view.\n"
     "- Compute concrete ISO dates from TODAY when a primitive takes since/until.\n"
+    "- You may PROPOSE a graph write, never perform one. When the QUESTION "
+    "itself asserts a durable fact worth recording, add an optional "
+    '"proposed_write" object: {"nodes": [{"name", "type", "description"}], '
+    '"edges": [{"source", "target", "type", "evidence"}], "rationale": str}. '
+    "Ground it ONLY in what the question states — never in what a retrieval "
+    "step might return. It is returned to the agent as a suggestion to submit "
+    "explicitly; omit the key entirely when nothing is worth recording.\n"
     'Respond with JSON only: {"reasoning": "<one sentence>", '
     '"steps": [{"action": "<name>", "args": {...}}]}'
 )
@@ -107,6 +160,17 @@ class _ExecContext:
         self._graph: Any = None
         self._facts: Any = None
         self._alias: Any = False  # False = unresolved, None = not registered
+        #: node_id -> display name for nodes a graph walk cited. Carried here
+        #: rather than minted as synthetic ``QueryHit``s: ``hits`` is a
+        #: documented envelope field consumed as wiki results (href, score,
+        #: page_text) and feeding the caller-side LRU bump, so fabricating
+        #: rows there would put scoreless, hrefless entries in a public shape
+        #: AND turn a read into a disk side effect.
+        self.citation_names: Dict[str, str] = {}
+        #: What each executed step actually did — the honesty half of the
+        #: split. Never merged into the validated plan ``steps``: those are
+        #: the REQUEST, this is the outcome.
+        self.executed: List[Dict[str, Any]] = []
 
     def graph(self) -> Any:
         if self._graph is None:
@@ -158,6 +222,61 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
         hits = wq.search(str(args.get("query") or ""))
         lines = [f"- [{h.kind}] {h.title}: {h.excerpt}" for h in hits]
         return _clip("\n".join(lines) or "(no wiki matches)"), hits
+
+    if action == "compile_context":
+        from .context_compiler import compile_context
+
+        query = str(args.get("query") or "").strip()
+        if not query:
+            return "(compile_context needs a query — no seeds to walk from)", []
+        # Unknown view names DEGRADE to the full graph, never raise: an
+        # invented name would otherwise reach ``weights_for``'s fail-fast
+        # ValueError, land in the per-step catch, and cost the whole step its
+        # evidence. The superset can only be too broad; a wrong view silently
+        # zeroes out entire edge classes.
+        raw_views = args.get("views")
+        if isinstance(raw_views, str):
+            raw_views = [raw_views]
+        requested = [str(v) for v in raw_views] if isinstance(raw_views, list) else []
+        views: List[str] = []
+        dropped: List[str] = []
+        for name in requested:
+            if name in VIEWS:
+                if name not in views:
+                    views.append(name)
+            elif name not in dropped:
+                dropped.append(name)
+        # Deliberately NOT passed: recency_now/recency_weight (wall clock in a
+        # pure function), synthesize (a second LLM call inside a retrieval
+        # step), scope/strategy/tame_hubs (sidecar-backed, and the --agent
+        # path hands us a temp graph beside the real project root). Same graph
+        # + same effective args => byte-identical bundle body.
+        bundle = compile_context(
+            ctx.graph(),
+            str(ctx.wiki.project_root),
+            query=query,
+            depth=_as_int(args.get("depth"), 2, 3),
+            budget=_CONTEXT_BUDGET,
+            view=views or None,
+        )
+        ctx.citation_names.update(
+            {c.node_id: c.node_name for c in bundle.citations if c.node_id}
+        )
+        reached = sorted({v for c in bundle.citations for v in (c.via_views or ())})
+        ctx.executed.append(
+            {
+                "views": list(views),
+                "views_reached": reached,
+                "views_dropped": list(dropped),
+                "depth": _as_int(args.get("depth"), 2, 3),
+                "citations": len(bundle.citations),
+            }
+        )
+        header = (
+            f"(views applied: {', '.join(views) or 'none — full graph'}; "
+            f"reached: {', '.join(reached) or 'none'})\n"
+        )
+        return _clip(header + bundle.body), []
 
     if action == "timeline":
         from .temporal import timeline
@@ -243,6 +362,92 @@ def _validated_steps(raw: Any) -> List[Dict[str, Any]]:
         if len(steps) >= MAX_STEPS:
             break
     return steps
+
+
+def _validated_proposal(raw: Any) -> Optional[Dict[str, Any]]:
+    """The planner's optional ``proposed_write``, validated into a payload the
+    agent may submit — or ``None``.
+
+    PROPOSE, NEVER EXECUTE. Nothing here writes: the returned object is data
+    the caller hands to ``graph_write`` itself, which re-validates it in full.
+    Three properties make that a guarantee rather than a promise:
+
+    * ``provenance`` is ALWAYS ``None``. ``agent_write`` refuses a write whose
+      provenance lacks ``agent`` or every external anchor, so a proposal is
+      structurally unsubmittable until a caller that HAS an agent key and an
+      outside anchor supplies one. The planner has neither — it answered a
+      question; it touched no url, file, commit or session.
+    * Total, like :func:`_validated_steps`: it never raises. ``plan_and_answer``
+      swallows every exception and falls back to BM25, so a raise here would
+      silently downgrade EVERY ask — catastrophic and green.
+    * It DROPS what it cannot verify and repairs nothing, mirroring the module
+      it feeds ("refuses instead of coercing"). Producer-owned node types are
+      deliberately not re-checked here: ``graph_write`` owns that deny set, and
+      a second copy would drift.
+    """
+    if not isinstance(raw, dict):
+        return None
+    proposal = raw.get("proposed_write")
+    if not isinstance(proposal, dict):
+        return None
+
+    nodes: List[Dict[str, Any]] = []
+    names: set = set()
+    for item in proposal.get("nodes") or []:
+        if not isinstance(item, dict) or len(nodes) >= _MAX_PROPOSED:
+            continue
+        name = str(item.get("name") or "").strip()
+        type_name = str(item.get("type") or "").strip()
+        if not name or type_name not in ALLOWED_NODE_TYPES:
+            continue
+        nodes.append(
+            {
+                "name": name,
+                "type": type_name,
+                "description": str(item.get("description") or ""),
+            }
+        )
+        names.add(name)
+
+    edges: List[Dict[str, Any]] = []
+    for item in proposal.get("edges") or []:
+        if not isinstance(item, dict) or len(edges) >= _MAX_PROPOSED:
+            continue
+        edge_type = str(item.get("type") or "").strip()
+        source = str(item.get("source") or "").strip()
+        target = str(item.get("target") or "").strip()
+        evidence = str(item.get("evidence") or "").strip()
+        if edge_type not in ALLOWED_EDGE_TYPES or not evidence:
+            continue
+        # An endpoint must name a proposed node or look like a node id
+        # ("Type:..."). Deliberately a shape check, not an existence check:
+        # this function has no graph, and ``graph_write`` re-resolves every
+        # endpoint against the real one on submission (refusing what it cannot
+        # find). A stricter guess here would only drop legitimate ids —
+        # hand-minted ones carry a single colon, ``stable_id`` ones two.
+        if not all(e in names or ":" in e for e in (source, target)):
+            continue
+        edges.append(
+            {
+                "source": source,
+                "target": target,
+                "type": edge_type,
+                "evidence": evidence,
+            }
+        )
+
+    if not nodes and not edges:
+        return None
+    return {
+        "tool": "graph_write",
+        "nodes": nodes,
+        "edges": edges,
+        # Never filled in by the planner — see the docstring.
+        "provenance": None,
+        "provenance_required": ["agent", "one of: url | file | commit | session_id"],
+        "rationale": str(proposal.get("rationale") or ""),
+        "status": "unsubmitted",
+    }
 
 
 def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits: List[Any]) -> str:
@@ -334,13 +539,24 @@ def _plan_and_answer(
     ctx = _ExecContext(wiki)
     evidence: List[Dict[str, Any]] = []
     hits: List[Any] = []
+    executed: List[Dict[str, Any]] = []
     for step in steps:
+        _before = len(ctx.executed)
+        ok = True
         try:
             content, step_hits = _execute_step(step["action"], step["args"], ctx, top_k)
         except Exception as exc:  # noqa: BLE001 — a broken step must not sink the plan
             content, step_hits = f"(step failed: {type(exc).__name__}: {exc})", []
+            ok = False
         evidence.append({"action": step["action"], "args": step["args"], "content": content})
         hits.extend(step_hits)
+        # Index-aligned with ``steps``: what the model ASKED for stays in
+        # steps, what actually ran is reported here — the same split
+        # search_nodes uses for `mode` and compile_context for `knobs`.
+        entry: Dict[str, Any] = {"action": step["action"], "ok": ok}
+        if len(ctx.executed) > _before:
+            entry.update(ctx.executed[-1])
+        executed.append(entry)
 
     from .query import WikiQuery
 
@@ -369,15 +585,23 @@ def _plan_and_answer(
         return None  # ungrounded prose — let the classic path report honestly
 
     id_to_name: Dict[str, str] = {h.node_id: h.title for h in hits if h.node_id and h.title}
+    id_to_name.update(ctx.citation_names)
     for i, ev in enumerate(evidence, start=1):
         id_to_name[f"kg-step-{i}-{ev['action']}"] = ev["action"].replace("_", " ")
     body = rewrite_citations(body, id_to_name)
 
-    return {
+    envelope: Dict[str, Any] = {
         "hits": [h.to_dict() for h in hits],
         "answer": body.strip() + "\n",
         "model": "cli-oauth",
         "used_llm": True,
         "fallback_reason": None,
-        "plan": {"reasoning": reasoning, "steps": steps},
+        "plan": {"reasoning": reasoning, "steps": steps, "executed": executed},
     }
+    proposal = _validated_proposal(raw_plan)
+    if proposal is not None:
+        # A SUGGESTION, sitting beside the answer. Nothing has been written:
+        # the caller submits it to graph_write itself, with provenance it
+        # supplies — a mutation is never a side effect of a query.
+        envelope["proposed_write"] = proposal
+    return envelope
