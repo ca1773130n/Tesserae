@@ -419,3 +419,39 @@ def test_no_proposal_means_no_key(tmp_path):
     envelope = plan_and_answer(wiki, "q", client=client)
 
     assert "proposed_write" not in envelope
+
+
+def test_a_malformed_proposal_container_never_sinks_the_answer(tmp_path):
+    """`_validated_proposal` must be TOTAL: a truthy SCALAR where a list was
+    expected ("nodes": 2 — a plausible JSON-mode slip) must not raise, or a
+    fully synthesized cited answer is discarded and the caller silently drops
+    to BM25 over a malformed OPTIONAL key."""
+    wiki = _make_view_project(tmp_path)
+    for bad in (2, True, 1.5, "abc", {"a": 1}):
+        client = FakeClient(
+            _plan({"query": "retrieval budgeting"}, proposed_write={"nodes": bad, "edges": bad}),
+            "Answer [kg-step-1-compile_context].",
+        )
+        envelope = plan_and_answer(wiki, "q", client=client)
+        assert envelope is not None, f"a {type(bad).__name__} proposal sank the whole ask"
+        assert "proposed_write" not in envelope
+
+
+def test_bundle_anchors_are_rewritten_to_resolvable_node_ids(tmp_path):
+    """The bundle's own [node-N] anchors are the nearest-looking citation
+    syntax in the evidence, so the synthesizer copies them — they satisfy the
+    grounding gate while resolving to nothing. They must reach the model as
+    real node ids instead."""
+    wiki = _make_view_project(tmp_path)
+    client = FakeClient(
+        _plan({"query": "retrieval budgeting"}),
+        "Budgeting uses fusion [Concept:fusion].",
+    )
+
+    envelope = plan_and_answer(wiki, "q", client=client)
+
+    evidence = client.text_calls[0]["user"]
+    assert "[node-1]" not in evidence
+    assert "[Concept:retrieval]" in evidence or "[Concept:fusion]" in evidence
+    # And a citation the model copied from the evidence resolves to a name.
+    assert "[Rank fusion]" in envelope["answer"]

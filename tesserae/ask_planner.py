@@ -30,8 +30,15 @@ _EVIDENCE_CLIP = 2500  # chars per evidence block fed to synthesis
 #: returns through ``_clip`` — without this ~92% of each bundle would be
 #: computed, paid for and thrown away mid-sentence, and the compiler's own
 #: budget-aware selection would be meaningless because the real cut happens
-#: outside it. The headroom carries the one-line views header inside the clip.
-_CONTEXT_BUDGET = 2_200
+#: outside it.
+#:
+#: The gap to ``_EVIDENCE_CLIP`` is real headroom, not decoration: ``budget``
+#: bounds the node BODIES the compiler admits, while the assembled bundle adds
+#: a section header per node plus a trailing citations legend that grows with
+#: the citation count. Anchors are rewritten to real node ids below, so a
+#: clipped legend costs nothing — but the headroom keeps the last body from
+#: being cut mid-sentence on an ordinary graph.
+_CONTEXT_BUDGET = 1_800
 #: A proposal is a suggestion, not a queue: three of each is enough to act on
 #: and small enough that a bad plan cannot flood the envelope.
 _MAX_PROPOSED = 3
@@ -262,6 +269,16 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
         ctx.citation_names.update(
             {c.node_id: c.node_name for c in bundle.citations if c.node_id}
         )
+        # Rewrite the bundle's own [node-N] anchors to REAL node ids before the
+        # synthesizer ever sees them. Left alone they are the nearest-looking
+        # citation syntax in the evidence, so the model copies them — they then
+        # satisfy the grounding gate (NODE_CITATION_RE matches) while resolving
+        # to nothing, leaving a dangling citation in a cited answer. Rewriting
+        # also makes the trailing legend redundant, so clipping it is harmless.
+        body = bundle.body
+        for i, citation in enumerate(bundle.citations, start=1):
+            if citation.node_id:
+                body = body.replace(f"[node-{i}]", f"[{citation.node_id}]")
         reached = sorted({v for c in bundle.citations for v in (c.via_views or ())})
         ctx.executed.append(
             {
@@ -276,7 +293,7 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
             f"(views applied: {', '.join(views) or 'none — full graph'}; "
             f"reached: {', '.join(reached) or 'none'})\n"
         )
-        return _clip(header + bundle.body), []
+        return _clip(header + body), []
 
     if action == "timeline":
         from .temporal import timeline
@@ -391,9 +408,17 @@ def _validated_proposal(raw: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(proposal, dict):
         return None
 
+    # Container guards, not just element guards: a truthy SCALAR ("nodes": 2 —
+    # a plausible JSON-mode slip where the model reports a count) is not
+    # iterable, and the TypeError would escape into plan_and_answer's blanket
+    # catch, discarding an already-synthesized, cited answer and dropping the
+    # caller to BM25 over a malformed OPTIONAL key. Same shape _validated_steps
+    # uses for raw_steps.
+    raw_nodes = proposal.get("nodes")
+    raw_edges = proposal.get("edges")
     nodes: List[Dict[str, Any]] = []
     names: set = set()
-    for item in proposal.get("nodes") or []:
+    for item in raw_nodes if isinstance(raw_nodes, list) else []:
         if not isinstance(item, dict) or len(nodes) >= _MAX_PROPOSED:
             continue
         name = str(item.get("name") or "").strip()
@@ -410,7 +435,7 @@ def _validated_proposal(raw: Any) -> Optional[Dict[str, Any]]:
         names.add(name)
 
     edges: List[Dict[str, Any]] = []
-    for item in proposal.get("edges") or []:
+    for item in raw_edges if isinstance(raw_edges, list) else []:
         if not isinstance(item, dict) or len(edges) >= _MAX_PROPOSED:
             continue
         edge_type = str(item.get("type") or "").strip()
