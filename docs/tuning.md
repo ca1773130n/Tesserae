@@ -158,7 +158,7 @@ you navigate cross-project wants the eager pass on.
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | off | Emits the combined cross-project graph |
 | `TESSERAE_FLEET_PIDFILE` | — | Engine fleet pidfile |
 | `TESSERAE_CLIP_TOKEN` | — | Shared secret for the web clipper |
-| `TESSERAE_SCHEMA_DRIFT_APPLY` | off | Applies schema-drift proposals (`tesserae lab`) |
+| `TESSERAE_SCHEMA_DRIFT_APPLY` | off | Applies the **approved** records in `.tesserae/schema-drift-proposals.json` at compile time (deterministic, no LLM). Write proposals with `tesserae schema-drift`; approving one means editing `ResearchNodeType` first, then setting `"approved": true` — an unresolvable name retypes nothing. |
 
 ---
 

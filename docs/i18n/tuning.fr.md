@@ -167,7 +167,7 @@ veut la passe hâtive activée.
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | désactivé | Émet le graphe combiné entre projets |
 | `TESSERAE_FLEET_PIDFILE` | — | Fichier pidfile de la flotte du moteur |
 | `TESSERAE_CLIP_TOKEN` | — | Secret partagé pour le presse-papiers Web |
-| `TESSERAE_SCHEMA_DRIFT_APPLY` | désactivé | Applique les propositions de dérive de schéma (`tesserae lab`) |
+| `TESSERAE_SCHEMA_DRIFT_APPLY` | désactivé | Applique les enregistrements **approved** de `.tesserae/schema-drift-proposals.json` à la compilation (déterministe, pas de LLM). Écrivez les propositions avec `tesserae schema-drift` ; approuver une proposition signifie éditer `ResearchNodeType` en premier, puis définir `"approved": true` — un nom non résolvable ne retype rien. |
 
 ---
 

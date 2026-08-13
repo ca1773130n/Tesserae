@@ -151,7 +151,7 @@ la pasada ansiosa activada.
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | desactivado | Emite el gráfico combinado entre proyectos |
 | `TESSERAE_FLEET_PIDFILE` | — | Archivo pidfile de la flota del motor |
 | `TESSERAE_CLIP_TOKEN` | — | Secreto compartido para el cortador web |
-| `TESSERAE_SCHEMA_DRIFT_APPLY` | desactivado | Aplica propuestas de desvío de esquema (`tesserae lab`) |
+| `TESSERAE_SCHEMA_DRIFT_APPLY` | desactivado | Aplica los registros **aprobados** en `.tesserae/schema-drift-proposals.json` en tiempo de compilación (determinístico, sin LLM). Escribe propuestas con `tesserae schema-drift`; aprobar una significa editar primero `ResearchNodeType`, luego establecer `"approved": true` — un nombre no resolvible no retipifica nada. |
 
 ---
 

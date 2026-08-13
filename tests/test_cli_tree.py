@@ -79,7 +79,10 @@ def test_unknown_command_exits_2_and_points_at_help(capsys):
         (["project", "mcp-config"], "tesserae projects mcp-config"),
         (["project", "refresh-raganything"], "tesserae integrations refresh raganything"),
         (["project", "evolve"], "tesserae lab evolve"),
-        (["project", "schema-drift"], "tesserae lab schema-drift"),
+        (["project", "schema-drift"], "tesserae schema-drift"),
+        # Promoted out of `lab` (roadmap step 12): the old spelling still
+        # answers, pointing at the first-class verb.
+        (["lab", "schema-drift"], "tesserae schema-drift"),
         (["project", "sessions", "import"], "tesserae sessions import"),
         (["project", "sessions", "discover"], "tesserae sessions discover"),
         (["project", "ingest-code"], "tesserae code ingest"),

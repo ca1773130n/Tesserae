@@ -160,7 +160,7 @@ export TESSERAE_LLM_CACHE=0   # всегда переспрашивать
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | выключено | Выводит объединённый кросс-проектный граф |
 | `TESSERAE_FLEET_PIDFILE` | — | Pidfile парка движков |
 | `TESSERAE_CLIP_TOKEN` | — | Общий секрет для веб-ножниц |
-| `TESSERAE_SCHEMA_DRIFT_APPLY` | выключено | Применяет предложения по дрейфу схемы (`tesserae lab`) |
+| `TESSERAE_SCHEMA_DRIFT_APPLY` | выключено | Применяет **утверждённые** записи в `.tesserae/schema-drift-proposals.json` во время компиляции (детерминировано, без LLM). Предложения пишутся с помощью `tesserae schema-drift`; одобрение предложения означает редактирование `ResearchNodeType` сначала, затем установку `"approved": true` — неразрешимое имя ничего не переписывает. |
 
 ---
 

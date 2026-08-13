@@ -5863,20 +5863,14 @@ def _handle_lab_evolve(args: argparse.Namespace) -> int:
     return _handle_evolve(args)
 
 
-def _handle_lab_schema_drift(args: argparse.Namespace) -> int:
-    """`lab schema-drift` = old `schema-drift`."""
-    return _handle_schema_drift(args)
-
-
 def _build_lab_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae lab",
-        description="Experimental LLM ops: evolve | schema-drift.",
+        description="Experimental LLM ops: evolve.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
             "  tesserae lab evolve\n"
-            "  tesserae lab schema-drift\n"
         ),
     )
     sub = parser.add_subparsers(dest="lab_command", required=True)
@@ -5894,15 +5888,43 @@ def _build_lab_parser() -> argparse.ArgumentParser:
     p_evolve.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     p_evolve.set_defaults(_handler="_handle_lab_evolve")
 
-    p_drift = sub.add_parser("schema-drift", help="EDC-style pass that proposes ResearchNodeType sub-types from clustered host-type nodes.")
-    p_drift.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    p_drift.add_argument("--host-type", action="append", default=[], help="ResearchNodeType to analyze (enum value, e.g. 'SourceDocument'). Repeat to analyze multiple. Default: SourceDocument.")
-    p_drift.add_argument("--min-volume", type=int, default=10, help="Skip host types with fewer than this many members (default: 10)")
-    p_drift.add_argument("--top-k", type=int, default=5, help="Take only the top-K clusters per host type (default: 5)")
-    p_drift.add_argument("--min-cluster-size", type=int, default=5, help="Drop clusters smaller than this size (default: 5)")
-    p_drift.add_argument("--jaccard-threshold", type=float, default=0.34, help="Jaccard similarity threshold for clustering (default: 0.34)")
-    p_drift.set_defaults(_handler="_handle_lab_schema_drift")
     return parser
+
+
+# ----- schema-drift ---------------------------------------------------------
+def _build_schema_drift_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae schema-drift",
+        description=(
+            "Propose ResearchNodeType sub-types from clustered host-type nodes "
+            "(EDC-style). Writes a human-readable .tesserae/schema-drift.md and "
+            "a machine-readable .tesserae/schema-drift-proposals.json ledger; "
+            "the SUGGESTED_SUBTYPE lint code surfaces every pending proposal. "
+            "PROPOSALS ONLY: promoting a name into the ontology stays a human "
+            "edit to ResearchNodeType, after which setting \"approved\": true "
+            "in the ledger lets the next compile retype that cluster. Needs a "
+            "compiled graph and an LLM backend."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae schema-drift\n"
+            "  tesserae schema-drift --host-type SourceDocument --host-type Paper\n"
+            "  tesserae schema-drift --min-volume 25 --top-k 3\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--host-type", action="append", default=[], help="ResearchNodeType to analyze (enum value, e.g. 'SourceDocument'). Repeat to analyze multiple. Default: SourceDocument.")
+    parser.add_argument("--min-volume", type=int, default=10, help="Skip host types with fewer than this many members (default: 10)")
+    parser.add_argument("--top-k", type=int, default=5, help="Take only the top-K clusters per host type (default: 5)")
+    parser.add_argument("--min-cluster-size", type=int, default=5, help="Drop clusters smaller than this size (default: 5)")
+    parser.add_argument("--jaccard-threshold", type=float, default=0.34, help="Jaccard similarity threshold for clustering (default: 0.34)")
+    return parser
+
+
+def _route_schema_drift(rest: List[str]) -> int:
+    args = _build_schema_drift_parser().parse_args(rest)
+    return _resolve_handler("_handle_schema_drift")(args)
 
 
 def _route_lab(rest: List[str]) -> int:
@@ -6810,6 +6832,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "query": _route_query,
     # Descent (0.25): graph_map MCP tool exposed as a CLI verb for non-MCP callers
     "graph-map": _route_graph_map,
+    "schema-drift": _route_schema_drift,
     # verify_claim MCP tool exposed as a CLI verb for non-MCP callers
     "verify-claim": _route_verify_claim,
     # layered agent KG (Phase 2): per-agent L1 distillation

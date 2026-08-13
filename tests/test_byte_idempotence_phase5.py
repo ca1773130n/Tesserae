@@ -36,6 +36,11 @@ _MEMORY_FIELDS = (
     "last_accessed_at",
     "confidence",
     "superseded",
+    # Sidecar-only, same as the rest: schema-drift proposals live in
+    # .tesserae/schema-drift-proposals.json. A node-metadata proposal would
+    # survive an incremental compile and vanish on a full one — a wall clock
+    # one indirection removed, the exact leak class this file guards.
+    "proposed_type",
 )
 
 

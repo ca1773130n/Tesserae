@@ -3356,24 +3356,23 @@ class ProjectWiki:
 
         # (3) Schema-drift apply — OPT-IN, destructive (Pitfall 4). Default
         # (env unset/falsy) => skipped entirely, graph.json byte-identical.
-        if _env_truthy("TESSERAE_SCHEMA_DRIFT_APPLY") and json_client is not None:
+        if _env_truthy("TESSERAE_SCHEMA_DRIFT_APPLY"):
             try:
-                from .schema_drift import analyze_schema_drift, apply_schema_drift
+                from .schema_drift import apply_schema_drift, read_proposal_ledger
 
-                _report_path, host_reports = analyze_schema_drift(
-                    graph, tesserae_dir=self.paths.root, llm=json_client
-                )
-                # ``HostTypeReport`` stores proposals inside ``clusters`` as
-                # ``(cluster_nodes, proposals)`` tuples (schema_drift.py) — there
-                # is no ``report.proposals`` attribute, so iterating that would
-                # silently apply nothing. Flatten the per-cluster proposal lists.
-                approved: List[dict] = []
-                for report in host_reports:
-                    for _cluster, proposals in getattr(report, "clusters", []) or []:
-                        for prop in proposals or []:
-                            as_dict = prop if isinstance(prop, dict) else getattr(prop, "__dict__", {})
-                            if as_dict.get("approved"):
-                                approved.append(as_dict)
+                # Read the human-reviewed LEDGER; never re-run the analysis
+                # here. Two things follow, and both are the point of step 12:
+                # the compile-time apply is now LLM-free and deterministic
+                # (no ``json_client`` requirement), and a proposal can only be
+                # applied after a human set ``approved`` — which the fresh
+                # analyze path could never produce, since its proposals carry
+                # only {name, description, examples} and no approval field at
+                # all. That is why this pass had never once fired.
+                approved: List[dict] = [
+                    record
+                    for record in read_proposal_ledger(self.paths.root)
+                    if record.get("approved")
+                ]
                 if approved:
                     before = len(approved)
                     graph = apply_schema_drift(graph, approved)
