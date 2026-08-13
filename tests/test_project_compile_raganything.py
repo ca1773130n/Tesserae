@@ -2,6 +2,7 @@ import json
 
 from tesserae.project import ProjectWiki, load_graph_file
 from tesserae.research_graph import ResearchNodeType
+from tesserae.site.raw_view import safe_raw_slug
 
 
 def _payload():
@@ -131,3 +132,44 @@ def test_project_compile_lands_artifact_nodes_in_the_main_graph(tmp_path):
     # no path, nothing that drifts.
     wiki.compile()
     assert wiki.paths.graph.read_bytes() == first_bytes
+
+def test_compile_serves_the_artifact_asset_bytes_on_the_site(tmp_path):
+    """The graph asserts a figure's bytes exist, so the built site must carry
+    them: content-addressed under ``raw-assets/`` and embedded by the figure's
+    own raw page. Before this, an Artifact's asset reached no inlet at all --
+    its ``source_path`` is the owning document and it has no wiki page."""
+    project = tmp_path / "demo"
+    project.mkdir()
+    (project / "README.md").write_text("# demo\n", encoding="utf-8")
+    artifact = project / ".tesserae" / "external" / "raganything" / "manifest.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text(json.dumps(_payload()), encoding="utf-8")
+    parsed = project / ".tesserae" / "external" / "raganything" / "parsed" / "deadbeef"
+    parsed.mkdir(parents=True)
+    payload = b"\x89PNG\r\n\x1a\npipeline-figure"
+    (parsed / "x.png").write_bytes(payload)
+
+    wiki = ProjectWiki.init(project, name="demo", sources=["README.md"])
+    cfg = wiki.config()
+    cfg["external_tools"] = [
+        {
+            "id": "raganything",
+            "artifact": ".tesserae/external/raganything/manifest.json",
+            "sync_mode": "native_graph",
+            "enabled": True,
+            "auto_refresh": False,
+        }
+    ]
+    wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+
+    wiki.compile()
+
+    graph = load_graph_file(wiki.paths.graph)
+    figure = next(n for n in graph.nodes if n.type == ResearchNodeType.ARTIFACT)
+    digest = figure.metadata["content_hash"]
+    asset = wiki.paths.site / "raw-assets" / f"{digest[:16]}.png"
+    assert asset.read_bytes() == payload
+
+    slug = safe_raw_slug(figure.metadata["asset_path"])
+    page = (wiki.paths.site / "raw" / f"{slug}.html").read_text(encoding="utf-8")
+    assert f"../raw-assets/{digest[:16]}.png" in page

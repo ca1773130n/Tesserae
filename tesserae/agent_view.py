@@ -376,7 +376,7 @@ def drill_down(
     if absorbed_by:
         result["absorbed_by"] = absorbed_by
     if node is not None:
-        result["node"] = {
+        payload: Dict[str, object] = {
             "id": node.id,
             "name": node.name,
             "type": node.type.value,
@@ -384,6 +384,34 @@ def drill_down(
             "content_hash": _node_content_hash(node),
             "source_path": node.source_path,
         }
+        # An Artifact's bytes are addressed, never inlined: base64 of a figure
+        # would be the largest object this server can return, and an LLM can't
+        # read raw PNG bytes anyway — it can read a path or fetch a URL.
+        # ``asset_sha256`` is the digest of the ASSET BYTES and is deliberately
+        # a separate key from ``content_hash`` above, which is the node-payload
+        # digest used for staleness detection. Artifact-only so drilling any
+        # other node type stays the same six keys it has always been.
+        if node.type is ResearchNodeType.ARTIFACT:
+            metadata = node.metadata or {}
+            asset_rel = metadata.get("asset_path")
+            asset_hash = str(metadata.get("content_hash") or "")
+            if isinstance(asset_rel, str) and asset_rel and asset_hash:
+                # Local import: ``tesserae.site`` pulls the whole renderer
+                # package, and the MCP read path must not pay for it.
+                from .site.raw_view import RAW_ASSETS_DIR, artifact_asset_name
+
+                payload["asset_path"] = asset_rel
+                payload["asset_sha256"] = asset_hash
+                try:
+                    payload["asset_site_path"] = (
+                        f"{RAW_ASSETS_DIR}/"
+                        f"{artifact_asset_name(asset_hash, Path(asset_rel).suffix)}"
+                    )
+                except ValueError:
+                    # Malformed declared hash: the path and the digest are
+                    # still true, the site address would be invented.
+                    pass
+        result["node"] = payload
     # Audit log — every drill-down is recorded in the sidecar (§6.4). The only
     # wall-clock here writes to the sidecar sqlite, never to a graph artifact,
     # so it does not threaten artifact byte-idempotence. Best-effort like

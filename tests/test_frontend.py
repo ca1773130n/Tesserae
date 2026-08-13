@@ -16,6 +16,7 @@ on disk:
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -287,15 +288,42 @@ def test_static_site_builder_is_byte_identical_across_runs(tmp_path: Path) -> No
     wiki = tmp_path / "wiki"
     wiki.mkdir()
     _seed_wiki(wiki)
+    # An artifact asset is emitted under a name derived from its content hash.
+    # A name carrying size, mtime or build time would flip the tree's KEYS
+    # between the two runs, so this comparison is the idempotence gate for the
+    # asset inlet as well as for the pages.
+    payload = b"\x89PNG\r\n\x1a\nfigure"
+    digest = hashlib.sha256(payload).hexdigest()
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "fig.png").write_bytes(payload)
+    graph = ResearchGraph(
+        nodes=[
+            *_toy_graph().nodes,
+            ResearchNode(
+                id=f"Artifact:{digest[:12]}",
+                name="Figure: Pipeline",
+                type=ResearchNodeType.ARTIFACT,
+                description="Pipeline",
+                metadata={
+                    "parser": "raganything",
+                    "kind": "image",
+                    "content_hash": digest,
+                    "asset_path": "assets/fig.png",
+                },
+            ),
+        ],
+        edges=list(_toy_graph().edges),
+    )
     out_a = tmp_path / "site-a"
     out_b = tmp_path / "site-b"
     builder = StaticSiteBuilder(site_title="Demo Wiki")
-    builder.write_site(_toy_graph(), wiki, out_a)
-    builder.write_site(_toy_graph(), wiki, out_b)
+    builder.write_site(graph, wiki, out_a)
+    builder.write_site(graph, wiki, out_b)
 
     files_a = {p.relative_to(out_a): p.read_bytes() for p in out_a.rglob("*") if p.is_file()}
     files_b = {p.relative_to(out_b): p.read_bytes() for p in out_b.rglob("*") if p.is_file()}
 
+    assert Path("raw-assets") / f"{digest[:16]}.png" in files_a
     assert set(files_a.keys()) == set(files_b.keys())
     for relpath, payload in files_a.items():
         assert payload == files_b[relpath], f"byte drift in {relpath}"

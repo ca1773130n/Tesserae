@@ -4164,7 +4164,36 @@ class LLMWikiMCPServer:
             raise ValueError(f"raw_source: file not found: {source_path}")
         raw = target.read_bytes()
         truncated = len(raw) > RAW_SOURCE_BYTE_CAP
-        body = raw[:RAW_SOURCE_BYTE_CAP].decode("utf-8", errors="ignore")
+        head = raw[:RAW_SOURCE_BYTE_CAP]
+        # Strict decode. ``errors="ignore"`` used to hand back mojibake with
+        # every non-UTF-8 byte silently dropped and no signal at all, which
+        # became untenable once ``drill_down`` started naming binary
+        # ``asset_path``s to agents: the first thing a caller does with one is
+        # ask this tool for it, and corruption served as evidence is worse
+        # than a named refusal. Detection is by DECODE, not by extension —
+        # an extension set both over-refuses (``.svg`` is text) and
+        # under-refuses (``.docx``, ``.bin``).
+        body: Optional[str] = None
+        try:
+            body = head.decode("utf-8")
+        except UnicodeDecodeError:
+            # The cap can land mid-codepoint, so a truncated read may fail on
+            # a legitimately UTF-8 file. Trim up to three bytes (the longest
+            # continuation run) before concluding the file is not text.
+            if truncated:
+                for trim in (1, 2, 3):
+                    try:
+                        body = head[:-trim].decode("utf-8")
+                        break
+                    except UnicodeDecodeError:
+                        continue
+        if body is None:
+            raise ValueError(
+                f"raw_source: {source_path} is not UTF-8 text and this tool never "
+                "returns bytes. For an Artifact node, drill_down reports "
+                "'asset_path' (read it from disk) and 'asset_site_path' "
+                "(fetch it from a running `tesserae serve`)."
+            )
         return {
             "source_path": str(target.relative_to(project_root.resolve())),
             "body": body,

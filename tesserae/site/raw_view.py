@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import html
 import json
+import logging
 import os
 import re
 from pathlib import Path
@@ -36,6 +37,8 @@ from typing import Callable, Iterable, List, Mapping, Optional, Tuple
 from .code_link_rewriter import looks_like_code_file_target
 from .components import breadcrumbs, page_shell, toc
 from .markdown import render_markdown
+
+_LOG = logging.getLogger(__name__)
 
 
 # Regex used by :func:`_unique_heading_anchors` to find ``<h2>`` / ``<h3>``
@@ -73,6 +76,8 @@ __all__ = [
     "iter_raw_sources",
     "iter_markdown_binary_assets",
     "copy_raw_asset",
+    "artifact_asset_name",
+    "copy_artifact_asset",
     "is_binary_extension",
     "is_markdown_source_path",
     "WikiLinkResolver",
@@ -289,9 +294,15 @@ def copy_raw_asset(absolute: Path, slug: str, assets_dir: Path) -> Optional[str]
     """Copy a binary file to ``raw-assets/<slug><suffix>``.
 
     Returns the relative filename written under ``assets_dir`` (e.g.
-    ``foo.pdf``). Skips when the destination already exists with matching
-    size + mtime so two consecutive compiles don't churn binaries. Assets
-    use the file's lowercased suffix verbatim.
+    ``foo.pdf``). Assets use the file's lowercased suffix verbatim.
+
+    The size + mtime short-circuit below never fires during a real compile:
+    ``write_site`` rmtree's the output directory and ``ProjectWiki`` rmtree's
+    it again beforehand, so ``dest`` is always absent. It is NOT the
+    compile-churn avoidance an earlier version of this docstring claimed —
+    it only has an effect when a caller re-copies into a surviving tree.
+    Content-addressed artifact assets use :func:`copy_artifact_asset`
+    instead, where the name itself is the freshness test.
     """
     suffix = absolute.suffix.lower()
     if not suffix:
@@ -321,6 +332,84 @@ def copy_raw_asset(absolute: Path, slug: str, assets_dir: Path) -> Optional[str]
             os.utime(dest, (src_stat.st_atime, src_stat.st_mtime))
         except OSError:
             return None
+    return dest_name
+
+
+def artifact_asset_name(content_hash: str, suffix: str, *, hash_chars: int = 16) -> str:
+    """Return the content-addressed filename for an artifact asset.
+
+    ``sha256[:16] + suffix`` — e.g. ``9f2c81a04be3d715.png``. Sixteen hex
+    chars keep the URL and the manifest readable while putting a collision
+    beyond any plausible corpus (~5e9 assets for a 1e-9 birthday bound);
+    ``copy_artifact_asset`` falls back to the full digest on the size
+    mismatch that would betray one.
+
+    Raises ``ValueError`` for a hash that is short or non-hex rather than
+    minting a garbage filename: the caller's declared hash IS the artifact's
+    identity (it seeds the node id), so a malformed one means the node is
+    wrong, not that the file should be served under a made-up name.
+    """
+    digest = str(content_hash or "").strip().lower()
+    if len(digest) < 16 or any(c not in "0123456789abcdef" for c in digest):
+        raise ValueError(
+            f"artifact_asset_name: content_hash must be >=16 hex chars, got {content_hash!r}"
+        )
+    tail = str(suffix or "").lower()
+    if tail and not tail.startswith("."):
+        tail = "." + tail
+    return f"{digest[:hash_chars]}{tail}"
+
+
+def copy_artifact_asset(
+    absolute: Path, content_hash: str, assets_dir: Path
+) -> Optional[str]:
+    """Copy an Artifact's bytes to ``raw-assets/<sha256[:16]><suffix>``.
+
+    The name comes from the hash the graph already declared for these bytes
+    (``metadata['content_hash']``, which also seeds the node id), never from a
+    re-hash at build time — otherwise the served filename could disagree with
+    the node identity and ``drill_down``'s ``asset_site_path`` would be a
+    prediction rather than a fact.
+
+    Because the name is a pure function of the content, existence IS the
+    freshness test: no stat compare, and deliberately no ``os.utime``. A
+    size + mtime check would lie in both directions here — ``git checkout`` /
+    ``rsync -t`` / ``tar -x`` preserve mtime across a content change (stale
+    bytes read as fresh), a re-parse or a container rebuild bumps it with
+    identical bytes — and ``site/`` is documented as timestamp-free.
+    """
+    suffix = absolute.suffix.lower()
+    if not suffix:
+        return None
+    try:
+        dest_name = artifact_asset_name(content_hash, suffix)
+    except ValueError as exc:
+        _LOG.warning("skipping artifact asset %s: %s", absolute, exc)
+        return None
+    dest = assets_dir / dest_name
+    if dest.exists():
+        # Same 16-hex prefix, different bytes: serving the wrong figure as
+        # evidence is the worst outcome an evidence system has, so spend one
+        # O(1) stat on it and fall back to the full digest when sizes differ.
+        try:
+            if dest.stat().st_size == absolute.stat().st_size:
+                return dest_name
+        except OSError:
+            return None
+        _LOG.error(
+            "artifact asset hash prefix collision on %s (%s): falling back to the full digest",
+            dest_name,
+            absolute,
+        )
+        dest_name = artifact_asset_name(content_hash, suffix, hash_chars=len(content_hash.strip()))
+        dest = assets_dir / dest_name
+        if dest.exists():
+            return dest_name
+    try:
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(absolute.read_bytes())
+    except OSError:
+        return None
     return dest_name
 
 

@@ -5367,6 +5367,14 @@ def _handle_agents_drill(args: argparse.Namespace) -> int:
         if node.get("description"):
             print(f"  {node['description']}")
         print(f"  content_hash={node.get('content_hash')}")
+        # Artifact reference fields — Agented and friends drive Tesserae by
+        # subprocess only, so anything drill_down reports over MCP has to be
+        # readable off this printer too.
+        if node.get("asset_path"):
+            print(f"  asset_path={node.get('asset_path')}")
+            print(f"  asset_sha256={node.get('asset_sha256')}")
+            if node.get("asset_site_path"):
+                print(f"  asset_site_path={node.get('asset_site_path')}")
     print(
         "audit: "
         + ("recorded" if result.get("audited") else "write failed")

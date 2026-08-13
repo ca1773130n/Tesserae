@@ -19,11 +19,11 @@ import pytest
 
 from tesserae.agent_distill import DistillStateStore, agent_artifact_path, distill_agent
 from tesserae.agent_identity import AgentRegistry
-from tesserae.agent_view import AgentViewError, resolve_agent_view
+from tesserae.agent_view import AgentViewError, drill_down, resolve_agent_view
 from tesserae.context_compiler import compile_context
 from tesserae.graph_filters import superseded_ids
 from tesserae.mcp_server import LLMWikiMCPServer
-from tesserae.research_graph import ResearchNodeType
+from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 
 from tests.test_agent_distill import (
     AGENT,
@@ -209,6 +209,56 @@ def test_drill_down_statuses_and_audit_log(tmp_path: Path) -> None:
     logged = json.loads(rows[0][3])
     assert logged["node_id"] == "SessionInsight:f3"
     assert logged["status"] == "alive"
+
+
+def test_drill_down_reports_artifact_asset_reference_fields(tmp_path: Path) -> None:
+    """An Artifact's bytes are handed back as addresses, never inlined.
+
+    ``asset_sha256`` is its own key and never overloads ``content_hash``,
+    which is the node-payload digest used for staleness. The two carry the
+    same string for an Artifact only because ``_node_content_hash`` prefers a
+    stamped ``metadata['content_hash']`` — they are not the same field, and
+    for a node whose payload hash is derived (a SessionInsight) they differ.
+    """
+    project, graph = _project_with_l0(tmp_path)
+    asset_digest = "ab" * 32
+    artifact = ResearchNode(
+        id="Artifact:deadbeef0000",
+        name="Figure: Pipeline",
+        type=ResearchNodeType.ARTIFACT,
+        description="Pipeline",
+        metadata={
+            "parser": "raganything",
+            "kind": "image",
+            "content_hash": asset_digest,
+            "asset_path": ".tesserae/external/raganything/parsed/deadbeef/x.png",
+        },
+    )
+    l0 = ResearchGraph(nodes=[*graph.nodes, artifact], edges=list(graph.edges))
+
+    node = drill_down(project, l0, artifact.id)["node"]
+
+    assert node["asset_path"] == ".tesserae/external/raganything/parsed/deadbeef/x.png"
+    assert node["asset_sha256"] == asset_digest
+    assert node["asset_site_path"] == f"raw-assets/{asset_digest[:16]}.png"
+    assert "content_hash" in node and node["content_hash"] == asset_digest
+
+
+def test_drill_down_payload_does_not_grow_for_non_artifacts(tmp_path: Path) -> None:
+    """Every drill on every node type pays for this payload, so the asset
+    fields are artifact-only."""
+    project, graph = _project_with_l0(tmp_path)
+
+    node = drill_down(project, graph, "SessionInsight:f3")["node"]
+
+    assert set(node) == {
+        "id",
+        "name",
+        "type",
+        "description",
+        "content_hash",
+        "source_path",
+    }
 
 
 # --------------------------------------------------------------------------- compile_context (§9)
