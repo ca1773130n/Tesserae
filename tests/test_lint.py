@@ -331,6 +331,41 @@ def test_stale_build_history_emits_info(tmp_path: Path) -> None:
     assert len(matches) == 1
 
 
+def test_skipped_agent_write_is_a_finding_not_just_a_stderr_line(
+    tmp_path: Path, capsys
+) -> None:
+    """A torn overlay line is a write the agent filed and the graph lost.
+
+    Replay drops it with a warning — right, since one bad line must not brick
+    every future compile — but a warning on stderr during a compile is a
+    message nobody reads. The report is where a lost write becomes visible.
+    """
+    project = _scaffold(tmp_path)
+    overlay = project / ".tesserae" / "agent-writes.jsonl"
+    good = json.dumps({"write_id": "aaa", "agent": "a", "nodes": [], "edges": []})
+    # A half-written line, exactly what two unsynchronized appends produce.
+    overlay.write_text(good + "\n" + '{"write_id": "bbb", "nod\n', encoding="utf-8")
+
+    report = WikiLinter(project).run()
+    matches = [f for f in report.findings if f.code == "AGENT_WRITE_SKIPPED"]
+    assert len(matches) == 1
+    assert "line 2" in matches[0].message
+    assert matches[0].severity == "warning"
+    assert "AGENT_WRITE_SKIPPED" in report.to_markdown()
+
+
+def test_intact_agent_write_overlay_is_quiet(tmp_path: Path) -> None:
+    """The check must not fire on a healthy overlay — a warning that is always
+    on is a warning that gets filtered out."""
+    project = _scaffold(tmp_path)
+    (project / ".tesserae" / "agent-writes.jsonl").write_text(
+        json.dumps({"write_id": "aaa", "agent": "a", "nodes": [], "edges": []}) + "\n",
+        encoding="utf-8",
+    )
+    report = WikiLinter(project).run()
+    assert not [f for f in report.findings if f.code == "AGENT_WRITE_SKIPPED"]
+
+
 # --------------------------------------------------------------------------- auto-fix + report contracts
 
 

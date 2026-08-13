@@ -272,6 +272,7 @@ class WikiLinter:
         self.wiki_dir = self.wiki_root / "wiki"
         self.site_dir = self.wiki_root / "site"
         self.build_history_path = self.wiki_root / ".build-history.jsonl"
+        self.agent_writes_path = self.wiki_root / "agent-writes.jsonl"
         self.report_md_path = self.wiki_root / "lint-report.md"
         self.report_json_path = self.wiki_root / "lint-report.json"
 
@@ -313,6 +314,7 @@ class WikiLinter:
         findings.extend(self._check_code_graph_staleness(nodes_by_id))
         findings.extend(self._check_agent_metadata_allowlist(nodes_by_id))
         findings.extend(self._check_agent_forget_ledger())
+        findings.extend(self._check_agent_write_skips())
         findings.extend(self._check_procedural_pools(nodes_by_id, edges))
         findings.extend(self._check_undistilled_backlog(nodes_by_id, edges))
         findings.extend(self._check_reasoning_edge_ratio(edges))
@@ -784,6 +786,48 @@ class WikiLinter:
                 suggested_fix=(
                     "Review with drill_down / include_superseded; re-run "
                     "`tesserae distill --recheck` if a demotion looks wrong."
+                ),
+            )
+
+    def _check_agent_write_skips(self) -> Iterable[LintFinding]:
+        """Name every agent write the overlay replay dropped.
+
+        ``replay_agent_writes`` skips an unusable record rather than failing,
+        which is right — one truncated line must not brick every future compile
+        — but it says so only on stderr, so a write lost to a torn append (two
+        unsynchronized appends interleaving) degraded into a message nobody
+        reads. A skipped write is a claim the agent believes it filed and the
+        graph does not contain; that belongs in the report.
+
+        Reads the overlay, not the graph — no effect on compile bytes.
+        """
+        if not self.agent_writes_path.is_file():
+            return
+        skips: List[Dict[str, object]] = []
+        try:
+            from .agent_write import replay_agent_writes
+
+            replay_agent_writes(self.agent_writes_path, skips)
+        except Exception:  # noqa: BLE001 — lint never dies on sidecar trouble
+            return
+        for skip in skips:
+            where = (
+                f"line {skip['line']}"
+                if skip.get("line") is not None
+                else f"write {skip.get('write_id') or '<no id>'}"
+            )
+            yield LintFinding(
+                severity="warning",
+                code="AGENT_WRITE_SKIPPED",
+                message=(
+                    f"agent-writes.jsonl {where} was skipped by replay "
+                    f"({skip.get('reason')}) — that write is NOT in the graph"
+                ),
+                path=str(self.agent_writes_path),
+                suggested_fix=(
+                    "Inspect the line: a truncated one is a torn concurrent "
+                    "append and the agent should re-file the write; a "
+                    "hand-edited one should be corrected or removed."
                 ),
             )
 

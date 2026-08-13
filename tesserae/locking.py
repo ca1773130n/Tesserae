@@ -6,6 +6,14 @@ same ``.tesserae`` state and pile up behind each other (observed: a wedged
 compile holding the queue for ~2 days). ``flock(2)`` releases automatically
 when the holder dies, so a crashed compile never leaves a stale lock.
 
+The lock is portable, not POSIX-only: ``flock`` where it exists and
+``msvcrt.locking`` on Windows. It used to be ``if fcntl is None: yield`` — a
+no-op — and the one write path with more than one producer is the agent-write
+overlay append, which takes ``agent-writes.lock`` for a ~1 ms
+read-dedupe-append. Unsynchronized appends there interleave into a torn JSONL
+line, and ``replay_agent_writes`` skips an unusable record rather than failing,
+so on Windows a lost agent write degraded into a warning nobody reads.
+
 The holder record inside the lock file is JSON — ``{"pid": …, "host": …}`` —
 because a bare pid is meaningless when several machines share a disk and
 therefore share ``.tesserae``: pid 4711 on one server says nothing about pid
@@ -17,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -24,12 +33,102 @@ from typing import Callable, Dict, Iterator, Optional
 
 try:
     import fcntl
-except ImportError:  # pragma: no cover — Windows: locking degrades to no-op
+except ImportError:  # pragma: no cover — Windows, where msvcrt takes over
     fcntl = None  # type: ignore[assignment]
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover — every POSIX platform
+    msvcrt = None  # type: ignore[assignment]
+
+# ``msvcrt.locking`` locks a byte RANGE from the current file position rather
+# than the whole open file description, so the range is pinned to byte 0 and
+# one byte long. The holder record is rewritten (and truncated) under the lock,
+# so a range that tracked the file's length would let two writers lock disjoint
+# parts of the same file and both believe they held it. Locking past EOF is
+# legal on Windows, which is what makes a fixed range safe on an empty file.
+_LOCK_OFFSET = 0
+_LOCK_BYTES = 1
+
+_warned_unlockable = False
+
+
+def locking_unavailable() -> bool:
+    """True when this interpreter has neither primitive.
+
+    Read live rather than frozen at import so a test can substitute either
+    module and have every caller — including doctor's probe — agree about
+    which mechanism is in play.
+    """
+    return fcntl is None and msvcrt is None
 
 
 class CompileLockHeldError(RuntimeError):
     """Another compile/refresh already holds this project's lock."""
+
+
+def try_lock_exclusive(handle) -> bool:
+    """Take an exclusive non-blocking lock on ``handle``; False if held.
+
+    One contract over two primitives, because the callers must not care which
+    platform they are on: ``flock`` locks the open file description, while
+    ``msvcrt.locking`` locks ``_LOCK_BYTES`` from the current position — hence
+    the seek. Both conflict between two handles on the same file even inside a
+    single process, which is what makes the exclusion real for threads as well
+    as processes.
+    """
+    if fcntl is not None:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return False
+        return True
+    handle.seek(_LOCK_OFFSET)
+    try:
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, _LOCK_BYTES)
+    except OSError:
+        return False
+    return True
+
+
+def unlock_exclusive(handle) -> None:
+    """Release what :func:`try_lock_exclusive` took.
+
+    ``msvcrt`` unlocks by region, so the position must be put back where the
+    lock was taken — writing the holder record left it at end-of-file. Errors
+    are swallowed on purpose: this runs in a ``finally``, closing the handle
+    releases the lock under both primitives anyway, and a failed release must
+    never mask the exception the locked block was already raising.
+    """
+    try:
+        if fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            return
+        handle.seek(_LOCK_OFFSET)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, _LOCK_BYTES)
+    except OSError:
+        pass
+
+
+def _warn_unlockable_once() -> None:
+    """Say out loud, once per process, that writes are unserialized.
+
+    A documented no-op that says nothing at runtime is the silent-degradation
+    pattern this repo keeps having to fix: the overlay append is the one write
+    path with more than one producer, and unsynchronized appends interleave
+    into a torn JSONL line that replay skips. Losing an agent write is worth a
+    line on stderr even on a platform nobody expects to reach.
+    """
+    global _warned_unlockable
+    if _warned_unlockable:
+        return
+    _warned_unlockable = True
+    print(
+        "warning: no file-locking primitive on this platform (neither fcntl "
+        "nor msvcrt); concurrent tesserae compiles and agent writes are NOT "
+        "serialized and can interleave",
+        file=sys.stderr,
+    )
 
 
 def _host_tag() -> str:
@@ -118,7 +217,8 @@ def compile_lock(
     is possible — the write path never takes ``compile.lock``.
     """
     directory = Path(tesserae_dir)
-    if fcntl is None:  # pragma: no cover — Windows
+    if locking_unavailable():
+        _warn_unlockable_once()
         yield
         return
     directory.mkdir(parents=True, exist_ok=True)
@@ -134,25 +234,23 @@ def compile_lock(
     next_notice = started + 5.0
     try:
         while True:
-            try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if try_lock_exclusive(handle):
                 break
-            except OSError:
-                now = time.monotonic()
-                if now >= deadline:
-                    raise CompileLockHeldError(
-                        "another tesserae compile/refresh is already running for "
-                        f"this project{describe_holder(read_holder(lock_path))}; "
-                        "retry when it finishes, pass --wait to queue behind it, "
-                        "or set TESSERAE_COMPILE_LOCK_WAIT=<seconds>"
-                    ) from None
-                if on_wait is not None and now >= next_notice:
-                    next_notice = now + 5.0
-                    try:
-                        on_wait(now - started, read_holder(lock_path))
-                    except Exception:
-                        on_wait = None  # a broken reporter must not break the wait
-                time.sleep(0.2)
+            now = time.monotonic()
+            if now >= deadline:
+                raise CompileLockHeldError(
+                    "another tesserae compile/refresh is already running for "
+                    f"this project{describe_holder(read_holder(lock_path))}; "
+                    "retry when it finishes, pass --wait to queue behind it, "
+                    "or set TESSERAE_COMPILE_LOCK_WAIT=<seconds>"
+                )
+            if on_wait is not None and now >= next_notice:
+                next_notice = now + 5.0
+                try:
+                    on_wait(now - started, read_holder(lock_path))
+                except Exception:
+                    on_wait = None  # a broken reporter must not break the wait
+            time.sleep(0.2)
         handle.seek(0)
         handle.truncate()
         # Identify the MACHINE as well as the process. Without it, a lock held
@@ -170,6 +268,6 @@ def compile_lock(
                 handle.flush()
             except OSError:
                 pass
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            unlock_exclusive(handle)
     finally:
         handle.close()

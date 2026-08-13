@@ -751,20 +751,27 @@ def _detect_compile_lock(ctx: DoctorContext) -> Optional[Finding]:
     lock_path = _tesserae_dir(ctx) / "compile.lock"
     if not lock_path.exists():
         return _f("compile_lock", "processes", OK, "no live compile lock")
-    try:
-        import fcntl
-    except ImportError:  # pragma: no cover — Windows
-        return _f("compile_lock", "processes", OK, "flock unsupported on this platform — skipped")
+    # Probe with the same primitive ``compile_lock`` holds it with — flock or
+    # msvcrt — rather than a second hand-rolled fcntl call that would report
+    # "unsupported" on a platform where the lock now works.
+    from .locking import (
+        describe_holder,
+        locking_unavailable,
+        read_holder,
+        try_lock_exclusive,
+        unlock_exclusive,
+    )
+
+    if locking_unavailable():  # pragma: no cover — neither fcntl nor msvcrt
+        return _f(
+            "compile_lock", "processes", OK, "file locking unsupported on this platform — skipped"
+        )
     try:
         handle = lock_path.open("r+", encoding="utf-8")  # never create, never truncate
     except OSError as exc:
         return _f("compile_lock", "processes", WARN, f"compile.lock unreadable: {exc}")
     try:
-        try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            from .locking import describe_holder, read_holder
-
+        if not try_lock_exclusive(handle):
             # The holder record is JSON — ``{"pid": …, "host": …}`` — because
             # several machines can share this ``.tesserae`` and pid 4711 here
             # says nothing about pid 4711 there; ``read_holder`` still accepts
@@ -789,7 +796,7 @@ def _detect_compile_lock(ctx: DoctorContext) -> Optional[Finding]:
                     else "wait for the running compile to finish"
                 ),
             )
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        unlock_exclusive(handle)
         return _f("compile_lock", "processes", OK, "compile.lock present but not held")
     finally:
         handle.close()

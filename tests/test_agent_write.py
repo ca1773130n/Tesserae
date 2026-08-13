@@ -248,24 +248,53 @@ def test_agent_write_replay_order_independent(tmp_path):
     assert canon(one) == canon(two)
 
 
-def test_agent_write_concurrent_appends(tmp_path):
-    jsonl = tmp_path / "agent-writes.jsonl"
-
+def _concurrent_appends(jsonl, count=8):
     def write(i):
         return record_agent_write(jsonl, _payload(f"Concept {i}"), AGENT)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(pool.map(write, range(8)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=count) as pool:
+        results = list(pool.map(write, range(count)))
 
+    # Every line must parse: a torn append — two writers interleaving into the
+    # same line — is exactly what this path's lock exists to prevent, and it
+    # shows up here as a JSONDecodeError rather than a count mismatch.
     lines = [
         json.loads(line)
         for line in jsonl.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert len(lines) == 8
+    assert len(lines) == count
     ids = {r["write_id"] for r in lines}
-    assert len(ids) == 8
+    assert len(ids) == count
     assert ids == {r["write_id"] for r in results}
+
+
+def test_agent_write_concurrent_appends(tmp_path):
+    _concurrent_appends(tmp_path / "agent-writes.jsonl")
+
+
+def test_agent_write_concurrent_appends_on_the_windows_branch(tmp_path, monkeypatch):
+    """The overlay append is the one write path with more than one producer.
+
+    ``compile_lock`` used to be ``if fcntl is None: yield`` — a no-op — so on
+    Windows these eight appends were unsynchronized and could interleave into a
+    torn line that replay skips with a stderr warning nobody reads. Exercise
+    the msvcrt branch here by substituting the module rather than skipping off
+    the platform, because a skipped assertion protects nothing.
+    """
+    from tesserae import locking
+    from tests.test_compile_lock import FakeMsvcrt
+
+    fake = FakeMsvcrt()
+    monkeypatch.setattr(locking, "fcntl", None)
+    monkeypatch.setattr(locking, "msvcrt", fake)
+
+    _concurrent_appends(tmp_path / "agent-writes.jsonl")
+
+    # Eight appends, eight locks taken and released. Zero would mean the
+    # branch yielded without locking, which is the bug this closes.
+    assert fake.acquired == 8
+    assert not fake.held
 
 
 # ---------------------------------------------------------------------------
