@@ -437,6 +437,246 @@ def test_a_malformed_proposal_container_never_sinks_the_answer(tmp_path):
         assert "proposed_write" not in envelope
 
 
+# --- timeline / search_facts honesty: the window is a real temporal filter ---
+
+
+def _make_fact_project(tmp_path: Path, findings, supersedes=(), slug="facts-demo"):
+    """A project whose graph projects one dated TemporalFact per finding.
+
+    ``findings`` is a sequence of ``(name, valid_from | None)``; each becomes
+    ``<name> discussed_in Shared Doc``, dated from the finding's own
+    ``first_seen_at`` or left undated. ``supersedes`` pairs
+    ``(newer, older)`` close the older fact's interval at the newer's date —
+    the only way a projected fact gets a ``valid_to``, and the only shape that
+    can tell an ``as_of`` pivot apart from a ``since`` window.
+    """
+    from tesserae.project import ProjectWiki
+
+    project = tmp_path / slug
+    (project / ".tesserae" / "wiki" / "concepts").mkdir(parents=True)
+    (project / ".tesserae" / "site").mkdir(parents=True)
+    (project / ".tesserae" / "config.json").write_text("{}", encoding="utf-8")
+    (project / ".tesserae" / "site" / "search-index.json").write_text("[]", encoding="utf-8")
+
+    doc = ResearchNode(id="Paper:doc", name="Shared Doc", type=ResearchNodeType.PAPER)
+    nodes = [doc]
+    edges = []
+    ids = {}
+    for name, valid_from in findings:
+        node_id = f"SessionInsight:{name.replace(' ', '-')}"
+        ids[name] = node_id
+        nodes.append(
+            ResearchNode(
+                id=node_id,
+                name=name,
+                type=ResearchNodeType.SESSION_INSIGHT,
+                description=f"finding {name}",
+                metadata={"first_seen_at": valid_from} if valid_from else {},
+            )
+        )
+        edges.append(ResearchEdge(source=node_id, target=doc.id, type="discussed_in"))
+    for newer, older in supersedes:
+        edges.append(ResearchEdge(source=ids[newer], target=ids[older], type="supersedes"))
+    graph = ResearchGraph(nodes=nodes, edges=edges)
+    (project / ".tesserae" / "graph.json").write_text(graph.to_json(indent=2), encoding="utf-8")
+    return ProjectWiki.load(project)
+
+
+def _run_step(wiki, action, **args):
+    """Execute a one-step plan; return (executed entry, synthesis prompt)."""
+    client = FakeClient(
+        {"reasoning": "r", "steps": [{"action": action, "args": args}]},
+        f"Answer [kg-step-1-{action}].",
+    )
+    envelope = plan_and_answer(wiki, "q", client=client)
+    assert len(envelope["plan"]["executed"]) == len(envelope["plan"]["steps"])
+    return envelope["plan"]["executed"][0], client.text_calls[0]["user"]
+
+
+def test_a_since_window_drops_the_undated_row_a_string_compare_kept(tmp_path):
+    """ANTI-MUTANT: the projector writes the literal "undated", which sorts
+    AFTER every ISO date, so `valid_from >= since` kept exactly the rows the
+    window exists to remove — and rendered them as if they carried a date."""
+    wiki = _make_fact_project(
+        tmp_path, [("august finding", "2026-08-01"), ("unstamped finding", None)]
+    )
+    assert "undated" >= "2026-07-01"  # what the string compare believed
+
+    executed, prompt = _run_step(wiki, "timeline", since="2026-07-01")
+
+    assert "august finding" in prompt
+    assert "unstamped finding" not in prompt
+    assert executed["rows"] == 1
+    assert executed["undated_excluded"] == 1
+    assert executed["undated_included"] == 0
+    assert executed["since"] == "2026-07-01"
+
+
+def test_a_since_window_keeps_an_offset_timestamp_inside_it(tmp_path):
+    """ANTI-MUTANT in the other direction: 2026-02-28T23:00-05:00 IS
+    2026-03-01T04:00Z, inside the window by instant and before it by string."""
+    wiki = _make_fact_project(tmp_path, [("offset finding", "2026-02-28T23:00:00-05:00")])
+    assert not "2026-02-28T23:00:00-05:00" >= "2026-03-01"  # what it believed
+
+    executed, prompt = _run_step(wiki, "timeline", since="2026-03-01")
+
+    assert "offset finding" in prompt
+    assert executed["rows"] == 1
+    assert executed["undated_excluded"] == 0
+
+
+def test_an_as_of_pivot_excludes_a_fact_superseded_before_it(tmp_path):
+    """ANTI-MUTANT on semantics rather than parsing: valid_to is invisible to
+    any comparison on valid_from, so no string compare can produce this answer
+    at any date whatsoever."""
+    wiki = _make_fact_project(
+        tmp_path,
+        [("old finding", "2026-01-01"), ("new finding", "2026-02-01")],
+        supersedes=[("new finding", "old finding")],
+    )
+
+    executed, prompt = _run_step(wiki, "timeline", as_of="2026-03-01")
+
+    assert "new finding" in prompt
+    assert "old finding --discussed_in-->" not in prompt
+    assert executed["as_of"] == "2026-03-01"
+    assert "since" not in executed and "undated_excluded" not in executed
+
+
+def test_since_and_as_of_answer_the_same_date_differently(tmp_path):
+    """ANTI-MUTANT against collapsing the two knobs into one: at 2026-03-01
+    the pivot keeps an open fact and an undated one, and the window keeps
+    neither. A single predicate cannot produce both answers."""
+    wiki = _make_fact_project(
+        tmp_path,
+        [
+            ("open finding", "2026-01-01"),
+            ("closed finding", "2026-01-01"),
+            ("closer finding", "2026-02-01"),
+            ("unstamped finding", None),
+        ],
+        supersedes=[("closer finding", "closed finding")],
+    )
+
+    pivoted, pivot_prompt = _run_step(wiki, "timeline", as_of="2026-03-01")
+    windowed, window_prompt = _run_step(wiki, "timeline", since="2026-03-01")
+
+    assert "open finding --discussed_in-->" in pivot_prompt
+    assert "(undated) unstamped finding" in pivot_prompt
+    assert "closed finding --discussed_in-->" not in pivot_prompt
+    assert pivoted["undated_included"] == 1
+
+    assert "(no timeline events in range)" in window_prompt
+    assert windowed["rows"] == 0
+    assert windowed["undated_excluded"] == 1
+    assert pivot_prompt != window_prompt
+
+
+def test_a_since_window_survives_the_row_limit(tmp_path):
+    """The window must run BEFORE timeline's ascending sort and limit slice.
+    Filtered afterwards, a July question over a corpus full of July events was
+    handed the oldest 50 rows and then dropped every one of them."""
+    findings = [
+        (f"event {index:03d}", f"2026-{1 + index // 20:02d}-{1 + index % 20:02d}")
+        for index in range(150)
+    ]
+    wiki = _make_fact_project(tmp_path, findings)
+
+    executed, prompt = _run_step(wiki, "timeline", since="2026-07-01", limit=50)
+
+    assert executed["rows"] == 30
+    assert "(no timeline events in range)" not in prompt
+    for month in ("2026-01-", "2026-02-", "2026-06-"):
+        assert month not in prompt
+
+
+def test_undated_included_counts_the_rows_shipped_not_the_corpus(tmp_path):
+    """The counter describes the evidence in front of the synthesizer. The
+    pivot-scoped number would have this three-row answer claim 41 undated
+    rows — inverting the judgement the counter exists to support."""
+    findings = [("splatting old", "2026-01-01"), ("splatting new", "2026-03-01"), ("splatting vague", None)]
+    findings += [(f"kitten {index}", None) for index in range(40)]
+    wiki = _make_fact_project(tmp_path, findings)
+
+    executed, prompt = _run_step(wiki, "timeline", query="splatting")
+
+    assert executed["rows"] == 3
+    assert executed["undated_included"] == 1
+    assert "kitten" not in prompt
+
+
+def test_an_unparseable_date_fails_the_step_instead_of_answering_everything(tmp_path):
+    """A whole-corpus answer wearing an "as of DATE" label is the precise lie
+    this branch exists to remove, so the step fails loudly instead."""
+    wiki = _make_fact_project(tmp_path, [("august finding", "2026-08-01")])
+
+    executed, prompt = _run_step(wiki, "timeline", as_of="last tuesday")
+
+    assert executed["ok"] is False
+    assert "Unparseable as_of timestamp" in prompt
+    assert "discussed_in" not in prompt  # no event rows at all
+    # Nothing is reported for a filter that never ran.
+    assert "rows" not in executed and "as_of" not in executed
+
+
+def test_the_same_dated_plan_twice_yields_byte_identical_evidence(tmp_path):
+    """No wall clock anywhere: an as_of/since defaulted from "today" would
+    make this green at 10:00 and red at 23:59 UTC."""
+    wiki = _make_fact_project(
+        tmp_path, [("august finding", "2026-08-01"), ("unstamped finding", None)]
+    )
+
+    first, first_prompt = _run_step(wiki, "timeline", since="2026-07-01", as_of="2026-09-01")
+    second, second_prompt = _run_step(wiki, "timeline", since="2026-07-01", as_of="2026-09-01")
+
+    assert first_prompt == second_prompt
+    assert first == second
+
+
+def test_search_facts_pivots_on_as_of_and_reports_what_ran(tmp_path):
+    """Advertising as_of on search_facts without reading it would re-create
+    the silent no-op the catalog/branch pairing exists to prevent."""
+    wiki = _make_fact_project(
+        tmp_path,
+        [("old finding", "2026-01-01"), ("new finding", "2026-03-01")],
+        supersedes=[("new finding", "old finding")],
+    )
+
+    executed, prompt = _run_step(wiki, "search_facts", query="finding", as_of="2026-02-01")
+
+    assert "old finding" in prompt
+    assert '"new finding"' not in prompt
+    assert executed["as_of"] == "2026-02-01"
+    assert executed["rows"] >= 1
+    assert executed["undated_included"] == 0
+
+
+def test_every_catalog_argument_is_read_by_the_branch_that_serves_it(tmp_path):
+    """An argument the catalog advertises and the branch ignores is a silent
+    no-op — the planner is told to send a knob that does nothing. The catalog
+    IS the planner prompt, so this pairing has to be mechanical."""
+    import inspect
+    import re
+
+    from tesserae.ask_planner import _CATALOG, _execute_step
+
+    branches = {}
+    current = None
+    for line in inspect.getsource(_execute_step).splitlines():
+        match = re.match(r'\s*if action == "(\w+)":', line)
+        if match:
+            current = match.group(1)
+            branches[current] = []
+        elif current:
+            branches[current].append(line)
+
+    for name, signature, _desc in _CATALOG:
+        body = "\n".join(branches.get(name, []))
+        assert body, f"{name} is advertised but has no branch"
+        for key in re.findall(r'"(\w+)":', signature):
+            assert f'"{key}"' in body, f"{name} advertises {key!r} but never reads it"
+
+
 def test_bundle_anchors_are_rewritten_to_resolvable_node_ids(tmp_path):
     """The bundle's own [node-N] anchors are the nearest-looking citation
     syntax in the evidence, so the synthesizer copies them — they satisfy the

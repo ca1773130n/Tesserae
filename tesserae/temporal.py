@@ -627,6 +627,54 @@ def facts_as_of(
     return kept, undated_included
 
 
+def facts_since(
+    facts: Iterable[TemporalFact], since: str
+) -> Tuple[List[TemporalFact], int]:
+    """Range filter: the facts whose interval STARTED on or after ``since``.
+
+    Returns ``(kept, undated_excluded)``. A fact is kept when ``valid_from``
+    parses and is ``>= since``, so ``since == valid_from`` is INCLUDED.
+
+    This is NOT :func:`facts_as_of` with the comparison flipped, and the two
+    must never be implemented in terms of each other. ``as_of`` asks what was
+    BELIEVED at an instant and reads both bounds; ``since`` asks what STARTED
+    inside a window and reads ``valid_from`` alone — ``valid_to`` is invisible
+    to it. The undated policy inverts for the same reason: ``facts_as_of``
+    models an unknown ``valid_from`` as -infinity and therefore includes it,
+    and -infinity is never on or after a lower bound, so the same model drops
+    it here.
+
+    The dropped undated rows are COUNTED and the count comes back to the
+    caller. On a corpus where most facts carry no date, a "what happened since
+    DATE" answer is mostly a statement about what the window removed, and the
+    caller must be able to say so instead of shipping a thin answer that looks
+    complete.
+
+    Raises ``ValueError`` on an unparseable ``since`` rather than silently
+    answering over the whole corpus.
+    """
+    pivot = _parse_iso(since)
+    if pivot is None:
+        raise ValueError(f"Unparseable since timestamp: {since!r}")
+    kept: List[TemporalFact] = []
+    undated_excluded = 0
+    for fact in facts:
+        start = _parse_iso(fact.valid_from)
+        if start is None:
+            undated_excluded += 1
+            continue
+        if start >= pivot:
+            kept.append(fact)
+    return kept, undated_excluded
+
+
+#: Hard ceiling on the matches :func:`search_facts` will return, whatever the
+#: caller's ``limit``. Named rather than inlined because :func:`timeline` asks
+#: for 10,000 and silently receives at most this many, so a caller reasoning
+#: about whether it was handed everything has to read the same number.
+FACT_MATCH_CEILING = 100
+
+
 def search_facts(facts: Iterable[TemporalFact], query: str, limit: int = 10, current_only: bool = False) -> Dict[str, object]:
     terms = [term.casefold() for term in query.split() if term.strip()]
     scored = []
@@ -639,7 +687,7 @@ def search_facts(facts: Iterable[TemporalFact], query: str, limit: int = 10, cur
             scored.append((score, index, fact))
     scored.sort(key=lambda item: (-item[0], item[1]))
     matches = [fact.model_dump() for score, _index, fact in scored if score > 0 or not terms]
-    bounded = max(1, min(limit, 100))
+    bounded = max(1, min(limit, FACT_MATCH_CEILING))
     return {"query": query, "total_matches": len(matches), "facts": matches[:bounded]}
 
 

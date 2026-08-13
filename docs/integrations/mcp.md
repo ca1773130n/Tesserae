@@ -69,7 +69,7 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 | `node_context` | A node + its incident edges + neighbouring nodes. `use_ppr` ranks neighbours by personalized PageRank instead of a 1-hop walk; `include_superseded` and `limit` bound the result |
 | `embedding_status` | Report the active embedding backend powering hybrid search |
 | `search_facts` | Temporal facts projected from the graph (Graphiti-style); `current_only` filters to live facts, `as_of` answers as of a past date. The two are refused together — they express different clocks — and `undated_included` reports how many of the rows you got carry no date |
-| `timeline` | Facts ordered by `valid_from` for a longitudinal view |
+| `timeline` | Facts ordered by `valid_from` for a longitudinal view; `as_of` answers as of a past date — a point pivot over validity intervals, not a range bound — and `undated_included` reports how many of the rows you got carry no date. An undated fact is kept by `as_of`, so that count is what tells a thin answer from a complete one |
 | `graph_ppr` | Personalized PageRank seeded at one or more `seed_node_id`s; returns the top-K most relevant nodes with tunable `alpha`, `directed`, `edge_type_weights` |
 | `wiki_page` | The compiled markdown page body for a node, plus the internal links it references |
 | `raw_source` | The original source markdown (capped at 16 KB) |
