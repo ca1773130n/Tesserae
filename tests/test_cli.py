@@ -231,30 +231,6 @@ def test_cli_can_write_sqlite_graph_store(tmp_path):
     assert con.execute("select count(*) from edges").fetchone()[0] > 0
 
 
-def test_cli_can_write_kuzu_graph_store(tmp_path):
-    source = tmp_path / "paper.md"
-    source.write_text("# Kuzu Paper\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
-    graph_output = tmp_path / "graph.json"
-    kuzu_output = tmp_path / "graph.kuzu"
-
-    assert main([
-        "extract",
-        str(source),
-        "--source-kind",
-        "Paper",
-        "--kuzu-output",
-        str(kuzu_output),
-        "-o",
-        str(graph_output),
-    ]) == 0
-
-    from tesserae.persistence import KuzuResearchGraphStore
-
-    counts = KuzuResearchGraphStore(kuzu_output).counts()
-    assert counts["nodes"] > 0
-    assert counts["edges"] > 0
-
-
 def test_cli_can_write_graph_report(tmp_path):
     source = tmp_path / "paper.md"
     source.write_text("# Report Paper\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")

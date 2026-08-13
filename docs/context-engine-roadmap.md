@@ -130,7 +130,8 @@ designed incremental layer flowing through `ports/graph_store.py`.
 - **Scope:** Make the standalone pipeline flow through `GraphStore` (today it
   bypasses ports straight to JSON). Per-node upsert/delete with provenance +
   freshness timestamps. Converge persistence toward one source of truth (audit:
-  JSON artifact vs SQLite vs Kuzu). Fix `url_resolver.py` `asyncio.run`-per-call
+  JSON artifact vs SQLite; Kuzu was ruled an export in v0.32 and is no longer a
+  persistence format). Fix `url_resolver.py` `asyncio.run`-per-call
   (persistent async runtime).
 - **Deliverables:** Incremental compile that adds/updates/removes only changed
   nodes correctly; per-node `first_seen_at`/`last_updated_at`.

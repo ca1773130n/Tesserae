@@ -233,7 +233,7 @@ Document-first, hierarchical wiki replaces the old graph dump. See [`docs/fronte
 
 - ✅ Graph JSON export.
 - ✅ SQLite graph store.
-- ✅ Optional Kuzu graph store.
+- ✅ Optional Kuzu export (`tesserae export kuzu`) — one-way, never a store.
 - ✅ Graph report with counts, evidence coverage, orphan nodes, date buckets, alias-heavy nodes.
 - ✅ Competitive report describing absorbed ideas from MegaMem, Graphiti/Zep, MCP graph servers, agentic RAG.
 
@@ -301,7 +301,7 @@ The current suite covers:
 - ✅ canonicalization/review workflow;
 - ✅ batch ingest;
 - ✅ reports;
-- ✅ SQLite/Kuzu persistence;
+- ✅ SQLite persistence; Kuzu export;
 - ✅ Graphiti export/sync dry-run;
 - ✅ project CLI workflow;
 - ✅ agent harness export;

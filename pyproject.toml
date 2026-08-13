@@ -51,6 +51,12 @@ raganything-semantic = ["raganything[all]>=1.3.0", "sentence-transformers>=3.0"]
 # the non-semantic hash-bucket stub and emits a loud UserWarning.
 semantic = ["model2vec>=0.3", "numpy>=1.21"]
 ingest-url = ["httpx>=0.24", "markdownify>=0.11"]
+# `tesserae export kuzu` only. Kuzu is an EXPORT, never a runtime store — no
+# compile or query path reads a Kuzu database back — so it belongs in an
+# extra beside the other optional integrations, not in the base install and
+# not in the dev group (where it used to sit only because two tests called it
+# without a guard).
+kuzu = ["kuzu>=0.6"]
 
 [dependency-groups]
 # The test runner was previously undeclared: `pytest` appeared in neither
@@ -64,12 +70,11 @@ ingest-url = ["httpx>=0.24", "markdownify>=0.11"]
 # (`anthropic`, `model2vec`) live in the extras below and skip cleanly when
 # absent — they do not belong here.
 #
-# `kuzu` is the exception: two tests (test_persistence, test_cli) call the Kuzu
-# store directly with no importorskip guard, so they FAIL rather than skip when
-# it is missing. It was undeclared for the same reason pytest was — present in a
-# hand-built .venv, invisible to the lock. Either it is a test dependency or
-# those tests need a guard; declaring it keeps today's behaviour.
-dev = ["pytest>=8", "kuzu>=0.6"]
+# `kuzu` used to be pinned here too, because two tests called the Kuzu store
+# with no `importorskip` guard and so FAILED rather than skipped when it was
+# missing. Those tests now live in test_kuzu_adapter.py behind the guard, and
+# `kuzu` is an optional-dependency extra like every other optional export.
+dev = ["pytest>=8"]
 
 [project.scripts]
 tesserae = "tesserae.cli:main"
