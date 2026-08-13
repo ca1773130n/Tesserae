@@ -492,3 +492,23 @@ def test_no_llm_minted_name_can_enter_the_ontology(tmp_path):
 
     assert all(n.type is ResearchNodeType.SOURCE_DOCUMENT for n in applied.nodes)
     assert "PaperSection" not in {t.value for t in ResearchNodeType}
+
+
+def test_an_unreadable_ledger_never_raises_out_of_the_read_or_write_path(tmp_path):
+    """`read_proposal_ledger` documents "Never raises" — UnicodeDecodeError is
+    NOT an OSError, so a ledger saved as UTF-16 (or half-written) would
+    otherwise escape a function whose whole contract is that it does not, and
+    abort a drift run that had already written schema-drift.md."""
+    from tesserae.schema_drift import (PROPOSAL_LEDGER_NAME,
+                                       read_proposal_ledger)
+
+    (tmp_path / PROPOSAL_LEDGER_NAME).write_bytes(b"\xff\xfe\x00binary junk")
+
+    assert read_proposal_ledger(tmp_path) == []
+
+    # And a re-run recovers: the unreadable file is replaced, not fatal.
+    analyze_schema_drift(
+        _build_two_cluster_graph(), tesserae_dir=tmp_path,
+        llm=_ScriptedLLM(_two_proposals()), min_volume=5, min_cluster_size=3,
+    )
+    assert len(read_proposal_ledger(tmp_path)) == 2

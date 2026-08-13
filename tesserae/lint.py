@@ -1275,20 +1275,26 @@ class WikiLinter:
             return
         if not isinstance(payload, list):
             return
-        pending = [
-            record
-            for record in payload
-            if isinstance(record, dict) and not record.get("approved")
-        ]
+        # The ledger is a HUMAN-EDITABLE file, so every field is untrusted:
+        # numeric node ids (a plausible hand-edit) would make a mixed-type
+        # sort raise, and a scalar node_ids would not iterate — either one
+        # escaping this method takes the WHOLE lint run down with it, which
+        # `compile --strict` then reports as "lint did not run".
+        pending = []
+        for record in payload:
+            if not isinstance(record, dict) or record.get("approved"):
+                continue
+            raw_ids = record.get("node_ids")
+            node_ids = sorted(str(i) for i in raw_ids) if isinstance(raw_ids, list) else []
+            pending.append((record, node_ids))
         pending.sort(
-            key=lambda r: (
-                str(r.get("host_type") or ""),
-                str(r.get("proposed_type") or ""),
-                (sorted(r.get("node_ids") or []) or [""])[0],
+            key=lambda pair: (
+                str(pair[0].get("host_type") or ""),
+                str(pair[0].get("proposed_type") or ""),
+                pair[1][0] if pair[1] else "",
             )
         )
-        for record in pending[:30]:
-            node_ids = sorted(str(i) for i in (record.get("node_ids") or []))
+        for record, node_ids in pending[:30]:
             name = str(record.get("proposed_type") or record.get("name") or "")
             host_type = str(record.get("host_type") or "")
             if not name or not node_ids:

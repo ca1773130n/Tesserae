@@ -521,14 +521,9 @@ def _merge_proposal_ledger(existing: List[dict], fresh: List[dict]) -> List[dict
 def write_proposal_ledger(tesserae_dir: Path, reports: Sequence["HostTypeReport"]) -> Path:
     """Merge this run's proposals into the ledger and persist it."""
     path = Path(tesserae_dir) / PROPOSAL_LEDGER_NAME
-    existing: List[dict] = []
-    if path.exists():
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(payload, list):
-                existing = [r for r in payload if isinstance(r, dict)]
-        except (OSError, json.JSONDecodeError):
-            existing = []
+    # Same read contract as ``read_proposal_ledger`` — an unreadable ledger
+    # must not abort a drift run that has already written schema-drift.md.
+    existing: List[dict] = read_proposal_ledger(tesserae_dir) if path.exists() else []
     merged = _merge_proposal_ledger(existing, build_proposal_ledger(reports))
     _atomic_write(
         path,
@@ -538,11 +533,16 @@ def write_proposal_ledger(tesserae_dir: Path, reports: Sequence["HostTypeReport"
 
 
 def read_proposal_ledger(tesserae_dir: Path) -> List[dict]:
-    """The ledger, or ``[]`` when absent/unreadable. Never raises."""
+    """The ledger, or ``[]`` when absent/unreadable. Never raises.
+
+    ``UnicodeDecodeError`` is caught explicitly: it is NOT an ``OSError``, and
+    a ledger saved as UTF-16 by an editor — or half-written — would otherwise
+    raise straight out of a function whose whole contract is that it does not.
+    """
     path = Path(tesserae_dir) / PROPOSAL_LEDGER_NAME
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, ValueError):
         return []
     return [r for r in payload if isinstance(r, dict)] if isinstance(payload, list) else []
 

@@ -1418,3 +1418,25 @@ def test_an_unreadable_ledger_says_so_instead_of_going_quiet(tmp_path):
     assert len(probe_failures) == 1
     assert probe_failures[0].severity == "info"
     assert "not zero" in probe_failures[0].message
+
+
+def test_a_hand_edited_ledger_cannot_crash_the_whole_lint_run(tmp_path):
+    """The ledger is a human-editable file, so every field is untrusted.
+    Numeric node ids (a plausible hand-edit) once made the sort raise — and
+    a probe that escapes its own guard takes the entire lint run with it,
+    which `compile --strict` then reports as "lint did not run"."""
+    project = _scaffold(tmp_path)
+    _write_ledger(project, [
+        _proposal(node_ids=[1, "n2", 3.5]),
+        _proposal(name="Scalar", proposed_type="Scalar", cluster_key="c" * 64, node_ids=5),
+        _proposal(name="Missing", proposed_type="Missing", cluster_key="d" * 64, node_ids=[]),
+    ])
+
+    report = WikiLinter(project).run()  # must not raise
+
+    findings = [f for f in report.findings if f.code == "SUGGESTED_SUBTYPE"]
+    # Only the record with usable ids is reportable; the other two are skipped
+    # rather than taking the run down.
+    assert len(findings) == 1
+    assert "1, 3.5, n2" in findings[0].message
+    assert not report.has_errors()

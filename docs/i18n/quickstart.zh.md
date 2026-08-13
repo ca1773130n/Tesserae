@@ -33,6 +33,7 @@ ANALYSIS
   query         raw retrieval: BM25/semantic + explicit backends
   graph-map     Budgeted Descent navigation (the graph_map tool as a CLI verb; JSON out)
   verify-claim  Does the graph license this triple? Deterministic verdict, JSON out
+  schema-drift  Propose ResearchNodeType sub-types from clustered nodes (proposals only; promotion is a human edit)
   lint          Graph lint report (--fix-trivial, --severity, --json)
   doctor        Health checks: init/graph/registry/staleness/locks (--fix = safe repairs only)
   summary       Daily/weekly activity digest (sessions, findings, commits, PRs, docs)
@@ -54,7 +55,7 @@ GROUPS
   extract       Low-level: extract a typed graph from markdown paths
 
 LAB
-  lab           evolve | schema-drift — experimental LLM ops
+  lab           evolve — experimental LLM ops
 
 Run `tesserae <command> --help` for command details.
 ```
