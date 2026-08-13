@@ -402,7 +402,10 @@ def test_cli_extract_accepts_canonicalize_semantic(monkeypatch, tmp_path, capsys
         "-o",
         str(graph_output),
     ]) == 0
-    assert captured == {"semantic": True}
+    # ``-o`` here is an ad-hoc path, not ``<root>/.tesserae/graph.json``, so
+    # there is no sidecar to cache vectors in and the pass runs uncached rather
+    # than creating one as a side effect of an extract.
+    assert captured == {"semantic": True, "vector_cache": None}
     err = capsys.readouterr().err
     assert "3 review candidates via stub" in err
     assert "candidates only, nothing merged" in err

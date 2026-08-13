@@ -287,7 +287,10 @@ def test_compile_byte_idempotent_with_confidence_and_supersedes(tmp_path: Path) 
     # NO node carries a sidecar-baked confidence in graph.json (byte-idempotence
     # invariant — the corpus never sets it, so assert absence outright).
     for node in graph["nodes"]:
-        for field_name in ("confidence", "proposed_type"):
+        # embedding_vector / text_sha256: the vector cache is SQLite-only
+        # (node_vectors), keyed on the embedded text. Neither the vector nor
+        # its key may ever be staged in node metadata.
+        for field_name in ("confidence", "proposed_type", "embedding_vector", "text_sha256"):
             assert field_name not in (node.get("metadata") or {}), (
                 f"node {node['id']} leaked {field_name} into graph.json metadata"
             )

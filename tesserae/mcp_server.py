@@ -35,6 +35,10 @@ from .retrieval.hybrid import (
     backend_is_semantic as _backend_is_semantic,
     hybrid_search as _hybrid_search,
 )
+from .retrieval.vector_cache import (
+    VectorCache as _VectorCache,
+    process_stats as _vector_cache_process_stats,
+)
 from .research_graph import (
     ALLOWED_EDGE_TYPES,
     ALLOWED_NODE_TYPES,
@@ -956,8 +960,19 @@ class LLMWikiMCPServer:
             },
             {
                 "name": "embedding_status",
-                "description": "Report the active embedding backend powering hybrid search.",
-                "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+                "description": (
+                    "Report the active embedding backend powering hybrid search, "
+                    "plus its persisted vector cache (vectors_cached, cache_hits, "
+                    "cache_misses) for the resolved project."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                    },
+                    "additionalProperties": False,
+                },
             },
             {
                 "name": "node_context",
@@ -2452,6 +2467,7 @@ class LLMWikiMCPServer:
                 weights=weights,
                 include_superseded=bool(args.get("include_superseded", False)),
                 budget_chars=_budget_chars_arg(args),
+                project_root=project_root,
             )
             # LRU: record a read of every node this search surfaced (sidecar only).
             self._bump_nodes_access(
@@ -2459,7 +2475,7 @@ class LLMWikiMCPServer:
             )
             return result
         if name == "embedding_status":
-            return self.embedding_status()
+            return self.embedding_status(self._resolve_project_root_quiet(args))
         if name == "node_context":
             graph, project_root = self._load_requested_graph_with_root(args)
             return self.node_context(
@@ -3965,6 +3981,7 @@ class LLMWikiMCPServer:
         weights: Optional[Dict[str, float]] = None,
         include_superseded: bool = False,
         budget_chars: int = DEFAULT_BUDGET_CHARS,
+        project_root: Optional[Path] = None,
     ) -> JSONDict:
         """Search public ResearchGraph nodes.
 
@@ -3983,6 +4000,10 @@ class LLMWikiMCPServer:
         the count was already clamped by ``limit``, per-node size was not) and
         whole payloads are greedily admitted until the budget; a drop adds one
         ``continuation`` line. ``budget_chars=0`` = uncapped.
+
+        ``project_root`` is used only to locate the embedding-vector cache in
+        ``.tesserae/sqlite.db``. Results do not depend on it: a cold cache, a
+        warm cache and no cache at all produce identical scores and ordering.
         """
         type_filter = {str(item) for item in types or []}
         kind_filter = {str(item).lower() for item in kinds or []}
@@ -4044,6 +4065,7 @@ class LLMWikiMCPServer:
             weights=weights,
             mode=mode,
             candidate_filter=candidates,
+            vector_cache=_VectorCache.for_project(project_root),
         )
         nodes_out: List[JSONDict] = []
         for item in result.scored:
@@ -4070,10 +4092,21 @@ class LLMWikiMCPServer:
             out["continuation"] = continuation
         return out
 
-    def embedding_status(self) -> JSONDict:
-        """Report the active embedding backend used by hybrid search."""
+    def embedding_status(self, project_root: Optional[Path] = None) -> JSONDict:
+        """Report the active embedding backend and its vector cache.
+
+        The cache numbers are not decoration. A cache that is never written —
+        wrong project root, unwritable sidecar, a backend whose name or dim
+        changed under it — costs exactly as much as no cache while looking
+        like a fast path, so ``vectors_cached`` / ``cache_hits`` /
+        ``cache_misses`` are reported next to the backend and dim that key
+        them. Hits and misses are process-wide totals since server start;
+        ``vectors_cached`` is the row count on disk for THIS backend key.
+        """
         try:
             backend = _active_embedding_backend()
+            cache = _VectorCache.for_project(project_root)
+            stats = _vector_cache_process_stats()
             return {
                 "available": True,
                 "backend": backend.name,
@@ -4081,8 +4114,14 @@ class LLMWikiMCPServer:
                 "dim": int(getattr(backend, "dim", 0)),
                 "default_weights": dict(_HYBRID_DEFAULT_WEIGHTS),
                 "modes": ["hybrid", "bm25", "lexical", "embedding", "legacy"],
+                "vector_cache_db": str(cache.db_path) if cache else None,
+                "vectors_cached": cache.count(backend) if cache else 0,
+                "cache_hits": stats.hits,
+                "cache_misses": stats.misses,
+                "cache_errors": stats.errors,
             }
         except Exception as exc:  # pragma: no cover - defensive
+            stats = _vector_cache_process_stats()
             return {
                 "available": False,
                 "backend": None,
@@ -4090,6 +4129,11 @@ class LLMWikiMCPServer:
                 "error": str(exc),
                 "default_weights": dict(_HYBRID_DEFAULT_WEIGHTS),
                 "modes": ["hybrid", "bm25", "lexical", "embedding", "legacy"],
+                "vector_cache_db": None,
+                "vectors_cached": 0,
+                "cache_hits": stats.hits,
+                "cache_misses": stats.misses,
+                "cache_errors": stats.errors,
             }
 
     # ------------------------------------------------------------------ wiki / raw / lint
@@ -4679,6 +4723,19 @@ class LLMWikiMCPServer:
                     _LOG.debug("bump_access failed for node %s", nid, exc_info=True)
         except Exception:
             _LOG.debug("bump_nodes_access setup failed", exc_info=True)
+
+    def _resolve_project_root_quiet(self, args: JSONDict) -> Optional[Path]:
+        """Project root for a tool that needs a sidecar but NOT a graph.
+
+        ``embedding_status`` reports on ``.tesserae/sqlite.db`` and never
+        touches graph.json, so parsing one would be pure cost. Returns
+        ``None`` rather than raising: an unresolvable root means "no cache to
+        report on", which is a valid answer, not a failed call.
+        """
+        try:
+            return self._resolve_project_root_for_ask(args)
+        except Exception:
+            return None
 
     def _load_requested_graph(self, args: JSONDict) -> ResearchGraph:
         graph, _root = self._load_requested_graph_with_root(args)

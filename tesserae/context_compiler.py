@@ -557,6 +557,13 @@ def compile_context(
         # len > 1: per-lane weights are built inside the fusion branch of
         # Step 2 — the caller's edge_type_weights apply within every lane.
 
+    # Embedding-vector cache for the seed searches below (cost only — the
+    # bundle is byte-identical cached or not). ``None`` when the caller passed
+    # no project root, i.e. there is no sidecar to persist into.
+    from .retrieval.vector_cache import VectorCache
+
+    vector_cache = VectorCache.for_project(project_root)
+
     # --- Step 0 (Descent §5.4): resolve hierarchy-backed restriction --------
     hierarchy = None
     if scope is not None or strategy == "hierarchical":
@@ -598,6 +605,7 @@ def compile_context(
                 query,
                 top_k=max(1, depth) * 5,
                 backend=backend,
+                vector_cache=vector_cache,
             )
             union: Set[str] = set()
             for scored in matches.scored[: max(1, depth)]:
@@ -638,7 +646,8 @@ def compile_context(
             subqueries = [query]
         for subq in subqueries:
             result = hybrid_search(
-                graph, subq, top_k=max(1, depth) * 5, backend=backend
+                graph, subq, top_k=max(1, depth) * 5, backend=backend,
+                vector_cache=vector_cache,
             )
             for scored in result.scored:
                 nid = scored.node.id

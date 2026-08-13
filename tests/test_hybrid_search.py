@@ -355,3 +355,223 @@ def test_active_embedding_backend_is_cached_across_calls():
     assert active_embedding_backend() is third
     # Restore cache hygiene for any later tests in the suite.
     reset_embedding_backend()
+
+
+# ---------------------------------------------------------------------------
+# Persisted vectors (roadmap step 1) — a CACHE, never an index.
+#
+# The whole contract is that retrieval COST changes and retrieval RESULTS do
+# not. Every test below is either "the same answer" or "the right thing was
+# re-embedded"; none asserts a ranking that a cache could be allowed to move.
+# ---------------------------------------------------------------------------
+
+
+class _CountingBackend(HashEmbeddingBackend):
+    """Hash stub that records every text it was actually asked to embed.
+
+    Subclasses the shipped stub rather than inventing a backend so the
+    candidate gate behaves exactly as it does in production (``hybrid_search``
+    branches on ``isinstance(..., HashEmbeddingBackend)``).
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.embedded: List[str] = []
+
+    def embed(self, texts):
+        self.calls += 1
+        self.embedded.extend(texts)
+        return super().embed(texts)
+
+
+def _project(tmp_path, name: str):
+    root = tmp_path / name
+    (root / ".tesserae").mkdir(parents=True)
+    return root
+
+
+def _scores(result):
+    return [(item.node.id, item.score, dict(item.per_lane)) for item in result.scored]
+
+
+def test_vector_cache_scores_are_identical_cold_warm_and_uncached(tmp_path):
+    """Cold cache, warm cache and no cache must produce the SAME scores.
+
+    This is the invariant that makes the cache safe to turn on everywhere: it
+    removes the model call, nothing else. Exact float equality on purpose — a
+    lossy round-trip would show up here and nowhere else.
+    """
+    from tesserae.retrieval.vector_cache import VectorCache
+
+    graph = _eight_node_graph()
+    root = _project(tmp_path, "proj")
+    cache = VectorCache.for_project(root)
+    assert cache is not None
+
+    uncached = hybrid_search(graph, "gaussian splatting", backend=_CountingBackend())
+    cold_backend = _CountingBackend()
+    cold = hybrid_search(
+        graph, "gaussian splatting", backend=cold_backend, vector_cache=cache
+    )
+    warm_backend = _CountingBackend()
+    warm = hybrid_search(
+        graph, "gaussian splatting", backend=warm_backend, vector_cache=cache
+    )
+
+    assert _scores(cold) == _scores(uncached)
+    assert _scores(warm) == _scores(uncached)
+    assert cold.total_matches == uncached.total_matches == warm.total_matches
+
+    # And the cache actually served: the warm run made no model call at all
+    # (the query is cached too — it is just another text).
+    assert cold_backend.calls == 1
+    assert warm_backend.calls == 0
+
+
+def test_vector_cache_reembeds_changed_text_but_not_a_relocated_project(tmp_path):
+    """The key is the embedded TEXT, not the node id or the project path.
+
+    A changed description must re-embed exactly its own node; an unchanged node
+    whose project moved on disk must not re-embed at all. Keying on node id
+    would invert both halves of this.
+    """
+    import shutil
+
+    from tesserae.retrieval.vector_cache import VectorCache, node_embedding_text
+
+    nodes = [
+        ResearchNode(
+            id="Concept:alpha",
+            name="Alpha",
+            type=ResearchNodeType.CONCEPT,
+            description="First concept.",
+        ),
+        ResearchNode(
+            id="Concept:beta",
+            name="Beta",
+            type=ResearchNodeType.CONCEPT,
+            description="Second concept.",
+        ),
+    ]
+    origin = _project(tmp_path, "origin")
+    backend = _CountingBackend()
+    cache = VectorCache.for_project(origin)
+    texts = [node_embedding_text(n) for n in nodes]
+    cache.embed(backend, texts)
+    assert backend.calls == 1
+    assert cache.stats.misses == 2 and cache.stats.hits == 0
+
+    # Relocate the project: same sidecar, new path. Nothing may re-embed.
+    moved = tmp_path / "moved"
+    shutil.copytree(origin, moved)
+    moved_backend = _CountingBackend()
+    moved_cache = VectorCache.for_project(moved)
+    moved_cache.embed(moved_backend, texts)
+    assert moved_backend.calls == 0
+    assert moved_cache.stats.hits == 2 and moved_cache.stats.misses == 0
+
+    # Re-describe ONE node: only that node's text is embedded again.
+    edited = [
+        ResearchNode(
+            id=nodes[0].id,
+            name=nodes[0].name,
+            type=nodes[0].type,
+            description="First concept, now explained at length.",
+        ),
+        nodes[1],
+    ]
+    edit_backend = _CountingBackend()
+    edit_cache = VectorCache.for_project(moved)
+    edit_cache.embed(edit_backend, [node_embedding_text(n) for n in edited])
+    assert edit_backend.embedded == [node_embedding_text(edited[0])]
+    assert edit_cache.stats.hits == 1 and edit_cache.stats.misses == 1
+
+
+def test_vector_cache_ignores_node_id_and_dedups_within_a_batch(tmp_path):
+    """Two nodes with identical text cost one model call, and an id rewrite costs none.
+
+    Canonicalization rewrites ids every compile; if the cache were keyed on id
+    the whole corpus would re-embed after every merge.
+    """
+    from tesserae.retrieval.vector_cache import VectorCache, node_embedding_text
+
+    root = _project(tmp_path, "proj")
+    duplicate = ResearchNode(
+        id="Concept:one", name="Same", type=ResearchNodeType.CONCEPT, description="Text."
+    )
+    renamed = ResearchNode(
+        id="Concept:canonical-one",
+        name="Same",
+        type=ResearchNodeType.CONCEPT,
+        description="Text.",
+    )
+    backend = _CountingBackend()
+    cache = VectorCache.for_project(root)
+    vectors = cache.embed(backend, [node_embedding_text(duplicate), node_embedding_text(duplicate)])
+    assert backend.embedded == [node_embedding_text(duplicate)]  # deduped in-batch
+    assert vectors[0] == vectors[1]
+
+    after_rewrite = VectorCache.for_project(root)
+    rewrite_backend = _CountingBackend()
+    after_rewrite.embed(rewrite_backend, [node_embedding_text(renamed)])
+    assert rewrite_backend.calls == 0
+
+
+def test_vector_cache_is_none_without_a_tesserae_sidecar(tmp_path):
+    """No ``.tesserae/`` means no cache — a read must not create one as a side effect."""
+    from tesserae.retrieval.vector_cache import VectorCache
+
+    assert VectorCache.for_project(None) is None
+    assert VectorCache.for_project(tmp_path) is None
+    assert VectorCache.for_graph_path(tmp_path / "graph.json") is None
+    assert not (tmp_path / ".tesserae").exists()
+
+    root = _project(tmp_path, "proj")
+    assert VectorCache.for_graph_path(root / ".tesserae" / "graph.json") is not None
+
+
+def test_vector_cache_degrades_when_the_sidecar_is_unusable(tmp_path):
+    """An unreadable sidecar costs a slow query, never a failed one — and says so."""
+    from tesserae.retrieval.vector_cache import VectorCache
+
+    broken = tmp_path / ".tesserae"
+    broken.mkdir()
+    (broken / "sqlite.db").write_text("this is not a database", encoding="utf-8")
+
+    backend = _CountingBackend()
+    cache = VectorCache(broken / "sqlite.db")
+    vectors = cache.embed(backend, ["alpha", "beta"])
+
+    assert vectors == backend.embed(["alpha", "beta"])
+    assert cache.stats.errors > 0  # fail loud in the counters, not in the caller
+
+
+def test_mcp_embedding_status_reports_the_vector_cache(tmp_path):
+    """``embedding_status`` must expose cache depth and hit/miss, or a cold
+    cache is indistinguishable from a fast path."""
+    from tesserae.retrieval.vector_cache import reset_process_stats
+
+    root = tmp_path / "proj"
+    (root / ".tesserae").mkdir(parents=True)
+    graph_path = root / ".tesserae" / "graph.json"
+    graph_path.write_text(_eight_node_graph().to_json(indent=2), encoding="utf-8")
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    reset_process_stats()
+    cold = server.call_tool("embedding_status", {"graph_path": str(graph_path)})
+    assert cold["vectors_cached"] == 0
+    assert cold["cache_hits"] == 0 and cold["cache_misses"] == 0
+
+    first = server.call_tool("search_nodes", {"q": "gaussian splatting"})
+    warm = server.call_tool("embedding_status", {"graph_path": str(graph_path)})
+    assert warm["vectors_cached"] > 0
+    assert warm["cache_misses"] > 0
+    assert warm["vector_cache_db"].endswith("sqlite.db")
+
+    # Same query again: the results are unchanged and the reads are now hits.
+    second = server.call_tool("search_nodes", {"q": "gaussian splatting"})
+    assert [n["id"] for n in second["nodes"]] == [n["id"] for n in first["nodes"]]
+    assert second["total_matches"] == first["total_matches"]
+    hot = server.call_tool("embedding_status", {"graph_path": str(graph_path)})
+    assert hot["cache_hits"] > warm["cache_hits"]
+    assert hot["cache_misses"] == warm["cache_misses"]  # nothing re-embedded

@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
 from ..research_graph import ResearchGraph, ResearchNode
+from .vector_cache import VectorCache, embed_texts
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -407,10 +408,15 @@ def _embedding_scores(
     query: str,
     corpus_texts: Sequence[str],
     backend: EmbeddingBackend,
+    vector_cache: Optional[VectorCache] = None,
 ) -> List[float]:
     if not corpus_texts:
         return []
-    vectors = backend.embed([query, *corpus_texts])
+    # The query is embedded through the same cache as the corpus: it is just
+    # another text, and a repeated question is common enough to be worth the
+    # one row. Scores are unaffected either way — the cache returns the same
+    # float64 vectors the backend produced (see vector_cache's module docstring).
+    vectors = embed_texts(backend, [query, *corpus_texts], vector_cache)
     if not vectors:
         return [0.0] * len(corpus_texts)
     qvec = vectors[0]
@@ -485,6 +491,7 @@ def hybrid_search(
     mode: str = "hybrid",
     backend: Optional[EmbeddingBackend] = None,
     candidate_filter: Optional[Iterable[ResearchNode]] = None,
+    vector_cache: Optional[VectorCache] = None,
 ) -> HybridSearchResult:
     """Fuse BM25, lexical and embedding lanes over a ``ResearchGraph``.
 
@@ -512,6 +519,13 @@ def hybrid_search(
     candidate_filter
         Optional iterable to restrict the candidate pool (e.g. after type /
         kind filtering done by the caller).
+    vector_cache
+        Optional :class:`~tesserae.retrieval.vector_cache.VectorCache` backing
+        the embedding lane. Purely a cost optimisation: the same vectors are
+        returned either way, so scores and ordering are identical with a cold
+        cache, a warm cache, or none at all. ``None`` (default) embeds every
+        call, which is the only option for a graph with no ``.tesserae``
+        sidecar to write to.
     """
     nodes = list(candidate_filter) if candidate_filter is not None else list(graph.nodes)
     # Build the reported weights dict by merging the override on top of the
@@ -583,7 +597,9 @@ def hybrid_search(
     if selected_weights.get("embedding", 0.0) > 0 or mode == "hybrid":
         embed_backend = backend or active_embedding_backend()
     if selected_weights.get("embedding", 0.0) > 0:
-        lane_scores["embedding"] = _embedding_scores(query, texts, embed_backend)
+        lane_scores["embedding"] = _embedding_scores(
+            query, texts, embed_backend, vector_cache
+        )
         backend_name = embed_backend.name
     else:
         lane_scores["embedding"] = [0.0] * len(nodes)

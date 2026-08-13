@@ -29,11 +29,35 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import struct
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple, Union
 from uuid import UUID
 
 from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
+
+# Bound-parameter chunk for the node_vectors ``in (...)`` lookup. Older SQLite
+# builds cap a statement at 999 variables; two are already spent on the backend
+# key, so 500 leaves room without a per-build feature check.
+_VECTOR_QUERY_CHUNK = 500
+
+
+def _encode_vector(vector: Sequence[float]) -> bytes:
+    """Pack a vector as little-endian float64 for the ``node_vectors`` blob.
+
+    Doubles rather than JSON or float32: a cached vector MUST decode to the
+    exact value the backend produced, because the cache is only allowed to
+    change what retrieval COSTS, never what it returns. float32 would round,
+    and a warm cache would then score differently from a cold one.
+    """
+    values = [float(v) for v in vector]
+    return struct.pack(f"<{len(values)}d", *values)
+
+
+def _decode_vector(blob: bytes) -> List[float]:
+    """Inverse of :func:`_encode_vector`."""
+    count = len(blob) // 8
+    return list(struct.unpack(f"<{count}d", blob[: count * 8]))
 
 
 class SqliteGraphStore:
@@ -836,6 +860,85 @@ class SqliteGraphStore:
             return False
 
     # ------------------------------------------------------------------ #
+    # node_vectors sidecar (embedding cache)                              #
+    # ------------------------------------------------------------------ #
+
+    def read_node_vectors(
+        self,
+        backend_name: str,
+        backend_dim: int,
+        text_hashes: Iterable[str],
+    ) -> Dict[str, List[float]]:
+        """Return ``{text_sha256: vector}`` for the requested hashes.
+
+        Only rows matching BOTH ``backend_name`` and ``backend_dim`` are
+        returned — a vector produced by another model lives in another space
+        and must never be served as this one's.
+
+        The hash list is queried in chunks so a corpus-sized read stays under
+        SQLite's bound-parameter limit instead of raising on large graphs.
+        """
+        wanted = [h for h in dict.fromkeys(text_hashes) if h]
+        if not wanted:
+            return {}
+        out: Dict[str, List[float]] = {}
+        with self._connect() as con:
+            for start in range(0, len(wanted), _VECTOR_QUERY_CHUNK):
+                chunk = wanted[start : start + _VECTOR_QUERY_CHUNK]
+                placeholders = ",".join("?" * len(chunk))
+                rows = con.execute(
+                    "select text_sha256, vector from node_vectors"
+                    " where backend_name = ? and backend_dim = ?"
+                    f" and text_sha256 in ({placeholders})",
+                    (backend_name, int(backend_dim), *chunk),
+                ).fetchall()
+                for text_sha256, blob in rows:
+                    out[text_sha256] = _decode_vector(blob)
+        return out
+
+    def write_node_vectors_many(
+        self,
+        backend_name: str,
+        backend_dim: int,
+        rows: Iterable[Tuple[str, Sequence[float]]],
+    ) -> None:
+        """Persist ``(text_sha256, vector)`` pairs for one backend.
+
+        ``insert or ignore``: the row is a pure function of its key, so a
+        concurrent writer that got there first has written the same bytes and
+        there is nothing to update. That also keeps this write path free of
+        read-modify-write, like :meth:`bump_access`.
+        """
+        params = [
+            (backend_name, int(backend_dim), text_sha256, _encode_vector(vector))
+            for text_sha256, vector in rows
+        ]
+        if not params:
+            return
+        with self._connect() as con:
+            con.executemany(
+                "insert or ignore into node_vectors"
+                " (backend_name, backend_dim, text_sha256, vector)"
+                " values (?, ?, ?, ?)",
+                params,
+            )
+            con.commit()
+
+    def count_node_vectors(self, backend_name: str, backend_dim: int) -> int:
+        """Number of cached vectors for one ``(backend_name, backend_dim)`` key.
+
+        Reported by ``embedding_status`` so a silently-cold cache cannot look
+        like a fast path.
+        """
+        with self._connect() as con:
+            row = con.execute(
+                "select count(*) from node_vectors"
+                " where backend_name = ? and backend_dim = ?",
+                (backend_name, int(backend_dim)),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
+    # ------------------------------------------------------------------ #
     # Internals                                                           #
     # ------------------------------------------------------------------ #
 
@@ -931,6 +1034,27 @@ class SqliteGraphStore:
                 confidence       text,
                 superseded       integer default 0,
                 updated_at       text
+            )
+            """
+        )
+        # node_vectors sidecar (embedding cache). Same discipline as
+        # node_memory: CREATE TABLE IF NOT EXISTS, SQLite-only, NEVER
+        # serialized into graph.json. Keyed on
+        # (backend_name, backend_dim, text_sha256) and deliberately NOT on
+        # node id: identity here is the embedded TEXT, so a renamed or
+        # re-described node misses (and re-embeds) while an unchanged node
+        # hits even after its project moves or its id is rewritten by
+        # canonicalization. The backend name and dim are part of the key
+        # because vectors from two different models share no space —
+        # mixing them would silently corrupt cosine.
+        con.execute(
+            """
+            create table if not exists node_vectors (
+                backend_name text not null,
+                backend_dim  integer not null,
+                text_sha256  text not null,
+                vector       blob not null,
+                primary key (backend_name, backend_dim, text_sha256)
             )
             """
         )

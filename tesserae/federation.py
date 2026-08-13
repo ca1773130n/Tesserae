@@ -379,6 +379,7 @@ def add_semantic_links(
     max_candidates: int = 1500,
     cache_dir: Optional[Path] = None,
     scope: str = "cross",
+    vector_cache=None,
 ) -> Tuple[ResearchGraph, dict]:
     """Add ``shares_concept_with`` edges between idea-bearing nodes whose
     embeddings are similar — so PPR (already run by ``compile_context``) can
@@ -398,14 +399,23 @@ def add_semantic_links(
     and notes from DIFFERENT agents both link, while same-project / same-agent
     pairs never do. The persisted link cache (``cache_dir``) is used for the
     ``cross`` scope only — the associate pass keeps its own accumulating overlay.
+
+    ``vector_cache`` caches the underlying VECTORS rather than the link set:
+    the link cache above misses the moment any member project recompiles,
+    while a node's vector is keyed on its text and survives that. Cost only —
+    the same cosines, the same edges, cached or not. Defaults to a cache
+    inside ``cache_dir`` when one is given.
     """
     # NB: numpy is imported only AFTER the stub-skip below, so `--semantic` on a
     # base install (no embedding extra, no numpy) degrades cleanly instead of
     # crashing on the import.
     from .retrieval.hybrid import HashEmbeddingBackend, active_embedding_backend
+    from .retrieval.vector_cache import VectorCache, embed_texts, node_embedding_text
 
     backend = backend or active_embedding_backend()
     backend_name = getattr(backend, "name", type(backend).__name__)
+    if vector_cache is None and cache_dir is not None:
+        vector_cache = VectorCache(Path(cache_dir) / "vectors.db")
     candidates = sorted(
         (n for n in graph.nodes if (n.type.value if hasattr(n.type, "value") else str(n.type)) in _SEMANTIC_TYPE_VALUES),
         key=lambda n: n.id,
@@ -446,7 +456,11 @@ def add_semantic_links(
                        "semantic_skipped": "numpy not available (install tesserae[semantic])"}
 
     vectors = np.asarray(
-        backend.embed([f"{n.name}. {(n.description or '').strip()}".strip() for n in candidates]),
+        embed_texts(
+            backend,
+            [node_embedding_text(n) for n in candidates],
+            vector_cache,
+        ),
         dtype="float64",
     )
     # L2-normalize defensively: the EmbeddingBackend protocol does not guarantee
