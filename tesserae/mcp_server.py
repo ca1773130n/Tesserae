@@ -625,6 +625,7 @@ def _project_root_for_graph_path(graph_path: str | Path) -> Optional[Path]:
 from .graph_filters import retracted_ids as _retracted_ids
 from .graph_filters import superseded_ids as _superseded_ids
 from .graph_filters import suppressed_ids as _suppressed_ids
+from .merge_ledger import load_merge_ledger
 
 
 def _extract_internal_links(body: str) -> List[JSONDict]:
@@ -976,7 +977,12 @@ class LLMWikiMCPServer:
             },
             {
                 "name": "node_context",
-                "description": "Return a node plus incident edges and neighboring nodes by node_id or name.",
+                "description": (
+                    "Return a node plus incident edges and neighboring nodes by node_id or name. "
+                    "A node_id that lost a merge in a later compile is not a miss: it resolves to "
+                    "the node that absorbed it and the response adds status='merged' with "
+                    "merged_from / merged_into, so hold merged_into from then on."
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -4145,7 +4151,13 @@ class LLMWikiMCPServer:
         node_id: Optional[str] = None,
         node_name: Optional[str] = None,
     ) -> JSONDict:
-        node = self._find_node(graph, node_id=node_id, node_name=node_name)
+        # ``project_root`` also lets a stale node id resolve through the merge
+        # ledger. Following the redirect silently is right here: the absorbed
+        # node's name is an alias on the survivor, so the survivor's page IS
+        # the page the caller asked for.
+        node = self._find_node(
+            graph, node_id=node_id, node_name=node_name, project_root=project_root
+        )
         if not node:
             raise ValueError("wiki_page: node not found; provide an exact node_id or node name")
         kind = kind_for_node(node)
@@ -4540,9 +4552,17 @@ class LLMWikiMCPServer:
         }
 
     def node_context(self, graph: ResearchGraph, project_root: Optional[Path] = None, node_id: Optional[str] = None, node_name: Optional[str] = None, limit: int = 50, include_superseded: bool = False, use_ppr: bool = False, budget_chars: int = DEFAULT_BUDGET_CHARS) -> JSONDict:
-        node = self._find_node(graph, node_id=node_id, node_name=node_name)
+        node = self._find_node(
+            graph, node_id=node_id, node_name=node_name, project_root=project_root
+        )
         if not node:
             raise ValueError("Node not found; provide an exact node_id or node name")
+        # The requested id lost a merge and the ledger redirected us. Say so
+        # instead of silently answering about a different node: an agent
+        # holding a stale id needs to learn the id it should hold from now on,
+        # and the answer it asked for, in ONE call. Absent on the ordinary
+        # path, so an unmerged lookup's payload is byte-for-byte what it was.
+        merged_from = node_id if (node_id and node.id != node_id) else None
         bounded_limit = max(1, min(limit, 200))
         # CTX-01 (§5.3): per-item size clamp — the counts were already clamped
         # by ``limit``, per-item size was not. Node payloads trim their
@@ -4627,6 +4647,10 @@ class LLMWikiMCPServer:
                 out["continuation"] = continuation
             if edges_continuation:
                 out["edges_continuation"] = edges_continuation
+            if merged_from:
+                out.update(
+                    {"status": "merged", "merged_from": merged_from, "merged_into": node.id}
+                )
             return out
         neighbor_ids = []
         for edge in incident_edges:
@@ -4666,6 +4690,10 @@ class LLMWikiMCPServer:
             out["continuation"] = continuation
         if edges_continuation:
             out["edges_continuation"] = edges_continuation
+        if merged_from:
+            out.update(
+                {"status": "merged", "merged_from": merged_from, "merged_into": node.id}
+            )
         return out
 
     def _bump_node_access(self, project_root: Optional[Path], node_id: str) -> None:
@@ -4910,11 +4938,36 @@ class LLMWikiMCPServer:
         self._graph_cache[graph_path] = (mtime, graph)
         return graph
 
-    def _find_node(self, graph: ResearchGraph, node_id: Optional[str], node_name: Optional[str]) -> Optional[ResearchNode]:
+    def _find_node(
+        self,
+        graph: ResearchGraph,
+        node_id: Optional[str],
+        node_name: Optional[str],
+        project_root: Optional[Path] = None,
+    ) -> Optional[ResearchNode]:
+        """Resolve a node by exact id or exact case-insensitive name.
+
+        A node id that MISSES is then resolved through the merge ledger
+        (:mod:`tesserae.merge_ledger`): every compile absorbs duplicate nodes
+        and drops the loser, and until the ledger existed an agent holding a
+        node id from the previous compile got a bare not-found with no way to
+        tell "absorbed" from "deleted". The ledger is consulted only on a miss,
+        which is what guarantees a LIVE id can never be redirected — the graph
+        always answers first. ``resolve`` walks the chain, so a loser whose
+        survivor later lost a merge of its own still lands on the live node.
+
+        Callers that need to TELL the agent an id was redirected compare the
+        returned node's id against the one they asked for; ``node_context``
+        does exactly that.
+        """
         id_index = {n.id: n for n in graph.nodes}
         name_index = {n.name.casefold(): n for n in graph.nodes}
         if node_id:
-            return id_index.get(node_id)
+            node = id_index.get(node_id)
+            if node is not None or project_root is None:
+                return node
+            survivor_id = load_merge_ledger(project_root).resolve(node_id)
+            return id_index.get(survivor_id) if survivor_id else None
         if node_name:
             return name_index.get(str(node_name).casefold())
         return None

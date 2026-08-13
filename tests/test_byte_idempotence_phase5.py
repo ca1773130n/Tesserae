@@ -49,6 +49,13 @@ _MEMORY_FIELDS = (
     "node_vectors",
     "embedding_vector",
     "text_sha256",
+    # Sidecar-only for the same reason: the merge ledger's loser->survivor map
+    # lives in .tesserae/merge-ledger.json. A back-reference written into node
+    # metadata would survive an incremental compile, vanish on a full one, and
+    # make graph.json carry a fact about a merge rather than about the graph.
+    "loser_id",
+    "survivor_id",
+    "merged_into",
 )
 
 

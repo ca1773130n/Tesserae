@@ -18,6 +18,14 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
+# Write-only sink for the two merge passes below: a merged loser's id is
+# reported so a compile can publish the ``.tesserae/merge-ledger.json``
+# back-reference. ``record_merge`` is a no-op unless a collector is active, and
+# nothing is ever read back out of it here — the merge stays a pure function of
+# its inputs. Safe at module scope: ``merge_ledger`` imports nothing from the
+# package.
+from .merge_ledger import BASIS_AGGRESSIVE_KEY, BASIS_CROSS_TYPE, record_merge
+
 
 class ResearchNodeType(str, Enum):
     # Field / taxonomy layer
@@ -1137,6 +1145,13 @@ def _merge_same_type_aliased_duplicates(
             if loser.id == canonical.id:
                 continue
             redirect[loser.id] = canonical.id
+            record_merge(
+                loser.id,
+                canonical.id,
+                BASIS_AGGRESSIVE_KEY,
+                loser_name=loser.name or "",
+                loser_type=loser.type.value,
+            )
             if loser.name and loser.name != canonical.name:
                 aliases_to_add.setdefault(canonical.id, []).append(loser.name)
             for a in loser.aliases or []:
@@ -1255,6 +1270,13 @@ def _merge_cross_type_duplicates(
             if loser.id == canonical.id:
                 continue
             redirect[loser.id] = canonical.id
+            record_merge(
+                loser.id,
+                canonical.id,
+                BASIS_CROSS_TYPE,
+                loser_name=loser.name or "",
+                loser_type=loser.type.value,
+            )
             # Record the loser's type as ``merged_types`` metadata on the
             # canonical so downstream code (tests, MCP search, lint
             # reports) can still observe "this Paper was also extracted as

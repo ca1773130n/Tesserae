@@ -12,6 +12,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
+from .merge_ledger import BASIS_EXACT_KEY, record_merge
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 
 
@@ -110,6 +111,16 @@ class GraphCanonicalizer:
             canonical_id = canonical_for.get(node.id, node.id)
             if canonical_id != node.id:
                 merged_nodes[node.id] = canonical_id
+                # Same map, published rather than discarded: without this the
+                # only trace of the absorption dies with this result object,
+                # and a stale node id reads as not-found forever after.
+                record_merge(
+                    node.id,
+                    canonical_id,
+                    BASIS_EXACT_KEY,
+                    loser_name=node.name or "",
+                    loser_type=node.type.value,
+                )
             canonical_groups.setdefault(canonical_id, []).append(node)
 
         new_nodes = [merge_node_group(canonical_id, group) for canonical_id, group in canonical_groups.items()]

@@ -286,11 +286,21 @@ def test_compile_byte_idempotent_with_confidence_and_supersedes(tmp_path: Path) 
 
     # NO node carries a sidecar-baked confidence in graph.json (byte-idempotence
     # invariant — the corpus never sets it, so assert absence outright).
+    # ``merged_into`` / ``survivor_id`` join the list for the merge ledger
+    # (.tesserae/merge-ledger.json): the loser->survivor back-reference is
+    # sidecar state, and a copy in node metadata would survive an incremental
+    # compile and vanish on a full one.
     for node in graph["nodes"]:
         # embedding_vector / text_sha256: the vector cache is SQLite-only
         # (node_vectors), keyed on the embedded text. Neither the vector nor
         # its key may ever be staged in node metadata.
-        for field_name in ("confidence", "proposed_type", "embedding_vector", "text_sha256"):
+                # merged_into / survivor_id: the merge ledger is a .tesserae/ file;
+        # a back-reference in node metadata would make graph.json carry a
+        # fact about a merge rather than about the graph.
+        for field_name in (
+            "confidence", "proposed_type", "embedding_vector", "text_sha256",
+            "merged_into", "survivor_id",
+        ):
             assert field_name not in (node.get("metadata") or {}), (
                 f"node {node['id']} leaked {field_name} into graph.json metadata"
             )

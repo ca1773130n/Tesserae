@@ -35,6 +35,7 @@ from .graph_stores import SqliteGraphStore
 from .karpathy_layer import KarpathyLayerWriter
 from .lint import LintReport, WikiLinter, read_git_head
 from .locking import compile_lock
+from .merge_ledger import collect_merges, publish_merge_ledger
 from .output_snapshot import snapshot_output, write_state
 from .ports import GraphStore, Source, SourceLoader
 from .site import StaticSiteBuilder
@@ -276,6 +277,16 @@ class ProjectPaths:
     # INPUT state like ``extraction_feedback`` — never part of any output-hash
     # scope, so ``output_snapshot``'s allowlists deliberately exclude it.
     agent_writes: Path = Path(".tesserae/agent-writes.jsonl")
+    # Merge ledger (see :mod:`tesserae.merge_ledger`): ``loser_id ->
+    # survivor_id`` for every node the compile's three merge passes absorbed,
+    # so a stale node id resolves to its survivor instead of reading as
+    # not-found. DERIVED state: every ingest revalidates it against the graph
+    # it just published and prunes what no longer lands there, so it stays a
+    # statement about the current graph rather than merge history. Out of every
+    # output-hash scope, and deliberately not node metadata — an out-of-band
+    # metadata key would survive an incremental compile, vanish on a full one,
+    # and land in ``graph.json`` bytes.
+    merge_ledger: Path = Path(".tesserae/merge-ledger.json")
 
 
 class ProjectWiki:
@@ -321,6 +332,7 @@ class ProjectWiki:
             session_chunks=self.root / "session_chunks.db",
             session_chunks_lock=self.root / "session_chunks.lock",
             agent_writes=self.root / "agent-writes.jsonl",
+            merge_ledger=self.root / "merge-ledger.json",
         )
         # In-memory override of the Obsidian vault location, set by
         # obsidian-sync --vault for the duration of a single CLI call.
@@ -520,6 +532,74 @@ class ProjectWiki:
         )
 
     def ingest(
+        self,
+        inputs: Iterable[str | Path],
+        source_kind: Optional[str] = None,
+        changed_only: bool = False,
+        limit: Optional[int] = None,
+        trends: bool = False,
+        min_trend_sources: int = 2,
+        loader: Optional[SourceLoader] = None,
+        store: Optional[GraphStore] = None,
+        vault_pull: bool = True,
+        session_options: Optional[SessionExtractionOptions] = None,
+        use_extraction_feedback: bool = False,
+        doc_extractor: Optional[object] = None,
+        changed_paths: Optional[List[Path]] = None,
+        llm_passes_client: Optional["LLMJsonClient"] = None,
+        progress: Optional["CompileProgress"] = None,
+        incremental_override: Optional[bool] = None,
+        retry_fallbacks: bool = False,
+    ) -> dict:
+        """Run :meth:`_ingest` with a merge collector open, then publish the ledger.
+
+        The split exists only so the collector's scope is a ``with`` block
+        around the WHOLE pipeline. The three merge passes fire from roughly ten
+        call sites inside it, and a node absorbed at the first is long gone by
+        the last, so collecting anywhere narrower — around the final
+        ``merge_graphs([graph])``, say — yields a ledger that is empty on every
+        real corpus. Both entry points that publish ``graph.json`` route
+        through here (``compile`` and the standalone ``ingest`` verb), which is
+        what keeps the ledger from going stale against the graph beside it.
+
+        The ledger write is best-effort: it is a read-convenience sidecar, and
+        a failure to write one must not fail a compile that produced a correct
+        graph. It is logged rather than swallowed, matching the
+        output-snapshot write at the tail of :meth:`compile`.
+        """
+        self._published_node_ids: Set[str] = set()
+        with collect_merges() as merges:
+            result = self._ingest(
+                inputs,
+                source_kind=source_kind,
+                changed_only=changed_only,
+                limit=limit,
+                trends=trends,
+                min_trend_sources=min_trend_sources,
+                loader=loader,
+                store=store,
+                vault_pull=vault_pull,
+                session_options=session_options,
+                use_extraction_feedback=use_extraction_feedback,
+                doc_extractor=doc_extractor,
+                changed_paths=changed_paths,
+                llm_passes_client=llm_passes_client,
+                progress=progress,
+                incremental_override=incremental_override,
+                retry_fallbacks=retry_fallbacks,
+            )
+        try:
+            result["merges_recorded"] = publish_merge_ledger(
+                self.paths.merge_ledger, merges, self._published_node_ids
+            )
+        except OSError:
+            logger.exception(
+                "merge-ledger write failed; compile artifacts are unaffected, but a "
+                "node id absorbed by this compile will read as not-found"
+            )
+        return result
+
+    def _ingest(
         self,
         inputs: Iterable[str | Path],
         source_kind: Optional[str] = None,
@@ -3593,6 +3673,12 @@ class ProjectWiki:
         #                            should not bloat agent-facing artifacts.
         research_graph, code_graph = partition_graph(graph)
         cfg = self.config() if self.paths.config.exists() else {}
+        # The node universe this compile is publishing, across BOTH layers.
+        # ``ingest`` prunes the merge ledger against it — a redirect is only
+        # worth keeping while it lands on a node that exists. Reset per compile
+        # like ``_producer_prov``, so a run that publishes nothing cannot leave
+        # a previous run's universe behind for the ledger to validate against.
+        self._published_node_ids = {node.id for node in graph.nodes}
 
         _publish_atomically(self.paths.graph, research_graph.to_json(indent=2) + "\n")
         # ``code-graph.json`` follows the opt-in, and follows it in BOTH
