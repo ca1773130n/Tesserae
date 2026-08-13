@@ -33,6 +33,17 @@ def _doc(node_id="Paper:doc", name="Doc"):
     return ResearchNode(id=node_id, name=name, type=ResearchNodeType.PAPER)
 
 
+def _claim(node_id, name, **metadata):
+    """A PerformanceClaim — the node kind ``memory.contradiction`` arbitrates."""
+    return ResearchNode(
+        id=node_id,
+        name=name,
+        type=ResearchNodeType.PERFORMANCE_CLAIM,
+        description=f"description of {name}",
+        metadata=dict(metadata),
+    )
+
+
 def _fact(facts, predicate, subject_id=None):
     for fact in facts:
         if fact.predicate != predicate:
@@ -460,6 +471,180 @@ def test_supersedes_fact_itself_stays_current():
 
     assert supersede_fact.current is True
     assert supersede_fact.valid_to is None
+
+
+# ------------------------------------------------- resolved_by (source loses)
+
+
+def test_resolved_by_is_interval_closing_without_joining_the_target_side_set():
+    """Wiring it the lazy way — dropping it into INVALIDATING_PREDICATES —
+    would close the interval on the WINNER, which is a worse answer than the
+    hole it fixes. Pin the orientation at the vocabulary level so that edit
+    cannot be made silently.
+    """
+    from tesserae.memory.contradiction import RESOLVED_BY_EDGE
+    from tesserae.temporal import (INTERVAL_CLOSING_PREDICATES,
+                                   INVALIDATING_PREDICATES,
+                                   RESOLVING_PREDICATES)
+
+    assert RESOLVED_BY_EDGE not in INVALIDATING_PREDICATES
+    assert RESOLVING_PREDICATES == {RESOLVED_BY_EDGE}
+    assert INTERVAL_CLOSING_PREDICATES == INVALIDATING_PREDICATES | {RESOLVED_BY_EDGE}
+
+
+def test_supersedes_and_resolved_by_end_opposite_endpoints():
+    """The two loser orientations are mirror images, and both must hold.
+
+    ``new supersedes old`` ends its TARGET; ``loser resolved_by winner`` ends
+    its own SOURCE — the canonical directions ``graph_filters.superseded_ids``
+    already encodes for the read surfaces.
+    """
+    old = _claim("PerformanceClaim:old", "old", first_seen_at="2026-01-01")
+    new = _claim("PerformanceClaim:new", "new", first_seen_at="2026-03-01")
+    loser = _claim("PerformanceClaim:loser", "loser", first_seen_at="2026-01-01")
+    winner = _claim("PerformanceClaim:winner", "winner", first_seen_at="2026-03-01")
+    doc = _doc()
+    graph = ResearchGraph(
+        nodes=[old, new, loser, winner, doc],
+        edges=[
+            ResearchEdge(source=old.id, target=doc.id, type="discussed_in"),
+            ResearchEdge(source=new.id, target=doc.id, type="discussed_in"),
+            ResearchEdge(source=loser.id, target=doc.id, type="discussed_in"),
+            ResearchEdge(source=winner.id, target=doc.id, type="discussed_in"),
+            ResearchEdge(source=new.id, target=old.id, type="supersedes"),
+            ResearchEdge(source=loser.id, target=winner.id, type="resolved_by"),
+        ],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    for ended, basis in ((old.id, "supersedes"), (loser.id, "resolved_by")):
+        fact = _fact(facts, "discussed_in", subject_id=ended)
+        assert fact.valid_to == "2026-03-01", ended
+        assert fact.valid_to_basis == basis, ended
+        assert fact.current is False, ended
+
+    for survivor in (new.id, winner.id):
+        fact = _fact(facts, "discussed_in", subject_id=survivor)
+        assert fact.valid_to is None, survivor
+        assert fact.valid_to_basis is None, survivor
+        assert fact.current is True, survivor
+
+
+def test_resolved_by_fact_itself_stays_current():
+    """An arbitration edge is never ended by the endpoint it arbitrates —
+    here the SUBJECT, which is the mirror of the ``supersedes`` case.
+
+    The second, DATED winner is what makes this load-bearing rather than
+    decorative: it closes the loser's interval, so a projector that kept the
+    subject as the surviving endpoint would end the ``resolved_by`` fact at
+    that boundary. With one winner the degenerate-interval guard masks the
+    error, because ``valid_from`` and the derived ``valid_to`` are both the
+    winner's own timestamp.
+    """
+    loser = _claim("PerformanceClaim:loser", "loser", first_seen_at="2026-01-01")
+    undated = _claim("PerformanceClaim:undated", "undated winner")
+    dated = _claim("PerformanceClaim:dated", "dated winner", first_seen_at="2026-03-01")
+    graph = ResearchGraph(
+        nodes=[loser, undated, dated],
+        edges=[
+            ResearchEdge(source=loser.id, target=undated.id, type="resolved_by"),
+            ResearchEdge(source=loser.id, target=dated.id, type="resolved_by"),
+        ],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+    by_object = {f.object_id: f for f in facts if f.predicate == "resolved_by"}
+    assert set(by_object) == {undated.id, dated.id}
+
+    for fact in by_object.values():
+        assert fact.current is True, fact.object_id
+        assert fact.valid_to is None, fact.object_id
+        assert fact.valid_to_basis is None, fact.object_id
+
+
+def test_a_winner_observed_before_its_loser_invents_no_boundary():
+    """Graphiti's overlap guard: only a strictly later winner dates a death.
+
+    A winner observed at or before its loser was already there, so it cannot
+    say when the loser stopped being true; a boundary taken from it back-dates
+    the loser's death to before its own birth.
+    """
+    loser = _claim("PerformanceClaim:loser", "loser", first_seen_at="2026-03-01")
+    winner = _claim("PerformanceClaim:winner", "winner", first_seen_at="2026-01-01")
+    doc = _doc()
+    graph = ResearchGraph(
+        nodes=[loser, winner, doc],
+        edges=[
+            ResearchEdge(source=loser.id, target=doc.id, type="discussed_in"),
+            ResearchEdge(source=loser.id, target=winner.id, type="resolved_by"),
+        ],
+    )
+
+    fact = _fact(TemporalFactProjector().project(graph), "discussed_in", subject_id=loser.id)
+
+    # We know it lost; we do not know when. Same under-claim an undated
+    # winner produces.
+    assert fact.valid_to is None
+    assert fact.valid_to_basis is None
+    assert fact.current is False
+
+
+def test_a_back_dated_winner_does_not_poison_a_later_real_boundary():
+    """The candidate filter has to run BEFORE "earliest winner wins".
+
+    Two winners, one back-dated. Filtering only at the fact level
+    (``_boundary_precedes_start``) would let the back-dated one be chosen as
+    the earliest and then discard the boundary entirely, losing the genuine
+    one the later winner supplies.
+    """
+    loser = _claim("PerformanceClaim:loser", "loser", first_seen_at="2026-02-01")
+    early = _claim("PerformanceClaim:early", "early", first_seen_at="2026-01-01")
+    late = _claim("PerformanceClaim:late", "late", first_seen_at="2026-04-01")
+    doc = _doc()
+    graph = ResearchGraph(
+        nodes=[loser, early, late, doc],
+        edges=[
+            ResearchEdge(source=loser.id, target=doc.id, type="discussed_in"),
+            ResearchEdge(source=loser.id, target=early.id, type="resolved_by"),
+            ResearchEdge(source=loser.id, target=late.id, type="resolved_by"),
+        ],
+    )
+
+    fact = _fact(TemporalFactProjector().project(graph), "discussed_in", subject_id=loser.id)
+
+    assert fact.valid_to == "2026-04-01"
+    assert fact.valid_to_basis == "resolved_by"
+
+
+def test_reasoning_edge_onto_its_own_resolver_keeps_a_usable_interval():
+    """The degenerate-interval guard still holds in the new orientation.
+
+    ``L criticizes W`` alongside ``L resolved_by W`` puts ``valid_from`` at
+    ``max(ts(L), ts(W)) == ts(W)`` and the derived ``valid_to`` at ``ts(W)``
+    too, so the half-open ``[from, to)`` is empty at every instant and the
+    fact would vanish from every time-travel answer.
+    """
+    loser = _claim("PerformanceClaim:loser", "loser", first_seen_at="2026-01-01T00:00:00Z")
+    winner = _claim("PerformanceClaim:winner", "winner", first_seen_at="2026-04-01T00:00:00Z")
+    graph = ResearchGraph(
+        nodes=[loser, winner],
+        edges=[
+            ResearchEdge(source=loser.id, target=winner.id, type="resolved_by"),
+            ResearchEdge(source=loser.id, target=winner.id, type="criticizes"),
+        ],
+    )
+    facts = TemporalFactProjector().project(graph)
+    crit = _fact(facts, "criticizes")
+
+    assert crit.valid_from == "2026-04-01T00:00:00Z"
+    assert crit.valid_to is None
+    assert crit.valid_to_basis is None
+    assert crit.current is False
+
+    for pivot in ("2026-04-01T00:00:00Z", "2026-05-01T00:00:00Z"):
+        kept, _ = facts_as_of(facts, pivot)
+        assert any(f.id == crit.id for f in kept), f"invisible at {pivot}"
 
 
 # ---------------------------------------------------------------- facts_as_of
