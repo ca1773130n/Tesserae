@@ -2339,6 +2339,7 @@ def _handle_context(args: argparse.Namespace) -> int:
         budget=args.budget,
         synthesize=args.synthesize,
         multi_pool=getattr(args, "multi_pool", False),
+        view=getattr(args, "view", None),
     )
     # LRU: the nodes selected into the bundle count as reads (sidecar only).
     _bump_read_access(wiki.project_root, bundle.selected_nodes)
@@ -2828,6 +2829,12 @@ def _build_context_parser() -> argparse.ArgumentParser:
         message="context: --synthesize has moved → --llm",
     )
     parser.add_argument("--multi-pool", dest="multi_pool", action="store_true", help="AgentRunbook multi-pool retrieval: decompose the query and reserve slots for Runbook/Gotcha/Event memory")
+    parser.add_argument(
+        "--view",
+        default=None,
+        choices=["semantic", "temporal", "causal", "entity"],
+        help="Restrict the walk to one named edge partition: semantic (what/how ideas relate), temporal (when), causal (why it broke / what fixed it), entity (which named things). Default: the full graph.",
+    )
     parser.add_argument("--output", "-o", help="Write the doc to a file instead of stdout")
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument(

@@ -104,3 +104,16 @@ def test_context_multi_pool_reports_the_pools_on_stderr(tmp_path, capsys):
     # empty — and the operator has to be told that, by name.
     assert "Runbook" in captured.err, captured.err
     assert "empty" in captured.err.lower(), captured.err
+
+
+def test_context_view_flag_compiles_a_view_restricted_doc(tmp_path, capsys):
+    """`--view` reaches the compiler (an unknown value would be rejected by
+    argparse's choices; a known one must still produce a valid doc)."""
+    project = _compiled_project(tmp_path, capsys)
+    rc = main([
+        "context", "Gaussian Splatting",
+        "--project", str(project), "--view", "semantic",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert out.startswith("# Context:")

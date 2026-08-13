@@ -1573,6 +1573,22 @@ class LLMWikiMCPServer:
                                 "relation last while keeping it as a transit hop."
                             ),
                         },
+                        "view": {
+                            "type": "string",
+                            "enum": ["semantic", "temporal", "causal", "entity"],
+                            "description": (
+                                "Restrict the walk to one named edge partition: "
+                                "'semantic' (what is X / how do ideas relate), "
+                                "'temporal' (when — sessions, supersedence, trends), "
+                                "'causal' (why did this break / what fixed it), "
+                                "'entity' (which named things — people, orgs, code "
+                                "symbols, composition). Resolves to zero-weights "
+                                "for every out-of-view edge type plus the matching "
+                                "depth-neighbourhood restriction; explicit "
+                                "edge_type_weights still win over the view. Absent "
+                                "= the full graph (default, unchanged behaviour)."
+                            ),
+                        },
                         "tame_hubs": {
                             "type": "boolean",
                             "default": False,
@@ -2657,6 +2673,8 @@ class LLMWikiMCPServer:
                 else None
             )
             tame_hubs = bool(args.get("tame_hubs", False))
+            view_arg = args.get("view")
+            view = str(view_arg) if view_arg else None
             recency_arg = args.get("recency_weight")
             recency_weight = 0.0 if recency_arg is None else float(recency_arg)
             # compile_context gates the whole recency block on
@@ -2681,11 +2699,12 @@ class LLMWikiMCPServer:
                     scope=scope,
                     edge_type_weights=edge_type_weights,
                     tame_hubs=tame_hubs,
+                    view=view,
                     recency_now=recency_now,
                     recency_weight=recency_weight,
                 )
             except ValueError as exc:
-                # An unknown strategy/scope, or a scope with no hierarchy
+                # An unknown strategy/scope/view, or a scope with no hierarchy
                 # sidecar to resolve it against, is a bad request the caller
                 # can fix — answer it, don't fault the transport.
                 return {"error": str(exc)}
@@ -2697,6 +2716,7 @@ class LLMWikiMCPServer:
                 "scope": scope,
                 "edge_type_weights": edge_type_weights,
                 "tame_hubs": tame_hubs,
+                "view": view,
                 "recency_weight": recency_weight,
                 "recency_now": recency_now.isoformat() if recency_now else None,
                 # Procedural pools are producer-scoped, so they are legitimately
