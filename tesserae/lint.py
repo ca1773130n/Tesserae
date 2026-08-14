@@ -1027,8 +1027,9 @@ class WikiLinter:
             severity="info",
             code="INTERVAL_COVERAGE",
             message=(
-                f"{undated} of {total} facts ({pct}%) have no valid_from and sort "
-                f"under the literal 'undated' in timeline(). "
+                f"{undated} of {total} facts ({pct}%) have no valid_from, so "
+                f"timeline() cannot order them and buckets them behind every "
+                f"dated fact (reported there as 'undated_events'). "
                 f"valid_to_basis: {histogram}."
             ),
             suggested_fix=(

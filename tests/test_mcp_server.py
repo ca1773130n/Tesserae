@@ -426,6 +426,83 @@ def test_search_facts_and_timeline_advertise_as_of():
     assert "required" not in timeline_schema
 
 
+def test_search_facts_and_timeline_advertise_the_dated_filter():
+    """An unadvertised argument is rejected by ``additionalProperties: False``,
+    so the filter is only reachable if it is in the schema — and only usable if
+    the enum names all three states."""
+    by_name = {t["name"]: t for t in LLMWikiMCPServer().list_tools()}
+
+    for tool in ("search_facts", "timeline"):
+        dated = by_name[tool]["inputSchema"]["properties"]["dated"]
+        assert dated["enum"] == ["any", "dated", "undated"]
+        assert dated["default"] == "any"
+
+
+@pytest.mark.parametrize("tool, rows_key", [("search_facts", "facts"), ("timeline", "events")])
+def test_dated_filter_partitions_the_corpus(tmp_path, tool, rows_key):
+    """`dated` and `undated` are complements, not two independent narrowings:
+    every row the unfiltered call returns lands in exactly one of them."""
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+    query = {"query": "splatting", "limit": 50}
+
+    everything = server.call_tool(tool, query)
+    dated = server.call_tool(tool, {**query, "dated": "dated"})
+    undated = server.call_tool(tool, {**query, "dated": "undated"})
+
+    all_ids = [row["id"] for row in everything[rows_key]]
+    dated_ids = [row["id"] for row in dated[rows_key]]
+    undated_ids = [row["id"] for row in undated[rows_key]]
+
+    assert set(dated_ids) | set(undated_ids) == set(all_ids)
+    assert not set(dated_ids) & set(undated_ids)
+    assert undated_ids  # the fixture's undated finding, so this is not vacuous
+    assert all(_is_dated(row["valid_from"]) for row in dated[rows_key])
+    assert not any(_is_dated(row["valid_from"]) for row in undated[rows_key])
+
+
+@pytest.mark.parametrize("tool", ["search_facts", "timeline"])
+def test_unknown_dated_state_is_a_structured_error_not_a_silent_any(tmp_path, tool):
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+
+    result = server.call_tool(tool, {"query": "splatting", "dated": "undatd"})
+
+    assert "error" in result and "undatd" in result["error"]
+    # Crucially NOT the unfiltered corpus wearing a filter's label.
+    assert "facts" not in result and "events" not in result
+
+
+def test_timeline_undated_events_counts_the_rows_that_survived_the_budget(tmp_path):
+    """The undated bucket is the TAIL of the sort, so CTX-01 truncation eats it
+    first. A count taken before truncation describes rows that shipped behind
+    the continuation line and are not in the response at all."""
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+    query = {"query": "splatting", "limit": 50}
+
+    assert server.call_tool("timeline", query)["undated_events"] == 1
+
+    dropped_somewhere = False
+    for budget in (400, 600, 800, 1200, 2000):
+        capped = server.call_tool("timeline", {**query, "budget_chars": budget})
+        assert capped["undated_events"] == sum(
+            1 for e in capped["events"] if not _is_dated(e["valid_from"])
+        )
+        dropped_somewhere |= capped.get("continuation") is not None
+    assert dropped_somewhere
+
+
+def test_search_facts_does_not_match_ids_or_metadata_through_the_tool(tmp_path):
+    """The tool surface must not re-open what the fact corpus closed: a node-id
+    fragment used to match every fact carrying that id, because the score was
+    counted over ``json.dumps(fact.model_dump())``."""
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+
+    by_id_fragment = server.call_tool("search_facts", {"query": "SessionInsight", "limit": 50})
+    by_content = server.call_tool("search_facts", {"query": "splatting", "limit": 50})
+
+    assert by_id_fragment["total_matches"] == 0
+    assert by_content["total_matches"] == 4
+
+
 def test_json_rpc_notifications_do_not_emit_response():
     handler = MCPRequestHandler(LLMWikiMCPServer())
 

@@ -757,27 +757,170 @@ def facts_since(
 FACT_MATCH_CEILING = 100
 
 
-def search_facts(facts: Iterable[TemporalFact], query: str, limit: int = 10, current_only: bool = False) -> Dict[str, object]:
-    terms = [term.casefold() for term in query.split() if term.strip()]
-    scored = []
-    for index, fact in enumerate(facts):
+#: The three states of the ``dated`` filter on :func:`search_facts` and
+#: :func:`timeline`. Graphiti spells the same idea ``is_null`` / ``is_not_null``
+#: inside a DNF filter language; three named states say it without asking an
+#: agent to compose a predicate, and the vocabulary is one, not four.
+DATED_FILTERS = ("any", "dated", "undated")
+
+
+def is_dated(valid_from: object) -> bool:
+    """True when ``valid_from`` is a timestamp the temporal filters can order.
+
+    "Undated" is a PREDICATE over the value, never the literal ``"undated"``
+    sentinel :meth:`TemporalFactProjector._fact_from_edge` writes for a missing
+    timestamp. :func:`facts_as_of` and :func:`facts_since` already decide by
+    parseability, and an unparseable non-sentinel would be exactly as
+    unorderable as the sentinel is; testing for the string instead would let
+    the filter, the sort bucket and the reported count drift apart while all
+    three looked right.
+
+    One spelling on purpose — ``mcp_server._undated_included`` and
+    ``ask_planner._undated_shipped`` both call through here rather than
+    re-deriving it.
+    """
+    return _parse_iso(valid_from) is not None
+
+
+def fact_text(fact: TemporalFact) -> str:
+    """The searchable CONTENT of a fact: what it says, not how it is stored.
+
+    Ids, provenance, confidence and metadata are deliberately absent. Until
+    this was fixed :func:`search_facts` scored over
+    ``json.dumps(fact.model_dump())``, so a query term that appeared in a node
+    id, a source path or a metadata key scored the fact as though the fact
+    were about the query — searching ``SessionInsight`` matched every session
+    fact in the graph, at the top, ahead of any real hit.
+    """
+    return " ".join(
+        part
+        for part in (fact.subject_name, fact.predicate, fact.object_name, fact.evidence or "")
+        if part
+    )
+
+
+def _rank_facts(pool: List[TemporalFact], query: str) -> List[TemporalFact]:
+    """Rank a fact pool against ``query`` over :func:`fact_text` alone.
+
+    Two of ``hybrid_search``'s lanes, reused rather than re-spelled, with
+    distinct jobs: BM25 RANKS, and the lexical lane ADMITS.
+
+    * Ranking is BM25 (``hybrid._bm25_scores``), which is what the old
+      term-presence counter lacked — a rare term now outweighs a common one
+      and a short fact outranks a long one that mentions the term in passing.
+    * Admission stays lexical: a fact matches when a query term occurs in its
+      content, preserving the substring recall ("splat" finding "splatting")
+      that BM25's whole-token matching would silently drop.
+
+    Two lanes are deliberately NOT fused by ``hybrid._fuse``. RRF fuses lanes
+    whose scores are not comparable, and it earns that over three lanes; over
+    these two at equal weight it would cancel exactly whenever they disagree,
+    because ``_rrf_ranks`` hands out distinct ranks even to equal scores, so a
+    transposition costs one lane exactly what it pays the other and the tie
+    falls back to projection order. Fusing here would look like ranking and
+    behave like the input order.
+
+    The embedding lane is left out too, and that is a decision rather than an
+    omission: ``hybrid.hybrid_search`` takes ``ResearchNode``s and builds its
+    corpus with ``_node_text``, which folds in node id, type and metadata —
+    the very fields whose match is the defect this function removes — and its
+    embedding lane would embed the whole fact corpus on every call, with no
+    fact-level vector cache to read.
+    """
+    from .retrieval.hybrid import _bm25_scores, _lexical_scores, _tokenize
+
+    texts = [fact_text(fact) for fact in pool]
+    lexical = _lexical_scores(query, texts)
+    bm25 = _bm25_scores(_tokenize(query), [_tokenize(text) for text in texts])
+    order = sorted(range(len(pool)), key=lambda index: (-bm25[index], index))
+    return [pool[index] for index in order if lexical[index] > 0]
+
+
+def search_facts(
+    facts: Iterable[TemporalFact],
+    query: str,
+    limit: int = 10,
+    current_only: bool = False,
+    dated: str = "any",
+) -> Dict[str, object]:
+    """Rank facts against ``query`` over :func:`fact_text`.
+
+    ``dated`` is one of :data:`DATED_FILTERS` and narrows to facts that do or
+    do not carry an orderable ``valid_from``; it is echoed back when it is not
+    ``"any"``, so a filtered answer is never mistaken for a thin corpus. An
+    unknown state raises rather than degrading to ``"any"``.
+    """
+    if dated not in DATED_FILTERS:
+        raise ValueError(
+            f"Unknown dated filter: {dated!r} (expected one of {', '.join(DATED_FILTERS)})"
+        )
+    pool: List[TemporalFact] = []
+    for fact in facts:
         if current_only and not fact.current:
             continue
-        text = json.dumps(fact.model_dump(), ensure_ascii=False).casefold()
-        score = sum(1 for term in terms if term in text)
-        if not terms or score > 0:
-            scored.append((score, index, fact))
-    scored.sort(key=lambda item: (-item[0], item[1]))
-    matches = [fact.model_dump() for score, _index, fact in scored if score > 0 or not terms]
+        if dated != "any" and is_dated(fact.valid_from) != (dated == "dated"):
+            continue
+        pool.append(fact)
+    if query.split():
+        matches = [fact.model_dump() for fact in _rank_facts(pool, query)]
+    else:
+        # No query is not a zero-relevance ranking, it is "no filter": keep the
+        # projection order so an unqueried call reads the corpus as projected.
+        matches = [fact.model_dump() for fact in pool]
     bounded = max(1, min(limit, FACT_MATCH_CEILING))
-    return {"query": query, "total_matches": len(matches), "facts": matches[:bounded]}
+    result: Dict[str, object] = {
+        "query": query,
+        "total_matches": len(matches),
+        "facts": matches[:bounded],
+    }
+    if dated != "any":
+        # Report what actually ran, the way `as_of` and search_nodes' `mode` do.
+        result["dated"] = dated
+    return result
 
 
-def timeline(facts: Iterable[TemporalFact], query: str = "", limit: int = 50) -> Dict[str, object]:
-    result = search_facts(facts, query=query, limit=10_000)
+def timeline(
+    facts: Iterable[TemporalFact], query: str = "", limit: int = 50, dated: str = "any"
+) -> Dict[str, object]:
+    """:func:`search_facts` ordered in time, with the undated rows bucketed.
+
+    ``undated_events`` counts the undated rows IN THE RETURNED PAGE — the same
+    discipline ``mcp_server._undated_included`` applies to ``as_of``.
+    """
+    result = search_facts(facts, query=query, limit=10_000, dated=dated)
     events = list(result["facts"])
-    events.sort(key=lambda item: (str(item.get("valid_from") or ""), str(item.get("subject_name") or ""), str(item.get("predicate") or "")))
-    return {"query": query, "total_events": len(events), "events": events[: max(1, min(limit, 200))]}
+    # Sort on the PARSED timestamp, and bucket the undated rows behind the
+    # dated ones instead of letting a string comparison place them. Sorting
+    # `str(valid_from)` ordered the literal "undated" after every ISO date by
+    # the accident that 'u' > '2' — on this project's own graph that silently
+    # piled 73% of facts at the end of every timeline — and it mis-ordered
+    # dated rows too, since "2026-01-01" and "2026-01-01T05:00:00Z" are the
+    # same day but not the same string.
+    dated_rows = [event for event in events if is_dated(event.get("valid_from"))]
+    undated_rows = [event for event in events if not is_dated(event.get("valid_from"))]
+    dated_rows.sort(
+        key=lambda item: (
+            _parse_iso(item.get("valid_from")),
+            str(item.get("subject_name") or ""),
+            str(item.get("predicate") or ""),
+        )
+    )
+    undated_rows.sort(
+        key=lambda item: (str(item.get("subject_name") or ""), str(item.get("predicate") or ""))
+    )
+    ordered = (dated_rows + undated_rows)[: max(1, min(limit, 200))]
+    payload: Dict[str, object] = {
+        "query": query,
+        "total_events": len(events),
+        "events": ordered,
+        # Counted over the rows RETURNED, like `undated_included`: a timeline
+        # whose tail carries no time at all is a thin answer, and the caller
+        # has to be told how much of the page that is.
+        "undated_events": sum(1 for event in ordered if not is_dated(event.get("valid_from"))),
+    }
+    if dated != "any":
+        payload["dated"] = dated
+    return payload
 
 
 def render_competitive_report() -> str:
