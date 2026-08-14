@@ -7,10 +7,12 @@ Pass shape (default-on, opt-out via ``TESSERAE_SUPERSEDE_PASS=false``):
 
 1. Group session-finding nodes by ``ResearchNodeType`` (insights with
    insights, decisions with decisions, ...).
-2. Inside each group, compute a cheap Jaccard token-set similarity on
-   the node ``name`` strings. Pairs with ``similarity > 0.55`` become
-   judgement candidates — quadratic in group size, but a real project
-   tops out at a few hundred session findings per kind so this is fine.
+2. Inside each group, block on shared name tokens (``tesserae.blocking``,
+   the same layer canonicalization's review builder uses) and compute a
+   cheap Jaccard token-set similarity on the node ``name`` strings for the
+   surviving pairs. Pairs with ``similarity > 0.55`` become judgement
+   candidates. Blocking is lossless here — Jaccard is 0 for two names
+   sharing no token — so it bounds the pass without changing its verdicts.
 3. For each candidate pair, ask the LLM whether either side obsoletes
    the other. The answer is cached on disk so reruns are free.
 4. When the LLM says "A obsoletes B" (or vice-versa) mint a
@@ -33,6 +35,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+from ..blocking import DEFAULT_MAX_BLOCK, blocked_pairs
 from ..llm_json import LLMJsonClient
 from ..research_graph import (
     SESSION_FINDING_TYPES,
@@ -296,23 +299,78 @@ def _session_id(node: ResearchNode) -> str:
     return str(sid) if sid else ""
 
 
+def _extraction_confidence(node: ResearchNode) -> Optional[float]:
+    """The extractor's own confidence for a finding, clamped to ``[0, 1]``.
+
+    Read from ``metadata["confidence"]``, which ``session_graph`` writes from
+    the content-keyed LLM cache — so it is already IN ``graph.json`` and is
+    byte-stable across compiles of unchanged sources.
+
+    Deliberately NOT ``node_memory``'s ``decay_score`` / ``access_count``:
+    those accumulate from MCP reads, and a ``supersedes`` edge lands in
+    ``graph.json``, so arbitrating on read state would make the artifact a
+    function of query history — byte-idempotence in its purest failure mode.
+    NaN is rejected rather than clamped, because a value that compares false
+    against everything would destroy the total order arbitration depends on.
+    """
+    raw = (node.metadata or {}).get("confidence")
+    if isinstance(raw, bool) or raw is None:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if value != value:  # NaN
+        return None
+    return max(0.0, min(1.0, value))
+
+
+#: How far apart two extraction confidences must be before confidence
+#: outranks session recency. Below this the gap is extraction noise between
+#: two restatements of one finding, and letting it flip the verdict would
+#: resurrect the failure the session-recency rule was hardened against: an
+#: older finding suppressing the newer one that corrects it.
+_CONFIDENCE_MARGIN = 0.15
+
+
 def _deterministic_verdict(a: ResearchNode, b: ResearchNode) -> SupersedeJudgement:
     """Credential-free arbitration for a near-dup pair (KB-03).
 
     Callers pass the canonicalised ``a.id < b.id`` pair from
     :func:`_candidate_pairs`, so ``a`` is the smaller-id node. Pure function:
-    reads ONLY immutable content fields (session-id metadata string, name
-    length, id ordering) — no ``datetime.now()``, no RNG, no I/O — so two runs
-    over the same graph yield byte-identical verdicts.
+    reads ONLY immutable content fields (extraction confidence, session-id
+    metadata string, name length, id ordering) — no ``datetime.now()``, no
+    RNG, no I/O — so two runs over the same graph yield byte-identical
+    verdicts.
 
     Rule order:
-      1. both have session_id and they DIFFER → the LATER session id wins,
+      1. both sides carry an extraction confidence and they differ by more
+         than :data:`_CONFIDENCE_MARGIN` → the better-supported finding wins.
+         Borrowed from agent-memory's highest-confidence-wins arbitration —
+         the INPUT only. Its resolution then discards the loser with no
+         history edge; this pass mints ``supersedes`` and keeps both sides.
+         Requires BOTH sides, mirroring rule 2: a missing confidence is a
+         finding the extractor never scored, not a finding scored zero.
+      2. both have session_id and they DIFFER → the LATER session id wins,
          DECISIVELY in both directions (never fall through to name length —
          the newer finding must obsolete the older one regardless of name).
-      2. ``len(b.name) > len(a.name) * 1.1`` → ``b_obsoletes_a``
+      3. ``len(b.name) > len(a.name) * 1.1`` → ``b_obsoletes_a``
          (more specific / longer name wins) — only when session ids tie/absent.
-      3. else → ``a_obsoletes_b`` (stable smaller-id fallback).
+      4. else → ``a_obsoletes_b`` (stable smaller-id fallback).
     """
+    conf_a, conf_b = _extraction_confidence(a), _extraction_confidence(b)
+    if (
+        conf_a is not None
+        and conf_b is not None
+        and abs(conf_a - conf_b) > _CONFIDENCE_MARGIN
+    ):
+        if conf_b > conf_a:
+            return SupersedeJudgement(
+                verdict="b_obsoletes_a", rationale="higher extraction confidence"
+            )
+        return SupersedeJudgement(
+            verdict="a_obsoletes_b", rationale="higher extraction confidence"
+        )
     sid_a, sid_b = _session_id(a), _session_id(b)
     if sid_a and sid_b and sid_a != sid_b:
         # Later session id wins, decisively (Codex blocker: the older case
@@ -345,16 +403,37 @@ def _finding_groups(
 # backend_is_semantic) is DEFERRED to Phase 6+ — Jaccard is deterministic
 # and byte-idempotent; embedding candidates add a model-version dependency.
 def _candidate_pairs(
-    nodes: Sequence[ResearchNode], threshold: float
+    nodes: Sequence[ResearchNode],
+    threshold: float,
+    *,
+    max_block: int = DEFAULT_MAX_BLOCK,
 ) -> List[Tuple[ResearchNode, ResearchNode, float]]:
-    """All ``(a, b, sim)`` with ``sim > threshold`` and ``a.id < b.id``."""
+    """``(a, b, sim)`` with ``sim > threshold`` and ``a.id < b.id``, over the
+    shared blocking layer rather than every pair in the group.
+
+    Blocking is LOSSLESS here, which is the only reason it is safe to bound a
+    pass whose verdicts land in ``graph.json``: Jaccard over :func:`_tokenise`
+    is 0.0 for two names sharing no token, so a pair the blocker drops is a
+    pair the scorer would have rejected anyway. That equivalence is why the
+    tokenizer handed to the blocker is :func:`_tokenise` itself and NOT
+    canonicalization's three-character name split — Jaccard counts
+    two-character tokens, so the split would drop real candidates.
+    """
+    blocked = blocked_pairs(nodes, tokenizer=_tokenise, max_block=max_block)
+    if blocked.capped_blocks:
+        # Loud, because a narrowed pass and an exhausted one must not look
+        # the same: past this point some near-duplicates were never compared.
+        logger.warning(
+            "memory.supersede: %d block(s) truncated at max_block=%d — "
+            "some near-duplicate pairs were not compared",
+            blocked.capped_blocks,
+            blocked.max_block,
+        )
     pairs: List[Tuple[ResearchNode, ResearchNode, float]] = []
-    for i, a in enumerate(nodes):
-        for b in nodes[i + 1 :]:
-            sim = jaccard(a.name, b.name)
-            if sim > threshold:
-                lo, hi = (a, b) if a.id < b.id else (b, a)
-                pairs.append((lo, hi, sim))
+    for a, b in blocked.pairs:
+        sim = jaccard(a.name, b.name)
+        if sim > threshold:
+            pairs.append((a, b, sim))
     return pairs
 
 

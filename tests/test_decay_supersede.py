@@ -22,6 +22,7 @@ from tesserae.memory.decay import compute_decay_score
 from tesserae.memory.supersede import (
     SUPERSEDE_EDGE,
     SupersedeJudgement,
+    _candidate_pairs,
     _deterministic_verdict,
     jaccard,
     run_supersede_pass,
@@ -584,3 +585,132 @@ def test_decay_anchors_on_session_started_at():
     node = {"metadata": {"started_at": "2026-05-18T14:23:04Z"}}  # ~25d old, no first_seen_at
     score = compute_decay_score(node, now)
     assert score < 1.0  # decayed, not brand-new
+
+
+# ---------------------------------------------------------------------------
+# Blocking (roadmap step 6a) — the pass is bounded, and bounded losslessly
+# ---------------------------------------------------------------------------
+
+
+def _named(node_id: str, name: str, **meta) -> ResearchNode:
+    return ResearchNode(
+        id=node_id,
+        name=name,
+        type=ResearchNodeType.SESSION_INSIGHT,
+        metadata=dict(meta),
+    )
+
+
+def test_candidate_pairs_blocking_is_lossless_against_brute_force():
+    """Blocking must not change WHICH pairs the pass judges, only how many it
+    scores. Jaccard is 0.0 for names sharing no token, so every pair above the
+    threshold shares one and survives the blocker — pinned against the
+    all-pairs scan the blocker replaced."""
+    nodes = [
+        _named("SessionInsight:a", "atomic writes need a pid plus random tmp suffix"),
+        _named("SessionInsight:b", "atomic writes need pid plus random suffix for tmp"),
+        _named("SessionInsight:c", "use yaml frontmatter for vault snapshots"),
+        _named("SessionInsight:d", "use yaml frontmatter for the vault snapshot"),
+        _named("SessionInsight:e", "wholly unrelated finding about lockfiles"),
+    ]
+    threshold = 0.55
+    brute_force = set()
+    for i, a in enumerate(nodes):
+        for b in nodes[i + 1 :]:
+            if jaccard(a.name, b.name) > threshold:
+                lo, hi = (a, b) if a.id < b.id else (b, a)
+                brute_force.add((lo.id, hi.id))
+
+    blocked = {(a.id, b.id) for a, b, _ in _candidate_pairs(nodes, threshold)}
+    assert blocked == brute_force
+    assert brute_force, "fixture must contain at least one real candidate pair"
+
+
+def test_candidate_pairs_are_bounded_and_the_cap_is_id_ordered():
+    """The uncapped all-pairs shape is gone: a block over ``max_block`` is
+    truncated by sorted id, so the pass stays deterministic when it narrows."""
+    nodes = [
+        _named(f"SessionInsight:{i}", "atomic writes need a tmp suffix") for i in "abcd"
+    ]
+    assert len(_candidate_pairs(nodes, 0.55)) == 6  # uncapped: every pair
+    capped = _candidate_pairs(nodes, 0.55, max_block=2)
+    assert [(a.id, b.id) for a, b, _ in capped] == [
+        ("SessionInsight:a", "SessionInsight:b")
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Confidence arbitration (roadmap step 6b)
+# ---------------------------------------------------------------------------
+
+
+def test_confidence_outranks_session_recency():
+    """agent-memory's arbitration INPUT, taken and nothing else: the
+    better-supported finding wins even when the other is newer. The loser is
+    still kept — the pass mints ``supersedes``, it never drops a node."""
+    a = _named("SessionInsight:a", "same name", session_id="sess-1", confidence=0.95)
+    b = _named("SessionInsight:b", "same name", session_id="sess-9", confidence=0.5)
+    verdict = _deterministic_verdict(a, b)
+    assert verdict.verdict == "a_obsoletes_b"
+    assert verdict.rationale == "higher extraction confidence"
+    # Symmetric in the other direction.
+    c = _named("SessionInsight:c", "same name", session_id="sess-9", confidence=0.4)
+    d = _named("SessionInsight:d", "same name", session_id="sess-1", confidence=0.95)
+    assert _deterministic_verdict(c, d).verdict == "b_obsoletes_a"
+
+
+def test_confidence_below_the_margin_leaves_recency_in_charge():
+    """A hair's difference between two extraction scores must not flip the
+    verdict: that would resurrect the failure session recency was hardened
+    against, an older finding suppressing the newer one that corrects it."""
+    a = _named("SessionInsight:a", "same name", session_id="sess-1", confidence=0.95)
+    b = _named("SessionInsight:b", "same name", session_id="sess-9", confidence=0.9)
+    assert _deterministic_verdict(a, b).rationale == "newer session id"
+    assert _deterministic_verdict(a, b).verdict == "b_obsoletes_a"
+
+
+def test_confidence_requires_both_sides():
+    """A missing confidence is a finding the extractor never scored, not a
+    finding scored zero — so one-sided confidence must not decide."""
+    a = _named("SessionInsight:a", "same name", session_id="sess-1", confidence=0.95)
+    b = _named("SessionInsight:b", "same name", session_id="sess-9")
+    assert _deterministic_verdict(a, b).rationale == "newer session id"
+
+
+def test_confidence_ignores_unusable_values():
+    """NaN compares false against everything and would destroy the total order
+    arbitration depends on; a non-numeric value is not a score."""
+    a = _named("SessionInsight:a", "same name", session_id="sess-1", confidence=0.95)
+    for bad in (float("nan"), "high", None, True):
+        b = _named("SessionInsight:b", "same name", session_id="sess-9", confidence=bad)
+        assert _deterministic_verdict(a, b).rationale == "newer session id"
+
+
+def test_arbitration_never_reads_mcp_accumulated_state():
+    """``supersedes`` edges land in graph.json, so arbitration must be blind to
+    node_memory's read state. If it were not, a compile after a run of MCP
+    reads would emit different edges than a compile before them — graph.json
+    as a function of query history."""
+    base = dict(session_id="sess-1", confidence=0.8)
+    a = _named("SessionInsight:a", "same name", **base)
+    b = _named("SessionInsight:b", "same name", session_id="sess-2", confidence=0.8)
+    before = _deterministic_verdict(a, b)
+
+    hot_a = _named(
+        "SessionInsight:a",
+        "same name",
+        access_count=999,
+        decay_score=1.0,
+        last_accessed_at="2026-08-14T00:00:00+00:00",
+        **base,
+    )
+    cold_b = _named(
+        "SessionInsight:b",
+        "same name",
+        session_id="sess-2",
+        confidence=0.8,
+        access_count=0,
+        decay_score=0.0,
+    )
+    after = _deterministic_verdict(hot_a, cold_b)
+    assert (after.verdict, after.rationale) == (before.verdict, before.rationale)

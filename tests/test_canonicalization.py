@@ -46,8 +46,13 @@ def test_canonicalizer_creates_review_candidates_for_similar_unmerged_concepts()
 
     assert result.review_items
     item = result.review_items[0]
-    assert item.left_name == "Gaussian Splatting"
-    assert item.right_name == "3D Gaussian Splatting"
+    # left/right are the SORTED-id orientation, not graph insertion order:
+    # '3d-gaussian-splatting' < 'gs'. That is the orientation stable_review_id
+    # already hashes and the embedding pass already emits, so a pair reads the
+    # same way however the nodes happened to arrive.
+    assert item.left_node_id == "MethodologicalConcept:3d-gaussian-splatting:test"
+    assert item.left_name == "3D Gaussian Splatting"
+    assert item.right_name == "Gaussian Splatting"
     assert item.reason == "similar_name"
     assert 0 < item.score <= 1
 
@@ -397,3 +402,33 @@ def test_canonicalization_and_federation_share_one_cached_vector(tmp_path):
     )
     assert stats["semantic_added"] >= 1  # the pass really ran
     assert fed_backend.embedded == []  # ...on vectors canonicalization had cached
+
+
+def test_string_review_pass_reports_its_block_cap():
+    """The string pass is bounded by the shared blocker now, and a bound that
+    narrows the review queue has to say so — a shorter queue and an exhausted
+    queue must never look the same. Truncation is by sorted id, so the capped
+    set does not depend on the order the nodes arrived in."""
+    nodes = [
+        ResearchNode(
+            id=f"MethodologicalConcept:gs-{letter}:test",
+            name=f"gaussian splatting {letter}",
+            type=ResearchNodeType.METHODOLOGICAL_CONCEPT,
+        )
+        for letter in "abcd"
+    ]
+    canonicalizer = GraphCanonicalizer(max_block=2)
+
+    forward = canonicalizer.canonicalize(ResearchGraph(nodes=list(nodes), edges=[]))
+    reverse = canonicalizer.canonicalize(
+        ResearchGraph(nodes=list(reversed(nodes)), edges=[])
+    )
+
+    assert forward.stats["block_capped_at"] == 2
+    assert forward.stats["blocks_capped"] >= 1
+    assert [item.id for item in forward.review_items] == [
+        item.id for item in reverse.review_items
+    ]
+    assert GraphCanonicalizer().canonicalize(
+        ResearchGraph(nodes=list(nodes), edges=[])
+    ).stats.get("block_capped_at") is None
