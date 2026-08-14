@@ -64,6 +64,19 @@ Vollständiges Verhalten, CLI-Flags(`--consolidate-idle` / `--consolidate-every`
 - **Herabstufung**: Alles andere fällt schlimmstenfalls aus dem vollständigen Textkörper in eine Titelzeile+Referenzzeile in der Indexnote des Agenten. Das Alter allein macht Wissen nie unsichtbar.
 - **Durch Nichtgebrauch (LRU)**：Der Verfall wird durch *Abruf-Neuheit* angetrieben, nicht nur durch Erstellungsalter. Lesen Sie Oberflächen-Datensatzzugriff — `last_accessed_at` / `access_count` — in ein `node_memory` Sidecar (niemals in `graph.json`). Destillation führt diesen Live-Zugriff in seine Arbeitsansicht **vor** der Berechnung des Verfalls ein, damit ein Befund, der niemals abgerufen wird, verfällt und zur Aufnahme oder Herabstufung berechtigt wird, während ein kürzlich gelesener unabhängig vom Alter beibehalten wird. Ein leeres Sidecar reproduziert genau das alte Verhalten nur nach Alter.
 - **Ledger**: Jede Beförderung/Herabstufung/Absorption wird an ein Vergessenheitsbuch angehängt und durch `tesserae lint` angezeigt (`AGENT_FORGET_LEDGER`), zusammen mit einer nicht destillierten Backlog-Metrik pro Agent (`AGENT_UNDISTILLED_BACKLOG`).
+- **Wer es gelesen hat** (Opt-in): Der Zugriffszähler oben sagt, dass ein Knoten
+  gelesen wurde, nicht von wem — ein geschwätziger Agent, der einen Knoten
+  abfragt, und ein Mensch, der ihn einmal liest, sind für das Vergessen also
+  derselbe Eingang. Mit `TESSERAE_READ_AUDIT=1` auf dem MCP-Server wird jeder
+  Lesevorgang zusätzlich als `{tool, actor, node_ids, at, tesserae_version}` im
+  selben `.tesserae/sqlite.db`-Sidecar aufgezeichnet und über das Werkzeug
+  `read_audit` samt Auswertung pro Akteur lesbar. Der Akteur ist das Argument
+  `agent`, wenn der Aufruf eine Agenten-Sicht auflöst, sonst `TESSERAE_ACTOR`;
+  ist beides leer, wird der Lesevorgang anonym aufgezeichnet statt einem
+  erfundenen Namen zugeschrieben. **Standardmäßig aus, mit Absicht** — ein
+  dauerhaft aktives Ledger über jede Lesefläche macht jeden Lesevorgang zu einem
+  Schreibvorgang. Ausschalten stoppt die Aufzeichnung, löscht das Aufgezeichnete
+  aber nicht, und nichts davon erreicht jemals `graph.json`.
 
 ## Entdeckte Verbindungen
 

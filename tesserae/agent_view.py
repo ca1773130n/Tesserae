@@ -421,12 +421,18 @@ def drill_down(
     try:
         import json as _json
 
+        from .cli_tree import package_version
+
         entry = _json.dumps(
             {
                 "at": datetime.now(timezone.utc).isoformat(),
                 "content_hash": want_hash,
                 "node_id": node_id,
                 "status": status,
+                # Every audit row in the system carries the release that wrote
+                # it, so a bad release is attributable after the fact rather
+                # than inferred from the row's neighbours.
+                "tesserae_version": package_version(),
             },
             sort_keys=True,
         )

@@ -213,6 +213,13 @@ class MergeLedger:
 # --------------------------------------------------------------------------- #
 
 
+def _writer_version() -> str:
+    """The release stamped into the published ledger. ``"unknown"`` uninstalled."""
+    from .cli_tree import package_version
+
+    return package_version()
+
+
 def merge_ledger_path(project_root: str | Path) -> Path:
     """Return ``<project_root>/.tesserae/merge-ledger.json``."""
     return Path(project_root) / ".tesserae" / MERGE_LEDGER_FILENAME
@@ -266,8 +273,14 @@ def publish_merge_ledger(
     alive_losers_removed = [r for r in union.records if r.loser_id not in live]
     pruned = MergeLedger(alive_losers_removed)
     kept = [r for r in alive_losers_removed if pruned.resolve(r.loser_id) in live]
+    # ``tesserae_version`` names the release that last republished the ledger,
+    # so a redirect that turns out to be wrong is attributable to a build. It is
+    # NOT part of the record shape (``schema_version`` is), it does not
+    # participate in reading the file back, and it is constant within an
+    # install — so the byte-stability promised above is unaffected.
     payload = {
         "schema_version": MERGE_LEDGER_SCHEMA_VERSION,
+        "tesserae_version": _writer_version(),
         "records": [record.as_json() for record in kept],
     }
     target.parent.mkdir(parents=True, exist_ok=True)

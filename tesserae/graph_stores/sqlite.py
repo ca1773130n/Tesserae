@@ -846,6 +846,93 @@ class SqliteGraphStore:
             )
             con.commit()
 
+    def append_read_audit(
+        self,
+        at: str,
+        tool: str,
+        actor: str,
+        node_ids: Sequence[str],
+        tesserae_version: str,
+        schema_version: int,
+    ) -> None:
+        """Append ONE read-audit row: who read which nodes, through which tool.
+
+        Append-only and never updated — an audit row that can be rewritten is
+        not an audit row. The caller supplies ``at`` (the same instant it
+        stamped on the ``bump_access`` it is attributing) so the audit and the
+        access count it explains cannot disagree about when the read happened.
+
+        Called only when the audit is enabled (:func:`tesserae.memory.store`
+        owns that gate), because opening this connection is itself a write on
+        what is otherwise a read path.
+        """
+        with self._connect() as con:
+            con.execute(
+                """
+                insert into read_audit
+                    (at, tool, actor, node_ids_json, node_count,
+                     tesserae_version, schema_version)
+                values (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    at,
+                    tool,
+                    actor,
+                    json.dumps(list(node_ids), ensure_ascii=False, sort_keys=False),
+                    len(node_ids),
+                    tesserae_version,
+                    int(schema_version),
+                ),
+            )
+            con.commit()
+
+    def read_audit_rows(
+        self,
+        *,
+        limit: int = 100,
+        actor: str = "",
+        tool: str = "",
+        node_id: str = "",
+    ) -> List[Tuple[int, str, str, str, str, int, str, int]]:
+        """Most-recent-first audit rows, optionally narrowed.
+
+        Row shape: ``(id, at, tool, actor, node_ids_json, node_count,
+        tesserae_version, schema_version)``.
+
+        ``node_id`` is a PREFILTER in SQL and nothing more: the ids live in a
+        JSON array column, so ``like`` can only say "these bytes appear
+        somewhere in the row". Membership is confirmed against the parsed list
+        by the caller (:func:`tesserae.memory.store.read_audit_rows`) — the
+        LIKE narrows the scan, it does not decide the answer.
+        """
+        clauses: List[str] = []
+        params: List[object] = []
+        if actor:
+            clauses.append("actor = ?")
+            params.append(actor)
+        if tool:
+            clauses.append("tool = ?")
+            params.append(tool)
+        if node_id:
+            clauses.append("node_ids_json like ?")
+            params.append(f'%"{node_id}"%')
+        where = f" where {' and '.join(clauses)}" if clauses else ""
+        params.append(max(0, int(limit)))
+        try:
+            with self._connect() as con:
+                cur = con.execute(
+                    "select id, at, tool, actor, node_ids_json, node_count,"
+                    " tesserae_version, schema_version from read_audit"
+                    f"{where} order by id desc limit ?",
+                    params,
+                )
+                return [tuple(row) for row in cur.fetchall()]  # type: ignore[misc]
+        except sqlite3.Error:
+            # A locked or corrupt sidecar reads as "no rows" here: this is a
+            # reporting surface over opt-in state, and raising out of it would
+            # make asking who read a node fail the caller's whole query.
+            return []
+
     def has_node_memory_rows(self) -> bool:
         """True when ``node_memory`` has at least one row.
 
@@ -1058,6 +1145,34 @@ class SqliteGraphStore:
             )
             """
         )
+        # read_audit sidecar (opt-in, TESSERAE_READ_AUDIT). node_memory counts
+        # reads and cannot say WHO produced them, so the demand signal driving
+        # forgetting-by-disuse treats one chatty agent and a human as the same
+        # input. This table names the reader. Same discipline as node_memory:
+        # CREATE TABLE IF NOT EXISTS, SQLite-only, NEVER serialized into
+        # graph.json. Rows are only ever appended.
+        #
+        # TWO version columns, and neither is redundant. ``tesserae_version``
+        # is the release that wrote the row, so a bad release is attributable
+        # after the fact; ``schema_version`` is the ROW SHAPE, so a future
+        # reader can tell whether it can parse the row without keeping a
+        # release->shape table. ``node_count`` is denormalized from
+        # ``node_ids_json`` so a per-actor tally never has to parse JSON.
+        con.execute(
+            """
+            create table if not exists read_audit (
+                id               integer primary key autoincrement,
+                at               text not null,
+                tool             text not null default '',
+                actor            text not null default '',
+                node_ids_json    text not null default '[]',
+                node_count       integer not null default 0,
+                tesserae_version text not null default '',
+                schema_version   integer not null default 1
+            )
+            """
+        )
+        con.execute("create index if not exists idx_read_audit_actor on read_audit(actor)")
 
 
 def _row_to_node(row: tuple) -> ResearchNode:

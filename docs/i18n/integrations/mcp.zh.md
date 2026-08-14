@@ -105,6 +105,7 @@ tesserae projects mcp-config
 |---|---|
 | `agent_view_explain` | *无需加载*即可解释一个智能体作用域视图：解析模式（worker / manager / org）、成员智能体、每个 L1 产物的路径与节点数，以及 `distilled_through` 陈旧水位线 |
 | `drill_down` | 把蒸馏物的 `member_ref` 解析回原始 L0 节点——管理者越过蒸馏可见性的显式、可审计升级。返回状态 `alive` / `changed` / `absorbed` / `gone`；每次调用都会记入 sidecar |
+| `read_audit` | 谁在读这张图谱：按时间倒序返回记录下来的读取事件（`tool`、`actor`、`node_ids`、`at`、`tesserae_version`），并附上按 actor 的统计，好让驱动「因闲置而遗忘」的访问计数能归属到具体读者。**默认关闭、需显式开启** —— 除非在服务端进程上设置 `TESSERAE_READ_AUDIT=1`，否则什么都不记录，因为常开的审计会把每一次读取都变成一次写入。关掉开关后已记录的行仍可读取；`enabled` 报告当前设置。可按 `actor`、`tool`、`node_id` 过滤 |
 | `graph_write` | 直接把有类型的节点与边写入图谱——不经 markdown，不经抽取流程。写入会追加到只增不改的 overlay，并作为编译生产者重放，因此**能挺过重新编译**。它很严格：未知类型、没有证据的边、端点既不在本次载荷内也不是已有节点 id，都会被拒绝。**要撤回**一件根本就是错的东西而不必编造替代品：把一条 `retracts` 边**按 id** 指向那个错误节点——目标会从所有默认读取（`search_nodes`、`fresh_insights`、`node_context`、`compile_context`）中被抑制，但用 `include_superseded: true` 仍可达到，且什么都不会被删除 |
 
 **问答与注册表**

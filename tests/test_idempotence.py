@@ -297,9 +297,13 @@ def test_compile_byte_idempotent_with_confidence_and_supersedes(tmp_path: Path) 
                 # merged_into / survivor_id: the merge ledger is a .tesserae/ file;
         # a back-reference in node metadata would make graph.json carry a
         # fact about a merge rather than about the graph.
+        # read_audit / tesserae_version: the opt-in read audit is a SQLite
+        # table (TESSERAE_READ_AUDIT). Who read a node and which release
+        # recorded it are query history; in node metadata they would make
+        # graph.json a function of how the graph has been read.
         for field_name in (
             "confidence", "proposed_type", "embedding_vector", "text_sha256",
-            "merged_into", "survivor_id",
+            "merged_into", "survivor_id", "read_audit", "tesserae_version",
         ):
             assert field_name not in (node.get("metadata") or {}), (
                 f"node {node['id']} leaked {field_name} into graph.json metadata"
