@@ -12,6 +12,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
+from .blocking import blocked_pairs
 from .merge_ledger import BASIS_EXACT_KEY, record_merge
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 
@@ -77,6 +78,17 @@ class CanonicalizationResult:
         return ReviewQueue(self.review_items)
 
 
+def _block_tokens(name: str) -> List[str]:
+    """Blocking tokens for the string-similarity pass.
+
+    Whitespace-split lowercase words of >= 3 characters — the same rule the
+    inline inverted index used before blocking moved to :mod:`tesserae.blocking`.
+    Shorter words ('of', 'a') pair almost everything with almost everything,
+    which is a block that does not block.
+    """
+    return [word for word in (name or "").lower().split() if len(word) >= 3]
+
+
 class GraphCanonicalizer:
     def __init__(
         self,
@@ -127,10 +139,13 @@ class GraphCanonicalizer:
         node_ids = {node.id for node in new_nodes}
         new_edges = rewire_edges(graph.edges, {node_id: canonical_for.get(node_id, node_id) for node_id in [node.id for node in graph.nodes]}, node_ids)
         canonicalized_graph = ResearchGraph(nodes=new_nodes, edges=new_edges)
-        review_items = self._build_review_items(canonicalized_graph.nodes)
         stats: Dict[str, object] = {}
+        review_items = self._build_review_items(canonicalized_graph.nodes, stats)
         if self.semantic:
-            semantic_items, stats = self._build_embedding_review_items(canonicalized_graph.nodes, review_items)
+            semantic_items, semantic_stats = self._build_embedding_review_items(canonicalized_graph.nodes, review_items)
+            # update(), not replace: the string pass now reports its own block
+            # cap into the same dict, and replacing would drop that report.
+            stats.update(semantic_stats)
             # APPENDED, never interleaved: today's string items keep today's
             # bytes and order, so turning the flag on is purely additive.
             review_items = review_items + semantic_items
@@ -168,31 +183,28 @@ class GraphCanonicalizer:
                     alias_owner.setdefault((node.type, normalize_key(term)), node)
         return canonical_for
 
-    def _build_review_items(self, nodes: Sequence[ResearchNode]) -> List[ReviewItem]:
+    def _build_review_items(
+        self,
+        nodes: Sequence[ResearchNode],
+        stats: Optional[Dict[str, object]] = None,
+    ) -> List[ReviewItem]:
         items: List[ReviewItem] = []
         comparable = [node for node in nodes if node.type in CANONICALIZABLE_TYPES]
 
-        # Build inverted index: token -> list of (index, node) for O(1) candidate lookup.
-        token_to_indices: Dict[str, List[int]] = {}
-        for idx, node in enumerate(comparable):
-            for word in node.name.lower().split():
-                if len(word) >= 3:
-                    token_to_indices.setdefault(word, []).append(idx)
+        # Blocking moved to the shared layer so the supersede pass gets the
+        # same bound; the token rule and the pairs it yields are unchanged for
+        # any block under the cap. Type scoping is now structural (blocks are
+        # keyed on type) rather than a skip inside the loop.
+        blocked = blocked_pairs(
+            comparable, tokenizer=_block_tokens, max_block=self.max_block
+        )
+        if blocked.capped_blocks and stats is not None:
+            # A cap that narrows the review queue has to say so: a shorter
+            # queue and an exhausted queue must never look the same.
+            stats["block_capped_at"] = self.max_block
+            stats["blocks_capped"] = blocked.capped_blocks
 
-        # Restrict comparisons to pairs sharing at least one significant token.
-        candidate_pairs: set = set()
-        for indices in token_to_indices.values():
-            for a in range(len(indices)):
-                for b in range(a + 1, len(indices)):
-                    i, j = indices[a], indices[b]
-                    if i > j:
-                        i, j = j, i
-                    candidate_pairs.add((i, j))
-
-        for i, j in candidate_pairs:
-            left, right = comparable[i], comparable[j]
-            if left.type != right.type:
-                continue
+        for left, right in blocked.pairs:
             score = name_similarity(left.name, right.name)
             if score < self.similarity_threshold:
                 continue
