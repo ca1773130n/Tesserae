@@ -39,6 +39,7 @@ from .retrieval.hybrid import (
     backend_is_semantic as _backend_is_semantic,
     hybrid_search as _hybrid_search,
 )
+from .retrieval.bm25_index import Bm25Index as _Bm25Index
 from .retrieval.vector_cache import (
     VectorCache as _VectorCache,
     process_stats as _vector_cache_process_stats,
@@ -927,8 +928,12 @@ class LLMWikiMCPServer:
                 "each of the bm25 / lexical / embedding lanes its weight, "
                 "candidates_in, how many it scored, embed_calls, cache_hits, "
                 "cache_misses and ms — plus which lanes actually contributed "
-                "each returned node, and the total candidates_in / admitted / "
-                "returned. Off by default, and off is not a formality: "
+                "each returned node, the total candidates_in / admitted / "
+                "returned, and whether the vector cache and the BM25 inverted "
+                "index served this query at all ('vector_cache', 'bm25_index': "
+                "false there means the lane rebuilt from scratch, which is what "
+                "a cold or unavailable sidecar looks like). Off by default, and "
+                "off is not a formality: "
                 "profiling costs extra time and, like Neo4j's PROFILE, it is "
                 "for diagnosis rather than for every production read. It "
                 "cannot change the answer — the numbers are read off the score "
@@ -4430,6 +4435,7 @@ class LLMWikiMCPServer:
             mode=mode,
             candidate_filter=candidates,
             vector_cache=_VectorCache.for_project(project_root),
+            bm25_index=_Bm25Index.for_project(project_root),
             profile=explain,
         )
         nodes_out: List[JSONDict] = []

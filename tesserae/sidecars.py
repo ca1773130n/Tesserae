@@ -237,11 +237,13 @@ SIDECARS: Tuple[Sidecar, ...] = (
             "tailer from transcripts that do not stay available"),
     Sidecar("sqlite.db", "tesserae.graph_stores.sqlite", KIND_ACCUMULATED, False,
             "MIXED, and classified by its most valuable table: the graph mirror "
-            "is derived, node_vectors is a cache, but node_memory (decay, "
+            "is derived, node_vectors and bm25_docs/bm25_postings are caches, "
+            "but node_memory (decay, "
             "access counts, reinforced confidence), fact_observed (transaction "
             "time — a real wall clock that only ever moves forward) and "
             "read_audit are all unrecoverable. Dropping the file to reclaim the "
-            "vector cache resets every fact's 'when we learned it' to now"),
+            "vector cache or the inverted index resets every fact's 'when we "
+            "learned it' to now"),
     Sidecar("vault_snapshot.json", "tesserae.vault_snapshot", KIND_ACCUMULATED, False,
             "the baseline vault_pull diffs against. Deleting it mid-edit makes "
             "the next compile unable to tell a user's edit from its own prior "

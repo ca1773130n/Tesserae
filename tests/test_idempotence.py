@@ -308,10 +308,16 @@ def test_compile_byte_idempotent_with_confidence_and_supersedes(tmp_path: Path) 
         # real wall clock in the temporal model. It lives in the fact_observed
         # SQLite table; a copy in node metadata would move graph.json's bytes
         # with the calendar, which is the leak this suite exists to catch.
+        # doc_id / doc_len / text_key: the BM25 inverted index is SQLite-only
+        # (bm25_docs / bm25_postings), keyed on sha256 of the document text.
+        # doc_id in particular is a surrogate the sidecar allocates in indexing
+        # order, so metadata carrying it would make graph.json a function of
+        # which queries ran first.
         for field_name in (
             "confidence", "proposed_type", "embedding_vector", "text_sha256",
             "merged_into", "survivor_id", "read_audit", "tesserae_version",
             "decided_by", "decided_at", "first_compile_at", "last_seen_compile_at",
+            "doc_id", "doc_len", "text_key",
         ):
             assert field_name not in (node.get("metadata") or {}), (
                 f"node {node['id']} leaked {field_name} into graph.json metadata"
