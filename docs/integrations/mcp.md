@@ -101,7 +101,8 @@ with no ledger it errors rather than handing back the whole corpus under an
 **Profiling a retrieval.** `search_nodes` and `compile_context` take
 `explain: true` and answer with a `profile` — for each of the `bm25`, `lexical`
 and `embedding` lanes its weight, `candidates_in`, how many it scored,
-`embed_calls` / `cache_hits` / `cache_misses` and its wall time, plus the total
+`embed_calls` / `cache_hits` / `cache_misses`, whether it ran `vectorized`, and
+its wall time, plus the total
 `candidates_in` / `admitted` / `returned` and which lanes actually contributed
 each of the nodes it counts. `returned` and that per-node lane attribution are
 **pre-budget**: the fusion fixes both over its own top-`k` slice, and a binding
@@ -117,7 +118,12 @@ number is read off score and rank tables the fusion had already produced — and
 with the flag unset the response carries exactly the keys it always had. The
 `cache_hits` / `cache_misses` counters are how you tell a warm vector cache
 from a cold one on a live query rather than by inspecting `embedding_status`
-after the fact.
+after the fact. `vectorized` is the same kind of signal for the embedding
+lane's arithmetic: with `numpy` installed the cosine runs as one matrix
+product, and without it the lane falls back to a per-document Python loop that
+costs roughly 5x as much on a corpus-sized candidate set — `vectorized: false`
+is what tells those apart instead of leaving the lane looking inexplicably
+slow.
 
 **On-demand context compiler** (Phase 7)
 

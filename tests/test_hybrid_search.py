@@ -8,6 +8,7 @@ import pytest
 
 from tesserae.mcp_server import LLMWikiMCPServer
 from tesserae.research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
+from tesserae.retrieval import hybrid as hybrid_mod
 from tesserae.retrieval.hybrid import (
     HashEmbeddingBackend,
     active_embedding_backend,
@@ -762,6 +763,182 @@ def test_profile_of_a_search_that_short_circuits_reports_no_lanes():
     assert empty_corpus.profile is not None
     assert empty_corpus.profile.lanes == {}
     assert empty_corpus.profile.candidates_in == 0
+
+
+# ---------------------------------------------------------------------------
+# Vectorised embedding lane
+# ---------------------------------------------------------------------------
+
+_VECTOR_QUERY = "gaussian splatting retrieval index"
+
+
+def _varied_corpus(size: int = 200) -> List[str]:
+    """Deterministic corpus with enough spread to make an ORDERING meaningful.
+
+    Eight nodes would let two paths agree by luck. Each document here mixes the
+    query's terms at its own multiplicity plus unique filler, which spreads the
+    cosine scores out — mostly distinct, with a handful of exact ties, so both
+    the "untied documents never move" and the "ties may swap" halves of the
+    contract have something to bite on.
+    """
+    docs: List[str] = []
+    for i in range(size):
+        words = (
+            ["gaussian"] * (1 + i % 5)
+            + ["splatting"] * (1 + i % 7)
+            + ["retrieval"] * (1 + i % 3)
+            + ["index"] * (1 + i % 11)
+            + [f"filler{i * 3 + k}" for k in range(1 + i % 13)]
+        )
+        docs.append(" ".join(words))
+    return docs
+
+
+def _ranking(scores: List[float]) -> List[int]:
+    return sorted(range(len(scores)), key=lambda i: (-scores[i], i))
+
+
+@pytest.mark.parametrize("cache_state", ["uncached", "cold", "warm"])
+def test_vectorized_cosine_reproduces_the_python_lane_ordering(tmp_path, cache_state):
+    """The vectorised lane may cost less; it may not answer differently.
+
+    Bit-exact equality is impossible and claiming it would be a lie: BLAS
+    reassociates the sums, so scores move by ~1e-16. This pins what that is
+    allowed to do to a RANKING. Two documents whose true cosine differs keep
+    their relative order, because the separation between distinct scores is
+    orders of magnitude wider than the error. Two documents whose true cosine
+    is EQUAL can swap, because the scalar path happens to land on the same
+    float for both and the vectorised one does not — an arbitrary tie-break
+    either way, and the only difference either path can produce.
+    """
+    pytest.importorskip("numpy")
+
+    from tesserae.retrieval.vector_cache import VectorCache
+
+    backend = HashEmbeddingBackend()
+    corpus = _varied_corpus()
+    cache = None
+    if cache_state != "uncached":
+        cache = VectorCache.for_project(_project(tmp_path, "proj"))
+        assert cache is not None
+        if cache_state == "warm":
+            cache.embed(backend, [_VECTOR_QUERY, *corpus])
+
+    scalar = hybrid_mod._embedding_scores(_VECTOR_QUERY, corpus, backend, cache)
+    vectorized = hybrid_mod._embedding_scores_vectorized(
+        _VECTOR_QUERY, corpus, backend, cache
+    )
+
+    assert vectorized is not None
+    assert len(vectorized) == len(scalar)
+    # 1e-12 is ~1000x the reassociation error measured on this project's own
+    # 47,132 x 256 corpus, and ~40x below the tightest gap seen there between
+    # two distinct cosine scores.
+    assert max(abs(a - b) for a, b in zip(scalar, vectorized)) <= 1e-12
+
+    order_scalar, order_vectorized = _ranking(scalar), _ranking(vectorized)
+    # Nothing materially better was displaced: rank by rank, the two orderings
+    # hold documents of the same score.
+    for scalar_idx, vector_idx in zip(order_scalar, order_vectorized):
+        assert abs(scalar[scalar_idx] - scalar[vector_idx]) <= 1e-12
+
+    # THE ORDERING GUARANTEE, stated as what it actually is: a pair separated
+    # by MORE than the tolerance keeps its order. A pair closer than that is
+    # NUMERICALLY tied even when the two scalar scores are not bit-identical,
+    # and reassociation may order it either way.
+    #
+    # An earlier version of this test asked for more than the implementation
+    # can promise — it took "no other document shares this exact float" as
+    # "a tie-break cannot touch this document", so two documents differing by
+    # 1e-16 were required to hold their order. That held on macOS/arm64 and
+    # failed on CI's x86 BLAS, which is the tell: the assertion was measuring
+    # the platform's summation order, not the lane's behaviour.
+    rank_vectorized = {idx: pos for pos, idx in enumerate(order_vectorized)}
+    separated = 0
+    for position, better in enumerate(order_scalar):
+        for worse in order_scalar[position + 1:]:
+            if scalar[better] - scalar[worse] <= 1e-12:
+                continue  # numerically tied — either order is correct
+            separated += 1
+            assert rank_vectorized[better] < rank_vectorized[worse], (
+                f"{better} outscores {worse} by "
+                f"{scalar[better] - scalar[worse]:.3e} yet the vectorized "
+                "lane ranked it lower"
+            )
+    assert separated, "fixture has no separated pair, so it proves nothing"
+
+
+def test_embedding_lane_falls_back_to_python_when_numpy_is_absent(monkeypatch):
+    """numpy is an OPTIONAL dependency, so its absence must cost speed only.
+
+    The fallback also has to happen BEFORE any embedding: returning None after
+    embedding would make the scalar path re-read the whole corpus and double
+    the cache counters the profile reports.
+    """
+    backend = _CountingBackend()
+    corpus = _varied_corpus(50)
+    monkeypatch.setattr(hybrid_mod, "_numpy", lambda: None)
+
+    assert (
+        hybrid_mod._embedding_scores_vectorized(_VECTOR_QUERY, corpus, backend) is None
+    )
+    assert backend.calls == 0
+
+    graph = _eight_node_graph()
+    fallback = hybrid_search(
+        graph, "gaussian splatting", backend=HashEmbeddingBackend(), profile=True
+    )
+    monkeypatch.undo()
+    vectorized = hybrid_search(
+        graph, "gaussian splatting", backend=HashEmbeddingBackend(), profile=True
+    )
+
+    assert fallback.profile.lanes["embedding"].vectorized is False
+    assert vectorized.profile.lanes["embedding"].vectorized is bool(hybrid_mod._numpy())
+    assert [item.node.id for item in fallback.scored] == [
+        item.node.id for item in vectorized.scored
+    ]
+
+
+def test_profile_reports_the_vectorised_lane_only_on_the_lane_that_has_one():
+    """``vectorized`` on bm25/lexical must read as "never had one", not as a
+    fallback — the same distinction ``bm25_index`` makes for its own lane."""
+    pytest.importorskip("numpy")
+    result = hybrid_search(
+        _eight_node_graph(), "gaussian splatting",
+        backend=HashEmbeddingBackend(), profile=True,
+    )
+    prof = result.profile
+    assert prof is not None
+    assert prof.lanes["embedding"].vectorized is True
+    assert prof.lanes["bm25"].vectorized is False
+    assert prof.lanes["lexical"].vectorized is False
+    assert prof.to_dict()["lanes"]["embedding"]["vectorized"] is True
+
+
+def test_vectorized_lane_scores_the_filtered_candidate_subset_only(tmp_path):
+    """Filter-first is the property that ruled an ANN index out; vectorising
+    must not quietly reintroduce a whole-corpus scan."""
+    pytest.importorskip("numpy")
+    from tesserae.retrieval.vector_cache import VectorCache
+
+    graph = _eight_node_graph()
+    subset = list(graph.nodes)[:3]
+    cache = VectorCache.for_project(_project(tmp_path, "proj"))
+    backend = _CountingBackend()
+
+    result = hybrid_search(
+        graph, "gaussian splatting", backend=backend, mode="embedding",
+        candidate_filter=subset, vector_cache=cache, profile=True,
+    )
+
+    assert result.profile is not None
+    assert result.profile.lanes["embedding"].vectorized is True
+    assert result.profile.candidates_in == len(subset)
+    subset_ids = {node.id for node in subset}
+    assert {item.node.id for item in result.scored} <= subset_ids
+    # The query plus the three candidates, and nothing from the other five.
+    assert len(backend.embedded) == len(subset) + 1
 
 
 def test_mcp_search_nodes_explain_adds_a_profile_and_leaves_the_default_untouched(tmp_path):

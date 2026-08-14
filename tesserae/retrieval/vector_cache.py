@@ -36,9 +36,13 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
 
-from ..graph_stores.sqlite import SqliteGraphStore
+# The two private codec helpers are imported deliberately: they ARE the wire
+# format of the ``node_vectors`` blob, and this module is the one typed
+# accessor over that table, so re-deriving the packing here is how the two
+# would drift apart.
+from ..graph_stores.sqlite import SqliteGraphStore, _decode_vector, _encode_vector
 
 if TYPE_CHECKING:  # pragma: no cover - typing only (hybrid imports this module)
     from .hybrid import EmbeddingBackend
@@ -165,9 +169,42 @@ class VectorCache:
         once. A sidecar failure is counted and logged, then degrades to a plain
         ``backend.embed`` — a cache must never be able to break retrieval.
         """
+        keys, blobs = self._resolve_blobs(backend, texts)
+        return [_decode_vector(blobs[key]) for key in keys]
+
+    def embed_blobs(
+        self,
+        backend: "EmbeddingBackend",
+        texts: Sequence[str],
+    ) -> List[bytes]:
+        """:meth:`embed`, returning the packed float64 rows instead of lists.
+
+        Same cache semantics, same persistence, same order — the ONLY
+        difference is that the caller receives the stored bytes. The vectorised
+        embedding lane wants those directly: joining them and handing the
+        result to ``numpy.frombuffer`` rebuilds the corpus matrix without ever
+        materialising 47k Python lists, which is where most of the decode cost
+        lived. ``_decode_vector`` of these bytes is the value :meth:`embed`
+        returns, bit for bit, so the two views can never disagree on a score.
+        """
+        keys, blobs = self._resolve_blobs(backend, texts)
+        return [blobs[key] for key in keys]
+
+    def _resolve_blobs(
+        self,
+        backend: "EmbeddingBackend",
+        texts: Sequence[str],
+    ) -> Tuple[List[str], Dict[str, bytes]]:
+        """Shared core of :meth:`embed` / :meth:`embed_blobs`.
+
+        Returns the per-input key sequence plus the packed vector for every
+        distinct key. Blobs rather than floats are the internal currency
+        because that is what SQLite stores and what a write needs, so neither
+        caller pays an encode/decode round trip the other's format forces.
+        """
         wanted = list(texts)
         if not wanted:
-            return []
+            return [], {}
         backend_name = str(getattr(backend, "name", type(backend).__name__))
         backend_dim = int(getattr(backend, "dim", 0) or 0)
 
@@ -178,11 +215,11 @@ class VectorCache:
         for key, text in zip(keys, wanted):
             pending.setdefault(key, text)
 
-        cached: Dict[str, List[float]] = {}
+        cached: Dict[str, bytes] = {}
         store = self._store()
         if store is not None:
             try:
-                cached = store.read_node_vectors(
+                cached = store.read_node_vector_blobs(
                     backend_name, backend_dim, pending.keys()
                 )
             except Exception:  # sqlite locked / corrupt / unreadable
@@ -191,8 +228,10 @@ class VectorCache:
                 cached = {}
         # A stored vector of the wrong width cannot be trusted as this
         # backend's output; treat it as a miss rather than scoring against it.
+        # Width is checked in bytes here (8 per float64) rather than in decoded
+        # elements — same test, one less decode.
         if backend_dim:
-            cached = {k: v for k, v in cached.items() if len(v) == backend_dim}
+            cached = {k: v for k, v in cached.items() if len(v) == backend_dim * 8}
 
         missing = [key for key in pending if key not in cached]
         if missing:
@@ -208,10 +247,10 @@ class VectorCache:
             self.stats.embed_calls += 1
             _PROCESS_STATS.embed_calls += 1
             for key, vector in zip(missing, fresh):
-                cached[key] = list(vector)
+                cached[key] = _encode_vector(vector)
             if store is not None:
                 try:
-                    store.write_node_vectors_many(
+                    store.write_node_vector_blobs_many(
                         backend_name,
                         backend_dim,
                         ((key, cached[key]) for key in missing),
@@ -227,7 +266,7 @@ class VectorCache:
         self.stats.misses += len(missing)
         _PROCESS_STATS.hits += hits
         _PROCESS_STATS.misses += len(missing)
-        return [cached[key] for key in keys]
+        return keys, cached
 
     def count(self, backend: "EmbeddingBackend") -> int:
         """Rows cached for ``backend``'s ``(name, dim)`` key, 0 if unavailable."""

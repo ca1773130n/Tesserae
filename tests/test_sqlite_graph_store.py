@@ -279,6 +279,13 @@ def test_node_vectors_round_trip_is_exact(tmp_path: Path) -> None:
     got = store.read_node_vectors("model:x", len(vector), ["abc123"])
     assert got["abc123"] == vector
 
+    # The blob view the vectorised embedding lane reads is the SAME row, so a
+    # matrix built from it can never disagree with the decoded floats.
+    blobs = store.read_node_vector_blobs("model:x", len(vector), ["abc123"])
+    assert len(blobs["abc123"]) == len(vector) * 8
+    store.write_node_vector_blobs_many("model:y", len(vector), blobs.items())
+    assert store.read_node_vectors("model:y", len(vector), ["abc123"])["abc123"] == vector
+
 
 def test_node_vectors_never_cross_backend_keys(tmp_path: Path) -> None:
     """Two backends' vectors live in different spaces and must not be shared."""
