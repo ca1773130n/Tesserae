@@ -50,6 +50,7 @@ from .persistence import SQLiteResearchGraphStore
 from .report import GraphReporter
 from .research_graph import ResearchCorpusAnalyzer, ResearchGraph, ResearchGraphExtractor, ResearchNode, ResearchNodeType, filter_filename_shaped_concepts, graph_from_payload, link_paper_repo_pairs, prefer_research_node
 from .temporal import TemporalFactProjector, render_competitive_report
+from .temporal_observed import record_fact_observations, transaction_now
 from .raganything_adapter import merge_raganything_graph
 from .wiki_projector import partition_graph
 
@@ -3789,9 +3790,23 @@ class ProjectWiki:
         report = GraphReporter().render_markdown(GraphReporter().summarize(graph))
         self.paths.report.write_text(report, encoding="utf-8")
         mem_by_id = {r.node_id: r for r in memory_rows}
-        TemporalFactProjector().write_jsonl(
+        facts = TemporalFactProjector().write_jsonl(
             graph, self.paths.temporal_facts, memory_by_id=mem_by_id
         )
+        # Transaction time: stamp when we LEARNED each fact, once per compile.
+        # This is the ONLY wall clock in the temporal model and it stops at
+        # SQLite — never graph.json, never temporal_facts.jsonl, both of which
+        # were byte-identical a line ago and must stay so. Valid time (the
+        # facts' own valid_from/valid_to) is source-derived and answers a
+        # different question; the two are never read off one clock.
+        #
+        # Same injected-store contract as the write_memory block above: an
+        # alternate store owns persistence and the default sqlite.db must stay
+        # untouched.
+        if store is None:
+            record_fact_observations(
+                self.paths.sqlite, facts, transaction_now()
+            )
         # Same mem_by_id temporal_facts.jsonl just used: the sidecar was written
         # moments ago, so pass the rows in hand rather than re-reading them.
         self.export_graphiti(memory_by_id=mem_by_id)

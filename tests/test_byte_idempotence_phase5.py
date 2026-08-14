@@ -25,6 +25,7 @@ import pytest
 
 from tesserae.memory.store import bump_access, read_memory
 from tesserae.project import ProjectWiki, SessionExtractionOptions
+from tesserae.temporal_observed import FactObservationLedger
 from tesserae.ports import Source
 
 WIKI_CORPUS_ROOT = Path(__file__).parent / "fixtures" / "wiki_corpus"
@@ -63,6 +64,12 @@ _MEMORY_FIELDS = (
     # graph has been read, which is the byte-idempotence leak in its purest
     # form. The version stamp is named here too because it is the field most
     # tempting to "just add" to an artifact.
+    # Sidecar-only, and the sharpest case on this list: transaction time is a
+    # real wall clock (temporal_observed.transaction_now), so a copy anywhere
+    # in graph.json would make the same sources compile to different bytes on
+    # Tuesday than on Monday. It lives in the fact_observed SQLite table and
+    # stops there — valid_from/valid_to, the OTHER clock, are source-derived
+    # and are the only temporal values allowed in an artifact.
     "read_audit",
     "tesserae_version",
     "node_ids_json",
@@ -73,6 +80,9 @@ _MEMORY_FIELDS = (
     # compile would then destroy an answer nothing can reconstruct.
     "decided_by",
     "decided_at",
+    "fact_observed",
+    "first_compile_at",
+    "last_seen_compile_at",
 )
 
 
@@ -246,10 +256,30 @@ def test_compile_after_mcp_read_is_byte_identical(tmp_path: Path) -> None:
     assert any(r.access_count >= 3 for r in after_bump.values())
     assert any(r.last_accessed_at == future_ts for r in after_bump.values())
 
+    # The transaction-time ledger is the one sidecar written from a REAL wall
+    # clock (temporal_observed.transaction_now), which is exactly why it is
+    # asserted on this test rather than a quieter one: if it reached graph.json
+    # the second compile below would differ by the elapsed time between them.
+    ledger = FactObservationLedger.for_project(project_root)
+    observed_first = ledger.read()
+    assert observed_first, "first compile must stamp the fact_observed ledger"
+
     # Compile AGAIN — the read bump must not change graph.json by a single byte.
     wiki.compile()
     second_bytes = graph_path.read_bytes()
     second_hash = hashlib.sha256(second_bytes).hexdigest()
+
+    observed_second = ledger.read()
+    key, first_row = next(iter(observed_first.items()))
+    second_row = observed_second[key]
+    assert second_row.first_compile_at == first_row.first_compile_at, (
+        "first sighting was overwritten by a later compile — the axis would "
+        "answer 'when did we last see this' instead of 'when did we learn it'"
+    )
+    assert second_row.last_seen_compile_at > first_row.last_seen_compile_at, (
+        "the second compile did not stamp the ledger — the write-through is "
+        "not running, and a green byte comparison would not notice"
+    )
 
     assert second_hash == first_hash, (
         "graph.json changed after an MCP read bumped node_memory — sidecar "

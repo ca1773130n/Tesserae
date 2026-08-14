@@ -501,6 +501,197 @@ def test_search_facts_does_not_match_ids_or_metadata_through_the_tool(tmp_path):
 
     assert by_id_fragment["total_matches"] == 0
     assert by_content["total_matches"] == 4
+# ---------------------------------------------------------------------------
+# The transaction-time axis: observed_as_of ("what had we LEARNED by then")
+# beside as_of ("what was TRUE then"). Two clocks; the tests below fail if
+# either one starts answering the other's question.
+# ---------------------------------------------------------------------------
+
+
+def observed_project_root(tmp_path, learned_at=None):
+    """A project-rooted copy of ``as_of_graph_path`` with a seeded ledger.
+
+    The graph is written to the canonical ``<root>/.tesserae/graph.json``
+    layout because the transaction axis lives in that directory's sqlite.db —
+    it is deliberately NOT derivable from the graph file itself. Rows are
+    stamped through the real ledger accessor rather than by compiling: a
+    compile is an LLM-free but multi-second operation, and what is under test
+    is the pivot, not the projector.
+
+    ``learned_at`` maps subject id -> the compile instant that first recorded
+    every fact of that subject.
+    """
+    from tesserae.mcp_server import load_graph
+    from tesserae.temporal_observed import FactObservationLedger
+    from tesserae.temporal import TemporalFactProjector
+
+    root = tmp_path / "proj"
+    (root / ".tesserae").mkdir(parents=True)
+    graph_json = as_of_graph_path(tmp_path).read_text(encoding="utf-8")
+    graph_path = root / ".tesserae" / "graph.json"
+    graph_path.write_text(graph_json, encoding="utf-8")
+
+    if learned_at:
+        facts = TemporalFactProjector().project(load_graph(graph_path))
+        ledger = FactObservationLedger.for_project(root)
+        for subject_id, stamp in learned_at.items():
+            ledger.record([f for f in facts if f.subject_id == subject_id], stamp)
+    return root, graph_path
+
+
+def test_observed_as_of_pivots_on_when_we_learned_a_fact(tmp_path):
+    """The second axis, doing what the first cannot.
+
+    ``old``'s validity interval starts in January and ``new``'s in March, but
+    both were LEARNED in one May compile except ``new``, learned in July. A
+    July-blind caller must see neither ``new`` nor a silently unfiltered list.
+    """
+    root, graph_path = observed_project_root(
+        tmp_path,
+        learned_at={
+            "SessionInsight:old": "2026-05-01T00:00:00+00:00",
+            "SessionInsight:undated": "2026-05-01T00:00:00+00:00",
+            "SessionInsight:new": "2026-07-01T00:00:00+00:00",
+        },
+    )
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    in_june = server.call_tool(
+        "search_facts",
+        {"query": "splatting", "limit": 50, "observed_as_of": "2026-06-01"},
+    )
+
+    assert {f["subject_id"] for f in in_june["facts"]} == {
+        "SessionInsight:old",
+        "SessionInsight:undated",
+    }
+    assert in_june["observed_as_of"] == "2026-06-01"
+    assert in_june["unobserved_included"] == 0
+    # The valid-time keys must NOT appear: no as_of pivot ran.
+    assert "as_of" not in in_june and "undated_included" not in in_june
+
+
+def test_observed_as_of_composes_with_as_of_instead_of_replacing_it(tmp_path):
+    """"What did we believe on DATE, as we knew it on DATE2."
+
+    In February only ``old`` and the undated finding were live (valid time).
+    Of those, only ``old`` had been learned by June (transaction time). Either
+    pivot alone returns a different set, so a regression that dropped one
+    silently is visible here rather than in a count.
+    """
+    root, graph_path = observed_project_root(
+        tmp_path,
+        learned_at={
+            "SessionInsight:old": "2026-05-01T00:00:00+00:00",
+            "SessionInsight:undated": "2026-07-01T00:00:00+00:00",
+            "SessionInsight:new": "2026-07-01T00:00:00+00:00",
+        },
+    )
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    both = server.call_tool(
+        "search_facts",
+        {
+            "query": "splatting",
+            "limit": 50,
+            "as_of": "2026-02-01",
+            "observed_as_of": "2026-06-01",
+        },
+    )
+
+    assert {f["subject_id"] for f in both["facts"]} == {"SessionInsight:old"}
+    assert both["as_of"] == "2026-02-01"
+    assert both["observed_as_of"] == "2026-06-01"
+    assert both["undated_included"] == 0
+    assert both["unobserved_included"] == 0
+
+
+def test_observed_as_of_counts_the_rows_its_ledger_cannot_date(tmp_path):
+    """A fact that entered the graph before the ledger did is carried through
+    and SAID SO, the same asymmetry ``undated_included`` reports on the other
+    axis — a pivot that quietly included rows it knows nothing about would be
+    a thin answer wearing a complete one's shape."""
+    root, graph_path = observed_project_root(
+        tmp_path, learned_at={"SessionInsight:old": "2026-05-01T00:00:00+00:00"}
+    )
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    result = server.call_tool(
+        "timeline",
+        {"query": "splatting", "limit": 50, "observed_as_of": "2026-06-01"},
+    )
+
+    # `new` and `undated` have no ledger row at all, so they come through.
+    assert len(result["events"]) == 4
+    assert result["unobserved_included"] == 3
+
+
+def test_observed_as_of_without_a_ledger_is_refused_not_answered(tmp_path):
+    """With no transaction axis on disk every fact counts as never-observed and
+    is carried through — i.e. the whole corpus, wearing an "as we knew it on
+    DATE" label. That is the silent-whole-corpus failure an unparseable
+    ``as_of`` is already refused for, so this is refused too."""
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+
+    refused = server.call_tool(
+        "search_facts", {"query": "splatting", "observed_as_of": "2026-06-01"}
+    )
+
+    assert "facts" not in refused
+    assert "observed_as_of" in refused["error"]
+    # It names the other clock so the caller can pick the pivot they meant.
+    assert "as_of" in refused["error"] and "compile" in refused["error"]
+
+
+@pytest.mark.parametrize("tool", ["search_facts", "timeline"])
+def test_observed_as_of_unparseable_is_a_structured_error(tmp_path, tool):
+    root, graph_path = observed_project_root(
+        tmp_path, learned_at={"SessionInsight:old": "2026-05-01T00:00:00+00:00"}
+    )
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    result = server.call_tool(
+        tool, {"query": "splatting", "observed_as_of": "last tuesday"}
+    )
+
+    assert "error" in result and "last tuesday" in result["error"]
+    assert "facts" not in result and "events" not in result
+
+
+def test_search_facts_and_timeline_advertise_observed_as_of():
+    by_name = {t["name"]: t for t in LLMWikiMCPServer().list_tools()}
+
+    facts_schema = by_name["search_facts"]["inputSchema"]
+    timeline_schema = by_name["timeline"]["inputSchema"]
+
+    # additionalProperties is False on both, so an unadvertised pivot is
+    # rejected at the schema boundary rather than silently ignored.
+    assert facts_schema["properties"]["observed_as_of"]["type"] == "string"
+    assert timeline_schema["properties"]["observed_as_of"]["type"] == "string"
+
+
+def test_the_two_pivots_describe_themselves_as_two_different_clocks():
+    """The honesty half of the step, pinned.
+
+    ``as_of`` advertised a "Bitemporal time-travel pivot" while only valid
+    time existed — a description overstating a shipped capability. Now that
+    both axes ship, each description must say WHICH clock it reads, because
+    "bitemporal" on one parameter is what made them conflatable in the first
+    place.
+    """
+    by_name = {t["name"]: t for t in LLMWikiMCPServer().list_tools()}
+    props = by_name["search_facts"]["inputSchema"]["properties"]
+
+    as_of_desc = props["as_of"]["description"]
+    observed_desc = props["observed_as_of"]["description"]
+
+    assert "bitemporal" not in as_of_desc.casefold()
+    assert "VALID-TIME" in as_of_desc
+    assert "TRANSACTION-TIME" in observed_desc
+    # Each points at the other, so a caller who picked the wrong clock is one
+    # sentence from the right one.
+    assert "observed_as_of" in as_of_desc
+    assert "as_of" in observed_desc
 
 
 def test_json_rpc_notifications_do_not_emit_response():

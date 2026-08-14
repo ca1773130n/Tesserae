@@ -304,11 +304,14 @@ def test_compile_byte_idempotent_with_confidence_and_supersedes(tmp_path: Path) 
         # decided_by / decided_at: the candidate ledger is a .tesserae/ file,
         # and its rows are the one state a compile cannot re-derive — metadata
         # would let a full compile destroy a human's verdict outright.
+        # first_compile_at / last_seen_compile_at: transaction time is the one
+        # real wall clock in the temporal model. It lives in the fact_observed
+        # SQLite table; a copy in node metadata would move graph.json's bytes
+        # with the calendar, which is the leak this suite exists to catch.
         for field_name in (
             "confidence", "proposed_type", "embedding_vector", "text_sha256",
-            "merged_into",
-            "survivor_id", "read_audit", "tesserae_version", "decided_by",
-            "decided_at",
+            "merged_into", "survivor_id", "read_audit", "tesserae_version",
+            "decided_by", "decided_at", "first_compile_at", "last_seen_compile_at",
         ):
             assert field_name not in (node.get("metadata") or {}), (
                 f"node {node['id']} leaked {field_name} into graph.json metadata"
