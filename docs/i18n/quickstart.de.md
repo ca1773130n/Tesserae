@@ -44,7 +44,7 @@ ANALYSIS
 GROUPS
   sessions      import | discover | list — agent session history
   vault         sync | sync-all | set-root | export | prune — Obsidian projection
-  export        harness | graphiti | site — artifact exports
+  export        harness | graphiti | site | okf | kuzu — artifact exports
   code          ingest | sync — CodeGraph ⇄ project graph (hook-invoked)
   setup         Machine-wide setup: LLM defaults + optional deps (interactive by default)
   config        llm | deps | show | status | clip-token — LLM backend defaults + resolved view & liveness ping

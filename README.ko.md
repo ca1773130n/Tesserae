@@ -196,11 +196,11 @@ LLM의 표현에 의존하지 않으며, 산출물은 결정적으로 유지됩�
 | `get_handle` | 큰 페이로드를 조각으로 페이징 — 에이전트가 한 번에 전부 컨텍스트에 들고 있지 않도록 |
 | `ask` · `query` · `search_nodes` · `node_context` | 계획된 답변, 원시 검색, 컴파일된 베이스 위의 그래프 탐색 |
 | `graph_map` | Budgeted Descent: 검색어를 추측하는 대신 스코프를 따라 위에서 아래로 그래프를 탐색 — 표준 진입점 |
-| `graph_ppr` · `search_facts` · `timeline` | Personalized PageRank 확장, 시간적 사실, 연대기. `search_facts`는 `current_only`(현재 사실) **또는** `as_of`(과거 시점 기준)를 받습니다 — 서로 다른 시계이므로 동시 사용은 거부됩니다 |
+| `graph_ppr` · `search_facts` · `timeline` | Personalized PageRank 확장, 시간적 사실, 연대기. **합성되는** 두 개의 시계: `as_of`(출처 자신의 타임스탬프로 본 "그때 무엇이 참이었는가")와 `observed_as_of`(컴파일마다 찍히는 원장으로 본 "그때까지 무엇을 알게 되었는가"). `current_only`와 `as_of`는 함께 쓰면 거부됩니다 — 이 둘은 정말로 택일입니다 |
 | `verify_claim` | 이 트리플을 그래프가 승인하는가? 생성된 의견이 아니라 결정적 판정 |
 | `find_session_findings` · `fresh_insights` · `activity_summary` · `query_decisions` | 세션에서 유래한 메모리(감쇠 순위, 중복 제거), 다이제스트, 결정 기록 |
-| `agent_view_explain` · `drill_down` | 에이전트 스코프 뷰 해석; 증류된 노트를 원본 증거로 승격 (감사 기록됨) |
-| `ingest` · `graph_write` | 원시 웹/텍스트(예: 브라우저 클립)를 그래프에 병합; 에이전트가 귀속된 노드를 되쓰기 |
+| `agent_view_explain` · `drill_down` · `read_audit` | 에이전트 스코프 뷰 해석; 증류된 노트를 원본 증거로 승격 (감사 기록됨); 그리고 `TESSERAE_READ_AUDIT`으로 선택 활성화하면 누가 그래프를 읽어 왔는지 되읽기 |
+| `ingest` · `graph_write` | 원시 웹/텍스트(예: 브라우저 클립)를 그래프에 병합; 에이전트가 귀속된 노드를 되쓰기 — 대체물을 지어내지 않고 "이것은 틀렸다"고 말하는 `retracts` 엣지 포함 |
 | `doctor_run` · `doctor_report` · `lint_report` | 에이전트 루프 안에서의 헬스 체크와 그래프 린트 |
 
 ## 일상적인 명령어
@@ -324,7 +324,14 @@ Tesserae는 라이브 편집이 아니라 **소스로부터의 컴파일**을 �
 - RAG-Anything 이미지 설명은 아직 엔드투엔드로 연결되지 않았습니다.
 - MCP 도구 집합은 안정적이지만, 그래프 스키마는 여전히 노드 타입이 늘어납니다.
   인과 어휘는 의도적으로 `recovers` 하나뿐이며, 모델이 주장하는 것이 아니라
-  관측된 결과에서만 도출됩니다.
+  관측된 결과에서만 도출됩니다. 검색의 *`causal` 뷰*는 의도적으로 그보다 넓습니다
+  ("이게 왜 깨졌는가"라는 같은 의도를 수행하는 `resolved_by`와
+  `attributes_improvement_to`도 순회합니다). 다른 무엇도 주장하지 않는 엣지 하나만
+  있으면 안에 아무것도 없는 뷰가 됩니다.
+- **승격은 언제나 사람의 편집입니다.** `tesserae schema-drift`는 노드 하위 타입을
+  제안하고 `ask` 플래너는 `proposed_write`를 반환할 수 있지만, 둘 다 쓰지는
+  않습니다: 제안은 직접 `ResearchNodeType`을 편집하거나, 직접 제공한 provenance와
+  함께 페이로드를 `graph_write`에 제출할 때에만 채택됩니다.
 
 ## 프로젝트 구조
 
@@ -333,7 +340,7 @@ tesserae/     # 패키지 — CLI, 컴파일러, 엔진, MCP 서버, 어댑터
 docs/         # 영어 문서 + 나머지 7개 언어를 위한 docs/i18n/
 ontology/     # 컴파일러가 검증하는 노드/엣지 스키마
 prompts/      # 추출 및 합성 프롬프트
-tests/        # pytest 스위트 (3,400개 이상)
+tests/        # pytest 스위트 (3,700개 이상)
 evals/        # 그래프 품질 평가 하네스
 ```
 

@@ -149,6 +149,17 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 
 ---
 
+## 谁读了这张图谱
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `TESSERAE_READ_AUDIT` | **关闭** | 记录每次 MCP 读取为一行——`{tool, actor, node_ids, at, tesserae_version}`——在 `.tesserae/sqlite.db` 的 `read_audit` 表中，通过 `read_audit` 工具读回，附上按 actor 的计数。默认关闭是因为跨越每一个读取面的常开审计会把每一次读都变成一次写；这道开关位于打开存储之前，因为创建这张表本身就是一次写。它的任何内容都不会进入 `graph.json` |
+| `TESSERAE_ACTOR` | — | 当调用不带 agent view 时，将一次读归属于谁。actor 是调用解析的 `agent` 参数，否则就是这个；未设置则将读记录为匿名而不是虚拟一个名字 |
+
+关掉 `TESSERAE_READ_AUDIT` 会停止记录，而不擦除已记录的东西，无需重启服务器即可生效。审计的*目的*是[由于不用而遗忘](agent-memory.zh.md#遗忘--永不删除)：访问计数驱动了什么被吸收或降级，没有 actor 的情况下，一个闹腾 agent 轮询节点与一个人读一次是同样的输入。
+
+---
+
 ## 在一个项目上运行多台机器
 
 本节针对的形态：多台服务器各自运行一个编码 agent，各自拥有自己本地的会话转录，并且共享一块磁盘——因此它们看到的是同一个项目目录、同一个 `.tesserae/`。

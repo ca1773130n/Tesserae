@@ -196,11 +196,11 @@ Codex, or any MCP client. Every graph-reading tool accepts `graph_path` /
 | `get_handle` | Page a large payload in slices, so the agent never holds it all in context at once |
 | `ask` · `query` · `search_nodes` · `node_context` | Planned answers, raw retrieval, and graph navigation over the compiled base |
 | `graph_map` | Budgeted Descent: navigate the graph top-down by scope instead of guessing search terms — the canonical entry point |
-| `graph_ppr` · `search_facts` · `timeline` | Personalized-PageRank expansion, temporal facts, and chronology. `search_facts` takes `current_only` (live facts) **or** `as_of` (as of a past date) — never both, they are different clocks |
+| `graph_ppr` · `search_facts` · `timeline` | Personalized-PageRank expansion, temporal facts, and chronology. Two clocks that **compose**: `as_of` (what was TRUE then, from the sources' own timestamps) and `observed_as_of` (what we had LEARNED by then, from the compile-stamped ledger). `current_only` and `as_of` are refused together — those two really are alternatives |
 | `verify_claim` | Does the graph license this triple? A deterministic verdict, not a generated opinion |
 | `find_session_findings` · `fresh_insights` · `activity_summary` · `query_decisions` | Session-derived memory, decay-ranked and deduplicated; digests and the decision record |
-| `agent_view_explain` · `drill_down` | Resolve an agent's scoped view; escalate a distilled note to its raw evidence (audited) |
-| `ingest` · `graph_write` | Merge raw web/text (e.g. a browser clip) into the graph; let an agent write attributed nodes back |
+| `agent_view_explain` · `drill_down` · `read_audit` | Resolve an agent's scoped view; escalate a distilled note to its raw evidence (audited); and, opt-in via `TESSERAE_READ_AUDIT`, read back who has been reading the graph |
+| `ingest` · `graph_write` | Merge raw web/text (e.g. a browser clip) into the graph; let an agent write attributed nodes back — including a `retracts` edge to say "this is wrong" without inventing a replacement |
 | `doctor_run` · `doctor_report` · `lint_report` | Health checks and graph lint, from inside the agent loop |
 
 ## Everyday commands
@@ -322,7 +322,15 @@ See the [release notes](docs/release-notes/) for the current version. Honestly:
 - RAG-Anything image description is not yet wired end-to-end.
 - The MCP tool set is stable; the graph schema still gains node types. The
   causal vocabulary is deliberately one edge wide — `recovers` — and derived
-  only from observed outcomes, never asserted by a model.
+  only from observed outcomes, never asserted by a model. The retrieval
+  *`causal` view* is wider than that on purpose (it also traverses
+  `resolved_by` and `attributes_improvement_to`, which serve the same "why did
+  this break" intent); one edge that nothing else asserts would be a view with
+  nothing in it.
+- **Promotion is always a human edit.** `tesserae schema-drift` proposes node
+  sub-types and the `ask` planner can return a `proposed_write`, but neither
+  writes: a proposal is adopted only by editing `ResearchNodeType` yourself, or
+  by submitting the payload to `graph_write` with provenance you supply.
 
 ## Project layout
 
@@ -331,7 +339,7 @@ tesserae/     # the package — CLI, compiler, engine, MCP server, adapters
 docs/         # English docs + docs/i18n/ for seven other languages
 ontology/     # node/edge schemas the compiler validates against
 prompts/      # extraction and synthesis prompts
-tests/        # pytest suite (3,400+ tests)
+tests/        # pytest suite (3,700+ tests)
 evals/        # graph-quality eval harnesses
 ```
 

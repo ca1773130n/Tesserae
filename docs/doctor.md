@@ -85,6 +85,14 @@ taking a lock says nothing about whether a second host is prevented from taking
 it. If you run Tesserae from several machines against shared storage, test that
 directly on the real hardware before relying on the compile lock.
 
+`filesystem_locking` is an `flock`-only probe and reports "unsupported on this
+platform — skipped" on Windows. The locks themselves are not: `compile.lock`
+and the agent-write lock take `flock(2)` where it exists and `msvcrt.locking`
+where it does not, and the `compile_lock` check probes with those same two
+helpers so it cannot report "unsupported" about a lock that works there. On an
+interpreter carrying neither primitive, locking degrades to a no-op that says
+so once per process rather than silently.
+
 ## `tesserae doctor migrate-code-scope`
 
 A one-shot cleanup for a workspace compiled before source code left Tesserae's
@@ -164,6 +172,7 @@ floor for the **exit code** — findings below it are still reported.
 | Code | Severity | What it means |
 |---|---|---|
 | `AGENT_METADATA_KEY` | error | An agent node carries a metadata key outside the controlled set. The only error-level code; a malformed agent breaks scoped views. |
+| `AGENT_WRITE_SKIPPED` | warning | A line in `.tesserae/agent-writes.jsonl` that replay skipped — that write is **not** in the graph. A truncated line is a torn concurrent append and the agent should re-file it; a hand-edited one should be corrected or removed. Replay skips and warns rather than failing, so one bad line never bricks every future compile — but a stderr line during a compile is not where you look for a write the agent believes it filed. |
 | `ORPHAN_PAPER` | warning | A Paper with no outgoing edges and nothing but `mentioned_in` coming in — ingested, never connected. |
 | `MISSING_IMPLEMENTED_IN` | warning | A Paper and a Repository share an `arxiv_id` but no `implemented_in` edge joins them. `--fix-trivial` adds it. |
 | `STALE_CITATION` | warning | A wiki page links to a page that does not exist. |

@@ -89,6 +89,15 @@ no-op으로 퇴화할 수 있고, 그러면 두 호스트가 각자 배타적 lo
 스토리지를 상대로 Tesserae를 돌린다면, compile lock에 기대기 전에 실제
 하드웨어에서 직접 시험해 보세요.
 
+`filesystem_locking`은 `flock` 전용 프로브이며 Windows에서는
+"unsupported on this platform — skipped"를 보고합니다. lock 자체는
+그렇지 않습니다: `compile.lock`과 agent-write lock은 그것이 존재하는 곳에서는
+`flock(2)`를 취하고 그렇지 않은 곳에서는 `msvcrt.locking`을 취하며,
+`compile_lock` 점검은 그 동일한 두 helper로 프로브하므로 거기서 작동하는
+lock에 대해서는 "unsupported"를 보고할 수 없습니다. 두 원시를 모두 운반하지
+않는 인터프리터에서 locking은 묵묵히 하는 대신 프로세스당 한 번 그렇게 말하는
+no-op으로 열화됩니다.
+
 ## `tesserae doctor migrate-code-scope`
 
 소스 코드가 Tesserae의 범위에서 빠지기 전에 컴파일된 워크스페이스를 위한 일회성
@@ -169,6 +178,7 @@ verb는 그 공간을 회수하는 쪽이며, SQLite는 `DELETE`만으로는 파
 | 코드 | 심각도 | 의미 |
 |---|---|---|
 | `AGENT_METADATA_KEY` | error | 에이전트 노드가 통제된 집합 밖의 메타데이터 키를 지니고 있습니다. 유일한 error 등급 코드이며, 잘못된 에이전트는 스코프 뷰를 망가뜨립니다. |
+| `AGENT_WRITE_SKIPPED` | warning | `.tesserae/agent-writes.jsonl`의 한 줄을 replay가 건넘 — 그 write는 **그래프에 없습니다**. 잘린 줄은 동시적 append의 찢어진 부분이며 에이전트가 다시 제출해야 합니다; 손으로 편집한 것은 정정하거나 제거해야 합니다. Replay는 실패하는 대신 건너뛰고 경고하므로 한 줄의 문제가 모든 미래 compile을 못 쓰게 하지 않습니다 — 하지만 compile 중의 stderr 줄은 에이전트가 제출했다고 믿는 write를 찾는 곳이 아닙니다. |
 | `ORPHAN_PAPER` | warning | 나가는 엣지가 없고 들어오는 것은 `mentioned_in`뿐인 Paper — 수집되었지만 결코 연결되지 않았습니다. |
 | `MISSING_IMPLEMENTED_IN` | warning | Paper와 Repository가 `arxiv_id`를 공유하는데 `implemented_in` 엣지가 둘을 잇지 않습니다. `--fix-trivial`이 추가합니다. |
 | `STALE_CITATION` | warning | 위키 페이지가 존재하지 않는 페이지로 링크합니다. |

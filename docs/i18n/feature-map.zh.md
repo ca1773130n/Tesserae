@@ -14,6 +14,31 @@ Tesserae 是一个运行在三大支柱上的**上下文引擎**：(1) 会话监
 > [`docs/release-notes/`](../release-notes/)，那才是权威的变更日志。这份地图讲的
 > 是系统的形态，而不是每一次提交。
 
+## Agent 记忆、时间深度与检索视图 —— 自 v0.31.0（2026 年 8 月）
+
+这一轮读取了 Neo4j 的 agent 记忆设计，并吸纳了在 Tesserae 自身约束下能存活的那些部分：第二时间轴、具名边分割、身份墓碑，以及机器无法重新推导的裁定的持久家园。数据库本体保持距离——见 `docs/superpowers/specs/2026-08-14-neo4j-agent-memory-roadmap.md` 了解取了什么、代价是什么，以及为什么。
+
+| 特性 | 状态 | 源码 | 说明 |
+|---|---|---|---|
+| 交易时间（`observed_as_of`） | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py)、[`tesserae/memory/store.py`](../../tesserae/memory/store.py) | 第二个时钟：`as_of` 从来源自身的时间戳回答"那时什么是真的"；`observed_as_of` 从每次编译都盖一次时间戳的 `fact_observed` 表回答"到那时我们学到了什么"。二者相合。它仅存在于 `sqlite.db` 中——`graph.json` 内的挂钟会让同一份来源明天编译成不同的字节。此前 `as_of` 自称为"双时态"，然而只有一个轴存在。 |
+| 事实作为内容被搜索；`dated` 作为谓词 | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py) | `search_facts` 在主体 / 谓词 / 宾体 / 证据上排名，绝不对序列化的事实排名，因此 id 或元数据片段不再匹配。`dated`（`any`/`dated`/`undated`）把日期性变成一个过滤器，而不是调用方不得不从 `undated_included` 推断的东西。 |
+| `resolved_by` 关闭一个时间区间 | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py)、[`tesserae/memory/contradiction.py`](../../tesserae/memory/contradiction.py) | 矛盾 pass 仲裁了一个失败方，但时间投影无视了它，于是一个被仲裁的失败方仍然读取 `current: true`。它从**失败方**一侧关闭——`resolved_by` 的走向是来源→胜方，与使无效的谓词相反——加上 Graphiti 的重叠警卫：一个在其失败方之时或之前被观测到的胜方，无法说明失败方何时停止为真。 |
+| 时间线计数其匹配项 | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py) | `timeline` 在分页前对**完整**匹配集按日期排序，而 `total_events` 对每条匹配计数。它之前对排名筛选的 100 行切片排序，并把那个钳位报告为语料覆盖——因此最早的事件，这正是时间线所为，最容易被丢弃。 |
+| 视图注册表 + 多视图融合 | ✅ | [`tesserae/retrieval/views.py`](../../tesserae/retrieval/views.py)、[`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | 一份记忆，可作为四张正交图遍历——`semantic` / `temporal` / `causal` / `entity`，各自是边词汇的一个具名子集。不是新的排名算法：一个视图解析为每种视图外边类型的零权重，邻域行走也在同一集合上过滤，因此纯视图外节点永不被接纳。多个视图通过加权 RRF 融合，每条引用报告 `via_views`。 |
+| 持久化向量缓存 | ✅ | [`tesserae/retrieval/vector_cache.py`](../../tesserae/retrieval/vector_cache.py) | 每个嵌入调用点都在每次调用时重新嵌入其整个语料。现在 `node_vectors` 表后备全部三处，以 `(backend, dim, sha256(embedded_text))` 为键——**非** node id，因此一个未修改节点在完整重编译或移动后仍会命中，被重新描述的会失手，两个模型的向量永不相会。`embedding_status` 报告 `vectors_cached` 加进程范围的命中/遗漏/错误。 |
+| 按通道检索性能分析 | ✅ | [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | `search_nodes` / `compile_context` 上的 `explain: true` 返回按通道权重、语料、嵌入调用、缓存命中/遗漏和挂钟时间，加上哪些通道对每个胜方有贡献。选入式，如 Neo4j 的 `PROFILE`，因为度量有成本——且永不可能移动排名，因为每个数字都从融合已产出的表中读取。 |
+| 合并账本 —— 死掉的 id 解析为其幸存者 | ✅ | [`tesserae/merge_ledger.py`](../../tesserae/merge_ledger.py) | 每次编译三种方式折叠重复，之前都把每份答案扔掉，因此持有前一次编译里某个 node id 的 agent 得到赤裸的 not-found。`merge-ledger.json` 是失败方→幸存者墓碑，仅在图谱遗漏后被查阅（活着的 id 永不被重定向）；`node_context` 报告 `status: merged` 带 `merged_from` / `merged_into`。导出状态，非历史：重获生命的失败方脱落。 |
+| 撤回（`retracts`） | ✅ | [`tesserae/research_graph.py`](../../tesserae/research_graph.py)、[`tesserae/graph_filters.py`](../../tesserae/graph_filters.py) | 一个 agent 可以说"这是错的"，无需发明替代品：一条由 id 指向节点的 `retracts` 边将其从每个默认读取中压制，同时在 `include_superseded` 下仍可触达。没有任何东西被删除。 |
+| 候选同义裁定账本 | ✅ | [`tesserae/candidate_ledger.py`](../../tesserae/candidate_ledger.py) | 一个审查者答过"这些不同"之后，原本会被永远问同样的问题——`apply_decisions` 消费了 `keep_separate` 并什么都没做持久。`.tesserae/candidate-same-as.json` 按排序的 node-id 对及别无他物为键一条裁定，因此重写的描述、新来源或不同的嵌入后端全部无所谓。累积的，绝不修剪：一条裁定是这里唯一机器无法重新推导的东西。呈现为 `PENDING_REVIEW`。 |
+| 两个配对 pass 共用一个阻塞层 | ✅ | [`tesserae/blocking.py`](../../tesserae/blocking.py) | 规范化有内联倒排索引；`supersede` 对一个发现组中的每对进行比较且无任何界。现在两个共用一层，测试固定两个性质：上限按**排序 id** 截断，因此上限运行不依赖到达顺序，调用方提供其自己的分词器，因为比评分者更粗的阻塞者会静默删除真匹配。每条 pass 都报告它命中的上限而不是返回悄悄更短的队列。 |
+| 工件证据节点到达站点 | ✅ | [`tesserae/raganything_adapter.py`](../../tesserae/raganything_adapter.py)、[`tesserae/site/raw_view.py`](../../tesserae/site/raw_view.py) | 图形、表格和方程成为一等公民 `Artifact` 节点，各自 id 仅从内容哈希设种。一个图形另外获得原始页面和内容寻址字节位于 `raw-assets/`（表格和方程无资产——其内容*就是*描述），`drill_down` 交付 `asset_path` / `asset_sha256` / `asset_site_path`。按所有者的事实——kind、page、caption、ordinal——骑在 `part_of` 边上，因为节点就其结构是文档无关的，两份文档打印同一个图形否则会失去第二份的页码。证据保持**离开图谱画布**：整个断言层被永久排除。见 [rag-anything](integrations/rag-anything.zh.md)。 |
+| 规划者遍历图谱并提议写操作 | ✅ | [`tesserae/ask_planner.py`](../../tesserae/ask_planner.py) | 目录持有七个投影原语且无法遍历图谱；`compile_context` 与之合并，视图并集从注册表插值而非重新打字。规划者也可能返回 `proposed_write`——节点和边仅根基于*问题*所声言的东西。**提议，绝不执行**：出处总是空，因此 `graph_write` 拒绝它，直到一个持有 agent 键和外部锚点的调用方提供一个。 |
+| 读取审计 —— 谁读了图谱 | ✅ | [`tesserae/memory/store.py`](../../tesserae/memory/store.py)、[`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | 访问计数驱动了由于不用而遗忘，但没有什么记录*谁*导致了它们。`TESSERAE_READ_AUDIT=1` 每次读都记录 `{tool, actor, node_ids, at, tesserae_version}`，通过 `read_audit` 以按 actor 的计数读回。**默认关闭**，门槛坐在打开存储之前——创建表本身就是写。见 [agent 记忆](agent-memory.zh.md#遗忘--永不删除)。 |
+| `tesserae schema-drift` 作为一等动词 | ✅ | [`tesserae/schema_drift.py`](../../tesserae/schema_drift.py) | 子类型提议仅通过 `lab` 可触达。提议住在 `.tesserae/schema-drift-proposals.json`，而非节点元数据——带外元数据键会挺过增量编译并在完整编译时消失，这是这个仓库击中四次的字节幂等盲点。呈现为 `SUGGESTED_SUBTYPE`；**晋升保持人工编辑** `ResearchNodeType`，然后 `"approved": true` 和 `TESSERAE_SCHEMA_DRIFT_APPLY=1`。 |
+| 便携式编译 + agent-write 锁 | ✅ | [`tesserae/locking.py`](../../tesserae/locking.py) | 锁是 `if fcntl is None: yield`——在 Windows 上它不锁任何东西，而 agent-write 覆盖是两个未同步追加撕裂 JSONL 行的唯一路径。现在在 `flock(2)` 存在处用它，`msvcrt.locking` 在其不存在处（钉到一字节范围，因为 msvcrt 从文件位置锁定）。既不支持这两个原语的平台每个进程告警一次。一个被跳过的重放行现在是一个 lint 发现（`AGENT_WRITE_SKIPPED`），而非仅一个 stderr 警告。 |
+| 边车注册表 | ✅ | [`tesserae/sidecars.py`](../../tesserae/sidecars.py) | 每个 `.tesserae/` 条目声明其所有者、其种类（`derived` / `accumulated` / `cache` / `scratch`）以及删除它的成本——而 `safe_to_delete` 是一个分离的字段，因为一个 `cache` 其答案来自模型不安全丢弃，`derived` 文件能携带人工批准。Doctor 的 `sidecars` 检查把你的真实目录读对照一下。见 [sidecars](sidecars.zh.md)。 |
+| Kuzu 是导出，绝不是存储 | ✅ | [`tesserae/kuzu_adapter.py`](../../tesserae/kuzu_adapter.py) | 单向约束：`tesserae export kuzu` 写 `graph.kuzu` 且没有东西读它回来。见 [architecture § Kuzu export](architecture.zh.md#kuzu-导出)。 |
+
 ## 认知记忆与作用域 —— v0.29.0 → v0.31.0（2026 年 8 月）
 
 这一轮让图谱知道*发生了什么*，而不只是被写下了什么：结果挺过摄取，一条因果边由

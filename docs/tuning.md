@@ -162,6 +162,21 @@ you navigate cross-project wants the eager pass on.
 
 ---
 
+## Who read the graph
+
+| Variable | Default | Notes |
+|---|---|---|
+| `TESSERAE_READ_AUDIT` | **off** | Records each MCP read as one row — `{tool, actor, node_ids, at, tesserae_version}` — in a `read_audit` table in `.tesserae/sqlite.db`, readable back through the `read_audit` tool with a per-actor tally. Off by default because an always-on audit across every read surface turns every read into a write; the gate sits ahead of opening the store, since creating the table is itself a write. Nothing about it ever reaches `graph.json` |
+| `TESSERAE_ACTOR` | — | Who to attribute a read to when the call carries no agent view. The actor is the `agent` argument if the call resolved one, else this; unset records the read as anonymous rather than inventing a name |
+
+Turning `TESSERAE_READ_AUDIT` off stops recording without erasing what was
+already recorded, and it takes effect without restarting the server. What the
+audit is *for* is [forgetting by disuse](agent-memory.md#forgetting--never-deletion):
+access counts drive what gets absorbed or demoted, and without an actor one
+chatty agent polling a node and a human reading it once are the same input.
+
+---
+
 ## Running several machines against one project
 
 The shape this is written for: several servers each run a coding agent, each has

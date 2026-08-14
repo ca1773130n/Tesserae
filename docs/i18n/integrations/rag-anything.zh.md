@@ -105,6 +105,24 @@ Tesserae 把这项集成干净地拆成两部分：
 | `content_list[type=table]` | `Artifact` node（id 来自 `table_body` sha256，主体作为描述）+ `multimodal_blocks[]`（`table_body`、`caption`、`content_hash`） |
 | `content_list[type=equation]` | `Artifact` node（id 来自 `latex` sha256，LaTeX 作为描述）+ `multimodal_blocks[]` 和 `metadata.equations[]`（保留 LaTeX） |
 
+### 按所有者的事实骑在 `part_of` 边上
+
+一个 `Artifact` 的 id 仅从其内容哈希设种，因此节点刻意**与文档无关**：同一个图表在两篇论文中打印是一个节点，每个所有者一条 `part_of` 边。但 `kind`、`page`、`caption` 和基于 1 的按种类的 `ordinal` 是关于*(工件, 文档)*对的事实——仅保持在节点上，一个共享工件会保留先合并的文档的信息，而无声失去后来者的页码。它们骑在边上，边根据其结构是按所有者的。节点为向后兼容保留它自己的副本；这是加法，不是移动。同一份字节在同一个文档中出现两次时，早一个位置赢，确定性地。
+
+该边上的 `evidence` 故意保持为空：这个代码库中的每个 `edge.evidence` 都是授权了断言的逐字片段，而标题不声言任何东西。
+
+### 到达字节
+
+一个**图形** `Artifact` 声言一个图像的字节存在——节点仅因为它们在导入时被哈希了才存在——因此站点要服务它们。`tesserae export site` 将 `metadata['asset_path']` 本身读作一个来源，赋予那个图形原始页面、站点地图条目，以及其字节位于 `raw-assets/` 下面一个**内容寻址**文件名（派生自图谱已声言的摘要），绝不是重新哈希。一个名字本身是字节的纯函数，这让下面的 `asset_site_path` 成为事实而非预测。
+
+表格和方程没有 `asset_path`——它们的内容*就是*节点的描述——而外链资产在导入时丢弃该键。两者正确地无法服务而非错误。
+
+在 MCP 上，`raw_source` 绝不返回字节；`drill_down` 改为报告地址——`asset_path`（磁盘上）、`asset_sha256`，和 `asset_site_path`（从运行的 `tesserae serve` 可取得）。格式错误的已声明哈希丢弃 `asset_site_path` 而非虚拟一个。
+
+### 工件保持离开图谱画布
+
+`Artifact` 和 `EvidenceSpan` 以及所有 Claim 变体都被分类到断言层，而整个断言层被从交互式图谱视图中排除——刻意且永久地，而非待定。它是被支持节点的证据*而非*节点的对等体，两个机制上的理由说同样的事：证据的数量超过它所支持的东西（已经把 `SourceDocument` 置于 `show_sources` 后面的泛滥），而 `Artifact` 的唯一边是到 `SourceDocument` 的 `part_of`，它默认被隐藏——因此仅承认它会画无法到达的孤立点。通过 `drill_down` 和原始资产页面读取证据，那是它可被寻址的地方。
+
 每个节点都保留 provenance：
 
 ```json

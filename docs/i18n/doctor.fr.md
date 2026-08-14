@@ -92,6 +92,15 @@ empêché de le prendre. Si vous faites tourner Tesserae depuis plusieurs machin
 sur un stockage partagé, testez-le directement sur le matériel réel avant de vous
 fier au verrou de compilation.
 
+`filesystem_locking` est une sonde `flock`-uniquement et rapporte "non supporté sur
+cette plateforme — ignoré" sur Windows. Les verrous eux-mêmes ne le sont pas :
+`compile.lock` et le verrou d’écriture d’agent prennent `flock(2)` où il existe et
+`msvcrt.locking` où il n’existe pas, et la vérification `compile_lock` teste avec
+les deux mêmes helpers donc elle ne peut pas rapporter "non supporté" à propos d’un
+verrou qui fonctionne là. Sur un interpréteur ne portant aucune primitive, le
+verrouillage se dégrade en no-op qui dit cela une fois par processus plutôt que
+silencieusement.
+
 ## `tesserae doctor migrate-code-scope`
 
 Un nettoyage ponctuel pour un espace de travail compilé avant que le code source ne
@@ -176,6 +185,7 @@ du **code de sortie** — les constats en dessous restent rapportés.
 | Code | Sévérité | Signification |
 |---|---|---|
 | `AGENT_METADATA_KEY` | error | Un nœud d'agent porte une clé de métadonnées hors de l'ensemble contrôlé. Le seul code de niveau erreur ; un agent malformé casse les vues restreintes. |
+| `AGENT_WRITE_SKIPPED` | warning | Une ligne dans `.tesserae/agent-writes.jsonl` que la lecture a sautée — cette écriture n'est **pas** dans le graphe. Une ligne tronquée est une écriture concurrente déchirée et l'agent devrait la resoumettre ; une écriture modifiée à la main devrait être corrigée ou supprimée. La lecture saute et avertit plutôt que d'échouer, donc une mauvaise ligne ne brique jamais toute compilation future — mais une ligne stderr pendant une compilation n'est pas où on cherche une écriture que l'agent croit avoir soumise. |
 | `ORPHAN_PAPER` | warning | Un Paper sans arête sortante et sans rien d'autre que `mentioned_in` en entrée — ingéré, jamais relié. |
 | `MISSING_IMPLEMENTED_IN` | warning | Un Paper et un Repository partagent un `arxiv_id` mais aucune arête `implemented_in` ne les relie. `--fix-trivial` l'ajoute. |
 | `STALE_CITATION` | warning | Une page wiki pointe vers une page qui n'existe pas. |

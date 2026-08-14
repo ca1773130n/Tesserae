@@ -92,6 +92,14 @@ zweiter Host daran gehindert wird, ihn ebenfalls zu nehmen. Wenn du Tesserae von
 mehreren Maschinen gegen geteilten Speicher fährst, teste das direkt auf der
 echten Hardware, bevor du dich auf den Compile-Lock verlässt.
 
+`filesystem_locking` ist eine `flock`-reine Prüfung und meldet „nicht unterstützt auf dieser
+Plattform — übersprungen" auf Windows. Die Locks selbst sind es nicht: `compile.lock`
+und der Agent-Write-Lock verwenden `flock(2)` wo vorhanden und `msvcrt.locking`
+wo nicht, und die `compile_lock`-Prüfung prüft mit denselben beiden
+Helfern, sodass er „nicht unterstützt" über einen Lock nicht melden kann, der dort funktioniert. Bei einem
+Interpreter, der keinen Primitiv trägt, degeneriert Locking zu einem No-op, das
+einmal pro Prozess statt stillschweigend sagt.
+
 ## `tesserae doctor migrate-code-scope`
 
 Eine einmalige Bereinigung für einen Workspace, der kompiliert wurde, bevor
@@ -177,6 +185,7 @@ berichtet.
 | Code | Schweregrad | Bedeutung |
 |---|---|---|
 | `AGENT_METADATA_KEY` | error | Ein Agent-Knoten trägt einen Metadatenschlüssel außerhalb des kontrollierten Satzes. Der einzige Code auf Fehlerstufe; ein fehlerhafter Agent zerstört bereichsbeschränkte Sichten. |
+| `AGENT_WRITE_SKIPPED` | warning | Eine Zeile in `.tesserae/agent-writes.jsonl`, die die Wiedergabe übersprungen hat — der Write ist **nicht** im Graph. Eine abgebrochene Zeile ist ein zerrissenes gleichzeitiges Anfügen und der Agent sollte es neu einreichen; eine manuell bearbeitete Zeile sollte korrigiert oder entfernt werden. Wiedergabe überspringt und warnt, statt zu scheitern, sodass eine schlechte Zeile nicht jeden zukünftigen Compile beschädigt — aber eine stderr-Zeile während einer Kompilation ist nicht, wo man nach einem Write sucht, den der Agent glaubt, eingereicht zu haben. |
 | `ORPHAN_PAPER` | warning | Ein Paper ohne ausgehende Kanten und mit nichts außer `mentioned_in` eingehend — aufgenommen, nie verbunden. |
 | `MISSING_IMPLEMENTED_IN` | warning | Ein Paper und ein Repository teilen sich eine `arxiv_id`, doch keine `implemented_in`-Kante verbindet sie. `--fix-trivial` ergänzt sie. |
 | `STALE_CITATION` | warning | Eine Wiki-Seite verlinkt auf eine Seite, die es nicht gibt. |

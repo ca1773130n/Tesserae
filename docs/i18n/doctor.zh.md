@@ -62,6 +62,9 @@ Tesserae 中的每一条并发保证——首先就是上面那把编译锁—�
 
 它**无法**证明跨主机的强制生效，也不自称能证明。一台主机拿到了锁，这并不能说明第二台主机会被阻止拿到它。如果你从多台机器对着共享存储运行 Tesserae，请在真实硬件上直接测试这一点，然后再去依赖那把编译锁。
 
+`filesystem_locking` 是个只依赖 `flock` 的探针，在 Windows 上报告"unsupported on this
+platform — skipped"。锁本身则不然：`compile.lock` 和 agent-write 锁会在 `flock(2)` 存在处使用它，在不存在的地方使用 `msvcrt.locking`，而 `compile_lock` 检查正是通过同样这两个辅助函数探测的，所以它无法就一个在那里可用的锁报告"unsupported"。在既不支持 `flock(2)` 也不支持 `msvcrt.locking` 的解释器上，锁降级为空操作，每个进程仅说一次而非沉默。
+
 ## `tesserae doctor migrate-code-scope`
 
 针对源代码退出 Tesserae 范围之前编译过的工作区的一次性清理。新的编译不再产生代码层，
@@ -126,6 +129,7 @@ tesserae doctor migrate-code-scope --apply    # 真正删除
 | 代码 | 级别 | 含义 |
 |---|---|---|
 | `AGENT_METADATA_KEY` | error | 某个 agent 节点带有受控集合之外的元数据键。唯一的 error 级代码；格式错误的 agent 会破坏作用域视图。 |
+| `AGENT_WRITE_SKIPPED` | warning | `.tesserae/agent-writes.jsonl` 中的某一行在重放时被跳过 —— 那条写操作**不**在图谱中。一条被截断的行是一次并发追加的撕裂，agent 应该重新提交；一条手工编辑过的行应该被更正或删除。重放会跳过并告警，而非失败，因此一条坏行永远不会砖死每一次未来的编译 —— 但 stderr 上的一条在编译期间出现的行，并不是你在找那条 agent 认为自己已经提交了的写操作的地方。 |
 | `ORPHAN_PAPER` | warning | 一篇 Paper 没有任何出边，入边也只有 `mentioned_in`——被摄取了，却从未被连接。 |
 | `MISSING_IMPLEMENTED_IN` | warning | Paper 与 Repository 共享同一个 `arxiv_id`，却没有 `implemented_in` 边连接二者。`--fix-trivial` 会补上。 |
 | `STALE_CITATION` | warning | 维基页面链接到一个并不存在的页面。 |

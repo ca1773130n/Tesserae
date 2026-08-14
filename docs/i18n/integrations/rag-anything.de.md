@@ -107,6 +107,53 @@ Aktuelles Mapping:
 | `content_list[type=table]` | `Artifact` node (ID vom `table_body` SHA256, Body als Beschreibung) + `multimodal_blocks[]` (`table_body`, `caption`, `content_hash`) |
 | `content_list[type=equation]` | `Artifact` node (ID vom `latex` SHA256, LaTeX als Beschreibung) + `multimodal_blocks[]` und `metadata.equations[]` (LaTeX preserved) |
 
+### Pro-Besitzer-Fakten fahren die `part_of`-Kante
+
+Eine `Artifact`'s ID wird nur von ihrer Content-Hash geseedet, deshalb ist der
+Node absichtlich **dokument-agnostisch**: dieselbe Figur in zwei
+Papieren ist ein Node mit einer `part_of`-Kante pro Besitzer. Aber `kind`, `page`,
+`caption` und die 1-basierte pro-Art `ordinal` sind Fakten über das *(artifact,
+document)*-Paar — sie werden nur auf dem Node geführt, ein gemeinsames Artifact würde nur behalten, welches
+Dokument zuerst zusammengeführt wurde, und würde andernfalls jede spätere Besitzer-Seite stillschweigend verlieren. Sie fahren die
+Kante, die pro-Besitzer nach Konstruktion ist. Der Node führt eigene Kopien für
+Rückwärtskompatibilität; dies addiert, es verschiebt nichts. Wo dieselben Bytes zweimal in
+einem Dokument erscheinen, gewinnt die frühere Position, deterministisch.
+
+`evidence` auf dieser Kante bleibt absichtlich null: jedes `edge.evidence` in diesem
+Codebase ist eine wörtliche Spanne, die eine Behauptung lizenzierte, und eine Caption behauptet
+nichts.
+
+### Die Bytes erreichen
+
+Ein **Figur**-`Artifact` behauptet, dass eines Bildes Bytes existieren — der Node existiert
+nur, weil sie beim Import gehashed wurden — also serviert die Site sie.
+`tesserae export site` liest `metadata['asset_path']` als eine Quelle in ihrem eigenem
+Recht, die dieser Figur eine Rohseite, einen Sitemap-Eintrag und ihre Bytes unter
+`raw-assets/` unter einem **inhalts-adressierten** Dateinamen — abgeleitet vom Digest,
+den der Graph bereits deklarierte — gibt, nie ein Re-Hash. Ein Name, der eine reine Funktion
+der Bytes ist, macht `asset_site_path` unten ein Fakt statt eine Prognose.
+
+Tabellen und Gleichungen tragen kein `asset_path` — ihr Inhalt *ist* die Knotens-
+Beschreibung — und ein Out-of-Tree-Asset lässt den Schlüssel beim Import weg. Beides ist
+korrekt nicht servicebar statt fehler.
+
+Über MCP gibt `raw_source` nie Bytes zurück; stattdessen meldet `drill_down` die Adresse
+— `asset_path` (auf der Platte), `asset_sha256` und `asset_site_path`
+(abrufbar von einem laufenden `tesserae serve`). Ein fehlerhaft deklarierter Hash lässt
+`asset_site_path` ausfallen statt eine Adresse zu erfinden.
+
+### Artifacts bleiben außerhalb des Graph-Canvas
+
+`Artifact` ist gruppiert mit `EvidenceSpan` und jedem Claim-Variant in der
+Assertion-Schicht, und die gesamte Assertion-Schicht ist ausgeschlossen von der interaktiven
+Graph-Ansicht — bewusst und dauerhaft, nicht ausstehend. Es ist Beweis *für*
+Nodes auf der Canvas statt ein Peer von ihnen, und zwei mechanische Gründe sagen
+dasselbe: Beweis überfordert, was es stützt (die Flut, die bereits
+`SourceDocument` hinter `show_sources` setzte), und ein `Artifact`'s einzige Kante ist
+`part_of` zu einem `SourceDocument`, das standardmäßig versteckt ist — also würde es zulassen
+allein erreichbare Waisenpunkte zu zeichnen. Lese Beweis durch `drill_down`
+und die Roh-Asset-Seite, die ist wo es adressierbar ist.
+
 Die Provenance bleibt an jedem Node erhalten:
 
 ```json

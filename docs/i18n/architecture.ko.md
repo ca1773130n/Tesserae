@@ -133,6 +133,8 @@ query / seeds
 |---|---|
 | [`tesserae/research_graph.py`](../../tesserae/research_graph.py) | `ResearchNodeType` enum (`SYNTHESIS` 포함), 엣지 타입 화이트리스트 (`synthesizes`, `summarizes` 포함), 검증. |
 | [`tesserae/canonicalization.py`](../../tesserae/canonicalization.py) | Alias 정규화 + 근사 중복 리뷰 큐. |
+| [`tesserae/merge_ledger.py`](../../tesserae/merge_ledger.py) | `.tesserae/merge-ledger.json`: 컴파일이 축소하는 모든 중복에 대한 패자→생존자 묘비로, 이전 컴파일의 id는 단순 not-found 반환하는 대신 해결됨. **유도된 상태, 이력 아님** — 게시는 기존 내용과 합치고, 그 패자가 방금 게시된 그래프에 부재하고 *그리고* 그것에서 나가는 체인이 존재하는 노드에 착륙하는 동안만 기록 유지. 패자가 다시 살아나면 제거됨. 그래프 자체가 미스한 후에만 읽으며, 이는 살아있는 id가 리다이렉트될 수 없음을 보장. |
+| [`tesserae/candidate_ledger.py`](../../tesserae/candidate_ledger.py) | `.tesserae/candidate-same-as.json`: 후보 병합 쌍당 pending / confirmed / rejected로, 정렬된 노드-id 쌍과 다른 것 없음으로 키됨 — 점수, 이유, 백엔드는 의도적으로 키 밖에 있으며, 판정이 견뎌내야 할 변동을 정확히 표현. **누적, 병합 원장의 반대**: 병합은 유도된 상태이고, 인간의 판정은 파이프라인에서 기계가 다시 유도할 수 없는 유일한 것이므로 여기서는 아무것도 제거되지 않음. 둘은 코드를 공유하면 안 됨. |
 | [`tesserae/code_graph.py`](../../tesserae/code_graph.py) | 개발 슬라이스를 위한 결정적 Python AST 추출기. |
 | [`tesserae/llm_extractor.py`](../../tesserae/llm_extractor.py) | Claude CLI/OAuth 선택적 추출기. |
 
@@ -190,6 +192,9 @@ Phase 5가 영속적 자기 개선을 활성화했습니다. 가변적인 노드
 | [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | `hybrid_search`: 세 레인을 융합하는 로컬 우선 hybrid retriever — Okapi BM25(k1=1.5, b=0.75), 케이스 폴딩 어휘/FTS 스타일 부분 문자열, 플러그형 embedding 레인 — reciprocal-rank fusion(RRF, k=60)을 통해. 완전 결정적. |
 | [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | `personalized_pagerank`: 멀티홉 시드 확장을 위한 그래프 위의 HippoRAG-2 스타일(arXiv:2502.14802) Personalized PageRank — 1홉 이웃뿐 아니라 시드에서 여러 홉 떨어진 잘 연결된 노드를 노출. |
 | Embedding 백엔드 (Phase 6, Track B) | hybrid embedding 레인의 기본 백엔드는 추가 의존성이 필요 없는 결정적 hash-bucket 유사 embedding; 선택적 의존성이 설치되어 있으면 `sentence-transformers`(`all-MiniLM-L6-v2`)를 선호하며 지연 로드. `embedding_status` MCP 도구가 어느 백엔드가 활성인지 보고. |
+| [`tesserae/retrieval/vector_cache.py`](../../tesserae/retrieval/vector_cache.py) | SQLite 사이드카의 `node_vectors` 테이블, 그리고 세 개의 `.embed(` 지점이 모두 거쳐 가는 단일 접근자. `(backend_name, backend_dim, sha256(embedded_text))`로 키됨 — 여기서 정체성은 노드 id가 아니라 임베딩된 **텍스트**이므로, 전체 재컴파일이나 프로젝트 이동, 정규화에 의한 id 재작성 후에도 변경되지 않은 노드는 히트하고, 설명이 바뀐 노드는 미스하여 다시 임베딩됨. 두 모델의 벡터는 결코 만나지 않음: 그 공간들은 비교 가능하지 않으며, 조용한 혼합은 실패 대신 코사인을 오염시킴. |
+| [`tesserae/retrieval/views.py`](../../tesserae/retrieval/views.py) | 뷰 레지스트리: `semantic` / `temporal` / `causal` / `entity`, 각각 `ALLOWED_EDGE_TYPES`의 이름 붙은 부분집합이며, `weights_for()`가 뷰 밖의 모든 타입에 명시적 0 가중치로 해석. 두 가지 분할 결정이 핵심: `summarizes` + `evidenced_by`(전체 엣지의 약 50% — 추상화와 출처)는 **어느** 뷰에도 속하지 않음, 그렇지 않으면 semantic 뷰가 다시 그래프 전체가 됨; 그리고 causal 뷰는 `CAUSAL_EDGE_TYPES`보다 넓은데, `{recovers}`만으로는 살아있는 엣지가 없는 뷰가 되기 때문. |
+| [`tesserae/blocking.py`](../../tesserae/blocking.py) | 두 쌍대 비교 패스(정규화의 리뷰 빌더와 `memory.supersede`) 모두를 위한 단일 블로킹 레이어. 캡은 **정렬된 id**로 잘라내므로, 캡에 걸린 실행이 노드가 도착한 순서에 의존하지 않고 좁혀진 컴파일도 재현 가능하게 유지됨; 호출자가 자신의 토크나이저를 제공하는데, 스코어러보다 거친 블로커는 참인 매치를 조용히 삭제하기 때문. 각 패스는 조용히 짧아진 큐를 반환하는 대신 자신이 캡에 걸렸음을 보고. |
 
 ### 온디맨드 컨텍스트 컴파일러 (v0.5.0 — 기둥 3 헤드라인)
 
@@ -213,6 +218,7 @@ Phase 5가 영속적 자기 개선을 활성화했습니다. 가변적인 노드
 | [`tesserae/agent_harness.py`](../../tesserae/agent_harness.py) | Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode harness export. |
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | 인바운드 Claude Code/Codex 세션 발견, 정규화, `.tesserae/harness_sessions/` 아래 저장, 그리고 편집(redact)된 markdown 요약. |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | Temporal-fact JSONL + 선택적 라이브 Graphiti 동기화. |
+| [`tesserae/kuzu_adapter.py`](../../tesserae/kuzu_adapter.py) | Kuzu 데이터베이스로의 단방향 내보내기(`tesserae export kuzu`). 저장소가 아닙니다 — [Kuzu 내보내기](#kuzu-내보내기) 참조. |
 | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio 서버. Retrieval/그래프: `schema`, `graph_summary`, `search_nodes`, `node_context` (`use_ppr` 지원), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`, `doctor_report`. 컨텍스트 엔진 (v0.5.0): `compile_context`(온디맨드 컨텍스트 컴파일러), `embedding_status`, `fresh_insights`(감쇠 순위 세션 finding), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`. 추가로 `ask`, 멀티 프로젝트 레지스트리 도구(`list_projects`, `register_project`, `unregister_project`, `list_sessions`), `tesserae_setup_plan` / `tesserae_setup_apply`. |
 
 ## 프로젝트 워크스페이스 레이아웃
@@ -343,6 +349,19 @@ Tesserae가 무엇을 내보내고, 각 값이 정직하게 어디서 오는지:
 **Tesserae v0.1 출력 대비 파괴적 변경.** `name:`이 `title:`이 됩니다(`name`은 두 버전 어디에서도 OKF 키였던 적이 없습니다. 리더는 `title` 뒤에서 여전히 받아 줍니다). `index.md`와 `log.md`는 `type:` / `name:` frontmatter를 잃습니다(§8, §9). 그래서 그것들을 타입 지정 개념으로 취급하던 소비자는 유령 항목 두 개를 잃는데, 바로 그것이 목적입니다. 관련해서 이 둘은 이제 번들 루트뿐 아니라 계층의 *어느* 수준에서도 예약됩니다(§3.1). 모든 개념 파일의 바이트가 바뀌므로 첫 v0.2 내보내기는 번들 전체를 다시 씁니다.
 
 **알려진 한계.** `usage_count`는 문서를 건드린 트랜스크립트를 가진 고유 에이전트/작업 세션의 수이지 사람의 페이지 조회수가 아닙니다 — §5.1도 이 신호가 거칠다고 경고합니다. 인기가 아니라 생존 신호로 읽으세요. 수명 주기 계열은 `supersedes` 엣지가 가리키는 노드에만 발동하며(여기서는 5197 중 25), 실제 커버리지를 갖추려면 `TemporalFactProjector`가 질의 시점에 유도하는 시간 유효 구간이 필요한데, 그것을 15k 엣지에 대해 익스포터 안에서 돌리는 것은 범위 밖으로 판단해 기각했습니다. `generated.by`는 §7의 `<producer>/<version>` 대신 `process:tesserae-<extractor>`를 일부러 씁니다: 버전을 담은 행위자는 의미상 아무 변화가 없어도 릴리스마다 약 5200개 개념 파일 전부를 다시 쓰게 만들기 때문입니다. 경로 값을 갖는 OKF 필드(`resource`, `sources[].resource`)는 결코 절대 경로를 담지 않습니다 — 프로젝트 루트 상대로 만들 수 없는 것은 날것으로 내보내는 대신 생략하는데, §6.2대로라면 소비자가 그것을 번들 상대 경로로 읽을 것이기 때문입니다 — 다만 절대 경로는 `x_tesserae.source_path`(노드의 실제 정체성이며 외부 소비자는 무시합니다) 안과, 우연히 경로를 인용한 노드 내용 안에는 여전히 나타날 수 있습니다.
+
+## Kuzu 내보내기
+
+[`tesserae/kuzu_adapter.py`](../../tesserae/kuzu_adapter.py)는 `graph.json`을 임베디드 [Kuzu](https://kuzudb.com) 데이터베이스로 투영하여 다른 도구가 그래프 위에서 Cypher를 실행할 수 있게 합니다. `tesserae export kuzu`가 그것을 쓰고, `--graph PATH`는 프로젝트의 컴파일된 그래프 대신 추출만 된 맨 그래프를 내보냅니다. 이것은 **단방향 내보내기**로, [OKF](#okf-v02-내보내기가져오기), [Graphiti](../../tesserae/graphiti_adapter.py)와 나란한 셋 중 셋째이며, `write_graph(replace=True)`가 데이터베이스를 지우고 다시 만들기 때문에 출력은 건네받은 그래프의 순수 함수입니다.
+
+**Kuzu는 의도적으로 저장소가 아니며, 이 구분이 구조를 지탱합니다.** v0.32까지 `KuzuResearchGraphStore`가 진짜 SQLite 저장소 옆 [`tesserae/persistence.py`](../../tesserae/persistence.py)에 앉아 있었고, 의존성이 dev-only로 선언된 `extract --kuzu-output` 플래그 하나로만 닿을 수 있었습니다 — 절반만 연결된 두 번째 백엔드였고, 바로 그것이 "Tesserae가 그래프 데이터베이스를 채택해야 하는가?"를 열린 질문처럼 보이게 했습니다. 열려 있지 않으며, 이유는 법적인 것이 아니라 아키텍처적인 것입니다(Kuzu는 MIT이고, 임베디드이며, 서버가 필요 없습니다):
+
+- **두 번째 권위 있는 저장소는 같은 사실에 대해 `graph.json`과 어긋날 수 있고**, 중재자가 없습니다. `graph.json`이 진실의 원천이며, 그것과 모순될 수 있는 모든 것은 버그 표면입니다.
+- **바이트 멱등성이 순수 함수에서 데이터베이스의 쓰기 순서로 옮겨 갑니다.** `tests/test_byte_idempotence_phase5.py`가 고정한 속성 — 두 번의 컴파일이 바이트까지 동일한 `graph.json`을 낸다 — 은 컴파일이 입력에 대한 키 정렬된 순수 함수이기 때문에 성립합니다. 비교한 어떤 graph-memory 시스템도 그것을 시도조차 하지 않으며, 쓰기를 엔진으로 우회시키는 것이 바로 그것을 잃는 방법입니다.
+
+내보내기에는 두 반론 중 무엇도 적용되지 않습니다: 데이터베이스는 파생 출력이고, 그래프로부터 지워지고 다시 쓰이며, 어떤 컴파일 경로나 쿼리 경로도 그것을 되읽지 않습니다. `read_graph`가 존재하는 이유는 `okf.read_okf_bundle`과 같습니다 — 되읽을 수 없는 내보내기는 검증할 수 없는 내보내기입니다 — 엔진의 무언가가 Kuzu에서 로드하기 때문이 아닙니다. `tests/test_kuzu_adapter.py`는 `tesserae.persistence`가 어떤 Kuzu 심볼도 노출하지 않음을 단언하므로, 복원된 저장소는 리뷰가 아니라 테스트 스위트에서 실패합니다.
+
+같은 판정이 Neo4j를 기반으로 쓰는 것도 배제합니다: [`docs/superpowers/specs/2026-08-14-neo4j-agent-memory-roadmap.md`](../superpowers/specs/2026-08-14-neo4j-agent-memory-roadmap.md)를 보세요. 거기서는 그 역량들(영속화된 벡터 인덱스, 소프트 머지 묘비, 트랜잭션 시간 시계)을 엔진이 아니라 파일과 SQLite 사이드카로 채택합니다.
 
 ## 멱등성 이야기
 
