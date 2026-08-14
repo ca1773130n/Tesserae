@@ -78,6 +78,10 @@ _SEVERITY_RANK = {OK: 0, WARN: 1, ERROR: 2}
 HOOK_LOG_CAP_BYTES = 10 * 1024 * 1024
 BUILD_HISTORY_STALE_DAYS = 90
 SESSION_CHUNK_STALE_DAYS = 2
+#: A ``*.tmp.<pid>.<hex>`` file is only called orphaned once it is this old.
+#: See ``_orphan_tmp_files`` — a dead LOCAL pid says nothing about a writer on
+#: another host sharing the same ``.tesserae``.
+TMP_ORPHAN_MIN_AGE_HOURS = 24
 _BUILT_AT_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 
@@ -1265,6 +1269,91 @@ def _fix_hook_logs(ctx: DoctorContext) -> Optional[str]:
     return f"hook logs: rotated {len(big)} oversized log(s) to <name>.1"
 
 
+def _orphan_tmp_files(ctx: DoctorContext) -> List[Path]:
+    """``*.tmp.<pid>.<hex>`` halves of an atomic write nobody is finishing.
+
+    Two guards, and both are load-bearing. The pid must be gone, because a
+    LIVE writer is between ``write_text`` and ``replace`` and unlinking its tmp
+    file corrupts the write this check exists to clean up after. And the file
+    must be older than a day, because ``os.kill(pid, 0)`` answers about the
+    local process table only: several hosts can mount one ``.tesserae``, a
+    foreign pid can collide with a dead local one, and age is the only signal
+    available here that does not depend on which machine is asking.
+    """
+    from .engine import pidlock
+    from .sidecars import tmp_owner_pid
+
+    tdir = _tesserae_dir(ctx)
+    if not tdir.is_dir():
+        return []
+    cutoff = _aware(ctx.now) - timedelta(hours=TMP_ORPHAN_MIN_AGE_HOURS)
+    out: List[Path] = []
+    for path in sorted(tdir.glob("*.tmp.*")):
+        pid = tmp_owner_pid(path.name)
+        if pid is None or pid <= 0 or not path.is_file():
+            continue
+        # Liveness goes through pidlock, the module that already owns this
+        # question — including its conservatism rule, which answers "alive"
+        # whenever it cannot tell. A second hand-rolled os.kill probe here
+        # would be a second place to fix when the answer changes.
+        if pidlock.owner_is_alive({"pid": pid}):
+            continue  # writer still running: never touch its tmp file
+        try:
+            mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        except OSError:
+            continue
+        if mtime < cutoff:
+            out.append(path)
+    return out
+
+
+def _detect_sidecars(ctx: DoctorContext) -> Optional[Finding]:
+    """Ownership hygiene over ``.tesserae/`` against the sidecar registry.
+
+    Reports three populations kept separate on purpose: orphaned tmp halves
+    (Tesserae's, safe to remove once dead), hand-made ``graph.json.bak-*``
+    copies (Tesserae's by name only — no code path writes them, so they are
+    described and left), and entries no registry entry claims (someone else's,
+    or a new sidecar that skipped registration). Nothing here removes a file
+    that carries state: ``safe_to_delete`` is what says which those are, and
+    only the tmp orphans have it.
+    """
+    if ctx.wiki is None:
+        return None
+    from .sidecars import unclassified_entries
+
+    tdir = _tesserae_dir(ctx)
+    orphans = _orphan_tmp_files(ctx)
+    backups = sorted(p.name for p in tdir.glob("graph.json.bak-*")) if tdir.is_dir() else []
+    unknown = unclassified_entries(tdir)
+    parts: List[str] = []
+    if orphans:
+        parts.append(f"{len(orphans)} orphaned tmp file(s) ({', '.join(p.name for p in orphans[:3])})")
+    if backups:
+        parts.append(f"{len(backups)} manual graph.json backup(s) ({', '.join(backups[:3])})")
+    if unknown:
+        parts.append(f"{len(unknown)} unclassified entr{'y' if len(unknown) == 1 else 'ies'} ({', '.join(unknown[:3])})")
+    if not parts:
+        return _f("sidecars", "hygiene", OK, "every .tesserae entry is registered and no debris")
+    suggestion = (
+        "tesserae doctor --fix (removes orphaned tmp files only)"
+        if orphans
+        else "review by hand — doctor never removes state it did not write"
+    )
+    return _f("sidecars", "hygiene", WARN, "; ".join(parts), suggestion=suggestion, fixable=bool(orphans))
+
+
+def _fix_sidecars(ctx: DoctorContext) -> Optional[str]:
+    # Re-detected at fix time, not reused from detect: a compile can have
+    # started in between, and its tmp file must survive this pass.
+    orphans = _orphan_tmp_files(ctx)
+    if not orphans:
+        return None
+    for path in orphans:
+        path.unlink(missing_ok=True)
+    return f"sidecars: removed {len(orphans)} orphaned tmp file(s) (writer pid gone)"
+
+
 def _detect_vault(ctx: DoctorContext) -> Optional[Finding]:
     if ctx.wiki is None:
         return None
@@ -1964,6 +2053,7 @@ CHECKS: List[Check] = [
     Check("idempotence", "hygiene", _detect_idempotence),
     Check("orphan_worktrees", "hygiene", _detect_orphan_worktrees, fix=_fix_orphan_worktrees, safe=True),
     Check("hook_log_bloat", "hygiene", _detect_hook_logs, fix=_fix_hook_logs, safe=True),
+    Check("sidecars", "hygiene", _detect_sidecars, fix=_fix_sidecars, safe=True),
     Check("vault_configured", "core", _detect_vault, fix=_fix_vault, safe=True),
     Check("session_chunks", "freshness", _detect_session_chunks),
     Check("environment", "environment", _detect_environment),

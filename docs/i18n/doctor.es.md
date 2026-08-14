@@ -43,6 +43,7 @@ Las comprobaciones, agrupadas por categoría:
 | `idempotence` | hygiene | el tripwire `idempotence_suspect` del snapshot de salida | solo informe (es una señal de bug, no algo que auto-reparar) |
 | `orphan_worktrees` | hygiene | registros obsoletos de `git worktree` | **SAFE**: `git worktree prune`; borrar directorios es solo informe |
 | `hook_log_bloat` | hygiene | crecimiento de `.tesserae/.session-*-hook.log` | **SAFE**: rota/trunca los logs de más de 10 MB |
+| `sidecars` | hygiene | entradas de `.tesserae/` frente al registro de sidecars (`tesserae/sidecars.py`): `*.tmp.<pid>.<hex>` huérfanos, copias manuales `graph.json.bak-*`, entradas sin clasificar | **SAFE**: elimina solo los ficheros tmp huérfanos cuyo pid escritor ha muerto y con más de 24 h; copias y entradas sin clasificar solo se informan |
 | `code_scope_leftovers` | hygiene | restos de la capa de código retirada: `code-graph*.json`, filas de tipos de código en `sqlite.db` | solo informe — la limpieza es un borrado masivo, así que vive en su propio verbo (ver abajo) |
 
 Una comprobación que crashea se reporta como un hallazgo de error — doctor en sí nunca lanza excepciones.
