@@ -42,6 +42,7 @@ tesserae doctor --project ~/src/other
 | `idempotence` | hygiene | 出力スナップショットの `idempotence_suspect` トリップワイヤ | レポートのみ（これはバグのシグナルであり、自動修復すべきものではないため） |
 | `orphan_worktrees` | hygiene | 古くなった `git worktree` の登録 | **SAFE**: `git worktree prune`。ディレクトリの削除はレポートのみ |
 | `hook_log_bloat` | hygiene | `.tesserae/.session-*-hook.log` の肥大化 | **SAFE**: 10 MB を超えるログをローテーション/切り詰め |
+| `sidecars` | hygiene | サイドカーレジストリ（`tesserae/sidecars.py`）に対する `.tesserae/` エントリ: 孤立した `*.tmp.<pid>.<hex>`、手動の `graph.json.bak-*` コピー、未分類エントリ | **SAFE**: 書き込みプロセスが消え 24 時間を超えた孤立 tmp ファイルのみ削除。バックアップと未分類はレポートのみ |
 | `code_scope_leftovers` | hygiene | 廃止されたコードレイヤーの残骸: `code-graph*.json`、`sqlite.db` 内のコード型の行 | レポートのみ — クリーンアップは大量削除なので専用の verb に分離（下記参照） |
 
 クラッシュしたチェックはエラーの検出項目として報告されます — doctor 自体が例外を送出することはありません。

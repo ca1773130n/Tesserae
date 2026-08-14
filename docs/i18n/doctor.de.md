@@ -43,6 +43,7 @@ Die Checks, nach Kategorie gruppiert:
 | `idempotence` | hygiene | der Output-Snapshot-Stolperdraht `idempotence_suspect` | nur Bericht (das ist ein Bug-Signal, nichts zum Auto-Reparieren) |
 | `orphan_worktrees` | hygiene | verwaiste `git worktree`-Registrierungen | **SAFE**: `git worktree prune`; Verzeichnisse löschen ist nur Bericht |
 | `hook_log_bloat` | hygiene | Wachstum von `.tesserae/.session-*-hook.log` | **SAFE**: rotiert/kürzt Logs über 10 MB |
+| `sidecars` | hygiene | `.tesserae/`-Einträge gegen die Sidecar-Registry (`tesserae/sidecars.py`): verwaiste `*.tmp.<pid>.<hex>`, manuelle `graph.json.bak-*`-Kopien, nicht klassifizierte Einträge | **SAFE**: entfernt nur verwaiste tmp-Dateien, deren Schreiber-PID tot und die älter als 24 h sind; Backups und Unklassifiziertes nur Bericht |
 | `code_scope_leftovers` | hygiene | Überreste der stillgelegten Code-Schicht: `code-graph*.json`, code-typisierte Zeilen in `sqlite.db` | nur Bericht — die Bereinigung ist ein Massenlöschen und lebt daher auf einem eigenen Verb (siehe unten) |
 
 Ein abstürzender Check wird als Fehler-Befund gemeldet — doctor selbst wirft nie eine Exception.
