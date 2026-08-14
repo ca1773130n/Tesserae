@@ -53,14 +53,15 @@ from .research_graph import (
 )
 from .retrieval.ppr import personalized_pagerank
 from .temporal import (
+    DATED_FILTERS,
     TemporalFact,
     TemporalFactProjector,
-    # Private on purpose: "undated" is whatever `facts_as_of` cannot parse, and
-    # the count reported beside an as-of answer must apply that same predicate
-    # or it will disagree with the filter it describes. Borrowed, not re-derived
-    # — there are already five copies of `_parse_iso` in this package.
-    _parse_iso as _parse_fact_ts,
+    # "undated" is whatever `facts_as_of` cannot parse, and the count reported
+    # beside an as-of answer must apply that same predicate or it will disagree
+    # with the filter it describes. Borrowed, not re-derived — there are already
+    # five copies of `_parse_iso` in this package.
     facts_as_of,
+    is_dated,
     search_facts,
     timeline,
 )
@@ -314,6 +315,21 @@ def _as_of_arg(args: Mapping[str, Any]) -> Optional[str]:
     return str(raw).strip()
 
 
+def _dated_arg(args: Mapping[str, Any]) -> str:
+    """The ``dated`` filter state, defaulting to ``"any"`` when unasked.
+
+    An absent or blank argument is "no filter" rather than an error, matching
+    ``as_of``'s treatment of a blank string. An unrecognised state is NOT
+    normalised here — ``temporal.search_facts`` raises on it, and the
+    dispatcher turns that into a tool error, because a misspelled filter that
+    silently degrades to "any" answers a question nobody asked.
+    """
+    raw = args.get("dated")
+    if raw is None or str(raw).strip() == "":
+        return "any"
+    return str(raw).strip()
+
+
 def _apply_as_of(
     facts: List[TemporalFact], as_of: Optional[str]
 ) -> List[TemporalFact]:
@@ -351,11 +367,12 @@ def _undated_included(rows: Sequence[JSONDict]) -> int:
     in front of it. Hence: counted last, over the shipped rows, after the query
     filter, the limit cap and CTX-01 truncation have each had their say.
 
-    The predicate is ``temporal._parse_iso`` rather than a test for the
-    "undated" sentinel, because that is exactly what ``facts_as_of`` treats as
-    undated; a second opinion here would let the count drift from the filter.
+    The predicate is ``temporal.is_dated`` rather than a test for the
+    "undated" sentinel, because parseability is exactly what ``facts_as_of``
+    treats as dated; a second opinion here would let the count drift from the
+    filter.
     """
-    return sum(1 for row in rows if _parse_fact_ts(row.get("valid_from")) is None)
+    return sum(1 for row in rows if not is_dated(row.get("valid_from")))
 
 
 # Refusing this pair is the point: see the search_facts dispatcher.
@@ -803,6 +820,11 @@ class LLMWikiMCPServer:
         # is what an agent reads to decide the tool can answer its question.
         finding_kind_enum = list(SESSION_FINDING_KINDS)
         finding_kind_list = ", ".join(SESSION_FINDING_KINDS)
+        # Undated is a state of the fact, not a value of valid_from: most facts
+        # on a real graph carry no usable timestamp, so "only the dated ones"
+        # and "only the ones we could not date" are both real questions and
+        # neither is answerable by filtering on a string.
+        dated_prop = {"type": "string", "enum": list(DATED_FILTERS), "default": "any", "description": "Restrict to facts by whether they carry a usable valid_from: 'any' (default, no filter), 'dated' (a parseable ISO-8601 valid_from — the only facts as_of/timeline can order), or 'undated'. Echoed back as 'dated' when it is not 'any'."}
         as_of_prop = {"type": "string", "description": "Bitemporal time-travel pivot, ISO-8601 (e.g. '2026-03-01' or '2026-03-01T12:00:00Z'). Returns only the facts whose validity interval covers that instant: valid_from <= as_of < valid_to. Undated facts are included but counted back as 'undated_included' — how many of the rows IN THIS RESPONSE lack a usable valid_from, so a thin-coverage answer is never mistaken for a complete one. Unparseable values error rather than silently answering over the whole corpus."}
         return [
             {
@@ -1083,7 +1105,7 @@ class LLMWikiMCPServer:
             },
             {
                 "name": "search_facts",
-                "description": "Search Graphiti-style temporal facts projected from the validated ResearchGraph, including evidence and provenance.",
+                "description": "Search Graphiti-style temporal facts projected from the validated ResearchGraph, including evidence and provenance. Ranks on fact CONTENT — subject, predicate, object and evidence — so an id or metadata fragment is not a match.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -1103,6 +1125,7 @@ class LLMWikiMCPServer:
                             ),
                         },
                         "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
+                        "dated": dated_prop,
                         "as_of": as_of_prop,
                         "budget_chars": budget_chars_prop,
                     },
@@ -1112,7 +1135,7 @@ class LLMWikiMCPServer:
             },
             {
                 "name": "timeline",
-                "description": "Return a temporal timeline of matching facts ordered by valid_from/source time.",
+                "description": "Return a temporal timeline of matching facts ordered by parsed valid_from, with the undated facts bucketed last and counted back as 'undated_events' rather than interleaved.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -1120,6 +1143,7 @@ class LLMWikiMCPServer:
                         "project": project_prop, "agent": agent_prop,
                         "query": {"type": "string", "description": "Optional fact search terms."},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+                        "dated": dated_prop,
                         "as_of": as_of_prop,
                         "budget_chars": budget_chars_prop,
                     },
@@ -2526,7 +2550,18 @@ class LLMWikiMCPServer:
                 # An unparseable pivot must NOT degrade into a whole-corpus
                 # answer wearing an "as of DATE" label (temporal.facts_as_of).
                 return {"error": str(exc)}
-            result = search_facts(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 10)), current_only=current_only)
+            try:
+                result = search_facts(
+                    facts,
+                    query=str(args.get("query", "")),
+                    limit=int(args.get("limit", 10)),
+                    current_only=current_only,
+                    dated=_dated_arg(args),
+                )
+            except ValueError as exc:
+                # An unknown `dated` state must not degrade into an unfiltered
+                # answer, for the same reason an unparseable `as_of` does not.
+                return {"error": str(exc)}
             if as_of is not None:
                 # Report what actually ran, the way search_nodes reports `mode`.
                 result["as_of"] = as_of
@@ -2548,7 +2583,15 @@ class LLMWikiMCPServer:
                 facts = _apply_as_of(facts, as_of)
             except ValueError as exc:
                 return {"error": str(exc)}
-            result = timeline(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 50)))
+            try:
+                result = timeline(
+                    facts,
+                    query=str(args.get("query", "")),
+                    limit=int(args.get("limit", 50)),
+                    dated=_dated_arg(args),
+                )
+            except ValueError as exc:
+                return {"error": str(exc)}
             if as_of is not None:
                 result["as_of"] = as_of
             # CTX-01: per-fact truncation of evidence blocks (§5.3).
@@ -2557,6 +2600,10 @@ class LLMWikiMCPServer:
             )
             if continuation:
                 result["continuation"] = continuation
+            # Recounted after truncation: the undated bucket sits at the TAIL
+            # of the sort, so it is exactly what the budget drops first, and a
+            # count taken before it describes rows behind the continuation line.
+            result["undated_events"] = _undated_included(result["events"])
             if as_of is not None:
                 result["undated_included"] = _undated_included(result["events"])
             return result

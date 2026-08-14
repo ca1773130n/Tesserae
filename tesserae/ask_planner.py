@@ -243,14 +243,14 @@ def _undated_shipped(rows: List[Dict[str, Any]]) -> int:
     two-row answer claim dozens of undated rows — inverting the "how thin is
     this?" judgement the counter exists to support (mcp_server._undated_included).
 
-    The predicate is ``temporal._parse_iso``, not a test for the "undated"
+    The predicate is ``temporal.is_dated``, not a test for the "undated"
     sentinel ``TemporalFactProjector`` writes, because parseability is exactly
     what the filters treat as dated; a second opinion would let the count
     drift from the filter.
     """
-    from .temporal import _parse_iso
+    from .temporal import is_dated
 
-    return sum(1 for row in rows if _parse_iso(row.get("valid_from")) is None)
+    return sum(1 for row in rows if not is_dated(row.get("valid_from")))
 
 
 _FINDING_TYPES = {kind: t.value for kind, t in SESSION_FINDING_KIND_TO_TYPE.items()}
@@ -337,8 +337,8 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
         return _clip(header + body), []
 
     if action == "timeline":
-        from .temporal import (FACT_MATCH_CEILING, _parse_iso, facts_as_of,
-                               facts_since, timeline)
+        from .temporal import (FACT_MATCH_CEILING, facts_as_of, facts_since,
+                               is_dated, timeline)
 
         as_of = _date_arg(args, "as_of")
         since = _date_arg(args, "since")
@@ -368,7 +368,7 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
             # writes the literal string "undated" for an unknown valid_from, so
             # `valid_from or '(undated)'` never fired and every undated row
             # rendered as a date the model could read as one.
-            f"- {e.get('valid_from') if _parse_iso(e.get('valid_from')) else '(undated)'} "
+            f"- {e.get('valid_from') if is_dated(e.get('valid_from')) else '(undated)'} "
             f"{e.get('subject_name')} "
             f"--{e.get('predicate')}--> {e.get('object_name')}"
             + (f" ({e.get('evidence')})" if e.get("evidence") else "")

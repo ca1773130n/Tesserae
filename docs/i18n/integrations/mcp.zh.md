@@ -70,8 +70,8 @@ tesserae projects mcp-config
 | `search_nodes` | 按 `query`、`type`/`types`、`kind`、`limit`、混合 `mode`/`weights` 过滤公开图节点；`include_superseded` 可显示已废弃节点 |
 | `node_context` | 一个节点 + 它的相邻边 + 邻居节点。`use_ppr` 用个性化 PageRank 而非 1 跳游走对邻居排序；`include_superseded`、`limit` 限定结果 |
 | `embedding_status` | 报告驱动混合检索的活动嵌入后端 |
-| `search_facts` | 从图谱投影出的时序事实（Graphiti 风格）；`current_only` 仅过滤当前事实，`as_of` 按过去某一日期作答。两者不可同时使用（表达不同的时钟），且 `undated_included` 会报告返回行中有多少条没有日期 |
-| `timeline` | 按 `valid_from` 排序的事实，用于纵向视图；`as_of` 按过去某一日期作答（这是对有效区间的时点定位，而非范围下界），`undated_included` 会报告返回行中有多少条没有日期。没有日期的事实在 `as_of` 下仍会保留，因此这个计数才是区分单薄答案与完整答案的依据 |
+| `search_facts` | 从图谱投影出的时序事实（Graphiti 风格），排序只看事实内容（主语、谓词、宾语、证据），不看序列化后的整条事实，因此 id 或元数据片段不算命中；`dated`（`any`、`dated`、`undated`）按事实是否带有可用的 `valid_from` 筛选；`current_only` 仅过滤当前事实，`as_of` 按过去某一日期作答。两者不可同时使用（表达不同的时钟），且 `undated_included` 会报告返回行中有多少条没有日期 |
+| `timeline` | 按解析后的 `valid_from` 排序的事实，用于纵向视图；没有日期的事实统一排在所有有日期的事实之后，并以 `undated_events` 报告条数，而不是混排其间；`dated`（`any`、`dated`、`undated`）按事实是否带有可用的 `valid_from` 筛选；`as_of` 按过去某一日期作答（这是对有效区间的时点定位，而非范围下界），`undated_included` 会报告返回行中有多少条没有日期。没有日期的事实在 `as_of` 下仍会保留，因此这个计数才是区分单薄答案与完整答案的依据 |
 | `graph_ppr` | 从一个或多个 `seed_node_id` 出发的个性化 PageRank，返回最相关的 top-K 节点；可调 `alpha`、`directed`、`edge_type_weights` |
 | `wiki_page` | 节点对应的、已编译的 wiki 页面正文，以及它引用的内部链接 |
 | `raw_source` | 原始 markdown 源文（上限 16 KB） |

@@ -1018,8 +1018,8 @@ def _coverage_graph(
     backdated: int = 0,
 ) -> dict:
     """Edges whose endpoints carry a first_seen_at get a real ``valid_from``;
-    endpoints without one land in the literal ``"undated"`` bucket that
-    ``timeline()`` sorts under with no signal to the caller.
+    endpoints without one land in the undated bucket ``timeline()`` sorts
+    behind every dated fact and counts back as ``undated_events``.
 
     ``edge_dated``, ``chained``, ``resolved`` and ``backdated`` build the
     shapes that the probe's dating and invalidation rules BRANCH on. They
