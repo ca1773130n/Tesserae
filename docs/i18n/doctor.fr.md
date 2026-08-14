@@ -43,7 +43,7 @@ Les vérifications, regroupées par catégorie :
 | `idempotence` | hygiene | le fil-piège `idempotence_suspect` du snapshot de sortie | rapport seulement (c’est un signal de bug, pas quelque chose à auto-réparer) |
 | `orphan_worktrees` | hygiene | enregistrements `git worktree` périmés | **SAFE** : `git worktree prune` ; la suppression de répertoires reste rapport seulement |
 | `hook_log_bloat` | hygiene | croissance de `.tesserae/.session-*-hook.log` | **SAFE** : fait tourner/tronque les logs au-delà de 10 Mo |
-| `sidecars` | hygiene | entrées de `.tesserae/` face au registre des sidecars (`tesserae/sidecars.py`) : `*.tmp.<pid>.<hex>` orphelins, copies manuelles `graph.json.bak-*`, entrées non classées | **SAFE** : supprime uniquement les fichiers tmp orphelins dont le pid écrivain est mort et vieux de plus de 24 h ; sauvegardes et non classés en rapport seulement |
+| `sidecars` | hygiene | entrées de `.tesserae/` face au registre des sidecars ([`tesserae/sidecars.py`](sidecars.fr.md)) : `*.tmp.<pid>.<hex>` orphelins, copies manuelles `graph.json.bak-*`, entrées non classées | **SAFE** : supprime uniquement les fichiers tmp orphelins dont le pid écrivain est mort et vieux de plus de 24 h ; sauvegardes et non classés en rapport seulement |
 | `code_scope_leftovers` | hygiene | restes de la couche de code retirée : `code-graph*.json`, lignes de types de code dans `sqlite.db` | rapport seulement — le nettoyage est une suppression de masse, il vit donc sur son propre verbe (voir ci-dessous) |
 
 Une vérification qui plante est rapportée comme un constat d’erreur — doctor lui-même ne lève jamais d’exception.

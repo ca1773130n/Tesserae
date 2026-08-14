@@ -43,7 +43,7 @@ tesserae doctor --project ~/src/other
 | `idempotence` | hygiene | 출력-스냅샷 `idempotence_suspect` 트립와이어 | 보고만 (이는 버그 신호이지 자동 복구 대상이 아님) |
 | `orphan_worktrees` | hygiene | 오래된 `git worktree` 등록 | **SAFE**: `git worktree prune`; 디렉터리 삭제는 보고만 |
 | `hook_log_bloat` | hygiene | `.tesserae/.session-*-hook.log` 증가 | **SAFE**: 10 MB 초과 로그를 로테이션/절단 |
-| `sidecars` | hygiene | 사이드카 레지스트리(`tesserae/sidecars.py`) 기준 `.tesserae/` 항목 점검: 고아 `*.tmp.<pid>.<hex>`, 수동 `graph.json.bak-*` 사본, 미분류 항목 | **SAFE**: 작성 프로세스가 종료되고 24시간이 지난 고아 tmp 파일만 삭제; 백업과 미분류 항목은 보고만 |
+| `sidecars` | hygiene | 사이드카 레지스트리([`tesserae/sidecars.py`](sidecars.ko.md)) 기준 `.tesserae/` 항목 점검: 고아 `*.tmp.<pid>.<hex>`, 수동 `graph.json.bak-*` 사본, 미분류 항목 | **SAFE**: 작성 프로세스가 종료되고 24시간이 지난 고아 tmp 파일만 삭제; 백업과 미분류 항목은 보고만 |
 | `code_scope_leftovers` | hygiene | 폐기된 코드 레이어의 잔여물: `code-graph*.json`, `sqlite.db`의 코드 타입 행 | 보고만 — 정리는 대량 삭제라 별도 verb로 분리 (아래 참조) |
 
 점검이 크래시하면 error finding으로 보고됩니다 — doctor 자체는 절대 예외를

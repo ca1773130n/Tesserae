@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -134,3 +135,88 @@ def test_mcp_tool_docs_match_the_real_tool_list() -> None:
         "these are documented now — remove them from KNOWN_UNDOCUMENTED so the "
         f"ratchet keeps tightening: {stale_exemptions}"
     )
+
+
+# ``| `name` | `kind` | ... |`` — the classification rows of docs/sidecars.md.
+# Identifiers stay verbatim in every translation, so the same regex reads the
+# mirrors.
+_SIDECAR_ROW = re.compile(r"^\| `([^`]+)` \| `([a-z]+)` \|", re.MULTILINE)
+#: Code spans on the single line following the safe-list marker.
+_SAFE_LIST = re.compile(r"<!-- sidecars:safe-list -->\n((?:`[^\n]*\n)+)")
+
+
+def _sidecar_docs() -> list[Path]:
+    return [DOCS / "sidecars.md"] + [DOCS / "i18n" / f"sidecars.{lang}.md" for lang in LANGS]
+
+
+def test_sidecar_doc_classification_matches_the_registry() -> None:
+    """docs/sidecars.md may not disagree with `tesserae/sidecars.py`.
+
+    The doc exists to answer "what breaks if I delete this", so a row that
+    names a file the registry no longer knows — or calls it `cache` after the
+    registry made it `accumulated` — is worse than no doc: it is a confident
+    wrong answer about data loss. Renaming a sidecar without touching the page
+    used to be silent, in English and in all seven mirrors at once.
+    """
+    from tesserae.sidecars import SCOPE_PROJECT, SCOPE_USER, classify
+
+    problems: list[str] = []
+    for doc in _sidecar_docs():
+        text = doc.read_text(encoding="utf-8")
+        rows = _SIDECAR_ROW.findall(text)
+        assert rows, f"no classification rows found in {doc.name} — the table shape changed, fix this test"
+        for name, kind in rows:
+            entry = classify(name, scope=SCOPE_PROJECT) or classify(name, scope=SCOPE_USER)
+            if entry is None:
+                problems.append(f"{doc.name}: `{name}` is documented but no registry entry claims it")
+            elif entry.kind != kind:
+                problems.append(f"{doc.name}: `{name}` documented as {kind}, registry says {entry.kind}")
+
+    assert not problems, "\n".join(problems)
+
+
+def test_sidecar_doc_names_every_kind_and_every_unsafe_entry() -> None:
+    """The doc must cover all four kinds and every entry a reset must not remove.
+
+    Coverage in one direction only, deliberately: the safe-to-delete entries are
+    summarised as a list because losing one costs a recompile, but an
+    `accumulated` file or an LLM-backed cache that nobody wrote down is exactly
+    the deletion this page exists to prevent. Adding one to the registry must
+    therefore fail here until the page names it.
+    """
+    from tesserae.sidecars import KINDS, SIDECARS
+
+    text = (DOCS / "sidecars.md").read_text(encoding="utf-8")
+    spans = set(re.findall(r"`([^`\n]+)`", text))
+
+    missing_kinds = sorted(k for k in KINDS if f"`{k}`" not in text)
+    assert not missing_kinds, f"kinds absent from docs/sidecars.md: {missing_kinds}"
+
+    undocumented = sorted({s.name for s in SIDECARS if not s.safe_to_delete} - spans)
+    assert not undocumented, (
+        f"entries a bulk reset must not remove, absent from docs/sidecars.md: {undocumented}"
+    )
+
+
+def test_sidecar_doc_safe_list_is_actually_safe() -> None:
+    """Everything the page tells you to reclaim freely is `safe_to_delete`.
+
+    The dangerous direction: flipping a registry entry to unsafe (the way
+    `session_findings` was, once its findings became nodes) while the page still
+    lists it among the free reclaims.
+    """
+    from tesserae.sidecars import SCOPE_PROJECT, classify
+
+    text = (DOCS / "sidecars.md").read_text(encoding="utf-8")
+    block = _SAFE_LIST.search(text)
+    assert block, "safe-list marker or its list is gone from docs/sidecars.md"
+
+    wrong: list[str] = []
+    for name in re.findall(r"`([^`\n]+)`", block.group(1)):
+        entry = classify(name, scope=SCOPE_PROJECT)
+        if entry is None:
+            wrong.append(f"`{name}` is listed as safe but no registry entry claims it")
+        elif not entry.safe_to_delete:
+            wrong.append(f"`{name}` is listed as safe but the registry marks it unsafe to delete")
+
+    assert not wrong, "\n".join(wrong)
