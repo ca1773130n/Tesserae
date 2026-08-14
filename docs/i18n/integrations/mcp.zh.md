@@ -84,8 +84,10 @@ tesserae projects mcp-config
 `explain: true` 并用一个 `profile` 作答——对于 `bm25`、`lexical`
 和 `embedding` 这三条通道，各自的权重、`candidates_in`、评分了多少条，
 `embed_calls` / `cache_hits` / `cache_misses` 及其挂钟时间，加上总体
-`candidates_in` / `admitted` / `returned` 以及哪些通道对每个返回节点有贡献。
-`search_nodes` 返回一份 profile；`compile_context`
+`candidates_in` / `admitted` / `returned` 以及哪些通道对其计数的各节点有贡献。`returned` 和那个按节点的通道归因是
+**预算前的**：融合在自身的 top-`k` 切片上固定两者，而约束性的 `budget_chars` 在之后于 MCP 层裁剪那个切片，不重写
+profile。因此在紧预算下 `returned` 描述检索器产生的切片而非响应中的行，而 `continuation`
+行是报告差异的东西。`search_nodes` 返回一份 profile；`compile_context`
 返回一个列表，每条种子搜索一份。
 
 默认关闭，关闭不只是形式：度量有成本，因此这是诊断工具而非常开不关。
@@ -117,9 +119,9 @@ tesserae projects mcp-config
 | 工具 | 用途 |
 |---|---|
 | `agent_view_explain` | *无需加载*即可解释一个智能体作用域视图：解析模式（worker / manager / org）、成员智能体、每个 L1 产物的路径与节点数，以及 `distilled_through` 陈旧水位线 |
-| `drill_down` | 把蒸馏物的 `member_ref` 解析回原始 L0 节点——管理者越过蒸馏可见性的显式、可审计升级。返回状态 `alive` / `changed` / `absorbed` / `gone`；每次调用都会记入 sidecar。钻取一个 `Artifact`（图形、表格或方程）添加三个其他节点类型绝不携带的键：`asset_path`（字节住在磁盘的何处）、`asset_sha256`（节点 id 设种所来的摘要）以及 `asset_site_path`（已构建站点的 `raw-assets/` 下的内容寻址地址）。格式错误的已声明哈希会丢弃 `asset_site_path` 而非虚拟一个地址 |
+| `drill_down` | 把蒸馏物的 `member_ref` 解析回原始 L0 节点——管理者越过蒸馏可见性的显式、可审计升级。返回状态 `alive` / `changed` / `absorbed` / `gone`；每次调用都会记入 sidecar。钻取一个**图形** `Artifact`，其资产在项目内部解析，添加三个其他节点类型绝不携带的键：`asset_path`（字节住在磁盘的何处）、`asset_sha256`（那些字节的摘要，与 kind 共同设种节点 id）以及 `asset_site_path`（已构建站点的 `raw-assets/` 下的内容寻址地址）。表格与方程 Artifact 没有资产——其内容*就是*其描述——而一个在项目根之外解析的图形永不存储路径；两者都用普通键钻取。格式错误的已声明哈希会丢弃 `asset_site_path` 而非虚拟一个地址 |
 | `read_audit` | 谁在读这张图谱：按时间倒序返回记录下来的读取事件（`tool`、`actor`、`node_ids`、`at`、`tesserae_version`），并附上按 actor 的统计，好让驱动「因闲置而遗忘」的访问计数能归属到具体读者。**默认关闭、需显式开启** —— 除非在服务端进程上设置 `TESSERAE_READ_AUDIT=1`，否则什么都不记录，因为常开的审计会把每一次读取都变成一次写入。关掉开关后已记录的行仍可读取；`enabled` 报告当前设置。可按 `actor`、`tool`、`node_id` 过滤 |
-| `graph_write` | 直接把有类型的节点与边写入图谱——不经 markdown，不经抽取流程。写入会追加到只增不改的 overlay，并作为编译生产者重放，因此**能挺过重新编译**。它很严格：未知类型、没有证据的边、端点既不在本次载荷内也不是已有节点 id，都会被拒绝。**要撤回**一件根本就是错的东西而不必编造替代品：把一条 `retracts` 边**按 id** 指向那个错误节点——目标会从所有默认读取（`search_nodes`、`fresh_insights`、`node_context`、`compile_context`）中被抑制，但用 `include_superseded: true` 仍可达到，且什么都不会被删除 |
+| `graph_write` | 直接把有类型的节点与边写入图谱——不经 markdown，不经抽取流程。写入会追加到只增不改的 overlay，并作为编译生产者重放，因此**能挺过重新编译**。它很严格：未知类型、没有证据的边、端点既不在本次载荷内也不是已有节点 id，都会被拒绝。**要撤回**一件根本就是错的东西而不必编造替代品：把一条 `retracts` 边**按 id** 指向那个错误节点——目标脱落于发现（`search_nodes`、`fresh_insights`）、脱落于上下文选择（`compile_context`），以及脱落于 `node_context` 返回的每个邻域列表与关联边。它*不*做的是向叫出了那一个的人隐藏节点：一个按 id 或名称的准确 `node_context` 查找仍然返回节点本身，标记为 `"retracted": true`，因为调用者要求了那一个。`include_superseded: true` 把它放回发现面，且什么都不会被删除 |
 
 **问答与注册表**
 

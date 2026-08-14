@@ -84,9 +84,14 @@ tesserae projects mcp-config
 받아 `profile`로 응답합니다 — `bm25`, `lexical`, `embedding` 차선 각각의 
 가중치, `candidates_in`, 채점한 개수, `embed_calls` / `cache_hits` / 
 `cache_misses`와 벽 시간, 그리고 총 `candidates_in` / `admitted` / 
-`returned`와 어느 차선이 각 반환 노드에 실제로 기여했는지. `search_nodes`는 
-한 개의 프로파일을 반환하고, `compile_context`는 실행한 각 seed 검색당 
-하나씩의 목록을 반환합니다.
+`returned`, 그리고 그것이 세는 각 노드에 어느 차선이 기여했는지. `returned`와
+그 노드별 차선 귀속은 **예산 적용 전** 값입니다: 융합이 그 자신의 top-`k`
+슬라이스 위에서 둘을 고정하고, 구속력 있는 `budget_chars`가 그 뒤에 MCP
+계층에서 프로파일을 다시 쓰지 않은 채 그 슬라이스를 잘라냅니다. 그래서
+빡빡한 예산 아래에서 `returned`는 응답의 행이 아니라 검색기가 생산한
+슬라이스를 기술하고, 그 차이를 보고하는 것은 `continuation` 줄입니다.
+`search_nodes`는 한 개의 프로파일을 반환하고, `compile_context`는 
+실행한 각 seed 검색당 하나씩의 목록을 반환합니다.
 
 기본값이 off이고, 그것이 형식만은 아닙니다: 측정에는 시간이 들기 때문에, 
 이것은 계속 켜 둘 것이 아니라 진단입니다. 순위를 옮길 수 없습니다 — 모든 
@@ -119,9 +124,9 @@ tesserae projects mcp-config
 | 도구 | 용도 |
 |---|---|
 | `agent_view_explain` | 에이전트 스코프 뷰를 *로드하지 않고* 설명합니다: 해석 모드(worker / manager / org), 구성원 에이전트, 각 L1 아티팩트의 경로와 노드 수, 그리고 `distilled_through` 신선도 워터마크 |
-| `drill_down` | 증류본의 `member_ref`를 원본 L0 노드로 되돌립니다 — 증류된 가시성을 넘어서는 관리자의 명시적이고 감사 기록되는 에스컬레이션. 상태는 `alive` / `changed` / `absorbed` / `gone`이며 모든 호출이 사이드카에 기록됩니다. `Artifact`(그림, 표, 또는 방정식)을 drilling하면 다른 노드 타입은 절대 가지지 않는 세 개의 키가 추가됩니다: `asset_path`(바이트가 디스크의 어디 있는지), `asset_sha256`(노드 id가 시종된 다이제스트), `asset_site_path`(구축된 사이트의 `raw-assets/` 아래의 콘텐츠 주소). 잘못된 선언 hash는 주소를 지어내지 않고 `asset_site_path`를 떨어뜨립니다 |
+| `drill_down` | 증류본의 `member_ref`를 원본 L0 노드로 되돌립니다 — 증류된 가시성을 넘어서는 관리자의 명시적이고 감사 기록되는 에스컬레이션. 상태는 `alive` / `changed` / `absorbed` / `gone`이며 모든 호출이 사이드카에 기록됩니다. **그림** `Artifact`를 drilling하고 그 자산이 프로젝트 안에 해결되었으면 다른 노드는 절대 가지지 않는 세 개의 키가 추가됩니다: `asset_path`(바이트가 디스크의 어디 있는지), `asset_sha256`(그 바이트의 다이제스트이며, 종류와 함께 노드 id를 시종함), `asset_site_path`(구축된 사이트의 `raw-assets/` 아래의 콘텐츠 주소). 표와 방정식 결과물은 자산이 전혀 없습니다 — 그들의 콘텐츠 *는* 설명입니다 — 그리고 프로젝트 루트 바깥에서 해결된 그림은 절대 경로를 저장하지 않았습니다; 둘 다 일반 키로 drilling됩니다. 잘못된 선언 hash는 주소를 지어내지 않고 `asset_site_path`를 떨어뜨립니다 |
 | `read_audit` | 누가 이 그래프를 읽었는가. 기록된 읽기 이벤트(`tool`, `actor`, `node_ids`, `at`, `tesserae_version`)를 최신순으로 돌려주고 액터별 집계를 함께 제공하므로, 미사용에 의한 망각을 움직이는 접근 횟수를 읽은 주체에게 귀속시킬 수 있습니다. **옵트인** — 서버 프로세스에 `TESSERAE_READ_AUDIT=1`을 설정하지 않으면 아무것도 기록되지 않습니다. 항상 켜진 감사는 모든 읽기를 쓰기로 만들기 때문입니다. 플래그를 꺼도 이미 기록된 행은 계속 읽을 수 있으며, `enabled`가 현재 설정을 알려줍니다. `actor`, `tool`, `node_id`로 필터링합니다 |
-| `graph_write` | 타입 지정 노드와 엣지를 그래프에 직접 씁니다 — 마크다운도, 추출 패스도 없습니다. append-only 오버레이에 추가되어 컴파일 생산자로 재생되므로 **재컴파일을 견딥니다**. 엄격합니다: 알 수 없는 타입, 증거 없는 엣지, 이 페이로드에도 없고 기존 노드 id도 아닌 엔드포인트는 모두 거부됩니다. 그냥 틀린 것을 대체물을 지어내지 않고 **철회하려면**: `retracts` 엣지를 틀린 노드에 **id로** 겨누십시오 — 대상은 모든 기본 읽기(`search_nodes`, `fresh_insights`, `node_context`, `compile_context`)에서 억제되지만 `include_superseded: true`로는 여전히 닿을 수 있고, 아무것도 삭제되지 않습니다 |
+| `graph_write` | 타입 지정 노드와 엣지를 그래프에 직접 씁니다 — 마크다운도, 추출 패스도 없습니다. append-only 오버레이에 추가되어 컴파일 생산자로 재생되므로 **재컴파일을 견딥니다**. 엄격합니다: 알 수 없는 타입, 증거 없는 엣지, 이 페이로드에도 없고 기존 노드 id도 아닌 엔드포인트는 모두 거부됩니다. 그냥 틀린 것을 대체물을 지어내지 않고 **철회하려면**: `retracts` 엣지를 틀린 노드에 **id로** 겨누십시오 — 대상은 발견(`search_nodes`, `fresh_insights`)에서, 컨텍스트 선택(`compile_context`)에서, `node_context`가 반환하는 모든 이웃 목록과 incident edge에서 떨어져 나갑니다. 그것이 하지 않는 것은 노드의 이름을 지정하는 사람에게 숨기는 것입니다: id나 이름으로 정확한 `node_context` 조회는 여전히 노드 자체를 반환하며, `"retracted": true` 플래그가 붙습니다. 호출자가 그것을 요청했기 때문입니다. `include_superseded: true`는 그것을 발견 표면에 다시 넣고, 아무것도 삭제되지 않습니다 |
 
 **Q&A 및 레지스트리**
 

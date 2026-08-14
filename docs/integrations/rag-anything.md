@@ -109,9 +109,10 @@ Current mapping:
 
 ### Per-owner facts ride the `part_of` edge
 
-An `Artifact`'s id is seeded from its content hash and nothing else, so the
-node is deliberately **document-agnostic**: the same figure printed in two
-papers is one node with a `part_of` edge per owner. But `kind`, `page`,
+An `Artifact`'s id is seeded from its kind and its content hash, and nothing
+else — no document, path, caption or page — so the node is deliberately
+**document-agnostic**: the same figure printed in two papers is one node with a
+`part_of` edge per owner. But `kind`, `page`,
 `caption` and the 1-based per-kind `ordinal` are facts about the *(artifact,
 document)* pair — kept only on the node, a shared artifact would keep whichever
 document merged first and silently lose every later owner's page. They ride the

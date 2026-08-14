@@ -103,8 +103,13 @@ with no ledger it errors rather than handing back the whole corpus under an
 and `embedding` lanes its weight, `candidates_in`, how many it scored,
 `embed_calls` / `cache_hits` / `cache_misses` and its wall time, plus the total
 `candidates_in` / `admitted` / `returned` and which lanes actually contributed
-each returned node. `search_nodes` returns one profile; `compile_context`
-returns a list, one per seed search it ran.
+each of the nodes it counts. `returned` and that per-node lane attribution are
+**pre-budget**: the fusion fixes both over its own top-`k` slice, and a binding
+`budget_chars` trims that slice afterwards, in the MCP layer, without rewriting
+the profile. So under a tight budget `returned` describes the slice the
+retriever produced rather than the rows in the response, and the `continuation`
+line is what reports the difference. `search_nodes` returns one profile;
+`compile_context` returns a list, one per seed search it ran.
 
 Off by default, and off is not a formality: measuring costs time, so this is a
 diagnostic rather than something to leave on. It cannot move a ranking — every
@@ -138,9 +143,9 @@ after the fact.
 | Tool | Purpose |
 |---|---|
 | `agent_view_explain` | Explain an agent-scoped view *without loading it*: resolution mode (worker / manager / org), member agents, each L1 artifact's path, node count, and the `distilled_through` staleness watermark |
-| `drill_down` | Resolve a distillate `member_ref` back to its raw L0 node — the manager's explicit, audit-logged escalation past distilled visibility. Returns status `alive` / `changed` / `absorbed` / `gone`; every call is logged to the sidecar. Drilling an `Artifact` (a figure, table or equation) adds three keys the other node types never carry: `asset_path` (where the bytes live on disk), `asset_sha256` (the digest the node id was seeded from) and `asset_site_path` (the content-addressed address under a built site's `raw-assets/`). A malformed declared hash drops `asset_site_path` rather than inventing an address |
+| `drill_down` | Resolve a distillate `member_ref` back to its raw L0 node — the manager's explicit, audit-logged escalation past distilled visibility. Returns status `alive` / `changed` / `absorbed` / `gone`; every call is logged to the sidecar. Drilling a **figure** `Artifact` whose asset resolved inside the project adds three keys no other node carries: `asset_path` (where the bytes live on disk), `asset_sha256` (the digest of those bytes, which with the kind seeds the node id) and `asset_site_path` (the content-addressed address under a built site's `raw-assets/`). Table and equation Artifacts have no asset at all — their content *is* their description — and a figure resolved outside the project root never stored a path; both drill back with the ordinary keys. A malformed declared hash drops `asset_site_path` rather than inventing an address |
 | `read_audit` | Who has been reading the graph: recorded read events (`tool`, `actor`, `node_ids`, `at`, `tesserae_version`) newest first, plus a per-actor tally, so the access counts driving forgetting-by-disuse can be attributed to a reader. **Opt-in** — nothing is recorded unless `TESSERAE_READ_AUDIT=1` is set on the server process, because an always-on audit makes every read a write. Rows stay readable after the flag is turned off; `enabled` reports the current setting. Filter by `actor`, `tool`, `node_id` |
-| `graph_write` | Write typed nodes + edges into the graph directly — no markdown, no extraction pass. Appended to an append-only overlay and replayed as a compile producer, so the write **survives recompilation**. Strict: unknown types, an edge without evidence, or an endpoint that is neither in the payload nor an existing node id are all refused. **To retract** something simply wrong, without inventing a replacement: point a `retracts` edge at the wrong node **by id** — the target is suppressed from every default read (`search_nodes`, `fresh_insights`, `node_context`, `compile_context`) while staying reachable with `include_superseded: true`, and nothing is deleted |
+| `graph_write` | Write typed nodes + edges into the graph directly — no markdown, no extraction pass. Appended to an append-only overlay and replayed as a compile producer, so the write **survives recompilation**. Strict: unknown types, an edge without evidence, or an endpoint that is neither in the payload nor an existing node id are all refused. **To retract** something simply wrong, without inventing a replacement: point a `retracts` edge at the wrong node **by id** — the target drops out of discovery (`search_nodes`, `fresh_insights`), out of context selection (`compile_context`), and out of every neighbour list and incident edge `node_context` returns. What it does *not* do is hide the node from someone who names it: an exact `node_context` lookup by id or name still returns the node itself, flagged `"retracted": true`, because the caller asked for that one. `include_superseded: true` puts it back in the discovery surfaces, and nothing is deleted |
 
 **Q&A & registry**
 

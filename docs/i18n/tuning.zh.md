@@ -153,7 +153,7 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `TESSERAE_READ_AUDIT` | **关闭** | 记录每次 MCP 读取为一行——`{tool, actor, node_ids, at, tesserae_version}`——在 `.tesserae/sqlite.db` 的 `read_audit` 表中，通过 `read_audit` 工具读回，附上按 actor 的计数。默认关闭是因为跨越每一个读取面的常开审计会把每一次读都变成一次写；这道开关位于打开存储之前，因为创建这张表本身就是一次写。它的任何内容都不会进入 `graph.json` |
+| `TESSERAE_READ_AUDIT` | **关闭** | 记录移动访问计数的读取——`{tool, actor, node_ids, at, tesserae_version}`——在 `.tesserae/sqlite.db` 的 `read_audit` 表中，通过 `read_audit` 工具读回，附上按 actor 的计数。每当访问计数被碰撞的地方都写一行，因此行计数跟随表面而非调用：浮现节点列表的工具（`search_nodes`、`node_context`、`compile_context`、`graph_map`、`graph_ppr`、`ask` / `query`、`drill_down`、`find_session_findings`）写**每个调用一行**命名它计数的每个节点，而 `fresh_insights` 在自己的循环内碰撞因此写**每个所浮现节点一行**。不浮现任何东西的调用不写任何东西，而不读任何节点的工具——`schema`、`graph_summary`——永远不抵达审计，因为一行若不命名节点就无法解释任何访问计数。默认关闭是因为跨越每一个读取面的常开审计会把每一次读都变成一次写；这道开关位于打开存储之前，因为创建这张表本身就是一次写。它的任何内容都不会进入 `graph.json` |
 | `TESSERAE_ACTOR` | — | 当调用不带 agent view 时，将一次读归属于谁。actor 是调用解析的 `agent` 参数，否则就是这个；未设置则将读记录为匿名而不是虚拟一个名字 |
 
 关掉 `TESSERAE_READ_AUDIT` 会停止记录，而不擦除已记录的东西，无需重启服务器即可生效。审计的*目的*是[由于不用而遗忘](agent-memory.zh.md#遗忘--永不删除)：访问计数驱动了什么被吸收或降级，没有 actor 的情况下，一个闹腾 agent 轮询节点与一个人读一次是同样的输入。

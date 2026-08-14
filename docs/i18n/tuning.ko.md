@@ -153,7 +153,7 @@ cross-project navigate하는 project는 eager pass를 원합니다.
 
 | 변수 | 기본값 | 비고 |
 |---|---|---|
-| `TESSERAE_READ_AUDIT` | **off** | 각 MCP 읽기를 한 행으로 기록합니다 — `{tool, actor, node_ids, at, tesserae_version}` — `.tesserae/sqlite.db`의 `read_audit` 테이블에 있으며, `read_audit` 도구로 actor별 집계와 함께 다시 읽을 수 있습니다. 기본값이 off인 이유는 항상 켜진 감사가 모든 읽기 표면을 넘어 모든 읽기를 쓰기로 돌리기 때문입니다; 게이트는 스토어 열기 전에 앉으므로, 테이블을 만드는 것 자체가 쓰기이기 때문입니다. `graph.json`에는 절대 도달하지 않습니다 |
+| `TESSERAE_READ_AUDIT` | **off** | 접근 카운트가 범프되는 위치 어디든 기록합니다 — `{tool, actor, node_ids, at, tesserae_version}` — `.tesserae/sqlite.db`의 `read_audit` 테이블에 있으며, `read_audit` 도구로 actor별 집계와 함께 다시 읽을 수 있습니다. 한 줄은 범프가 일어나는 곳에 기록되므로, 행 개수는 표면을 따릅니다: 노드 목록을 표면화하는 도구(`search_nodes`, `node_context`, `compile_context`, `graph_map`, `graph_ppr`, `ask` / `query`, `drill_down`, `find_session_findings`)는 호출당 **한 줄씩** 카운트한 모든 노드를 명명하고, `fresh_insights`는 자체 루프 안에서 범프하고 따라서 표면화한 각 노드당 **한 줄씩** 씁니다. 표면화한 것이 없는 호출은 아무것도 쓰지 않으며, 노드를 전혀 읽지 않는 도구 — `schema`, `graph_summary` — 는 절대 감사에 도달하지 않습니다. 행이 노드를 명명하지 않으면 어떤 접근 카운트도 설명하지 않기 때문입니다. 기본값이 off인 이유는 항상 켜진 감사가 모든 읽기 표면을 넘어 모든 읽기를 쓰기로 돌리기 때문입니다; 게이트는 스토어 열기 전에 앉으므로, 테이블을 만드는 것 자체가 쓰기이기 때문입니다. `graph.json`에는 절대 도달하지 않습니다 |
 | `TESSERAE_ACTOR` | — | 호출이 agent 뷰를 전달하지 않을 때 읽기를 누구에게 돌릴지. actor는 호출이 하나를 해결하면 `agent` 인수이고, 아니면 이것; 미설정하면 읽기를 이름을 발명하는 대신 익명으로 기록합니다 |
 
 `TESSERAE_READ_AUDIT`을 끄면 기록을 멈추지만 이미 기록된 것을 지우지는
