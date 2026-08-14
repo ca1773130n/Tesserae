@@ -865,3 +865,61 @@ def test_multi_view_pool_reservation_walks_the_fused_ranking() -> None:
     assert reservation["delivered"] is True
     via = {c.node_id: c.via_views for c in bundle.citations}
     assert via["RB"] == ("causal",)
+
+
+# ---------------------------------------------------------------------------
+# Retrieval PROFILE (roadmap step 9)
+# ---------------------------------------------------------------------------
+
+
+def test_explain_profiles_the_seed_searches_and_leaves_the_bundle_identical() -> None:
+    """``explain`` reports on the seed searches; it must not compile a
+    different bundle. Body, selection and ranking are compared byte for byte
+    because a profile that could move any of them would be a ranking change
+    wearing a diagnostic's clothes."""
+    graph = _connected_graph()
+    plain = compile_context(
+        graph, project_root=None, query="gaussian splatting", backend=_backend()
+    )
+    explained = compile_context(
+        graph, project_root=None, query="gaussian splatting", backend=_backend(),
+        explain=True,
+    )
+
+    assert plain.retrieval_profiles is None
+    assert explained.body == plain.body
+    assert explained.selected_nodes == plain.selected_nodes
+    assert explained.ranked_nodes == plain.ranked_nodes
+    assert explained.seeds_used == plain.seeds_used
+
+    profiles = explained.retrieval_profiles
+    assert profiles is not None and len(profiles) == 1
+    prof = profiles[0]
+    assert prof.query == "gaussian splatting"
+    assert set(prof.lanes) == {"bm25", "lexical", "embedding"}
+    assert prof.candidates_in == len(graph.nodes)
+    assert prof.returned == len(prof.winners) > 0
+
+
+def test_explain_reports_one_profile_per_subquery_under_multi_pool() -> None:
+    """A summed profile would hide which sub-query was the expensive one, so
+    the list is per-search and its length is the search count."""
+    graph = _connected_graph()
+    explained = compile_context(
+        graph, project_root=None, query="gaussian splatting and bm25 ranking",
+        backend=_backend(), multi_pool=True, explain=True,
+    )
+    assert explained.retrieval_profiles is not None
+    assert len(explained.retrieval_profiles) >= 1
+    assert all(p.candidates_in == len(graph.nodes) for p in explained.retrieval_profiles)
+
+
+def test_explain_with_seeds_but_no_query_reports_an_empty_list_not_none() -> None:
+    """``None`` means "profiling never ran"; the empty list means "it ran and
+    no seed search happened". Collapsing the two would make an unprofiled
+    compile indistinguishable from a seed-only one."""
+    graph = _connected_graph()
+    bundle = compile_context(
+        graph, project_root=None, seeds=["splat"], backend=_backend(), explain=True
+    )
+    assert bundle.retrieval_profiles == []
