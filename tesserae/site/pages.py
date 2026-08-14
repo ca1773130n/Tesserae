@@ -2357,6 +2357,23 @@ _GRAPH_VIEW_EXTRA_TYPES: frozenset[str] = frozenset(
     # invisible on the site with nothing to notice it by.
     | SESSION_FINDING_TYPE_VALUES
 )
+# The assertion layer (``wiki_projector.ASSERTION_LAYER_TYPES`` — every Claim
+# variant, EvidenceSpan, and Artifact) is the deliberate exception to the
+# warning above: it is evidence *for* nodes on the canvas, not a peer of them,
+# and it is excluded here on purpose rather than by oversight. Two mechanical
+# reasons, beyond the semantics. (1) Volume: evidence outnumbers what it
+# supports — this repo's graph carries 15k+ ``evidenced_by`` edges — which is
+# the same flood that hides SourceDocument behind ``show_sources``.
+# (2) Topology: an Artifact's only edge is ``part_of`` → SourceDocument, and
+# SourceDocument is hidden by default, so admitting Artifact alone would put
+# unreachable orphan dots on the canvas rather than anything navigable.
+# Evidence is read through MCP ``drill_down`` and the content-addressed raw
+# asset page, which is where it is addressable. Consequently Artifact has no
+# ``_FAMILY_BY_TYPE`` entry either: family is consumed only by this payload,
+# so an entry for a type the payload never emits would be dead — and the
+# family maps here must stay in step with ``FAMILY_COLORS`` / ``FAMILY_HSL`` /
+# ``FAMILY_LABELS`` in ``js.py``, so an unused family is a drift hazard for no
+# gain. Pinned by ``test_assertion_layer_stays_off_the_graph_canvas``.
 _GRAPH_VIEW_TYPES: frozenset[str] = WIKI_LAYER_TYPES | _GRAPH_VIEW_EXTRA_TYPES
 
 
