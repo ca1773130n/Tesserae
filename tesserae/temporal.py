@@ -435,6 +435,16 @@ class TemporalFact:
     object_name: str
     object_type: str
     evidence: Optional[str] = None
+    # ONE axis, and it is VALID time: when the world was this way, derived by
+    # _source_ts from timestamps the SOURCES carry. That is what lets it live
+    # in an artifact — it is a pure function of graph.json.
+    #
+    # The other axis, TRANSACTION time (when WE learned the fact), is not here
+    # and must never be: it can only come from a wall clock, and a wall clock
+    # in graph.json or temporal_facts.jsonl is the byte-idempotence leak this
+    # repo has hit four times. It lives in the fact_observed SQLite sidecar —
+    # see tesserae.temporal_observed, which also carries the rule the two must
+    # obey: never read one clock off the other.
     valid_from: Optional[str] = None
     valid_to: Optional[str] = None
     # Which edge kind closed the interval: "supersedes" | "invalidates" |

@@ -1026,6 +1026,62 @@ class SqliteGraphStore:
         return int(row[0]) if row else 0
 
     # ------------------------------------------------------------------ #
+    # fact_observed sidecar (transaction time)                            #
+    # ------------------------------------------------------------------ #
+
+    def read_fact_observed(self) -> Dict[Tuple[str, str, str], Tuple[str, str]]:
+        """``{(subject_id, predicate, object_id): (first, last)}`` for every row."""
+        with self._connect() as con:
+            rows = con.execute(
+                "select subject_id, predicate, object_id,"
+                " first_compile_at, last_seen_compile_at from fact_observed"
+            ).fetchall()
+        return {(r[0], r[1], r[2]): (r[3], r[4]) for r in rows}
+
+    def write_fact_observed_many(
+        self, rows: Iterable[Tuple[str, str, str]], observed_at: str
+    ) -> int:
+        """Stamp ``observed_at`` on each fact key, first sighting write-once.
+
+        ``first_compile_at`` is deliberately NOT in the conflict update: it
+        answers "when did we first learn this" and a row that already exists
+        has already answered it. Overwriting it on every compile would turn
+        the whole axis into a duplicate of ``last_seen_compile_at``, which is
+        the failure this table exists to avoid.
+
+        ``observed_at`` is one value for the entire batch: the caller stamps
+        the compile boundary once, so the transaction clock ticks per compile
+        and cannot vary between two facts of the same compile.
+        """
+        params = [(s, p, o, observed_at, observed_at) for s, p, o in rows]
+        if not params:
+            return 0
+        with self._connect() as con:
+            con.executemany(
+                "insert into fact_observed"
+                " (subject_id, predicate, object_id,"
+                "  first_compile_at, last_seen_compile_at)"
+                " values (?, ?, ?, ?, ?)"
+                " on conflict(subject_id, predicate, object_id) do update set"
+                "  last_seen_compile_at = excluded.last_seen_compile_at",
+                params,
+            )
+            con.commit()
+        return len(params)
+
+    def count_fact_observed(self) -> int:
+        """Number of observed fact keys.
+
+        Read before an ``observed_as_of`` pivot runs: an empty ledger means
+        the transaction axis has never been written, and answering the pivot
+        from it would hand back the whole corpus wearing an "as we knew it
+        on DATE" label.
+        """
+        with self._connect() as con:
+            row = con.execute("select count(*) from fact_observed").fetchone()
+        return int(row[0]) if row else 0
+
+    # ------------------------------------------------------------------ #
     # Internals                                                           #
     # ------------------------------------------------------------------ #
 
@@ -1173,6 +1229,35 @@ class SqliteGraphStore:
             """
         )
         con.execute("create index if not exists idx_read_audit_actor on read_audit(actor)")
+
+        # fact_observed sidecar (transaction time). Same discipline as
+        # node_memory and node_vectors: CREATE TABLE IF NOT EXISTS,
+        # SQLite-only, NEVER serialized into graph.json OR into
+        # temporal_facts.jsonl.
+        #
+        # This is the ONLY wall-clock axis in the temporal model, and it is
+        # here rather than in either artifact for exactly that reason: a
+        # timestamp stamped from now() inside graph.json means the same
+        # sources compile to different bytes on Tuesday than on Monday, which
+        # is the leak class this repo has hit four times.
+        #
+        # Keyed on the fact's stable identity — (subject_id, predicate,
+        # object_id) — and NOT on TemporalFact.id, which hashes the evidence
+        # string too: an edge whose evidence was re-extracted with different
+        # wording is the same fact learned at the same time, and re-keying it
+        # would reset its first sighting.
+        con.execute(
+            """
+            create table if not exists fact_observed (
+                subject_id           text not null,
+                predicate            text not null,
+                object_id            text not null,
+                first_compile_at     text not null,
+                last_seen_compile_at text not null,
+                primary key (subject_id, predicate, object_id)
+            )
+            """
+        )
 
 
 def _row_to_node(row: tuple) -> ResearchNode:

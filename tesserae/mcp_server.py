@@ -69,6 +69,12 @@ from .temporal import (
     search_facts,
     timeline,
 )
+from .temporal_observed import (
+    FactKey,
+    FactObservation,
+    FactObservationLedger,
+    facts_observed_as_of,
+)
 from .verify import verify_claim
 from .wiki_projector import is_code_graph_node, kind_for_node
 from .wiki_store import WikiPageStore
@@ -334,10 +340,29 @@ def _dated_arg(args: Mapping[str, Any]) -> str:
     return str(raw).strip()
 
 
+def _observed_as_of_arg(args: Mapping[str, Any]) -> Optional[str]:
+    """The normalized ``observed_as_of`` pivot, or None when none was asked for.
+
+    Separate reader from :func:`_as_of_arg` on purpose: the two pivots run on
+    two different clocks and compose, so nothing may share a code path that
+    could quietly answer one under the other.
+    """
+    raw = args.get("observed_as_of")
+    if raw is None or str(raw).strip() == "":
+        return None
+    return str(raw).strip()
+
+
 def _apply_as_of(
     facts: List[TemporalFact], as_of: Optional[str]
 ) -> List[TemporalFact]:
-    """Apply the optional ``as_of`` bitemporal pivot to a projected fact list.
+    """Apply the optional ``as_of`` VALID-TIME pivot to a projected fact list.
+
+    Valid time, one axis: which facts were TRUE at that instant, read off
+    their own source-derived ``valid_from`` / ``valid_to``. The transaction
+    axis — which facts we had already LEARNED — is a different clock and a
+    different filter (:func:`_apply_observed_as_of`); this one cannot answer
+    it and must never be described as if it could.
 
     With ``as_of`` None the list comes back untouched — callers that never ask
     for a pivot keep their exact response shape.
@@ -379,6 +404,72 @@ def _undated_included(rows: Sequence[JSONDict]) -> int:
     return sum(1 for row in rows if not is_dated(row.get("valid_from")))
 
 
+def _apply_observed_as_of(
+    facts: List[TemporalFact],
+    observed_as_of: Optional[str],
+    project_root: Optional[Path],
+) -> Tuple[List[TemporalFact], Dict[FactKey, FactObservation]]:
+    """Apply the optional ``observed_as_of`` TRANSACTION-TIME pivot.
+
+    Returns ``(facts, observations)``; with ``observed_as_of`` None the list
+    comes back untouched and the map is empty, so callers that never ask for
+    the second pivot keep their exact response shape.
+
+    Transaction time is stamped at the compile boundary into the
+    ``fact_observed`` sidecar, so unlike ``as_of`` this pivot cannot be
+    answered from the facts alone. When the ledger is missing, unreachable or
+    empty we REFUSE: every fact would count as never-observed, be carried
+    through, and the caller would receive the entire corpus wearing an "as we
+    knew it on DATE" label — the same silent-whole-corpus failure an
+    unparseable ``as_of`` is already refused for.
+
+    Raises ``ValueError`` for both refusals; the dispatchers turn it into a
+    tool error on the path they already have for ``as_of``.
+    """
+    if observed_as_of is None:
+        return facts, {}
+    ledger = FactObservationLedger.for_project(project_root)
+    try:
+        rows = ledger.count() if ledger is not None else 0
+        observations = ledger.read() if ledger is not None and rows else {}
+    except Exception as exc:  # unreadable / locked / corrupt sidecar
+        raise ValueError(
+            OBSERVED_AS_OF_WITHOUT_LEDGER_ERROR.format(observed_as_of=observed_as_of)
+        ) from exc
+    if not observations:
+        raise ValueError(
+            OBSERVED_AS_OF_WITHOUT_LEDGER_ERROR.format(observed_as_of=observed_as_of)
+        )
+    kept, _unobserved_across_corpus = facts_observed_as_of(
+        facts, observations, observed_as_of
+    )
+    return kept, observations
+
+
+def _unobserved_included(
+    rows: Sequence[JSONDict], observations: Mapping[FactKey, FactObservation]
+) -> int:
+    """How many of the rows in THIS response the observation ledger cannot date.
+
+    The transaction-axis twin of :func:`_undated_included`, counted the same
+    way and for the same reason: over the rows that actually ship, after the
+    query filter, the limit cap and CTX-01 truncation have each had their say,
+    so "how thin is this answer?" is a judgement about the answer in front of
+    the caller rather than about a population it cannot see.
+
+    A row with no ledger entry is a fact that entered the graph before the
+    ledger did (or through a store that owns its own persistence). It is
+    carried through, exactly as an undated ``valid_from`` is — and, exactly as
+    there, saying so is what keeps the answer honest.
+    """
+    return sum(
+        1
+        for row in rows
+        if (row.get("subject_id"), row.get("predicate"), row.get("object_id"))
+        not in observations
+    )
+
+
 # Refusing this pair is the point: see the search_facts dispatcher.
 AS_OF_WITH_CURRENT_ONLY_ERROR = (
     "as_of and current_only ask different questions and cannot be combined: "
@@ -388,6 +479,18 @@ AS_OF_WITH_CURRENT_ONLY_ERROR = (
     "— usually the answer a time-travel query is after. Ask for one: drop "
     "current_only to time-travel to {as_of}, or drop as_of to filter for what "
     "is current."
+)
+
+
+# Refusing an unanswerable pivot is the point: see _apply_observed_as_of.
+OBSERVED_AS_OF_WITHOUT_LEDGER_ERROR = (
+    "observed_as_of={observed_as_of!r} asks what we had already LEARNED at that "
+    "instant, which is transaction time and lives in the fact_observed sidecar "
+    "— it cannot be derived from the facts, whose valid_from/valid_to are the "
+    "other clock. That ledger is empty or unreachable for this graph, so every "
+    "fact would count as never-observed and be carried through, handing back "
+    "the whole corpus under an 'as we knew it on DATE' label. Run a compile to "
+    "stamp it, or drop observed_as_of and use as_of for valid-time travel."
 )
 
 
@@ -848,7 +951,14 @@ class LLMWikiMCPServer:
         # and "only the ones we could not date" are both real questions and
         # neither is answerable by filtering on a string.
         dated_prop = {"type": "string", "enum": list(DATED_FILTERS), "default": "any", "description": "Restrict to facts by whether they carry a usable valid_from: 'any' (default, no filter), 'dated' (a parseable ISO-8601 valid_from — the only facts as_of/timeline can order), or 'undated'. Echoed back as 'dated' when it is not 'any'."}
-        as_of_prop = {"type": "string", "description": "Bitemporal time-travel pivot, ISO-8601 (e.g. '2026-03-01' or '2026-03-01T12:00:00Z'). Returns only the facts whose validity interval covers that instant: valid_from <= as_of < valid_to. Undated facts are included but counted back as 'undated_included' — how many of the rows IN THIS RESPONSE lack a usable valid_from, so a thin-coverage answer is never mistaken for a complete one. Unparseable values error rather than silently answering over the whole corpus."}
+        # Two clocks, two pivots, and the descriptions must keep saying which
+        # is which: `as_of` reads the facts' own source-derived interval,
+        # `observed_as_of` reads the compile-stamped fact_observed sidecar.
+        # This surface called itself "bitemporal" while only the first axis
+        # existed — a description overstating a shipped capability is the
+        # defect class this repo has now corrected three times.
+        as_of_prop = {"type": "string", "description": "VALID-TIME travel pivot ('what was TRUE then'), ISO-8601 (e.g. '2026-03-01' or '2026-03-01T12:00:00Z'). Returns only the facts whose validity interval covers that instant: valid_from <= as_of < valid_to, both derived from the sources' own timestamps. Undated facts are included but counted back as 'undated_included' — how many of the rows IN THIS RESPONSE lack a usable valid_from, so a thin-coverage answer is never mistaken for a complete one. Unparseable values error rather than silently answering over the whole corpus. For 'what did we KNOW then' use observed_as_of, which is a different clock and composes with this one."}
+        observed_as_of_prop = {"type": "string", "description": "TRANSACTION-TIME pivot ('what had we LEARNED by then'), ISO-8601. Returns only the facts first recorded at or before that instant, read from the fact_observed sidecar stamped once per compile — never from the facts' valid_from, which is the sources' clock, not ours. Composes with as_of on purpose: as_of='2026-03-01' plus observed_as_of='2026-05-01' answers 'what did we believe held on 1 March, as we knew it on 1 May'. Facts the ledger cannot date are included and counted back as 'unobserved_included'. Requires a compiled project: with no ledger the pivot errors rather than returning the whole corpus under an 'as we knew it' label."}
         return [
             {
                 "name": "schema",
@@ -1185,6 +1295,7 @@ class LLMWikiMCPServer:
                         "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
                         "dated": dated_prop,
                         "as_of": as_of_prop,
+                        "observed_as_of": observed_as_of_prop,
                         "budget_chars": budget_chars_prop,
                     },
                     "required": ["query"],
@@ -1203,6 +1314,7 @@ class LLMWikiMCPServer:
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
                         "dated": dated_prop,
                         "as_of": as_of_prop,
+                        "observed_as_of": observed_as_of_prop,
                         "budget_chars": budget_chars_prop,
                     },
                     "additionalProperties": False,
@@ -2633,6 +2745,7 @@ class LLMWikiMCPServer:
             )
         if name == "search_facts":
             as_of = _as_of_arg(args)
+            observed_as_of = _observed_as_of_arg(args)
             current_only = bool(args.get("current_only", False))
             if as_of is not None and current_only:
                 # Two filters, two different clocks. `current_only` keeps facts
@@ -2646,12 +2759,21 @@ class LLMWikiMCPServer:
                 # different result. Nothing can depend on the combination —
                 # `as_of` and this guard ship together.
                 return {"error": AS_OF_WITH_CURRENT_ONLY_ERROR.format(as_of=as_of)}
-            facts = TemporalFactProjector().project(self._load_requested_graph(args))
+            graph, project_root = self._load_requested_graph_with_root(args)
+            facts = TemporalFactProjector().project(graph)
             try:
                 facts = _apply_as_of(facts, as_of)
+                # SECOND pivot, never merged into the first: `as_of` narrows to
+                # what was true then, `observed_as_of` to what we had learned by
+                # then. Applied after, so the pair reads left to right as "what
+                # did we believe on DATE, as we knew it on DATE2".
+                facts, observations = _apply_observed_as_of(
+                    facts, observed_as_of, project_root
+                )
             except ValueError as exc:
                 # An unparseable pivot must NOT degrade into a whole-corpus
-                # answer wearing an "as of DATE" label (temporal.facts_as_of).
+                # answer wearing an "as of DATE" label (temporal.facts_as_of),
+                # and neither must an observed_as_of with no ledger behind it.
                 return {"error": str(exc)}
             try:
                 result = search_facts(
@@ -2668,6 +2790,8 @@ class LLMWikiMCPServer:
             if as_of is not None:
                 # Report what actually ran, the way search_nodes reports `mode`.
                 result["as_of"] = as_of
+            if observed_as_of is not None:
+                result["observed_as_of"] = observed_as_of
             # CTX-01: per-fact truncation of evidence blocks (§5.3).
             result["facts"], continuation = _fit_payload_list(
                 result["facts"], _budget_chars_arg(args), text_field="evidence"
@@ -2678,12 +2802,23 @@ class LLMWikiMCPServer:
                 # LAST, so the count describes the rows the caller was handed
                 # rather than a wider population it cannot see (_undated_included).
                 result["undated_included"] = _undated_included(result["facts"])
+            if observed_as_of is not None:
+                # Same discipline on the transaction axis, and a separate key:
+                # a row can be undated on one clock and unobserved on the other.
+                result["unobserved_included"] = _unobserved_included(
+                    result["facts"], observations
+                )
             return result
         if name == "timeline":
             as_of = _as_of_arg(args)
-            facts = TemporalFactProjector().project(self._load_requested_graph(args))
+            observed_as_of = _observed_as_of_arg(args)
+            graph, project_root = self._load_requested_graph_with_root(args)
+            facts = TemporalFactProjector().project(graph)
             try:
                 facts = _apply_as_of(facts, as_of)
+                facts, observations = _apply_observed_as_of(
+                    facts, observed_as_of, project_root
+                )
             except ValueError as exc:
                 return {"error": str(exc)}
             try:
@@ -2697,6 +2832,8 @@ class LLMWikiMCPServer:
                 return {"error": str(exc)}
             if as_of is not None:
                 result["as_of"] = as_of
+            if observed_as_of is not None:
+                result["observed_as_of"] = observed_as_of
             # CTX-01: per-fact truncation of evidence blocks (§5.3).
             result["events"], continuation = _fit_payload_list(
                 result["events"], _budget_chars_arg(args), text_field="evidence"
@@ -2709,6 +2846,10 @@ class LLMWikiMCPServer:
             result["undated_events"] = _undated_included(result["events"])
             if as_of is not None:
                 result["undated_included"] = _undated_included(result["events"])
+            if observed_as_of is not None:
+                result["unobserved_included"] = _unobserved_included(
+                    result["events"], observations
+                )
             return result
         if name == "wiki_page":
             graph, project_root = self._load_requested_graph_with_root(args)

@@ -68,8 +68,8 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 | `search_nodes` | Filter public graph nodes by `query`, `type`/`types`, `kind`, `limit`, hybrid `mode`/`weights`; `include_superseded` to surface retired nodes |
 | `node_context` | A node + its incident edges + neighbouring nodes. `use_ppr` ranks neighbours by personalized PageRank instead of a 1-hop walk; `include_superseded` and `limit` bound the result |
 | `embedding_status` | Report the active embedding backend powering hybrid search, plus its persisted vector cache — `vectors_cached` for this backend/dim key, and process-wide `cache_hits` / `cache_misses` / `cache_errors`, so a cold or unwritable cache cannot be mistaken for a fast path. Accepts `graph_path` / `project` to pick the project whose sidecar is reported |
-| `search_facts` | Temporal facts projected from the graph (Graphiti-style), ranked over fact CONTENT — subject, predicate, object, evidence — never the serialized fact, so an id or a metadata fragment is not a match; `dated` (`any`, `dated`, `undated`) selects by whether a fact carries a usable `valid_from`; `current_only` filters to live facts, `as_of` answers as of a past date. The two are refused together — they express different clocks — and `undated_included` reports how many of the rows you got carry no date |
-| `timeline` | Facts ordered by PARSED `valid_from` for a longitudinal view, with undated facts bucketed after every dated one and counted back as `undated_events` rather than interleaved; `dated` (`any`, `dated`, `undated`) selects by whether a fact carries a usable `valid_from`; `as_of` answers as of a past date — a point pivot over validity intervals, not a range bound — and `undated_included` reports how many of the rows you got carry no date. An undated fact is kept by `as_of`, so that count is what tells a thin answer from a complete one |
+| `search_facts` | Temporal facts projected from the graph (Graphiti-style), ranked over fact CONTENT — subject, predicate, object, evidence — never the serialized fact, so an id or a metadata fragment is not a match; `dated` (`any`, `dated`, `undated`) selects by whether a fact carries a usable `valid_from`; `current_only` filters to live facts, `as_of` answers as of a past date. The two are refused together — they express different clocks — and `undated_included` reports how many of the rows you got carry no date. `observed_as_of` is the second axis (see below) |
+| `timeline` | Facts ordered by PARSED `valid_from` for a longitudinal view, with undated facts bucketed after every dated one and counted back as `undated_events` rather than interleaved; `dated` (`any`, `dated`, `undated`) selects by whether a fact carries a usable `valid_from`; `as_of` answers as of a past date — a point pivot over validity intervals, not a range bound — and `undated_included` reports how many of the rows you got carry no date. An undated fact is kept by `as_of`, so that count is what tells a thin answer from a complete one. Takes `observed_as_of` too |
 | `graph_ppr` | Personalized PageRank seeded at one or more `seed_node_id`s; returns the top-K most relevant nodes with tunable `alpha`, `directed`, `edge_type_weights` |
 | `wiki_page` | The compiled markdown page body for a node, plus the internal links it references |
 | `raw_source` | The original source markdown (capped at 16 KB) |
@@ -77,6 +77,26 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 | `lint_report` | The latest compile-time lint findings (capped at 64 KB) |
 | `doctor_run` | Run the health checks and return the report as JSON (`findings`, `exit_code` 0/1/2). **Always read-only** — fixes never run over MCP; use `tesserae doctor --fix` on the CLI |
 | `doctor_report` | The contents of `.tesserae/doctor-report.md` (capped at 64 KB); empty until `tesserae doctor` has run |
+
+**Two clocks on the fact tools.** `search_facts` and `timeline` take two
+independent pivots, and they answer different questions:
+
+- **`as_of` — valid time, "what was TRUE then."** Read off each fact's own
+  `valid_from` / `valid_to`, which come from the sources' timestamps. It ships
+  in `graph.json` and `temporal_facts.jsonl` because it is a pure function of
+  them.
+- **`observed_as_of` — transaction time, "what had we LEARNED by then."** Read
+  off the `fact_observed` sidecar, stamped once per compile from the wall
+  clock. It lives only in `.tesserae/sqlite.db` — a wall clock inside an
+  artifact would make the same sources compile to different bytes tomorrow.
+
+They **compose**: `as_of: "2026-03-01"` with `observed_as_of: "2026-05-01"`
+means *what did we believe held on 1 March, as we knew it on 1 May*. Each
+reports its own coverage over the rows you actually received —
+`undated_included` for facts with no usable `valid_from`, `unobserved_included`
+for facts the ledger cannot date. `observed_as_of` needs a compiled project:
+with no ledger it errors rather than handing back the whole corpus under an
+"as we knew it" label.
 
 **On-demand context compiler** (Phase 7)
 
