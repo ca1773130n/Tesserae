@@ -83,6 +83,18 @@ _MEMORY_FIELDS = (
     "fact_observed",
     "first_compile_at",
     "last_seen_compile_at",
+    # Sidecar-only, same as node_vectors and for the same reason: the BM25
+    # inverted index lives in the bm25_docs / bm25_postings SQLite tables,
+    # keyed on sha256 of the document TEXT rather than on a node id. A doc_id
+    # is a surrogate the sidecar allocates, so a copy in node metadata would
+    # not merely survive an incremental compile and vanish on a full one — it
+    # would make graph.json's bytes depend on the ORDER documents happened to
+    # be indexed in, which is a function of query history.
+    "bm25_docs",
+    "bm25_postings",
+    "doc_id",
+    "doc_len",
+    "text_key",
 )
 
 

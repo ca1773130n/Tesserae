@@ -1026,6 +1026,107 @@ class SqliteGraphStore:
         return int(row[0]) if row else 0
 
     # ------------------------------------------------------------------ #
+    # bm25_docs / bm25_postings sidecar (the inverted index)               #
+    # ------------------------------------------------------------------ #
+
+    def read_bm25_docs(self) -> Dict[str, Tuple[int, int]]:
+        """``{text_key: (doc_id, doc_len)}`` for every indexed document.
+
+        The WHOLE table, not the caller's keys. BM25's ``avgdl`` is a mean over
+        every candidate, so a query needs ``doc_len`` for all of them — and
+        measured on this project's 46,926-node candidate set, one scan costs
+        16.7 ms against 85.4 ms for the same keys fetched in 500-parameter
+        ``in (...)`` chunks. The cost of that choice is that documents left
+        behind by an earlier corpus are read too; they are never *consulted*,
+        because a score only ever looks up a candidate's own key, and this file
+        is classified a cache precisely so the accumulation is droppable.
+        """
+        with self._connect() as con:
+            rows = con.execute(
+                "select text_key, doc_id, doc_len from bm25_docs"
+            ).fetchall()
+        return {row[0]: (int(row[1]), int(row[2])) for row in rows}
+
+    def read_bm25_postings(self, terms: Iterable[str]) -> Dict[str, Dict[int, int]]:
+        """``{term: {doc_id: tf}}`` for the requested terms.
+
+        One statement per term rather than an ``in (...)``: a query carries a
+        handful of terms, and per-term statements keep the primary-key prefix
+        scan exact instead of asking SQLite to plan a mixed range.
+        """
+        wanted = [term for term in dict.fromkeys(terms) if term]
+        if not wanted:
+            return {}
+        out: Dict[str, Dict[int, int]] = {}
+        with self._connect() as con:
+            for term in wanted:
+                rows = con.execute(
+                    "select doc_id, tf from bm25_postings where term = ?",
+                    (term,),
+                ).fetchall()
+                out[term] = {int(row[0]): int(row[1]) for row in rows}
+        return out
+
+    def write_bm25_docs_many(
+        self,
+        rows: Iterable[Tuple[str, int, Dict[str, int]]],
+    ) -> None:
+        """Index ``(text_key, doc_len, {term: tf})`` documents, atomically.
+
+        BOTH tables commit in one transaction. A ``bm25_docs`` row visible
+        without its postings would read as a document that contains no terms —
+        it would score 0.0 forever while still counting in ``n_docs`` and
+        ``avgdl``, so a crash between two commits would not degrade retrieval,
+        it would silently change everybody's scores. That is the failure this
+        whole module is not allowed to have.
+
+        ``insert or ignore``: every row is a pure function of its key, so a
+        writer that got there first wrote the same bytes and there is nothing
+        to update — the same read-modify-write-free posture as
+        :meth:`write_node_vectors_many`.
+        """
+        pending = [(text_key, int(doc_len), postings) for text_key, doc_len, postings in rows]
+        if not pending:
+            return
+        with self._connect() as con:
+            con.executemany(
+                "insert or ignore into bm25_docs (text_key, doc_len) values (?, ?)",
+                [(text_key, doc_len) for text_key, doc_len, _ in pending],
+            )
+            # Resolve ids AFTER the insert so a row another writer already
+            # created is reused rather than duplicated (text_key is unique, so
+            # the insert above was a no-op for it).
+            ids: Dict[str, int] = {}
+            keys = [text_key for text_key, _, _ in pending]
+            for start in range(0, len(keys), _VECTOR_QUERY_CHUNK):
+                chunk = keys[start : start + _VECTOR_QUERY_CHUNK]
+                placeholders = ",".join("?" * len(chunk))
+                for row in con.execute(
+                    f"select text_key, doc_id from bm25_docs where text_key in ({placeholders})",
+                    chunk,
+                ).fetchall():
+                    ids[row[0]] = int(row[1])
+            posting_rows = [
+                (term, ids[text_key], int(tf))
+                for text_key, _, postings in pending
+                if text_key in ids
+                for term, tf in postings.items()
+            ]
+            if posting_rows:
+                con.executemany(
+                    "insert or ignore into bm25_postings (term, doc_id, tf)"
+                    " values (?, ?, ?)",
+                    posting_rows,
+                )
+            con.commit()
+
+    def count_bm25_docs(self) -> int:
+        """Number of indexed documents, for status reporting."""
+        with self._connect() as con:
+            row = con.execute("select count(*) from bm25_docs").fetchone()
+        return int(row[0]) if row else 0
+
+    # ------------------------------------------------------------------ #
     # fact_observed sidecar (transaction time)                            #
     # ------------------------------------------------------------------ #
 
@@ -1199,6 +1300,50 @@ class SqliteGraphStore:
                 vector       blob not null,
                 primary key (backend_name, backend_dim, text_sha256)
             )
+            """
+        )
+        # bm25_docs / bm25_postings sidecar (the inverted index). Same
+        # discipline as node_memory and node_vectors: CREATE TABLE IF NOT
+        # EXISTS, SQLite-only, NEVER serialized into graph.json.
+        #
+        # Keyed on ``text_key`` = sha256 of the BM25 document text, and
+        # deliberately NOT on node id, for the same reason node_vectors is
+        # not: identity here is the TEXT that was tokenised. A renamed or
+        # re-described node produces different text, misses, and is re-indexed;
+        # an unchanged node hits after a relocation, a from-scratch recompile,
+        # or a canonicalization rewrite of its id.
+        #
+        # ``doc_id`` is a surrogate, and it earns its keep: the postings table
+        # carries one row per (term, document) — 1.0M rows on this project's
+        # own graph — so repeating a 64-char hex key in every one of them costs
+        # 98 MB against 26 MB for an integer. It never leaves the sidecar and
+        # no score depends on it, which is what makes a surrogate acceptable
+        # here where it would not be in an artifact.
+        #
+        # A document with NO postings is a legitimate state (empty text →
+        # doc_len 0 → scores 0.0, exactly as the in-memory lane scores it), so
+        # the presence of the bm25_docs row — never the presence of postings —
+        # is what "this document is indexed" means. That is precisely why the
+        # writer commits both tables in ONE transaction: a doc row visible
+        # without its postings would be read as a document containing no terms,
+        # and would silently score 0 and depress every other document's IDF.
+        con.execute(
+            """
+            create table if not exists bm25_docs (
+                doc_id   integer primary key autoincrement,
+                text_key text not null unique,
+                doc_len  integer not null
+            )
+            """
+        )
+        con.execute(
+            """
+            create table if not exists bm25_postings (
+                term   text not null,
+                doc_id integer not null,
+                tf     integer not null,
+                primary key (term, doc_id)
+            ) without rowid
             """
         )
         # read_audit sidecar (opt-in, TESSERAE_READ_AUDIT). node_memory counts

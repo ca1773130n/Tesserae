@@ -26,7 +26,12 @@ Design notes:
   the lexical + bm25 lanes.
 * The BM25 implementation is a vanilla Okapi BM25 (k1=1.5, b=0.75). When
   ``rank_bm25`` is available we use it for parity with the rest of the
-  ecosystem; otherwise the local implementation kicks in transparently.
+  ecosystem; otherwise the local implementation kicks in transparently. The
+  local one can be served from a persisted inverted index
+  (:mod:`tesserae.retrieval.bm25_index`) when the caller passes one — same
+  arithmetic, same floats, without re-tokenising the corpus and recounting
+  document frequency on every query. ``rank_bm25``, being a different formula,
+  stands the index down rather than swapping rankers mid-flight.
 * All randomness is removed: tokeniser, hash buckets, scoring and tie-breaks
   are deterministic so test runs are reproducible.
 """
@@ -41,6 +46,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
 from ..research_graph import ResearchGraph, ResearchNode
+from .bm25_index import Bm25Index, PreparedCorpus
 from .vector_cache import VectorCache, embed_texts
 
 # ---------------------------------------------------------------------------
@@ -92,9 +98,12 @@ class LaneProfile:
     ``scored`` counts the documents this lane found relevant, using
     :func:`_rrf_ranks`'s own criterion (``score > 0``), so a lane's count and
     the ranks the fusion consumed can never disagree.
-    ``embed_calls`` / ``cache_hits`` / ``cache_misses`` can only ever be
-    non-zero on the embedding lane; they are carried on every lane so the
-    shape is uniform for a consumer that iterates.
+    ``embed_calls`` can only ever be non-zero on the embedding lane, which is
+    the only lane that calls a model. ``cache_hits`` / ``cache_misses`` are
+    read by TWO lanes and mean the same thing in both: documents served from a
+    sidecar against documents that had to be computed and written — vectors on
+    the embedding lane, postings on the BM25 lane. They are carried on every
+    lane so the shape is uniform for a consumer that iterates.
     """
 
     lane: str
@@ -131,10 +140,15 @@ class RetrievalProfile:
     happened — it is produced from the same score and rank tables the fusion
     used, so it can never move a ranking.
 
-    ``vector_cache`` records whether a cache backed the embedding lane. It is
-    load-bearing rather than decorative: with no cache the hit/miss counters
+    ``vector_cache`` records whether a cache backed the embedding lane, and
+    ``bm25_index`` whether the inverted index backed the BM25 lane. Both are
+    load-bearing rather than decorative: with no sidecar the hit/miss counters
     are structurally 0, and a reader who could not tell that apart from a
-    perfectly warm cache would read the most expensive path as the cheapest.
+    perfectly warm one would read the most expensive path as the cheapest.
+    ``bm25_index`` is False whenever the lane fell back for ANY reason —
+    no sidecar, an unreadable one, or ``rank_bm25`` being installed (see
+    :func:`_rank_bm25_available`) — because from a cost reader's point of view
+    those are the same event.
     """
 
     query: str
@@ -148,6 +162,7 @@ class RetrievalProfile:
     returned: int
     ms: float
     vector_cache: bool
+    bm25_index: bool = False
     lanes: Dict[str, LaneProfile] = field(default_factory=dict)
     winners: List[WinnerAttribution] = field(default_factory=list)
 
@@ -162,6 +177,7 @@ class RetrievalProfile:
             "returned": self.returned,
             "ms": round(self.ms, 3),
             "vector_cache": self.vector_cache,
+            "bm25_index": self.bm25_index,
             "lanes": {
                 name: {
                     "weight": lane.weight,
@@ -428,6 +444,37 @@ def _node_text(node: ResearchNode) -> str:
 # ---------------------------------------------------------------------------
 
 
+_RANK_BM25_PRESENT: Optional[bool] = None
+
+
+def _rank_bm25_available() -> bool:
+    """Whether :func:`_bm25_scores` will run ``rank_bm25`` instead of the local Okapi.
+
+    A correctness gate, not an optimisation. :func:`_bm25_scores` prefers
+    ``rank_bm25.BM25Okapi`` whenever it imports, and that library's IDF — plus
+    its epsilon floor for terms whose IDF would go negative — is NOT the
+    formula written below it, so a machine with the package installed already
+    scores differently from one without. :func:`_bm25_scores_indexed`
+    reproduces the LOCAL formula exactly; serving it where ``rank_bm25`` would
+    otherwise have run would silently swap ranking functions, which is the one
+    thing an index is not allowed to do. So where ``rank_bm25`` is present the
+    index stands down and the query pays the old cost.
+
+    Memoised because a FAILING import is not cached by the interpreter: without
+    the memo every query re-walks ``sys.path`` looking for a package that is
+    not there.
+    """
+    global _RANK_BM25_PRESENT
+    if _RANK_BM25_PRESENT is None:
+        try:
+            import rank_bm25  # type: ignore  # noqa: F401
+
+            _RANK_BM25_PRESENT = True
+        except Exception:
+            _RANK_BM25_PRESENT = False
+    return _RANK_BM25_PRESENT
+
+
 def _bm25_scores(
     query_tokens: Sequence[str],
     corpus_tokens: Sequence[Sequence[str]],
@@ -477,6 +524,96 @@ def _bm25_scores(
             denominator = freq + k1 * (1 - b + b * doc_len / max(1.0, avgdl))
             score += idf.get(term, 0.0) * numerator / denominator
         scores.append(score)
+    return scores
+
+
+def _bm25_scores_indexed(
+    query_tokens: Sequence[str],
+    prepared: PreparedCorpus,
+    postings: Dict[str, Dict[int, int]],
+    k1: float = 1.5,
+    b: float = 0.75,
+) -> List[float]:
+    """:func:`_bm25_scores` over an inverted index. Same numbers, less work.
+
+    Read this beside the function above and keep the two together: every
+    difference is about WHICH documents are visited, never about what is
+    computed for one of them. The arithmetic, the operand order and the
+    per-document iteration over ``query_tokens`` (duplicates included, so a
+    query repeating a term still counts it twice) are copied verbatim, which
+    is what makes a warm index equal to a cold one under exact float
+    comparison rather than approximately.
+
+    Three savings, and each is only legitimate because of a property of the
+    formula:
+
+    * The corpus is not tokenised. Tokenisation is a pure function of one
+      document's text, so it belongs in the sidecar; ``prepare`` put it there.
+    * Document frequency is counted for the QUERY's terms only. The function
+      above builds ``df`` over the entire vocabulary — 94,929 terms on this
+      project's graph — and then reads back exactly the two or three that
+      ``idf.get(term, ...)`` asks for. The other 94,926 entries cannot reach a
+      score, so not computing them cannot change one.
+    * Only documents that contain a query term are scored. The function above
+      scores all of them and gets 0.0 for the rest, because a document that
+      shares no term with the query contributes nothing to the sum. The zero
+      is written directly here instead.
+
+    What is NOT taken from the sidecar is everything that depends on the
+    candidate set — ``n_docs``, ``avgdl`` and every ``df`` — because
+    ``hybrid_search`` is filter-first and the candidate set is whatever the
+    caller filtered it down to. Precomputing corpus-wide statistics would make
+    a type-filtered search score against the unfiltered graph's IDF, which is a
+    different (and wrong) answer rather than a faster one.
+    """
+    n_docs = len(prepared.doc_ids)
+    if not query_tokens or not n_docs:
+        return [0.0] * n_docs
+
+    doc_lens = prepared.doc_lens
+    avgdl = sum(doc_lens) / max(1, len(doc_lens))
+
+    # Distinct query terms for the df pass; the SCORING loop below still walks
+    # ``query_tokens`` itself, duplicates and all, exactly as the in-memory
+    # lane does.
+    query_terms = list(dict.fromkeys(query_tokens))
+    term_docs = [postings.get(term) or {} for term in query_terms]
+
+    df: Dict[str, int] = {term: 0 for term in query_terms}
+    matched: List[int] = []
+    for idx, doc_id in enumerate(prepared.doc_ids):
+        hit = False
+        for term, docs in zip(query_terms, term_docs):
+            if doc_id in docs:
+                df[term] += 1
+                hit = True
+        if hit:
+            matched.append(idx)
+
+    idf: Dict[str, float] = {}
+    for term, freq in df.items():
+        # Robertson/Spärck-Jones IDF with +1 floor, character for character
+        # the expression in _bm25_scores. A term nobody has is left at df 0
+        # and its idf is simply never reached: no document lists it, so the
+        # scoring loop skips it exactly as ``term not in tf`` does above.
+        idf[term] = math.log(1 + (n_docs - freq + 0.5) / (freq + 0.5))
+
+    scores = [0.0] * n_docs
+    posting_by_term = dict(zip(query_terms, term_docs))
+    for idx in matched:
+        doc_len = doc_lens[idx]
+        if not doc_len:
+            continue
+        doc_id = prepared.doc_ids[idx]
+        score = 0.0
+        for term in query_tokens:
+            freq = posting_by_term.get(term, {}).get(doc_id)
+            if freq is None:
+                continue
+            numerator = freq * (k1 + 1)
+            denominator = freq + k1 * (1 - b + b * doc_len / max(1.0, avgdl))
+            score += idf.get(term, 0.0) * numerator / denominator
+        scores[idx] = score
     return scores
 
 
@@ -595,6 +732,7 @@ def _short_circuit_profile(
     admitted: int,
     returned: int,
     vector_cache: bool,
+    bm25_index: bool = False,
 ) -> RetrievalProfile:
     """Profile for a search that returned before any lane ran.
 
@@ -611,6 +749,7 @@ def _short_circuit_profile(
         returned=returned,
         ms=(time.perf_counter() - started) * 1000.0,
         vector_cache=vector_cache,
+        bm25_index=bm25_index,
         lanes={},
         winners=[],
     )
@@ -626,6 +765,7 @@ def hybrid_search(
     backend: Optional[EmbeddingBackend] = None,
     candidate_filter: Optional[Iterable[ResearchNode]] = None,
     vector_cache: Optional[VectorCache] = None,
+    bm25_index: Optional[Bm25Index] = None,
     profile: bool = False,
 ) -> HybridSearchResult:
     """Fuse BM25, lexical and embedding lanes over a ``ResearchGraph``.
@@ -661,6 +801,15 @@ def hybrid_search(
         cache, a warm cache, or none at all. ``None`` (default) embeds every
         call, which is the only option for a graph with no ``.tesserae``
         sidecar to write to.
+    bm25_index
+        Optional :class:`~tesserae.retrieval.bm25_index.Bm25Index` backing the
+        BM25 lane. Purely a cost optimisation, on the same terms as
+        ``vector_cache``: the lane returns the same floats with a cold index, a
+        warm one, or none at all, so nothing about ranking depends on whether
+        one was passed. The lane falls back to tokenising the corpus in memory
+        whenever the index cannot serve the WHOLE candidate set, because a
+        partly-indexed corpus would score differently rather than merely
+        slower.
     profile
         Opt-in per-lane cost accounting (roadmap step 9), attached to the
         result as :attr:`HybridSearchResult.profile`. Off by default because
@@ -693,6 +842,7 @@ def hybrid_search(
                     admitted=0,
                     returned=0,
                     vector_cache=vector_cache is not None,
+                    bm25_index=False,
                 )
                 if profile
                 else None
@@ -722,6 +872,7 @@ def hybrid_search(
                     admitted=len(nodes),
                     returned=len(scored),
                     vector_cache=vector_cache is not None,
+                    bm25_index=False,
                 )
                 if profile
                 else None
@@ -745,7 +896,6 @@ def hybrid_search(
         raise ValueError(f"Unknown mode: {mode!r}")
 
     texts = [_node_text(node) for node in nodes]
-    corpus_tokens = [_tokenize(text) for text in texts]
     query_tokens = _tokenize(query)
 
     lane_scores: Dict[str, List[float]] = {}
@@ -754,8 +904,42 @@ def hybrid_search(
     lane_ms: Dict[str, float] = {}
     _t_lane = time.perf_counter() if profile else 0.0
 
+    # Corpus tokenisation now happens INSIDE the BM25 lane rather than above as
+    # shared setup. It was never shared — the lexical and embedding lanes read
+    # ``texts``, not tokens — and profiling it as setup understated the lane by
+    # the 197 ms it costs on this project's own graph, which is most of the
+    # measurement that motivated the index. It is also skipped outright when
+    # BM25 is disabled or the index serves the corpus.
+    _bm25_used_index = False
+    _bm25_hits = 0
+    _bm25_misses = 0
     if selected_weights.get("bm25", 0.0) > 0:
-        lane_scores["bm25"] = _bm25_scores(query_tokens, corpus_tokens)
+        prepared: Optional[PreparedCorpus] = None
+        postings: Optional[Dict[str, Dict[int, int]]] = None
+        # ``_rank_bm25_available`` is a correctness gate, not a preference: the
+        # index reproduces the LOCAL Okapi, and rank_bm25 replaces it.
+        if bm25_index is not None and not _rank_bm25_available():
+            _before = (bm25_index.stats.hits, bm25_index.stats.misses)
+            prepared = bm25_index.prepare(texts, _tokenize)
+            _bm25_hits = bm25_index.stats.hits - _before[0]
+            _bm25_misses = bm25_index.stats.misses - _before[1]
+            if prepared is not None:
+                postings = bm25_index.postings(query_tokens)
+        if prepared is not None and postings is not None:
+            lane_scores["bm25"] = _bm25_scores_indexed(
+                query_tokens, prepared, postings
+            )
+            _bm25_used_index = True
+        else:
+            # Fall back to tokenising in memory. The counters are cleared with
+            # it so ``bm25_index=False`` always means "the hit/miss numbers on
+            # this lane are structurally zero" — a half-warm index reported as
+            # warm on a query it did not serve is exactly the silent fast-path
+            # lie the profile exists to prevent.
+            _bm25_hits = _bm25_misses = 0
+            lane_scores["bm25"] = _bm25_scores(
+                query_tokens, [_tokenize(text) for text in texts]
+            )
     else:
         lane_scores["bm25"] = [0.0] * len(nodes)
     if profile:
@@ -901,6 +1085,7 @@ def hybrid_search(
             returned=len(scored),
             ms=(time.perf_counter() - _t_call) * 1000.0,
             vector_cache=vector_cache is not None,
+            bm25_index=_bm25_used_index,
             lanes={
                 lane: LaneProfile(
                     lane=lane,
@@ -912,8 +1097,19 @@ def hybrid_search(
                     ),
                     scored=sum(1 for score in lane_scores[lane] if score > 0),
                     embed_calls=_embed_calls if lane == "embedding" else 0,
-                    cache_hits=_cache_hits if lane == "embedding" else 0,
-                    cache_misses=_cache_misses if lane == "embedding" else 0,
+                    # Two lanes report hits/misses against two different
+                    # sidecars — vectors on ``embedding``, postings on
+                    # ``bm25`` — and the third has none, so it reports zero.
+                    cache_hits=(
+                        _cache_hits
+                        if lane == "embedding"
+                        else (_bm25_hits if lane == "bm25" else 0)
+                    ),
+                    cache_misses=(
+                        _cache_misses
+                        if lane == "embedding"
+                        else (_bm25_misses if lane == "bm25" else 0)
+                    ),
                     ms=lane_ms.get(lane, 0.0),
                 )
                 for lane in lane_scores

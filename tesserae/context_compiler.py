@@ -578,9 +578,13 @@ def compile_context(
     # Embedding-vector cache for the seed searches below (cost only — the
     # bundle is byte-identical cached or not). ``None`` when the caller passed
     # no project root, i.e. there is no sidecar to persist into.
+    from .retrieval.bm25_index import Bm25Index
     from .retrieval.vector_cache import VectorCache
 
     vector_cache = VectorCache.for_project(project_root)
+    # Inverted index for the same searches, on the same terms: cost only. A
+    # bundle compiled with it is byte-identical to one compiled without.
+    bm25_index = Bm25Index.for_project(project_root)
 
     # Seed-search profiles, collected only under ``explain``. An empty list is
     # "profiling ran and no seed search happened" (seeds given, no query);
@@ -629,6 +633,7 @@ def compile_context(
                 top_k=max(1, depth) * 5,
                 backend=backend,
                 vector_cache=vector_cache,
+                bm25_index=bm25_index,
                 profile=explain,
             )
             if retrieval_profiles is not None and matches.profile is not None:
@@ -673,7 +678,8 @@ def compile_context(
         for subq in subqueries:
             result = hybrid_search(
                 graph, subq, top_k=max(1, depth) * 5, backend=backend,
-                vector_cache=vector_cache, profile=explain,
+                vector_cache=vector_cache, bm25_index=bm25_index,
+                profile=explain,
             )
             if retrieval_profiles is not None and result.profile is not None:
                 retrieval_profiles.append(result.profile)
