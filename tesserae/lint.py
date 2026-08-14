@@ -310,6 +310,7 @@ class WikiLinter:
         findings.extend(self._check_synthesis_ghost_inputs(nodes_by_id))
         findings.extend(self._check_suggested_merges(nodes_by_id))
         findings.extend(self._check_suggested_subtypes())
+        findings.extend(self._check_pending_review())
         findings.extend(self._check_stale_build_history())
         findings.extend(self._check_code_graph_staleness(nodes_by_id))
         findings.extend(self._check_agent_metadata_allowlist(nodes_by_id))
@@ -1366,6 +1367,88 @@ class WikiLinter:
                     f'"approved": true in .tesserae/{PROPOSAL_LEDGER_NAME}.'
                 ),
             )
+
+    def _check_pending_review(self) -> Iterable[LintFinding]:
+        """Report unanswered candidate-merge pairs from the candidate ledger.
+
+        The durable half of the review queue: once a verdict is remembered,
+        "how much review work is outstanding" stops being a function of corpus
+        size and becomes a real number, which is the only reason it is worth
+        reporting at all.
+
+        Reads ONE sidecar file — no graph traversal, no LLM, no network — so
+        ``tesserae lint`` stays deterministic, offline and free. Absent file =
+        silence (a project that has never run the review workflow has nothing
+        to say); present-but-unreadable is a DIFFERENT state and says so, since
+        collapsing it into silence makes "no pending pairs" and "the ledger is
+        corrupt" the same report — the mistake ``LINT_PROBE_FAILED`` exists for.
+        """
+        from .candidate_ledger import (
+            CANDIDATE_LEDGER_FILENAME,
+            CANDIDATE_LEDGER_SCHEMA_VERSION,
+            STATUS_PENDING,
+        )
+
+        ledger_path = self.wiki_root / CANDIDATE_LEDGER_FILENAME
+        try:
+            if not ledger_path.is_file():
+                return
+            payload = json.loads(ledger_path.read_text(encoding="utf-8"))
+            if (
+                not isinstance(payload, dict)
+                or payload.get("schema_version") != CANDIDATE_LEDGER_SCHEMA_VERSION
+                or not isinstance(payload.get("records"), list)
+            ):
+                raise ValueError(
+                    f"unrecognised ledger shape (expected schema_version "
+                    f"{CANDIDATE_LEDGER_SCHEMA_VERSION} and a records list)"
+                )
+        except Exception as exc:  # noqa: BLE001 — lint never dies on sidecar trouble
+            yield LintFinding(
+                severity="info",
+                code="LINT_PROBE_FAILED",
+                message=(
+                    f"PENDING_REVIEW did not run: the candidate ledger could not "
+                    f"be read ({type(exc).__name__}: {exc}). Unanswered merge "
+                    f"candidates are unknown for this project, not zero."
+                ),
+                path=str(ledger_path),
+                suggested_fix=(
+                    f"Re-run `tesserae extract --canonicalize` to rewrite "
+                    f".tesserae/{CANDIDATE_LEDGER_FILENAME}, or delete it — deleting "
+                    f"discards every recorded human verdict."
+                ),
+            )
+            return
+        # Every field is untrusted: the ledger is a HUMAN-EDITABLE file (flipping
+        # a status by hand is the supported way to answer the queue), and a
+        # hand-edited row that does not iterate would take the WHOLE lint run
+        # down, which `compile --strict` then reports as "lint did not run".
+        pending = sorted(
+            (str(row.get("a") or ""), str(row.get("b") or ""))
+            for row in payload["records"]
+            if isinstance(row, dict) and row.get("status") == STATUS_PENDING
+        )
+        pending = [pair for pair in pending if pair[0] and pair[1]]
+        if not pending:
+            return
+        sample = "; ".join(f"{a} ↔ {b}" for a, b in pending[:3])
+        yield LintFinding(
+            severity="info",
+            code="PENDING_REVIEW",
+            message=(
+                f"{len(pending)} candidate merge pair(s) await a human verdict: "
+                f"{sample}" + ("…" if len(pending) > 3 else "")
+            ),
+            node_id=pending[0][0],
+            path=str(ledger_path),
+            suggested_fix=(
+                "Review the pairs and apply a decision file with `tesserae extract "
+                "--apply-review-decisions … --reviewed-by <you>`, or set a row's "
+                f'"status" to "rejected" in .tesserae/{CANDIDATE_LEDGER_FILENAME}. '
+                "A rejected pair is never re-surfaced."
+            ),
+        )
 
     def _check_stale_build_history(self) -> Iterable[LintFinding]:
         """Build-history entries older than 90 days (oldest 30 are reported)."""

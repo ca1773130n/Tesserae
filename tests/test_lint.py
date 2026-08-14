@@ -1519,3 +1519,136 @@ def test_a_hand_edited_ledger_cannot_crash_the_whole_lint_run(tmp_path):
     assert len(findings) == 1
     assert "1, 3.5, n2" in findings[0].message
     assert not report.has_errors()
+
+
+# --- PENDING_REVIEW: unanswered merge candidates (n4j step 7) ----------------
+
+
+def _write_candidate_ledger(project_root: Path, payload: object) -> Path:
+    from tesserae.candidate_ledger import CANDIDATE_LEDGER_FILENAME
+
+    path = project_root / ".tesserae" / CANDIDATE_LEDGER_FILENAME
+    path.write_text(
+        payload if isinstance(payload, str) else json.dumps(payload, indent=2),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _candidate_payload(*records: dict) -> dict:
+    from tesserae.candidate_ledger import CANDIDATE_LEDGER_SCHEMA_VERSION
+
+    return {"schema_version": CANDIDATE_LEDGER_SCHEMA_VERSION, "records": list(records)}
+
+
+def _row(a: str, b: str, status: str = "pending") -> dict:
+    return {"a": a, "b": b, "score": 0.71, "source": "token", "status": status}
+
+
+def test_pending_review_reports_only_the_unanswered_pairs(tmp_path):
+    """Decided pairs are the point of the ledger — they must not be reported as work."""
+    project = _scaffold(tmp_path)
+    ledger = _write_candidate_ledger(
+        project,
+        _candidate_payload(
+            _row("Concept:a:1", "Concept:b:2"),
+            _row("Concept:c:3", "Concept:d:4"),
+            _row("Concept:e:5", "Concept:f:6", status="rejected"),
+            _row("Concept:g:7", "Concept:h:8", status="confirmed"),
+        ),
+    )
+
+    report = WikiLinter(project).run()
+
+    findings = [f for f in report.findings if f.code == "PENDING_REVIEW"]
+    assert len(findings) == 1
+    finding = findings[0]
+    assert "2 candidate merge pair(s)" in finding.message
+    assert "Concept:a:1 ↔ Concept:b:2" in finding.message
+    assert finding.node_id == "Concept:a:1"
+    assert finding.path == str(ledger)
+    # Both halves of the human step must be discoverable from the finding.
+    assert "--apply-review-decisions" in finding.suggested_fix
+    assert "rejected" in finding.suggested_fix
+
+
+def test_pending_review_is_info_and_never_fails_strict(tmp_path):
+    """Outstanding review work is a fact about the project, not a broken build."""
+    project = _scaffold(tmp_path)
+    _write_candidate_ledger(project, _candidate_payload(_row("Concept:a:1", "Concept:b:2")))
+
+    report = WikiLinter(project).run()
+
+    assert all(f.severity == "info" for f in report.findings if f.code == "PENDING_REVIEW")
+    assert not report.has_warnings()
+    assert not report.has_errors()
+
+
+def test_no_candidate_ledger_is_silent(tmp_path):
+    """The review workflow is opt-in: a 'never ran' row in every project is noise."""
+    project = _scaffold(tmp_path)
+
+    report = WikiLinter(project).run()
+
+    assert not [f for f in report.findings if f.code == "PENDING_REVIEW"]
+    assert not [f for f in report.findings if f.code == "LINT_PROBE_FAILED"]
+
+
+def test_a_fully_decided_ledger_is_silent(tmp_path):
+    project = _scaffold(tmp_path)
+    _write_candidate_ledger(
+        project, _candidate_payload(_row("Concept:a:1", "Concept:b:2", status="rejected"))
+    )
+
+    report = WikiLinter(project).run()
+
+    assert not [f for f in report.findings if f.code == "PENDING_REVIEW"]
+
+
+def test_an_unreadable_candidate_ledger_is_loud_not_silent(tmp_path):
+    """"Nothing pending" and "the ledger is corrupt" are different states."""
+    project = _scaffold(tmp_path)
+    _write_candidate_ledger(project, "{not json")
+
+    report = WikiLinter(project).run()
+
+    probe = [
+        f for f in report.findings
+        if f.code == "LINT_PROBE_FAILED" and "PENDING_REVIEW" in f.message
+    ]
+    assert len(probe) == 1
+    assert "not zero" in probe[0].message
+    assert not [f for f in report.findings if f.code == "PENDING_REVIEW"]
+
+
+def test_an_off_shape_candidate_ledger_is_loud_too(tmp_path):
+    """A ledger that parses but is not this schema is still 'unknown', not zero."""
+    project = _scaffold(tmp_path)
+    _write_candidate_ledger(project, {"schema_version": 999, "records": []})
+
+    report = WikiLinter(project).run()
+
+    assert [
+        f for f in report.findings
+        if f.code == "LINT_PROBE_FAILED" and "PENDING_REVIEW" in f.message
+    ]
+
+
+def test_a_hand_edited_candidate_row_cannot_take_the_lint_run_down(tmp_path):
+    """The ledger is human-editable, so every field is untrusted."""
+    project = _scaffold(tmp_path)
+    _write_candidate_ledger(
+        project,
+        _candidate_payload(
+            {"a": 1, "b": None, "status": "pending"},
+            "not-a-record",
+            _row("Concept:a:1", "Concept:b:2"),
+        ),
+    )
+
+    report = WikiLinter(project).run()
+
+    findings = [f for f in report.findings if f.code == "PENDING_REVIEW"]
+    assert len(findings) == 1
+    assert "1 candidate merge pair(s)" in findings[0].message
+    assert not report.has_errors()

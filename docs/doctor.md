@@ -179,6 +179,7 @@ floor for the **exit code** — findings below it are still reported.
 | `LOW_TITLE_QUALITY` | info | A Paper's title looks like a filename or a fragment rather than a title. |
 | `SUGGESTED_MERGE` | info | Several Repository nodes share a `github_repo` URL — merge candidates, never merged automatically. |
 | `SUGGESTED_SUBTYPE` | info | A cluster of same-typed nodes that schema-drift proposed a sub-type for — surfaced, never adopted automatically. Promotion is a human edit to `ResearchNodeType`, then `"approved": true` in `.tesserae/schema-drift-proposals.json`. |
+| `PENDING_REVIEW` | info | Candidate merge pairs still awaiting a human verdict in `.tesserae/candidate-same-as.json`. A pair a reviewer rejected is never surfaced again, so this count is outstanding work rather than corpus size. Answer with `tesserae extract --apply-review-decisions … --reviewed-by <you>`. |
 | `STALE_BUILD_HISTORY` | info | A build-history entry older than 90 days. |
 | `CODE_GRAPH_BEHIND` · `CODE_GRAPH_HEAD_UNRESOLVED` · `CODE_GRAPH_STALE_FILE` | info | The opt-in code layer is out of step with `HEAD` — compiled at an older commit, at a commit git can no longer resolve, or over files that have since changed. |
 | `CLAIM_SUPPORT_SKIPPED` · `CLAIM_SUPPORT_SUMMARY` | info | Results of the opt-in `--verify-claims` pass: what was sampled and how it scored, or why it did not run. |

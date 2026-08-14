@@ -62,6 +62,20 @@ def load_review_decisions(path: Path) -> List[ReviewDecision]:
     return decisions
 
 
+def _candidate_ledger_root(output: Optional[str]) -> Optional[Path]:
+    """Project root for the durable review ledger, or ``None``.
+
+    Same rule ``VectorCache.for_graph_path`` follows: the ledger belongs to a
+    project's ``.tesserae/`` layout, and ``extract -o /tmp/graph.json`` is not a
+    project. A durable file recording human verdicts must not be dropped beside
+    a scratch output, where the next cleanup takes it.
+    """
+    if not output:
+        return None
+    path = Path(output)
+    return path.parent.parent if path.parent.name == ".tesserae" else None
+
+
 def _bump_read_access(project_root, node_ids: Iterable[Optional[str]]) -> None:
     """Best-effort LRU access bump for a CLI read surface.
 
@@ -6043,6 +6057,14 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     parser.add_argument("--review-jsonl-output", help="Write review queue items as JSONL")
     parser.add_argument("--review-decisions-template", help="Write a starter review decisions JSON template")
     parser.add_argument("--apply-review-decisions", help="Apply review decisions JSON after canonicalization; implies --canonicalize")
+    parser.add_argument(
+        "--reviewed-by",
+        default="",
+        help=(
+            "Attribute applied review decisions to this reviewer in "
+            ".tesserae/candidate-same-as.json (omitted = unattributed; never guessed)"
+        ),
+    )
     parser.add_argument("--project-markdown", help="Write a human-readable markdown projection of the final graph to this directory")
     parser.add_argument("--sqlite-output", help="Persist the final graph to a local SQLite database")
     # Kuzu is an export, not a store, so it lives on `export` with OKF and
@@ -6238,11 +6260,23 @@ def _handle_extract(args: argparse.Namespace) -> int:
         # Cache the embedding pass's vectors when --output lands in a project's
         # .tesserae/ layout; an ad-hoc output path has nowhere to persist, and
         # the pass runs uncached there rather than creating a sidecar for it.
+        from .candidate_ledger import (
+            candidate_ledger_path,
+            load_candidate_ledger,
+            publish_candidate_ledger,
+            record_decisions,
+        )
+        from .canonicalization import candidate_observations
         from .retrieval.vector_cache import VectorCache
 
+        # The durable review ledger: pairs a human already rejected never come
+        # back, so the queue's length tracks unresolved work rather than corpus
+        # size. None outside a .tesserae/ project layout.
+        ledger_root = _candidate_ledger_root(args.output)
         canonicalization = GraphCanonicalizer(
             semantic=canonicalize_semantic,
             vector_cache=VectorCache.for_graph_path(args.output) if canonicalize_semantic else None,
+            candidate_ledger=load_candidate_ledger(ledger_root) if ledger_root else None,
         ).canonicalize(graph)
         graph = canonicalization.graph
         if canonicalize_semantic:
@@ -6257,10 +6291,28 @@ def _handle_extract(args: argparse.Namespace) -> int:
                     f"review candidates via {canonicalization.stats.get('semantic_backend')} — candidates only, nothing merged)",
                     file=sys.stderr,
                 )
+        decisions: List[ReviewDecision] = []
         if args.apply_review_decisions:
             decisions = load_review_decisions(Path(args.apply_review_decisions))
             graph = canonicalization.review_queue().apply_decisions(graph, decisions)
         review_queue = canonicalization.review_queue()
+        if ledger_root:
+            ledger_file = candidate_ledger_path(ledger_root)
+            # Observations first (all pending, and a stored verdict beats them),
+            # then this run's decisions, which are the one write allowed to
+            # overwrite a stored row — a human changing their mind.
+            publish_candidate_ledger(ledger_file, candidate_observations(review_queue.items))
+            if decisions:
+                recorded = record_decisions(
+                    ledger_file,
+                    review_queue.decision_verdicts(decisions),
+                    decided_by=str(getattr(args, "reviewed_by", "") or ""),
+                )
+                print(
+                    f"(recorded {recorded} review verdict(s) in "
+                    f".tesserae/{ledger_file.name} — rejected pairs will not be re-surfaced)",
+                    file=sys.stderr,
+                )
         if args.review_output:
             review_payload = review_queue.model_dump()
             Path(args.review_output).parent.mkdir(parents=True, exist_ok=True)

@@ -66,6 +66,13 @@ _MEMORY_FIELDS = (
     "read_audit",
     "tesserae_version",
     "node_ids_json",
+    # Sidecar-only for the same reason, and with a sharper edge: a human review
+    # verdict lives in .tesserae/candidate-same-as.json. It is the one piece of
+    # state in the pipeline a compile CANNOT re-derive, so parking it in node
+    # metadata would not merely leak a wall clock into graph.json — a full
+    # compile would then destroy an answer nothing can reconstruct.
+    "decided_by",
+    "decided_at",
 )
 
 

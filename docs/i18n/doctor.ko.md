@@ -184,6 +184,7 @@ verb는 그 공간을 회수하는 쪽이며, SQLite는 `DELETE`만으로는 파
 | `LOW_TITLE_QUALITY` | info | Paper의 제목이 제목이라기보다 파일명이나 조각처럼 보입니다. |
 | `SUGGESTED_MERGE` | info | 여러 Repository 노드가 같은 `github_repo` URL을 공유합니다 — 병합 후보이며, 자동으로 병합하지는 않습니다. |
 | `SUGGESTED_SUBTYPE` | info | schema-drift가 하위 타입을 제안한 같은 타입 노드들의 클러스터 — 노출되었으나 자동으로 결코 채택되지 않습니다. 승격은 `ResearchNodeType`에 대한 인적 편집이며, 그다음 `.tesserae/schema-drift-proposals.json`에서 `"approved": true`로 설정합니다. |
+| `PENDING_REVIEW` | info | `.tesserae/candidate-same-as.json`에서 아직 사람의 판정을 기다리는 병합 후보 쌍. 검토자가 거부한 쌍은 다시 노출되지 않으므로, 이 수치는 코퍼스 규모가 아니라 미해결 작업량입니다. `tesserae extract --apply-review-decisions … --reviewed-by <당신>`으로 답합니다. |
 | `STALE_BUILD_HISTORY` | info | 90일보다 오래된 빌드 히스토리 항목. |
 | `CODE_GRAPH_BEHIND` · `CODE_GRAPH_HEAD_UNRESOLVED` · `CODE_GRAPH_STALE_FILE` | info | 선택형 코드 계층이 `HEAD`와 어긋났습니다 — 더 오래된 커밋에서 컴파일되었거나, git이 더 이상 해석할 수 없는 커밋이거나, 이후 변경된 파일들 위에서 컴파일되었습니다. |
 | `CLAIM_SUPPORT_SKIPPED` · `CLAIM_SUPPORT_SUMMARY` | info | 선택형 `--verify-claims` 패스의 결과: 무엇을 표본으로 삼아 어떤 점수가 나왔는지, 또는 왜 실행되지 않았는지. |

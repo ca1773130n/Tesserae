@@ -192,6 +192,7 @@ berichtet.
 | `LOW_TITLE_QUALITY` | info | Der Titel eines Papers wirkt eher wie ein Dateiname oder ein Fragment als wie ein Titel. |
 | `SUGGESTED_MERGE` | info | Mehrere Repository-Knoten teilen sich eine `github_repo`-URL — Zusammenführungskandidaten, die nie automatisch zusammengeführt werden. |
 | `SUGGESTED_SUBTYPE` | info | Ein Cluster von Knoten desselben Typs, für das schema-drift einen Subtyp vorgeschlagen hat — angezeigt, nie automatisch übernommen. Die Promotion ist ein manueller Edit für `ResearchNodeType`, dann `"approved": true` in `.tesserae/schema-drift-proposals.json`. |
+| `PENDING_REVIEW` | info | Merge-Kandidatenpaare, die in `.tesserae/candidate-same-as.json` noch auf ein menschliches Urteil warten. Ein von einer prüfenden Person abgelehntes Paar wird nie wieder angezeigt, diese Zahl ist also offene Arbeit und nicht Korpusgröße. Beantwortet wird sie mit `tesserae extract --apply-review-decisions … --reviewed-by <du>`. |
 | `STALE_BUILD_HISTORY` | info | Ein Build-History-Eintrag, der älter als 90 Tage ist. |
 | `CODE_GRAPH_BEHIND` · `CODE_GRAPH_HEAD_UNRESOLVED` · `CODE_GRAPH_STALE_FILE` | info | Die optionale Code-Schicht ist nicht mehr im Takt mit `HEAD` — auf einem älteren Commit kompiliert, auf einem Commit, den git nicht mehr auflöst, oder über Dateien, die sich seither geändert haben. |
 | `CLAIM_SUPPORT_SKIPPED` · `CLAIM_SUPPORT_SUMMARY` | info | Ergebnisse des optionalen `--verify-claims`-Laufs: was gezogen wurde und wie es abschnitt, oder warum er nicht lief. |

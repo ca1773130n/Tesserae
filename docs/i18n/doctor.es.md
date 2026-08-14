@@ -190,6 +190,7 @@ salida**: los hallazgos por debajo se siguen informando.
 | `LOW_TITLE_QUALITY` | info | El título de un Paper parece un nombre de archivo o un fragmento más que un título. |
 | `SUGGESTED_MERGE` | info | Varios nodos Repository comparten una URL `github_repo`: candidatos a fusión, nunca fusionados automáticamente. |
 | `SUGGESTED_SUBTYPE` | info | Un clúster de nodos del mismo tipo que schema-drift propuso un subtipo — expuesto, nunca adoptado automáticamente. La promoción es una edición manual en `ResearchNodeType`, luego `"approved": true` en `.tesserae/schema-drift-proposals.json`. |
+| `PENDING_REVIEW` | info | Pares candidatos a fusión que aún esperan un veredicto humano en `.tesserae/candidate-same-as.json`. Un par rechazado por un revisor nunca vuelve a mostrarse, así que esta cifra es trabajo pendiente y no tamaño del corpus. Se responde con `tesserae extract --apply-review-decisions … --reviewed-by <tú>`. |
 | `STALE_BUILD_HISTORY` | info | Una entrada del historial de compilación de más de 90 días. |
 | `CODE_GRAPH_BEHIND` · `CODE_GRAPH_HEAD_UNRESOLVED` · `CODE_GRAPH_STALE_FILE` | info | La capa de código opcional está desfasada respecto a `HEAD`: compilada en un commit más antiguo, en un commit que git ya no resuelve, o sobre archivos que han cambiado desde entonces. |
 | `CLAIM_SUPPORT_SKIPPED` · `CLAIM_SUPPORT_SUMMARY` | info | Resultados de la pasada opcional `--verify-claims`: qué se muestreó y cómo puntuó, o por qué no se ejecutó. |
