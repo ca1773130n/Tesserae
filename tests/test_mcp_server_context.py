@@ -563,3 +563,28 @@ def test_compile_context_citations_omit_via_views_when_no_view_ran(tmp_path):
         assert set(citation) == {
             "node_id", "node_name", "source_path", "wiki_kind"
         }
+
+
+def test_compile_context_explain_adds_a_profile_and_leaves_the_default_shape(tmp_path):
+    """Opt-in per-lane accounting (roadmap step 9). Off, the response is the
+    exact shape byte/order-sensitive callers already depend on; on, it gains
+    one ``profile`` key and nothing else moves."""
+    graph_path, _ = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    plain = server.call_tool("compile_context", {"query": "focal paper"})
+    explained = server.call_tool(
+        "compile_context", {"query": "focal paper", "explain": True}
+    )
+
+    assert "profile" not in plain
+    assert {k: v for k, v in explained.items() if k != "profile"} == plain
+
+    profile = explained["profile"]
+    # A list, one entry per seed search — a summed number would hide which
+    # sub-query cost what.
+    assert isinstance(profile, list) and len(profile) == 1
+    lanes = profile[0]["lanes"]
+    assert set(lanes) == {"bm25", "lexical", "embedding"}
+    assert profile[0]["returned"] == len(profile[0]["winners"])
+    assert all(w["lanes"] for w in profile[0]["winners"])

@@ -16,6 +16,7 @@ import os
 import re
 import secrets
 import sys
+import time
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,7 +31,10 @@ from .context_compiler import (
 from .ports import GraphStore
 from .retrieval.hybrid import (
     DEFAULT_WEIGHTS as _HYBRID_DEFAULT_WEIGHTS,
+    LaneProfile as _LaneProfile,
+    RetrievalProfile as _RetrievalProfile,
     ScoredNode as _HybridScoredNode,
+    WinnerAttribution as _WinnerAttribution,
     active_embedding_backend as _active_embedding_backend,
     backend_is_semantic as _backend_is_semantic,
     hybrid_search as _hybrid_search,
@@ -812,6 +816,25 @@ class LLMWikiMCPServer:
         project_prop = {"type": "string", "description": "Registered project name (see list_projects). Overridden by graph_path."}
         agent_prop = {"type": "string", "description": "Agent-scoped view: a worker key (own raw + distilled memory), a manager key (federated reports' distillates), or 'org' (all distilled artifacts). Requires a project root; see agents list / tesserae distill."}
         budget_chars_prop = {"type": "integer", "minimum": 0, "default": DEFAULT_BUDGET_CHARS, "description": "CTX-01 response budget in characters: each returned item is clamped to budget_chars/8 and overflow items are dropped behind one '+N more, cursor=K' continuation line. 0 = uncapped."}
+        explain_prop = {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Add a 'profile': per-lane retrieval cost accounting — for "
+                "each of the bm25 / lexical / embedding lanes its weight, "
+                "candidates_in, how many it scored, embed_calls, cache_hits, "
+                "cache_misses and ms — plus which lanes actually contributed "
+                "each returned node, and the total candidates_in / admitted / "
+                "returned. Off by default, and off is not a formality: "
+                "profiling costs extra time and, like Neo4j's PROFILE, it is "
+                "for diagnosis rather than for every production read. It "
+                "cannot change the answer — the numbers are read off the score "
+                "tables the fusion already produced — and with the flag unset "
+                "the response carries exactly the keys it always had. "
+                "search_nodes returns one profile; compile_context returns a "
+                "list, one per seed search it ran."
+            ),
+        }
         # The finding-kind vocabulary, interpolated from the taxonomy rather
         # than typed out. An enum is the ONLY thing a schema-driven MCP client
         # can send: a kind the server maps but the enum omits is unreachable
@@ -977,6 +1000,7 @@ class LLMWikiMCPServer:
                             ),
                         },
                         "budget_chars": budget_chars_prop,
+                        "explain": explain_prop,
                     },
                     "additionalProperties": False,
                 },
@@ -1724,6 +1748,7 @@ class LLMWikiMCPServer:
                                 "fresh."
                             ),
                         },
+                        "explain": explain_prop,
                     },
                     "additionalProperties": False,
                 },
@@ -2567,6 +2592,7 @@ class LLMWikiMCPServer:
                 include_superseded=bool(args.get("include_superseded", False)),
                 budget_chars=_budget_chars_arg(args),
                 project_root=project_root,
+                explain=bool(args.get("explain", False)),
             )
             # LRU: record a read of every node this search surfaced (sidecar only).
             self._bump_nodes_access(
@@ -2902,6 +2928,7 @@ class LLMWikiMCPServer:
                     view=view,
                     recency_now=recency_now,
                     recency_weight=recency_weight,
+                    explain=bool(args.get("explain", False)),
                 )
             except ValueError as exc:
                 # An unknown strategy/scope/view, or a scope with no hierarchy
@@ -2927,12 +2954,20 @@ class LLMWikiMCPServer:
                 "multi_pool": multi_pool,
                 "pool_reservations": bundle.pool_reservations,
             }
+            # One profile per seed search, in the order they ran. Added only
+            # under ``explain`` so the default response shape is untouched —
+            # the same discipline `via_views` follows.
+            profiles = (
+                [p.to_dict() for p in bundle.retrieval_profiles]
+                if bundle.retrieval_profiles is not None
+                else None
+            )
             # LRU: the nodes actually selected into the bundle count as reads.
             self._bump_nodes_access(project_root, bundle.selected_nodes)
             preview = int(args.get("preview") or 0)
             if preview > 0 and len(bundle.body) > preview:
                 handle = _HANDLES.put(bundle.body)
-                return {
+                previewed: JSONDict = {
                     "handle": handle,
                     "preview": bundle.body[:preview],
                     "total_chars": len(bundle.body),
@@ -2944,9 +2979,12 @@ class LLMWikiMCPServer:
                     "synthesized": bundle.synthesized,
                     "knobs": knobs,
                 }
+                if profiles is not None:
+                    previewed["profile"] = profiles
+                return previewed
             # preview disabled (or body already short): EXACT original shape,
             # body first — back-compat for byte/order-sensitive callers.
-            return {
+            compiled: JSONDict = {
                 "body": bundle.body,
                 "citations": [citation_dict(c) for c in bundle.citations],
                 "selected_node_ids": bundle.selected_nodes,
@@ -2954,6 +2992,9 @@ class LLMWikiMCPServer:
                 "synthesized": bundle.synthesized,
                 "knobs": knobs,
             }
+            if profiles is not None:
+                compiled["profile"] = profiles
+            return compiled
         if name == "get_handle":
             handle = str(args.get("handle") or "")
             try:
@@ -4112,6 +4153,7 @@ class LLMWikiMCPServer:
         include_superseded: bool = False,
         budget_chars: int = DEFAULT_BUDGET_CHARS,
         project_root: Optional[Path] = None,
+        explain: bool = False,
     ) -> JSONDict:
         """Search public ResearchGraph nodes.
 
@@ -4134,6 +4176,12 @@ class LLMWikiMCPServer:
         ``project_root`` is used only to locate the embedding-vector cache in
         ``.tesserae/sqlite.db``. Results do not depend on it: a cold cache, a
         warm cache and no cache at all produce identical scores and ordering.
+
+        ``explain=True`` adds a ``profile`` key carrying per-lane cost
+        accounting (roadmap step 9). Off by default because measuring costs;
+        with it unset the response has exactly the keys it always had and the
+        retriever reads no clock. It never changes ranking — the profile is
+        derived from the score tables the fusion already produced.
         """
         type_filter = {str(item) for item in types or []}
         kind_filter = {str(item).lower() for item in kinds or []}
@@ -4154,6 +4202,7 @@ class LLMWikiMCPServer:
         bounded_limit = max(1, min(limit, 100))
 
         if mode == "legacy":
+            _t_legacy = time.perf_counter() if explain else 0.0
             terms = [term.casefold() for term in query.split() if term.strip()]
             scored: List[Tuple[int, int, ResearchNode]] = []
             for index, node in enumerate(candidates):
@@ -4186,6 +4235,50 @@ class LLMWikiMCPServer:
             }
             if continuation:
                 out["continuation"] = continuation
+            if explain:
+                # Legacy is one substring scan, not three fused lanes, and it
+                # is reported as exactly that. Answering `explain` with silence
+                # here would make the flag look supported on a path where it
+                # did nothing — the silent-degradation shape this repo keeps
+                # having to remove.
+                _legacy_ms = (time.perf_counter() - _t_legacy) * 1000.0
+                out["profile"] = _RetrievalProfile(
+                    query=query,
+                    mode="legacy",
+                    backend="n/a",
+                    candidates_in=len(candidates),
+                    admitted=len(matches),
+                    returned=len(page),
+                    ms=_legacy_ms,
+                    vector_cache=False,
+                    lanes={
+                        "legacy": _LaneProfile(
+                            lane="legacy",
+                            weight=1.0,
+                            candidates_in=len(candidates),
+                            scored=len(matches),
+                            embed_calls=0,
+                            cache_hits=0,
+                            cache_misses=0,
+                            ms=_legacy_ms,
+                        )
+                    },
+                    winners=[
+                        _WinnerAttribution(
+                            node_id=node.id,
+                            score=float(score),
+                            lanes=("legacy",),
+                        )
+                        # Same filter, same limit, then the same budget clip
+                        # that produced ``page`` — winners must describe the
+                        # rows the caller actually got back.
+                        for score, _index, node in [
+                            triple
+                            for triple in scored
+                            if triple[0] > 0 or not terms
+                        ][:bounded_limit][: len(page)]
+                    ],
+                ).to_dict()
             return out
 
         result = _hybrid_search(
@@ -4196,6 +4289,7 @@ class LLMWikiMCPServer:
             mode=mode,
             candidate_filter=candidates,
             vector_cache=_VectorCache.for_project(project_root),
+            profile=explain,
         )
         nodes_out: List[JSONDict] = []
         for item in result.scored:
@@ -4220,6 +4314,8 @@ class LLMWikiMCPServer:
         }
         if continuation:
             out["continuation"] = continuation
+        if result.profile is not None:
+            out["profile"] = result.profile.to_dict()
         return out
 
     def embedding_status(self, project_root: Optional[Path] = None) -> JSONDict:

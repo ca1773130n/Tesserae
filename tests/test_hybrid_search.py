@@ -575,3 +575,234 @@ def test_mcp_embedding_status_reports_the_vector_cache(tmp_path):
     hot = server.call_tool("embedding_status", {"graph_path": str(graph_path)})
     assert hot["cache_hits"] > warm["cache_hits"]
     assert hot["cache_misses"] == warm["cache_misses"]  # nothing re-embedded
+
+
+# ---------------------------------------------------------------------------
+# Retrieval PROFILE (roadmap step 9) — opt-in, because measuring costs.
+#
+# Two contracts, and both are load-bearing: with ``profile`` unset the search
+# behaves and answers exactly as before AND reads no clock; with it set the
+# numbers describe the search that already ran, so they can never move a
+# ranking. Every test below pins one of those two.
+# ---------------------------------------------------------------------------
+
+
+def test_profile_is_off_by_default_and_reads_no_clock(monkeypatch):
+    """The default path must not pay for instrumentation it did not ask for.
+
+    Asserting ``profile is None`` alone would still pass if someone timed the
+    lanes unconditionally and merely withheld the report, so count the clock
+    reads: zero when off, non-zero when on. That is the regression this guards.
+    """
+    import time as _time
+
+    from tesserae.retrieval import hybrid as hybrid_mod
+
+    reads = {"n": 0}
+
+    class _CountingClock:
+        """Stands in for the ``time`` module inside hybrid.py only — patching
+        the real module would also count clock reads made by dependencies."""
+
+        @staticmethod
+        def perf_counter():
+            reads["n"] += 1
+            return _time.perf_counter()
+
+    monkeypatch.setattr(hybrid_mod, "time", _CountingClock)
+
+    graph = _eight_node_graph()
+    default = hybrid_search(graph, "gaussian splatting", backend=HashEmbeddingBackend())
+    assert default.profile is None
+    assert reads["n"] == 0
+
+    profiled = hybrid_search(
+        graph, "gaussian splatting", backend=HashEmbeddingBackend(), profile=True
+    )
+    assert profiled.profile is not None
+    assert reads["n"] > 0
+
+
+def test_profile_never_changes_the_answer():
+    """Profiling must be observationally inert on results AND on behaviour."""
+    graph = _eight_node_graph()
+    query = "ranking baseline used in search engines"
+    plain = hybrid_search(graph, query, top_k=6, backend=HashEmbeddingBackend())
+    profiled = hybrid_search(
+        graph, query, top_k=6, backend=HashEmbeddingBackend(), profile=True
+    )
+
+    assert _scores(profiled) == _scores(plain)
+    assert [dict(s.ranks) for s in profiled.scored] == [dict(s.ranks) for s in plain.scored]
+    assert profiled.total_matches == plain.total_matches
+    assert profiled.weights == plain.weights
+    assert profiled.backend == plain.backend
+    assert profiled.mode == plain.mode
+
+
+def test_profile_reports_each_lane_and_attributes_every_winner():
+    graph = _eight_node_graph()
+    result = hybrid_search(
+        graph, "gaussian splatting", top_k=4, backend=HashEmbeddingBackend(), profile=True
+    )
+    prof = result.profile
+    assert prof is not None
+    assert set(prof.lanes) == {"bm25", "lexical", "embedding"}
+    assert prof.candidates_in == len(graph.nodes)
+    assert prof.admitted == result.total_matches
+    assert prof.returned == len(result.scored)
+    for lane in prof.lanes.values():
+        # Every lane is live in hybrid mode, so each one saw the whole corpus.
+        assert lane.weight == 1.0
+        assert lane.candidates_in == len(graph.nodes)
+        assert 0 <= lane.scored <= len(graph.nodes)
+        assert lane.ms >= 0.0
+
+    # Winners line up with the returned page, in the same order, and their
+    # lane attribution matches _fuse's contribution criterion (positive weight
+    # AND a rank inside the corpus) rather than "produced a non-zero score".
+    assert [w.node_id for w in prof.winners] == [s.node.id for s in result.scored]
+    for winner, scored in zip(prof.winners, result.scored):
+        assert winner.score == scored.score
+        expected = tuple(
+            lane
+            for lane in ("bm25", "lexical", "embedding")
+            if scored.ranks[lane] <= len(graph.nodes)
+        )
+        assert winner.lanes == expected
+        assert winner.lanes, "a returned node must have been contributed by some lane"
+
+
+def test_profile_distinguishes_a_lane_that_did_not_run_from_one_that_found_nothing():
+    """A disabled lane reports candidates_in=0. Zeroing only ``scored`` would
+    make "the embedding lane was off" and "the embedding lane matched nothing"
+    the same reading, which is the whole point of accounting per lane."""
+    graph = _eight_node_graph()
+    result = hybrid_search(
+        graph, "okapi bm25", top_k=5, backend=HashEmbeddingBackend(), mode="bm25", profile=True
+    )
+    prof = result.profile
+    assert prof is not None
+    assert prof.lanes["bm25"].weight == 1.0
+    assert prof.lanes["bm25"].candidates_in == len(graph.nodes)
+    for off in ("lexical", "embedding"):
+        assert prof.lanes[off].weight == 0.0
+        assert prof.lanes[off].candidates_in == 0
+        assert prof.lanes[off].scored == 0
+        assert prof.lanes[off].embed_calls == 0
+    # Only the live lane may be credited with a win.
+    assert all(w.lanes == ("bm25",) for w in prof.winners)
+
+
+def test_profile_counts_the_uncached_model_call_rather_than_reporting_zero():
+    """With no cache the counters do not exist, so the profile states the one
+    ``backend.embed`` batch it made. Reporting 0/0/0 here would read as a
+    perfectly warm cache on the most expensive path there is."""
+    graph = _eight_node_graph()
+    backend = _CountingBackend()
+    result = hybrid_search(graph, "gaussian splatting", backend=backend, profile=True)
+    prof = result.profile
+    assert prof is not None
+    assert prof.vector_cache is False
+    embedding = prof.lanes["embedding"]
+    assert embedding.embed_calls == backend.calls == 1
+    assert embedding.cache_hits == 0 and embedding.cache_misses == 0
+
+
+def test_profile_reports_cold_then_warm_cache_on_the_embedding_lane(tmp_path):
+    """The step-1 acceptance evidence: a cold cache misses and embeds, a warm
+    one hits and does not. Without this the cache ships unproven."""
+    from tesserae.retrieval.vector_cache import VectorCache
+
+    graph = _eight_node_graph()
+    cache = VectorCache.for_project(_project(tmp_path, "proj"))
+    assert cache is not None
+
+    cold = hybrid_search(
+        graph, "gaussian splatting", backend=_CountingBackend(),
+        vector_cache=cache, profile=True,
+    ).profile
+    warm = hybrid_search(
+        graph, "gaussian splatting", backend=_CountingBackend(),
+        vector_cache=cache, profile=True,
+    ).profile
+    assert cold is not None and warm is not None
+
+    assert cold.vector_cache is True and warm.vector_cache is True
+    # query + one text per node, all unseen.
+    assert cold.lanes["embedding"].cache_misses == len(graph.nodes) + 1
+    assert cold.lanes["embedding"].cache_hits == 0
+    assert cold.lanes["embedding"].embed_calls == 1
+
+    assert warm.lanes["embedding"].cache_hits == len(graph.nodes) + 1
+    assert warm.lanes["embedding"].cache_misses == 0
+    assert warm.lanes["embedding"].embed_calls == 0
+
+    # Only the embedding lane can embed; crediting the others would be a lie
+    # that a consumer would read as three model calls.
+    for lane in ("bm25", "lexical"):
+        assert cold.lanes[lane].embed_calls == 0
+        assert cold.lanes[lane].cache_misses == 0
+
+
+def test_profile_of_a_search_that_short_circuits_reports_no_lanes():
+    """Empty corpus and empty query return before any lane runs. Three zeroed
+    lanes would claim they ran and scored nothing; an empty dict is the honest
+    shape."""
+    graph = _eight_node_graph()
+    empty_query = hybrid_search(graph, "   ", backend=HashEmbeddingBackend(), profile=True)
+    assert empty_query.profile is not None
+    assert empty_query.profile.lanes == {}
+    assert empty_query.profile.candidates_in == len(graph.nodes)
+    assert empty_query.profile.winners == []
+
+    empty_corpus = hybrid_search(
+        graph, "gaussian", backend=HashEmbeddingBackend(), candidate_filter=[], profile=True
+    )
+    assert empty_corpus.profile is not None
+    assert empty_corpus.profile.lanes == {}
+    assert empty_corpus.profile.candidates_in == 0
+
+
+def test_mcp_search_nodes_explain_adds_a_profile_and_leaves_the_default_untouched(tmp_path):
+    server = _server_with_fixture(tmp_path)
+    plain = server.call_tool("search_nodes", {"q": "gaussian splatting", "limit": 4})
+    explained = server.call_tool(
+        "search_nodes", {"q": "gaussian splatting", "limit": 4, "explain": True}
+    )
+
+    assert "profile" not in plain
+    # Same answer, key for key, once the profile is removed.
+    assert {k: v for k, v in explained.items() if k != "profile"} == plain
+
+    prof = explained["profile"]
+    assert set(prof["lanes"]) == {"bm25", "lexical", "embedding"}
+    assert prof["returned"] == len(explained["nodes"])
+    assert prof["admitted"] == explained["total_matches"]
+    assert [w["node_id"] for w in prof["winners"]] == [n["id"] for n in explained["nodes"]]
+    assert all(w["lanes"] for w in prof["winners"])
+
+
+def test_mcp_search_nodes_explain_on_legacy_reports_the_scan_it_actually_ran(tmp_path):
+    """``explain`` must not be silently ignored on the one mode with no lanes."""
+    server = _server_with_fixture(tmp_path)
+    result = server.call_tool(
+        "search_nodes", {"q": "3dgs shape", "mode": "legacy", "explain": True}
+    )
+    prof = result["profile"]
+    assert prof["mode"] == "legacy"
+    assert set(prof["lanes"]) == {"legacy"}
+    assert prof["vector_cache"] is False
+    assert prof["lanes"]["legacy"]["embed_calls"] == 0
+    assert prof["returned"] == len(result["nodes"])
+    assert [w["node_id"] for w in prof["winners"]] == [n["id"] for n in result["nodes"]]
+
+
+def test_mcp_search_nodes_advertises_explain_with_its_cost_warning(tmp_path):
+    server = _server_with_fixture(tmp_path)
+    tools = {tool["name"]: tool for tool in server.list_tools()}
+    for tool_name in ("search_nodes", "compile_context"):
+        schema = tools[tool_name]["inputSchema"]["properties"]
+        assert schema["explain"]["default"] is False
+        # PROFILE's own posture: the flag costs time, and the description says so.
+        assert "cost" in schema["explain"]["description"].lower()

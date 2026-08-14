@@ -36,7 +36,8 @@ from __future__ import annotations
 import hashlib
 import math
 import re
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
 from ..research_graph import ResearchGraph, ResearchNode
@@ -82,6 +83,105 @@ class ScoredNode:
 
 
 @dataclass(frozen=True)
+class LaneProfile:
+    """What ONE lane cost and contributed on one :func:`hybrid_search` call.
+
+    ``candidates_in`` is 0 for a lane whose weight is 0: that lane never saw
+    the corpus, which is exactly what distinguishes "ran and found nothing"
+    from "did not run" — the distinction ``mode`` alone cannot make.
+    ``scored`` counts the documents this lane found relevant, using
+    :func:`_rrf_ranks`'s own criterion (``score > 0``), so a lane's count and
+    the ranks the fusion consumed can never disagree.
+    ``embed_calls`` / ``cache_hits`` / ``cache_misses`` can only ever be
+    non-zero on the embedding lane; they are carried on every lane so the
+    shape is uniform for a consumer that iterates.
+    """
+
+    lane: str
+    weight: float
+    candidates_in: int
+    scored: int
+    embed_calls: int
+    cache_hits: int
+    cache_misses: int
+    ms: float
+
+
+@dataclass(frozen=True)
+class WinnerAttribution:
+    """One returned node and the lanes that actually put it there.
+
+    ``lanes`` uses :func:`_fuse`'s own contribution criterion — positive
+    weight AND a rank inside the corpus — so it reports what the fusion
+    summed, not merely which lanes produced a non-zero score.
+    """
+
+    node_id: str
+    score: float
+    lanes: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RetrievalProfile:
+    """Per-lane cost accounting for one :func:`hybrid_search` call.
+
+    Opt-in (``hybrid_search(..., profile=True)``) because measuring costs:
+    with the flag unset nothing here is computed, no clock is read, and the
+    result is byte-identical. A profile is a report on a search that already
+    happened — it is produced from the same score and rank tables the fusion
+    used, so it can never move a ranking.
+
+    ``vector_cache`` records whether a cache backed the embedding lane. It is
+    load-bearing rather than decorative: with no cache the hit/miss counters
+    are structurally 0, and a reader who could not tell that apart from a
+    perfectly warm cache would read the most expensive path as the cheapest.
+    """
+
+    query: str
+    mode: str
+    backend: str
+    #: Corpus size the lanes were handed (post ``candidate_filter``).
+    candidates_in: int
+    #: Candidates that survived the candidate-generation gate, pre-``top_k``.
+    admitted: int
+    #: Items actually returned after the ``top_k`` slice.
+    returned: int
+    ms: float
+    vector_cache: bool
+    lanes: Dict[str, LaneProfile] = field(default_factory=dict)
+    winners: List[WinnerAttribution] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, object]:
+        """JSON-safe projection for the MCP layer."""
+        return {
+            "query": self.query,
+            "mode": self.mode,
+            "backend": self.backend,
+            "candidates_in": self.candidates_in,
+            "admitted": self.admitted,
+            "returned": self.returned,
+            "ms": round(self.ms, 3),
+            "vector_cache": self.vector_cache,
+            "lanes": {
+                name: {
+                    "weight": lane.weight,
+                    "candidates_in": lane.candidates_in,
+                    "scored": lane.scored,
+                    "embed_calls": lane.embed_calls,
+                    "cache_hits": lane.cache_hits,
+                    "cache_misses": lane.cache_misses,
+                    "ms": round(lane.ms, 3),
+                }
+                for name, lane in self.lanes.items()
+            },
+            "winners": [
+                {"node_id": w.node_id, "score": w.score, "lanes": list(w.lanes)}
+                for w in self.winners
+            ],
+        }
+
+
+@dataclass(frozen=True)
 class HybridSearchResult:
     """Wraps the ranked nodes plus retrieval metadata for callers / tests."""
 
@@ -94,6 +194,9 @@ class HybridSearchResult:
     # *before* being sliced to ``top_k``. Callers (e.g. the MCP server) need
     # this to report an accurate ``total_matches`` rather than the page size.
     total_matches: int = 0
+    #: Populated only when the caller passed ``profile=True``. ``None`` means
+    #: profiling never ran, never "the search cost nothing".
+    profile: Optional[RetrievalProfile] = None
 
 
 # ---------------------------------------------------------------------------
@@ -482,6 +585,37 @@ def _fuse(
 # ---------------------------------------------------------------------------
 
 
+def _short_circuit_profile(
+    *,
+    query: str,
+    mode: str,
+    backend: str,
+    started: float,
+    candidates_in: int,
+    admitted: int,
+    returned: int,
+    vector_cache: bool,
+) -> RetrievalProfile:
+    """Profile for a search that returned before any lane ran.
+
+    ``lanes`` is empty rather than three zeroed entries, because zeroed lanes
+    would read as "all three ran and scored nothing" — the opposite of what
+    happened on an empty corpus or an empty query.
+    """
+    return RetrievalProfile(
+        query=query,
+        mode=mode,
+        backend=backend,
+        candidates_in=candidates_in,
+        admitted=admitted,
+        returned=returned,
+        ms=(time.perf_counter() - started) * 1000.0,
+        vector_cache=vector_cache,
+        lanes={},
+        winners=[],
+    )
+
+
 def hybrid_search(
     graph: ResearchGraph,
     query: str,
@@ -492,6 +626,7 @@ def hybrid_search(
     backend: Optional[EmbeddingBackend] = None,
     candidate_filter: Optional[Iterable[ResearchNode]] = None,
     vector_cache: Optional[VectorCache] = None,
+    profile: bool = False,
 ) -> HybridSearchResult:
     """Fuse BM25, lexical and embedding lanes over a ``ResearchGraph``.
 
@@ -526,7 +661,14 @@ def hybrid_search(
         cache, a warm cache, or none at all. ``None`` (default) embeds every
         call, which is the only option for a graph with no ``.tesserae``
         sidecar to write to.
+    profile
+        Opt-in per-lane cost accounting (roadmap step 9), attached to the
+        result as :attr:`HybridSearchResult.profile`. Off by default because
+        measuring costs: with it unset no clock is read and no counter is
+        computed. It cannot change the answer — every number is derived from
+        the score and rank tables the fusion already produced.
     """
+    _t_call = time.perf_counter() if profile else 0.0
     nodes = list(candidate_filter) if candidate_filter is not None else list(graph.nodes)
     # Build the reported weights dict by merging the override on top of the
     # defaults (see selected_weights below for the main-path rationale).
@@ -541,6 +683,20 @@ def hybrid_search(
             weights=reported_weights,
             scored=[],
             total_matches=0,
+            profile=(
+                _short_circuit_profile(
+                    query=query,
+                    mode=mode,
+                    backend=(backend.name if backend else "n/a"),
+                    started=_t_call,
+                    candidates_in=0,
+                    admitted=0,
+                    returned=0,
+                    vector_cache=vector_cache is not None,
+                )
+                if profile
+                else None
+            ),
         )
 
     # No query → preserve ordering, score 0 across the board.
@@ -556,6 +712,20 @@ def hybrid_search(
             weights=reported_weights,
             scored=scored,
             total_matches=len(nodes),
+            profile=(
+                _short_circuit_profile(
+                    query=query,
+                    mode=mode,
+                    backend=(backend.name if backend else "n/a"),
+                    started=_t_call,
+                    candidates_in=len(nodes),
+                    admitted=len(nodes),
+                    returned=len(scored),
+                    vector_cache=vector_cache is not None,
+                )
+                if profile
+                else None
+            ),
         )
 
     # Merge any caller override on top of DEFAULT_WEIGHTS so a partial dict
@@ -579,14 +749,28 @@ def hybrid_search(
     query_tokens = _tokenize(query)
 
     lane_scores: Dict[str, List[float]] = {}
+    # Per-lane wall time, sampled between lanes so the timed region is the lane
+    # call itself and nothing else. Only touched under ``profile``.
+    lane_ms: Dict[str, float] = {}
+    _t_lane = time.perf_counter() if profile else 0.0
+
     if selected_weights.get("bm25", 0.0) > 0:
         lane_scores["bm25"] = _bm25_scores(query_tokens, corpus_tokens)
     else:
         lane_scores["bm25"] = [0.0] * len(nodes)
+    if profile:
+        _now = time.perf_counter()
+        lane_ms["bm25"] = (_now - _t_lane) * 1000.0
+        _t_lane = _now
+
     if selected_weights.get("lexical", 0.0) > 0:
         lane_scores["lexical"] = _lexical_scores(query, texts)
     else:
         lane_scores["lexical"] = [0.0] * len(nodes)
+    if profile:
+        _now = time.perf_counter()
+        lane_ms["lexical"] = (_now - _t_lane) * 1000.0
+        _t_lane = _now
     # Resolve the embedding backend once and reuse it for both the lane scores
     # and the candidate gate. Resolve only when the embedding lane is active OR
     # we're in hybrid mode (the only case where the gate consults backend
@@ -596,7 +780,17 @@ def hybrid_search(
     embed_backend = backend
     if selected_weights.get("embedding", 0.0) > 0 or mode == "hybrid":
         embed_backend = backend or active_embedding_backend()
-    if selected_weights.get("embedding", 0.0) > 0:
+    _embedding_ran = selected_weights.get("embedding", 0.0) > 0
+    # Snapshot the cache's OWN counters, not the process-wide ones: the process
+    # totals move under any other search in flight, which would attribute a
+    # neighbour's misses to this query.
+    if profile and vector_cache is not None:
+        _cache_before = (
+            vector_cache.stats.embed_calls,
+            vector_cache.stats.hits,
+            vector_cache.stats.misses,
+        )
+    if _embedding_ran:
         lane_scores["embedding"] = _embedding_scores(
             query, texts, embed_backend, vector_cache
         )
@@ -604,6 +798,24 @@ def hybrid_search(
     else:
         lane_scores["embedding"] = [0.0] * len(nodes)
         backend_name = backend.name if backend else "disabled"
+    if profile:
+        _now = time.perf_counter()
+        lane_ms["embedding"] = (_now - _t_lane) * 1000.0
+        if vector_cache is not None:
+            _embed_calls, _cache_hits, _cache_misses = (
+                vector_cache.stats.embed_calls - _cache_before[0],
+                vector_cache.stats.hits - _cache_before[1],
+                vector_cache.stats.misses - _cache_before[2],
+            )
+        else:
+            # Uncached, ``embed_texts`` is one ``backend.embed`` over the whole
+            # batch and nothing counts it. Report that 1 rather than the 0 the
+            # absent counters would suggest — a silent "no model call" on the
+            # one path that always makes one is the failure this whole step
+            # exists to prevent. ``vector_cache=False`` on the profile is what
+            # keeps the 0 hits/misses from reading as a warm cache.
+            _embed_calls = 1 if _embedding_ran else 0
+            _cache_hits = _cache_misses = 0
 
     fused, ranks = _fuse(lane_scores, selected_weights, len(nodes))
 
@@ -650,6 +862,7 @@ def hybrid_search(
     total_matches = len(indexed)
     bounded = max(1, min(int(top_k), len(nodes)))
     scored: List[ScoredNode] = []
+    winners: List[WinnerAttribution] = []
     for fused_score, idx in indexed[:bounded]:
         scored.append(
             ScoredNode(
@@ -659,6 +872,54 @@ def hybrid_search(
                 ranks={lane: int(ranks[lane][idx]) for lane in ranks},
             )
         )
+        if profile:
+            # _fuse's own contribution test, verbatim: a lane adds
+            # ``weight / (RRF_K + rank)`` only when its weight is positive AND
+            # the doc ranked inside the corpus. Re-deriving it from per_lane
+            # scores would over-report every zero-weight lane.
+            winners.append(
+                WinnerAttribution(
+                    node_id=nodes[idx].id,
+                    score=float(fused_score),
+                    lanes=tuple(
+                        lane
+                        for lane in lane_scores
+                        if selected_weights.get(lane, 0.0) > 0
+                        and ranks[lane][idx] <= len(nodes)
+                    ),
+                )
+            )
+
+    call_profile: Optional[RetrievalProfile] = None
+    if profile:
+        call_profile = RetrievalProfile(
+            query=query,
+            mode=mode,
+            backend=backend_name,
+            candidates_in=len(nodes),
+            admitted=total_matches,
+            returned=len(scored),
+            ms=(time.perf_counter() - _t_call) * 1000.0,
+            vector_cache=vector_cache is not None,
+            lanes={
+                lane: LaneProfile(
+                    lane=lane,
+                    weight=float(selected_weights.get(lane, 0.0)),
+                    # A zero-weight lane never saw the corpus — its score list
+                    # is a zero-fill, not a result.
+                    candidates_in=(
+                        len(nodes) if selected_weights.get(lane, 0.0) > 0 else 0
+                    ),
+                    scored=sum(1 for score in lane_scores[lane] if score > 0),
+                    embed_calls=_embed_calls if lane == "embedding" else 0,
+                    cache_hits=_cache_hits if lane == "embedding" else 0,
+                    cache_misses=_cache_misses if lane == "embedding" else 0,
+                    ms=lane_ms.get(lane, 0.0),
+                )
+                for lane in lane_scores
+            },
+            winners=winners,
+        )
 
     return HybridSearchResult(
         query=query,
@@ -667,4 +928,5 @@ def hybrid_search(
         weights=selected_weights,
         scored=scored,
         total_matches=total_matches,
+        profile=call_profile,
     )

@@ -38,7 +38,7 @@ from typing import (Any, Callable, Dict, FrozenSet, List, Mapping, Optional,
 
 from .graph_filters import suppressed_ids
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
-from .retrieval.hybrid import hybrid_search
+from .retrieval.hybrid import RetrievalProfile, hybrid_search
 from .retrieval.ppr import personalized_pagerank
 from .wiki_projector import kind_for_node
 from .wiki_store import WikiPageStore
@@ -165,6 +165,13 @@ class ContextBundle:
     #: dict keyed by every pool — including on the empty-seed early return,
     #: which used to return ``None`` and give that value a second meaning.
     pool_reservations: Optional[Dict[str, Optional[Dict[str, object]]]] = None
+    #: Per-lane retrieval cost accounting for the seed searches, in the order
+    #: they ran (roadmap step 9). ``None`` means profiling never ran, i.e. the
+    #: caller left ``explain`` off — never "the searches cost nothing". A list
+    #: rather than one merged profile because ``multi_pool`` and
+    #: ``strategy='hierarchical'`` each run several searches, and a summed
+    #: profile would hide which sub-query was the expensive one.
+    retrieval_profiles: Optional[List[RetrievalProfile]] = None
 
 
 def _pool_order() -> Tuple[ResearchNodeType, ...]:
@@ -462,6 +469,7 @@ def compile_context(
     strategy: str = "default",
     tame_hubs: bool = False,
     view: Optional[Union[str, Sequence[str]]] = None,
+    explain: bool = False,
 ) -> ContextBundle:
     """Compile a tailored, cited context bundle for ``query`` / ``seeds``.
 
@@ -514,6 +522,16 @@ def compile_context(
       ranking, one reservation pass, one budget, never two competing
       reservation mechanisms over the same window.
 
+    ``explain=True`` (roadmap step 9) fills
+    :attr:`ContextBundle.retrieval_profiles` with per-lane cost accounting for
+    the seed searches — the pipeline stage that can call an embedding model,
+    and therefore the one whose cost is worth measuring. Off by default
+    because measuring costs; the bundle body, citations and selection are
+    byte-identical either way, since a profile only reports on scoring that
+    already happened. PPR expansion and multi-view fusion are deliberately not
+    profiled: they run over an in-memory edge list at a cost the seed searches
+    dominate, and reporting a "plan" for a fixed pipeline would be theatre.
+
     Both ``scope`` and ``strategy="hierarchical"`` require ``project_root``
     (the sidecar lives under it); the ``budget=0`` uncapped invariant is
     honoured on every path.
@@ -564,6 +582,11 @@ def compile_context(
 
     vector_cache = VectorCache.for_project(project_root)
 
+    # Seed-search profiles, collected only under ``explain``. An empty list is
+    # "profiling ran and no seed search happened" (seeds given, no query);
+    # ``None`` is "profiling never ran". Those are different answers.
+    retrieval_profiles: Optional[List[RetrievalProfile]] = [] if explain else None
+
     # --- Step 0 (Descent §5.4): resolve hierarchy-backed restriction --------
     hierarchy = None
     if scope is not None or strategy == "hierarchical":
@@ -606,7 +629,10 @@ def compile_context(
                 top_k=max(1, depth) * 5,
                 backend=backend,
                 vector_cache=vector_cache,
+                profile=explain,
             )
+            if retrieval_profiles is not None and matches.profile is not None:
+                retrieval_profiles.append(matches.profile)
             union: Set[str] = set()
             for scored in matches.scored[: max(1, depth)]:
                 found_branch = hierarchy.find_scope(scored.node.id)
@@ -647,8 +673,10 @@ def compile_context(
         for subq in subqueries:
             result = hybrid_search(
                 graph, subq, top_k=max(1, depth) * 5, backend=backend,
-                vector_cache=vector_cache,
+                vector_cache=vector_cache, profile=explain,
             )
+            if retrieval_profiles is not None and result.profile is not None:
+                retrieval_profiles.append(result.profile)
             for scored in result.scored:
                 nid = scored.node.id
                 if nid not in seen:
@@ -672,6 +700,7 @@ def compile_context(
             # undocumented meaning ("multi_pool was on but the query resolved to
             # nothing") on top of its documented one ("multi_pool was off").
             pool_reservations=_empty_pool_reservations() if multi_pool else None,
+            retrieval_profiles=retrieval_profiles,
         )
 
     # --- Step 2: PPR expansion, bounded to the depth-hop neighbourhood -------
@@ -1017,4 +1046,5 @@ def compile_context(
         char_budget_used=chars_used,
         char_budget_total=budget,
         pool_reservations=pool_reservations,
+        retrieval_profiles=retrieval_profiles,
     )
