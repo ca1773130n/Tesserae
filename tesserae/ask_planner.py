@@ -337,8 +337,7 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
         return _clip(header + body), []
 
     if action == "timeline":
-        from .temporal import (FACT_MATCH_CEILING, facts_as_of, facts_since,
-                               is_dated, timeline)
+        from .temporal import facts_as_of, facts_since, is_dated, timeline
 
         as_of = _date_arg(args, "as_of")
         since = _date_arg(args, "since")
@@ -393,12 +392,15 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
             # cannot be recounted — hence the name: `undated_excluded` can never
             # be read as "rows in this answer", which `undated_included` alone is.
             entry["undated_excluded"] = undated_excluded
-        if int(result["total_events"]) >= FACT_MATCH_CEILING:
-            # NOT `total_events` under a name like `total`: search_facts clamps
-            # its match list at FACT_MATCH_CEILING, so timeline never sees more
-            # than that many matches and the number is a cap, not a corpus
-            # count. A boolean says "this is not everything" without asserting
-            # a magnitude — the shape the MCP dispatcher's `continuation` uses.
+        if int(result["total_events"]) > len(events):
+            # Derived from the page, not compared against a page-size constant.
+            # This read `total_events >= FACT_MATCH_CEILING` back when timeline
+            # paged through search_facts and its count WAS that clamp; a match
+            # set of exactly 100 then reported `capped` while a caller who had
+            # in fact been handed everything was told otherwise. `total_events`
+            # is now the true match count, so "there is more than the page
+            # shows" is the only thing worth asserting — and a boolean asserts
+            # no magnitude, the shape the MCP dispatcher's `continuation` uses.
             entry["capped"] = True
         ctx.executed.append(entry)
         return _clip("\n".join(lines) or "(no timeline events in range)"), []
