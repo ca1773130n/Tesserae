@@ -760,11 +760,18 @@ def facts_since(
     return kept, undated_excluded
 
 
-#: Hard ceiling on the matches :func:`search_facts` will return, whatever the
-#: caller's ``limit``. Named rather than inlined because :func:`timeline` asks
-#: for 10,000 and silently receives at most this many, so a caller reasoning
-#: about whether it was handed everything has to read the same number.
+#: Hard ceiling on the PAGE :func:`search_facts` will return, whatever the
+#: caller's ``limit``. It bounds the payload, never the answer: ``total_matches``
+#: counts every match above it, so a caller can always tell a full page from a
+#: complete one. Named rather than inlined so a caller reasoning about whether
+#: it was handed everything reads the same number the function applied.
 FACT_MATCH_CEILING = 100
+
+#: The same bound for :func:`timeline`, which pages in whole events rather than
+#: single facts and can afford more of them. Its own constant, not a multiple of
+#: :data:`FACT_MATCH_CEILING`: the two page different things and there is no
+#: relation between them to preserve.
+TIMELINE_PAGE_CEILING = 200
 
 
 #: The three states of the ``dated`` filter on :func:`search_facts` and
@@ -846,6 +853,44 @@ def _rank_facts(pool: List[TemporalFact], query: str) -> List[TemporalFact]:
     return [pool[index] for index in order if lexical[index] > 0]
 
 
+def _matching_facts(
+    facts: Iterable[TemporalFact],
+    query: str,
+    current_only: bool = False,
+    dated: str = "any",
+) -> List[TemporalFact]:
+    """Every fact that matches, filtered and ranked, with NO page slice.
+
+    Shared by :func:`search_facts` and :func:`timeline` so that neither one
+    pages the other. ``timeline`` used to call ``search_facts(limit=10_000)``
+    and receive at most :data:`FACT_MATCH_CEILING` rows, which cost it twice:
+    it reported that clamp as ``total_events`` — a corpus-coverage-shaped
+    number that was really an artefact of a page size the caller never asked
+    for — and it sorted only the first 100 rows of the match set, so a
+    "chronology" over a larger corpus was whatever BM25 ranked highest (or,
+    unqueried, whatever the projector emitted first) wearing a time order.
+
+    Raises on an unknown ``dated`` state rather than degrading to ``"any"``,
+    which would answer a question nobody asked under the label of one they did.
+    """
+    if dated not in DATED_FILTERS:
+        raise ValueError(
+            f"Unknown dated filter: {dated!r} (expected one of {', '.join(DATED_FILTERS)})"
+        )
+    pool: List[TemporalFact] = []
+    for fact in facts:
+        if current_only and not fact.current:
+            continue
+        if dated != "any" and is_dated(fact.valid_from) != (dated == "dated"):
+            continue
+        pool.append(fact)
+    if not query.split():
+        # No query is not a zero-relevance ranking, it is "no filter": keep the
+        # projection order so an unqueried call reads the corpus as projected.
+        return pool
+    return _rank_facts(pool, query)
+
+
 def search_facts(
     facts: Iterable[TemporalFact],
     query: str,
@@ -860,23 +905,10 @@ def search_facts(
     ``"any"``, so a filtered answer is never mistaken for a thin corpus. An
     unknown state raises rather than degrading to ``"any"``.
     """
-    if dated not in DATED_FILTERS:
-        raise ValueError(
-            f"Unknown dated filter: {dated!r} (expected one of {', '.join(DATED_FILTERS)})"
-        )
-    pool: List[TemporalFact] = []
-    for fact in facts:
-        if current_only and not fact.current:
-            continue
-        if dated != "any" and is_dated(fact.valid_from) != (dated == "dated"):
-            continue
-        pool.append(fact)
-    if query.split():
-        matches = [fact.model_dump() for fact in _rank_facts(pool, query)]
-    else:
-        # No query is not a zero-relevance ranking, it is "no filter": keep the
-        # projection order so an unqueried call reads the corpus as projected.
-        matches = [fact.model_dump() for fact in pool]
+    matches = [
+        fact.model_dump()
+        for fact in _matching_facts(facts, query, current_only=current_only, dated=dated)
+    ]
     bounded = max(1, min(limit, FACT_MATCH_CEILING))
     result: Dict[str, object] = {
         "query": query,
@@ -892,13 +924,19 @@ def search_facts(
 def timeline(
     facts: Iterable[TemporalFact], query: str = "", limit: int = 50, dated: str = "any"
 ) -> Dict[str, object]:
-    """:func:`search_facts` ordered in time, with the undated rows bucketed.
+    """The same matches :func:`search_facts` finds, ordered in time.
 
-    ``undated_events`` counts the undated rows IN THE RETURNED PAGE — the same
-    discipline ``mcp_server._undated_included`` applies to ``as_of``.
+    Two counts with deliberately different scopes. ``total_events`` is the
+    count of EVERY match, taken before the page slice, so a caller can tell a
+    full page from a complete answer; ``undated_events`` counts the undated
+    rows IN THE RETURNED PAGE — the same discipline
+    ``mcp_server._undated_included`` applies to ``as_of``.
+
+    The sort runs over the full match set, not over a page of it, or the
+    earliest events on a corpus larger than one page would simply be missing
+    from the chronology that claims to start at the beginning.
     """
-    result = search_facts(facts, query=query, limit=10_000, dated=dated)
-    events = list(result["facts"])
+    events = [fact.model_dump() for fact in _matching_facts(facts, query, dated=dated)]
     # Sort on the PARSED timestamp, and bucket the undated rows behind the
     # dated ones instead of letting a string comparison place them. Sorting
     # `str(valid_from)` ordered the literal "undated" after every ISO date by
@@ -918,7 +956,7 @@ def timeline(
     undated_rows.sort(
         key=lambda item: (str(item.get("subject_name") or ""), str(item.get("predicate") or ""))
     )
-    ordered = (dated_rows + undated_rows)[: max(1, min(limit, 200))]
+    ordered = (dated_rows + undated_rows)[: max(1, min(limit, TIMELINE_PAGE_CEILING))]
     payload: Dict[str, object] = {
         "query": query,
         "total_events": len(events),

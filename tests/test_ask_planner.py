@@ -605,6 +605,23 @@ def test_undated_included_counts_the_rows_shipped_not_the_corpus(tmp_path):
     assert "kitten" not in prompt
 
 
+def test_capped_is_derived_from_the_page_not_from_a_page_size_constant(tmp_path):
+    """`capped` says "there is more than you were shown", and the only honest
+    source for that is the page itself. It read
+    ``total_events >= FACT_MATCH_CEILING`` back when ``total_events`` WAS that
+    clamp, so it stayed silent on every truncated answer under 100 rows and
+    fired on a 100-match answer that was complete."""
+    findings = [(f"event {index:03d}", f"2026-01-{1 + index:02d}") for index in range(4)]
+    wiki = _make_fact_project(tmp_path, findings)
+
+    truncated, _ = _run_step(wiki, "timeline", limit=2)
+    whole, _ = _run_step(wiki, "timeline", limit=50)
+
+    assert truncated["rows"] == 2 and truncated["capped"] is True
+    # Absent, not False: a complete answer asserts nothing about a cap.
+    assert whole["rows"] == 4 and "capped" not in whole
+
+
 def test_an_unparseable_date_fails_the_step_instead_of_answering_everything(tmp_path):
     """A whole-corpus answer wearing an "as of DATE" label is the precise lie
     this branch exists to remove, so the step fails loudly instead."""

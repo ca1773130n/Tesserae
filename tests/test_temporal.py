@@ -1,9 +1,11 @@
 import json
+from datetime import date, timedelta
 
 import pytest
 
 from tesserae.research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
-from tesserae.temporal import (TemporalFact, TemporalFactProjector, is_dated,
+from tesserae.temporal import (FACT_MATCH_CEILING, TIMELINE_PAGE_CEILING,
+                               TemporalFact, TemporalFactProjector, is_dated,
                                render_competitive_report, search_facts,
                                timeline)
 
@@ -239,6 +241,65 @@ def test_timeline_counts_undated_over_the_rows_returned_not_the_matches():
     assert [e["id"] for e in page["events"]] == ["TemporalFact:d"]
     assert page["total_events"] == 2
     assert page["undated_events"] == 0
+
+
+def _dated_corpus(count):
+    """``count`` facts, projected NEWEST first, one calendar day apart.
+
+    Reverse-chronological projection order is what makes the ceiling visible:
+    a page taken before the sort keeps the LATEST rows, so the earliest event
+    is exactly what a truncating timeline drops.
+    """
+    start = date(2026, 1, 1)
+    return [
+        _fact(
+            id=f"TemporalFact:e{index}",
+            subject_name="Buzz Aldrin",
+            valid_from=(start + timedelta(days=count - 1 - index)).isoformat(),
+        )
+        for index in range(count)
+    ]
+
+
+def test_timeline_total_events_counts_the_matches_not_the_page():
+    """``total_events`` must be corpus coverage, never a page-size artefact.
+
+    It was ``len(search_facts(limit=10_000)["facts"])``, and ``search_facts``
+    clamps at ``FACT_MATCH_CEILING``, so a 250-match query reported 100 —
+    a number shaped exactly like "this is the whole answer"."""
+    corpus = _dated_corpus(250)
+
+    result = timeline(corpus, query="aldrin")
+
+    assert result["total_events"] == 250
+    assert len(result["events"]) == 50  # the default page, and it says so
+    # search_facts keeps its own page clamp, and was already honest above it.
+    paged = search_facts(corpus, "aldrin", limit=10_000)
+    assert paged["total_matches"] == 250
+    assert len(paged["facts"]) == FACT_MATCH_CEILING
+
+
+def test_timeline_pages_up_to_its_own_ceiling_not_search_facts_one():
+    """``limit`` above ``FACT_MATCH_CEILING`` used to be unreachable: timeline
+    advertised a 200-row page and could never fill more than 100 of it."""
+    corpus = _dated_corpus(250)
+
+    assert len(timeline(corpus, query="aldrin", limit=150)["events"]) == 150
+    assert len(timeline(corpus, query="aldrin", limit=10_000)["events"]) == TIMELINE_PAGE_CEILING
+
+
+def test_timeline_sorts_every_match_not_just_the_first_page():
+    """A chronology built from a page is a rank-selected sample wearing a time
+    order. The corpus is projected newest-first, so truncating before the sort
+    kept the LATEST 100 and a timeline that claims to start at the beginning
+    began four months late."""
+    corpus = _dated_corpus(250)
+
+    events = timeline(corpus, query="aldrin", limit=5)["events"]
+
+    earliest = min(fact.valid_from for fact in corpus)
+    assert events[0]["valid_from"] == earliest
+    assert [e["valid_from"] for e in events] == sorted(e["valid_from"] for e in events)
 
 
 def test_timeline_dated_filter_narrows_before_the_sort():
