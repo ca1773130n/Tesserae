@@ -168,8 +168,10 @@ entire physical memory, which is why that size was not attempted.
 2. *CPU.* The dot product beneath it is a pure-Python `sum(a * b for a, b in zip(...))` per
    document, over every node. That is the 877 → 1,879 → 5,377 ms in the lane table, 73–78%
    of total query time at every size.
-3. *IO.* Not a factor. Reading a 275 MB `graph.json` took 0.044 s (page-cached); writing it
-   took 0.823 s; the SQLite node writes are among the smallest phases on the board.
+3. *IO.* Not a factor. Reading a 275 MB `graph.json` took 0.044 s (page-cached) and writing
+   it took 0.823 s, against 7.4 s for a single query at the same size. `upsert_many_edges`
+   is the one storage phase with real cost (8.5 s at 250k), and it is still the cheaper half
+   of a `compile_context` call.
 
 **The load-bearing detail:** nothing here is badly superlinear. Every exponent sits between
 0.91 and 1.31. There is no algorithmic cliff — the system walks into a wall at a nearly
