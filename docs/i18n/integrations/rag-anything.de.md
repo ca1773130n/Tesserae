@@ -109,7 +109,8 @@ Aktuelles Mapping:
 
 ### Pro-Besitzer-Fakten fahren die `part_of`-Kante
 
-Eine `Artifact`'s ID wird nur von ihrer Content-Hash geseedet, deshalb ist der
+Eine `Artifact`'s ID wird aus ihrer Art und ihrer Content-Hash geseedet, und aus
+nichts sonst — kein Dokument, Pfad, Bildunterschrift oder Seite —, deshalb ist der
 Node absichtlich **dokument-agnostisch**: dieselbe Figur in zwei
 Papieren ist ein Node mit einer `part_of`-Kante pro Besitzer. Aber `kind`, `page`,
 `caption` und die 1-basierte pro-Art `ordinal` sind Fakten über das *(artifact,

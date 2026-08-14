@@ -109,7 +109,8 @@ Mapeo actual:
 
 ### Los hechos por propietario van sobre la arista `part_of`
 
-El id de un `Artifact` se siembra del hash de contenido y nada más, de modo que el
+El id de un `Artifact` se siembra del kind del artefacto y su hash de contenido,
+y nada más — ningún documento, ruta, caption o página — de modo que el
 nodo es deliberadamente **agnóstico de documento**: la misma figura impresa en dos
 papeles es un nodo con una arista `part_of` por propietario. Pero `kind`, `page`,
 `caption` y el 1-basado por-kind `ordinal` son hechos sobre el *(artifact,

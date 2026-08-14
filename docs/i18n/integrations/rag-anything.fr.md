@@ -110,11 +110,12 @@ Correspondance actuelle :
 
 ### Les faits par propriétaire chevauchent l'arête `part_of`
 
-L'id d'un `Artifact` est amorcé à partir de son hash de contenu et rien d'autre, donc
-le nœud est délibérément **doc-agnostique**: la même figure imprimée dans deux
-documents est un nœud avec une arête `part_of` par propriétaire. Mais `kind`, `page`,
-`caption` et le `ordinal` 1-basé par kind sont des faits sur la paire *(artifact,
-document)* — conservés uniquement sur le nœud, un artifact partagé conserverait le
+L'id d'un `Artifact` est amorcé à partir de son kind et de son hash de contenu, et rien
+d'autre — pas de document, chemin, caption ou page — donc le nœud est délibérément
+**doc-agnostique**: la même figure imprimée dans deux documents est un nœud avec une
+arête `part_of` par propriétaire. Mais `kind`, `page`, `caption` et le `ordinal` 1-basé par
+kind sont des faits sur la paire *(artifact, document)* — conservés uniquement sur le nœud,
+un artifact partagé conserverait le
 document qui a fusionné en premier et perdrait silencieusement la page de chaque
 propriétaire ultérieur. Ils chevauchent l'arête, qui est par-propriétaire par
 construction. Le nœud en garde ses propres copies pour la compatibilité rétroactive ;

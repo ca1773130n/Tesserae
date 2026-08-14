@@ -349,7 +349,7 @@ Tesserae 输出什么，以及每个值诚实地来自哪里：
 
 [`tesserae/kuzu_adapter.py`](../../tesserae/kuzu_adapter.py) 把 `graph.json` 投影进一个嵌入式 [Kuzu](https://kuzudb.com) 数据库，好让别的工具在图谱上跑 Cypher。`tesserae export kuzu` 负责写出；`--graph PATH` 导出的是一份裸的抽取图，而不是项目编译后的图。这是一次**单向导出**，是与 [OKF](#okf-v02-导出导入) 和 [Graphiti](../../tesserae/graphiti_adapter.py) 并列的三者之一，而 `write_graph(replace=True)` 会删除并重建数据库，因此输出是所交付图谱的纯函数。
 
-**Kuzu 刻意不是存储，而这个区分是承重的。** 直到 v0.32，一个 `KuzuResearchGraphStore` 还坐在 [`tesserae/persistence.py`](../../tesserae/persistence.py) 里、真正的 SQLite 存储旁边，只能经由一个依赖被声明为 dev-only 的 `extract --kuzu-output` 标志抵达——一个只接了一半线的第二后端，正是它让"Tesserae 是否该采用图数据库？"读起来像一个悬而未决的问题。它并不悬而未决，理由是架构上的而非法律上的（Kuzu 是 MIT 许可、嵌入式、不需要服务器）：
+**Kuzu 刻意不是存储，而这个区分是承重的。** 一个 `KuzuResearchGraphStore` 曾经坐在 [`tesserae/persistence.py`](../../tesserae/persistence.py) 里、真正的 SQLite 存储旁边，只能经由一个依赖被声明为 dev-only 的 `extract --kuzu-output` 标志抵达——一个只接了一半线的第二后端，正是它让"Tesserae 是否该采用图数据库？"读起来像一个悬而未决的问题。它并不悬而未决，理由是架构上的而非法律上的（Kuzu 是 MIT 许可、嵌入式、不需要服务器）：
 
 - **第二个权威存储可以就同一个事实与 `graph.json` 相互矛盾**，而没有仲裁者。`graph.json` 是真相之源；任何能与它相抵触的东西都是 bug 面。
 - **字节级幂等会从一个纯函数移交给数据库的写入顺序。** `tests/test_byte_idempotence_phase5.py` 钉住的性质——两次编译产出逐字节相同的 `graph.json`——之所以成立，是因为编译是对其输入的、键有序的纯函数。被比较过的图记忆系统没有一个尝试过这件事，而把写入路由进一个引擎，正是丢掉它的方式。

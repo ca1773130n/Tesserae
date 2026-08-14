@@ -356,7 +356,7 @@ Tesserae が何を出力し、それぞれの値が正直にどこから来る�
 
 [`tesserae/kuzu_adapter.py`](../../tesserae/kuzu_adapter.py) は `graph.json` を埋め込み [Kuzu](https://kuzudb.com) データベースへ投影し、別のツールがグラフ上で Cypher を実行できるようにします。`tesserae export kuzu` が書き出し、`--graph PATH` はプロジェクトのコンパイル済みグラフではなく、抽出しただけの素のグラフをエクスポートします。これは **一方向のエクスポート**であり、[OKF](#okf-v02-エクスポート--インポート) と [Graphiti](../../tesserae/graphiti_adapter.py) と並ぶ三つ目です。`write_graph(replace=True)` はデータベースを削除して作り直すので、出力は渡されたグラフの純粋な関数になります。
 
-**Kuzu は意図的にストアではなく、この区別が構造を支えています。** v0.32 まで `KuzuResearchGraphStore` が本物の SQLite ストアの隣、[`tesserae/persistence.py`](../../tesserae/persistence.py) に置かれ、依存関係が dev-only と宣言された `extract --kuzu-output` フラグからのみ到達できました — 半分だけ配線された second backend であり、それが「Tesserae はグラフデータベースを採用すべきか?」を未解決の問いのように見せていました。未解決ではなく、その理由は法的なものではなくアーキテクチャ上のものです（Kuzu は MIT ライセンスで、埋め込み型で、サーバーを必要としません）:
+**Kuzu は意図的にストアではなく、この区別が構造を支えています。** かつて `KuzuResearchGraphStore` が本物の SQLite ストアの隣、[`tesserae/persistence.py`](../../tesserae/persistence.py) に置かれ、依存関係が dev-only と宣言された `extract --kuzu-output` フラグからのみ到達できました — 半分だけ配線された second backend であり、それが「Tesserae はグラフデータベースを採用すべきか?」を未解決の問いのように見せていました。未解決ではなく、その理由は法的なものではなくアーキテクチャ上のものです（Kuzu は MIT ライセンスで、埋め込み型で、サーバーを必要としません）:
 
 - **二つ目の権威あるストアは、同じ事実について `graph.json` と食い違いうる**のに、調停者がいません。`graph.json` が真実の源であり、それに矛盾しうるものはすべてバグの表面です。
 - **バイト冪等性が純粋関数からデータベースの書き込み順序へ移ってしまいます。** `tests/test_byte_idempotence_phase5.py` が固定している性質 — 二度のコンパイルがバイト単位で同一の `graph.json` を生む — は、コンパイルが入力に対するキー整列済みの純粋関数だから成り立ちます。比較した graph-memory システムのどれもそれを試みてすらおらず、書き込みをエンジン経由にすることは、それを失う方法そのものです。
