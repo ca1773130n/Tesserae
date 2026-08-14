@@ -179,11 +179,11 @@ MCP 客户端的服务器条目。每个读图工具都免费接受 `graph_path`
 | `get_handle` | 分片翻阅大体积载荷，使智能体不必一次性把全部内容放进上下文 |
 | `ask` · `query` · `search_nodes` · `node_context` | 规划式回答、原始检索，以及在已编译知识库上的图谱导航 |
 | `graph_map` | Budgeted Descent：按作用域自顶向下导航图谱，而不是猜搜索词——推荐的入口点 |
-| `graph_ppr` · `search_facts` · `timeline` | Personalized PageRank 扩展、时序事实与编年。`search_facts` 接受 `current_only`（当前事实）**或** `as_of`（截至某个过去日期）——两者表达不同的时钟，同时传入会被拒绝 |
+| `graph_ppr` · `search_facts` · `timeline` | Personalized PageRank 扩展、时序事实与编年。两个可以**叠加**的时钟：`as_of`（依据来源自身的时间戳，回答"那时什么是真的"）与 `observed_as_of`（依据每次编译盖章的账本，回答"到那时我们学到了什么"）。`current_only` 与 `as_of` 同时传入会被拒绝——这两个才是真正的二选一 |
 | `verify_claim` | 图谱是否认可这个三元组？给出确定性裁决，而非生成的意见 |
 | `find_session_findings` · `fresh_insights` · `activity_summary` · `query_decisions` | 会话衍生的记忆（按衰减排序、去重）、活动摘要与决定记录 |
-| `agent_view_explain` · `drill_down` | 解析智能体作用域视图；把蒸馏笔记升级回原始证据（有审计） |
-| `ingest` · `graph_write` | 把原始网页/文本（如浏览器剪藏）并入图谱；让智能体写回带归属的节点 |
+| `agent_view_explain` · `drill_down` · `read_audit` | 解析智能体作用域视图；把蒸馏笔记升级回原始证据（有审计）；以及经 `TESSERAE_READ_AUDIT` 选择开启后，读回是谁在读这张图谱 |
+| `ingest` · `graph_write` | 把原始网页/文本（如浏览器剪藏）并入图谱；让智能体写回带归属的节点——包括用一条 `retracts` 边说"这是错的"，而不必凭空发明一个替代 |
 | `doctor_run` · `doctor_report` · `lint_report` | 在智能体循环内做健康检查与图谱 lint |
 
 ## 日常命令
@@ -298,7 +298,14 @@ Logseq 或 Obsidian。如果你想要一个构建工具*外加一个活的引擎
   生成它；在那之前该命令会报告 "no charter yet"。
 - RAG-Anything 的图像描述尚未端到端接通。
 - MCP 工具集是稳定的；图谱 schema 仍在增加节点类型。因果词汇表刻意只有一条边
-  ——`recovers`——并且只从被观测到的结果推导，绝不由模型断言。
+  ——`recovers`——并且只从被观测到的结果推导，绝不由模型断言。检索侧的
+  *`causal` 视图*刻意比它更宽（它也遍历 `resolved_by` 与
+  `attributes_improvement_to`，二者服务于同一个"这为什么坏了"的意图）；一条
+  别处无人断言的边，会变成一个里面空无一物的视图。
+- **提升永远是人的编辑。** `tesserae schema-drift` 会提议节点子类型，`ask` 的
+  规划器也可能返回 `proposed_write`，但两者都不写入：一项提议只有在你自己编辑
+  `ResearchNodeType`，或带上你自己提供的来源把 payload 提交给 `graph_write`
+  时才会被采纳。
 
 ## 项目结构
 
@@ -307,7 +314,7 @@ tesserae/     # 包本体 —— CLI、编译器、引擎、MCP 服务器、适�
 docs/         # 英文文档 + 面向其余七种语言的 docs/i18n/
 ontology/     # 编译器据以校验的节点/边 schema
 prompts/      # 抽取与综合提示词
-tests/        # pytest 测试套件（3,400+ 个测试）
+tests/        # pytest 测试套件（3,700+ 个测试）
 evals/        # 图谱质量评测框架
 ```
 

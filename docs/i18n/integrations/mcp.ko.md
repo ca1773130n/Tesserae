@@ -67,24 +67,39 @@ tesserae projects mcp-config
 | `graph_map` | **여기서 시작하세요.** 그래프 계층의 예산 지도 — Descent의 진입점. 스코프 없이 호출하면 루트 카드 집합(카운트, 상위 허브, 가장 거친 커뮤니티당 카드 하나), `scope='<카드의 scope_id>'`는 덴드로그램을 한 단계 내려가고, `org:root`는 에이전트 조직 트리를 걷습니다. 검색어를 추측하지 않고도 에이전트의 방향을 잡아 줍니다 |
 | `schema` | 통제된 node, edge, wiki-kind 어휘 |
 | `graph_summary` | 활성 프로젝트의 노드 및 엣지 개수와 타입 분포 |
-| `search_nodes` | 공개 그래프 노드를 `query`, `type`/`types`, `kind`, `limit`, 하이브리드 `mode`/`weights`로 필터링. `include_superseded`로 폐기된 노드도 노출 |
-| `node_context` | 노드 + 인접 엣지 + 이웃 노드. `use_ppr`는 1-홉 탐색 대신 개인화 PageRank로 이웃을 랭킹하며 `include_superseded`, `limit`로 결과를 한정 |
-| `embedding_status` | 하이브리드 검색을 구동하는 활성 임베딩 백엔드 보고 |
+| `search_nodes` | 공개 그래프 노드를 `query`, `type`/`types`, `kind`, `limit`, 하이브리드 `mode`/`weights`로 필터링. `include_superseded`로 폐기된 노드도 노출; `explain`은 검색 `profile`을 더합니다 (아래 참고) |
+| `node_context` | 노드 + 인접 엣지 + 이웃 노드. `use_ppr`는 1-홉 탐색 대신 개인화 PageRank로 이웃을 랭킹하며 `include_superseded`, `limit`로 결과를 한정. 나중 컴파일에서 병합에 진 `node_id`는 **미스가 아닙니다**: 병합 원장을 통해 그것을 흡수한 노드로 해결되고, 응답은 `status: "merged"`와 `merged_from` / `merged_into`를 얻어 지금부터 들고 있을 id를 배웁니다. 원장은 그래프가 미스한 후에만 참조되므로, 살아있는 id는 절대 리다이렉트될 수 없습니다 |
+| `embedding_status` | 하이브리드 검색을 구동하는 활성 임베딩 백엔드와 그 영속화된 벡터 캐시를 보고 — 이 백엔드/차원 키에 대한 `vectors_cached`, 그리고 프로세스 전역의 `cache_hits` / `cache_misses` / `cache_errors`. 차갑거나 쓸 수 없는 캐시를 빠른 경로로 오인할 수 없게 합니다. 어느 프로젝트의 사이드카를 보고할지 고르는 `graph_path` / `project`를 받습니다 |
 | `search_facts` | 그래프에서 투영된 시간적 사실(Graphiti 스타일). 순위는 사실의 내용(주어·술어·목적어·근거)만으로 매기며 직렬화된 사실 전체는 보지 않으므로 id나 메타데이터 조각은 일치로 잡히지 않습니다. `dated`(`any`, `dated`, `undated`)는 사용 가능한 `valid_from`이 있는지로 걸러냅니다. `current_only`는 현재 사실만 필터, `as_of`는 과거 시점 기준으로 응답. 두 옵션의 동시 사용은 거부됩니다(서로 다른 시계를 뜻하므로). `undated_included`는 반환된 행 중 날짜가 없는 건수를 보고합니다 |
-| `timeline` | 종단적 관점을 위해 파싱된 `valid_from` 기준으로 정렬된 사실. 날짜 없는 사실은 날짜 있는 사실 뒤에 따로 모이며 섞이지 않고 `undated_events`로 건수가 보고됩니다. `dated`(`any`, `dated`, `undated`)는 사용 가능한 `valid_from`이 있는지로 걸러냅니다; `as_of`는 과거 시점 기준으로 응답합니다(유효 구간에 대한 시점 지정이며 범위 하한이 아닙니다). `undated_included`는 반환된 행 중 날짜가 없는 건수를 보고합니다. 날짜 없는 사실은 `as_of`에서도 유지되므로, 이 수치가 빈약한 답과 완전한 답을 구분해 줍니다 |
+| `timeline` | 종단적 관점을 위해 파싱된 `valid_from` 기준으로 정렬된 사실. 날짜 없는 사실은 날짜 있는 사실 뒤에 따로 모이며 섞이지 않고 `undated_events`로 건수가 보고됩니다. `dated`(`any`, `dated`, `undated`)는 사용 가능한 `valid_from`이 있는지로 걸러냅니다; `as_of`는 과거 시점 기준으로 응답합니다(유효 구간에 대한 시점 지정이며 범위 하한이 아닙니다). `undated_included`는 반환된 행 중 날짜가 없는 건수를 보고합니다. 날짜 없는 사실은 `as_of`에서도 유지되므로, 이 수치가 빈약한 답과 완전한 답을 구분해 줍니다. `total_events`는 주어진 페이지가 아니라 **일치하는 모든** 사실을 셉니다 — 전체 매치 집합이 페이지가 잘리기 전에 날짜별로 정렬되므로, 가장 이른 이벤트들은 timeline이 실제로 반환하는 것이고, `total_events > len(events)`가 가득 찬 페이지와 완전한 답을 구분해 줍니다 |
 | `graph_ppr` | 하나 이상의 `seed_node_id`에서 시드된 개인화 PageRank로 가장 관련성 높은 top-K 노드 반환; `alpha`, `directed`, `edge_type_weights` 조정 가능 |
-| `wiki_page` | 노드에 대해 컴파일된 markdown 페이지 본문과 참조하는 내부 링크 |
-| `raw_source` | 원본 소스 markdown (16 KB로 제한) |
+| `wiki_page` | 노드에 대해 컴파일된 markdown 페이지 본문과 참조하는 내부 링크. 오래된 `node_id`는 같은 병합 원장 리다이렉트를 조용히 따릅니다 — 흡수된 노드의 이름은 생존자의 alias이므로, 생존자의 페이지 *는* 요청한 페이지입니다 |
+| `raw_source` | 원본 소스 markdown (16 KB로 제한). 바이트를 절대 반환하지 않습니다: `Artifact` 노드의 경우 `drill_down`으로 가리키는데, 그것이 대신 asset의 경로와 사이트 주소를 보고합니다 |
 | `verify_claim` | 트리플 하나를 그래프에 대해 검증합니다 — 정확한 조회이며 LLM도, 퍼지 매칭도, 순위 결과도 없습니다. `{verdict, reason, triple, citation, provenance, advisory}`를 반환하며 `verdict`는 `SUPPORTED`(엣지가 존재하고 **그 증거가 문서의 축자 구간**), `PRESENT_UNEVIDENCED`, 또는 거부입니다. 산문만 있다면 `search_nodes` → `verify_claim`으로 이어 부르세요 |
 | `doctor_run` | 헬스 체크를 실행하고 보고서를 JSON(`findings`, `exit_code` 0/1/2)으로 반환합니다. **항상 읽기 전용** — MCP에서는 수정이 실행되지 않으며, 복구는 CLI의 `tesserae doctor --fix`를 쓰세요 |
 | `doctor_report` | `.tesserae/doctor-report.md`의 내용(64 KB 제한). `tesserae doctor`를 실행하기 전까지는 비어 있습니다 |
 | `lint_report` | 가장 최근의 컴파일 시점 lint 결과 (64 KB로 제한) |
 
+**검색 프로파일링.** `search_nodes`와 `compile_context`는 `explain: true`를 
+받아 `profile`로 응답합니다 — `bm25`, `lexical`, `embedding` 차선 각각의 
+가중치, `candidates_in`, 채점한 개수, `embed_calls` / `cache_hits` / 
+`cache_misses`와 벽 시간, 그리고 총 `candidates_in` / `admitted` / 
+`returned`와 어느 차선이 각 반환 노드에 실제로 기여했는지. `search_nodes`는 
+한 개의 프로파일을 반환하고, `compile_context`는 실행한 각 seed 검색당 
+하나씩의 목록을 반환합니다.
+
+기본값이 off이고, 그것이 형식만은 아닙니다: 측정에는 시간이 들기 때문에, 
+이것은 계속 켜 둘 것이 아니라 진단입니다. 순위를 옮길 수 없습니다 — 모든 
+수가 융합이 이미 생산한 점수와 순위 테이블에서 읽혀 나옵니다 — 그리고 
+플래그가 unset일 때 응답은 항상 가지고 있던 정확한 키를 전달합니다. 
+`cache_hits` / `cache_misses` 카운터는 `embedding_status`를 나중에 검사하는 
+대신 현재 질의에서 따뜻한 벡터 캐시를 차가운 것과 구분해 주는 방법입니다.
+
 **온디맨드 컨텍스트 컴파일러** (Phase 7)
 
 | Tool | 용도 |
 |---|---|
-| `compile_context` | `query` 또는 명시적 `seeds`에 대해 맞춤형 **인용 포함** 컨텍스트 문서를 컴파일. 깊이 제한 서브그래프(`depth`, 1–10, 기본 2)를 탐색하고 PPR로 랭킹한 뒤 문자 `budget`(기본 32000; `0`이면 무제한)를 채움. 기본은 결정론적이며 `synthesize: true`면 LLM이 작성한 서사형 "topic" 슬라이스를 생성. `body`, `citations`, `selected_node_ids`, `char_budget_used` 반환. `view`는 walk를 명명된 edge partition으로 제한합니다 — `semantic`, `temporal`, `causal` 또는 `entity`; names의 배열을 전달하여 view당 한 번의 walk를 실행하고 이들을 fuse합니다 (weighted RRF). view를 요청하면 — 이름 하나든 여러 개든 — 각 citation은 `via_views`(그에 도달한 walk의 views)를 가집니다 |
+| `compile_context` | `query` 또는 명시적 `seeds`에 대해 맞춤형 **인용 포함** 컨텍스트 문서를 컴파일. 깊이 제한 서브그래프(`depth`, 1–10, 기본 2)를 탐색하고 PPR로 랭킹한 뒤 문자 `budget`(기본 32000; `0`이면 무제한)를 채움. 기본은 결정론적이며 `synthesize: true`면 LLM이 작성한 서사형 "topic" 슬라이스를 생성. `body`, `citations`, `selected_node_ids`, `char_budget_used` 반환. `view`는 walk를 명명된 edge partition으로 제한합니다 — `semantic`, `temporal`, `causal` 또는 `entity`; names의 배열을 전달하여 view당 한 번의 walk를 실행하고 이들을 fuse합니다 (weighted RRF). view를 요청하면 — 이름 하나든 여러 개든 — 각 citation은 `via_views`(그에 도달한 walk의 views)를 가집니다. `explain`은 `profile`을 더하며 seed 검색당 하나씩입니다 |
 | `get_handle` | 앞서 `handle`로 반환된 큰 페이로드(예: `preview`를 쓴 `compile_context`)를 조각(`offset`, `limit`)으로 페이징합니다 — 전부를 컨텍스트에 쏟아 넣는 대신 필요할 때 더 가져옵니다 |
 | `list_communities` | 후처리 패스가 생성한 `COMMUNITY_SUMMARY` 노드를 멤버 수 기준으로 나열(`min_size`, `limit`); `node_context`로 `summarizes` 엣지를 따라 멤버로 회귀 |
 | `fresh_insights` | 에빙하우스 스타일 감쇠 점수(최신 + 최다 접근 우선)로 랭킹된 세션 발견; 폐기된 근사 중복은 제외. 선택적 `kind`, `limit`, `include_superseded` |
@@ -104,7 +119,7 @@ tesserae projects mcp-config
 | 도구 | 용도 |
 |---|---|
 | `agent_view_explain` | 에이전트 스코프 뷰를 *로드하지 않고* 설명합니다: 해석 모드(worker / manager / org), 구성원 에이전트, 각 L1 아티팩트의 경로와 노드 수, 그리고 `distilled_through` 신선도 워터마크 |
-| `drill_down` | 증류본의 `member_ref`를 원본 L0 노드로 되돌립니다 — 증류된 가시성을 넘어서는 관리자의 명시적이고 감사 기록되는 에스컬레이션. 상태는 `alive` / `changed` / `absorbed` / `gone`이며 모든 호출이 사이드카에 기록됩니다 |
+| `drill_down` | 증류본의 `member_ref`를 원본 L0 노드로 되돌립니다 — 증류된 가시성을 넘어서는 관리자의 명시적이고 감사 기록되는 에스컬레이션. 상태는 `alive` / `changed` / `absorbed` / `gone`이며 모든 호출이 사이드카에 기록됩니다. `Artifact`(그림, 표, 또는 방정식)을 drilling하면 다른 노드 타입은 절대 가지지 않는 세 개의 키가 추가됩니다: `asset_path`(바이트가 디스크의 어디 있는지), `asset_sha256`(노드 id가 시종된 다이제스트), `asset_site_path`(구축된 사이트의 `raw-assets/` 아래의 콘텐츠 주소). 잘못된 선언 hash는 주소를 지어내지 않고 `asset_site_path`를 떨어뜨립니다 |
 | `read_audit` | 누가 이 그래프를 읽었는가. 기록된 읽기 이벤트(`tool`, `actor`, `node_ids`, `at`, `tesserae_version`)를 최신순으로 돌려주고 액터별 집계를 함께 제공하므로, 미사용에 의한 망각을 움직이는 접근 횟수를 읽은 주체에게 귀속시킬 수 있습니다. **옵트인** — 서버 프로세스에 `TESSERAE_READ_AUDIT=1`을 설정하지 않으면 아무것도 기록되지 않습니다. 항상 켜진 감사는 모든 읽기를 쓰기로 만들기 때문입니다. 플래그를 꺼도 이미 기록된 행은 계속 읽을 수 있으며, `enabled`가 현재 설정을 알려줍니다. `actor`, `tool`, `node_id`로 필터링합니다 |
 | `graph_write` | 타입 지정 노드와 엣지를 그래프에 직접 씁니다 — 마크다운도, 추출 패스도 없습니다. append-only 오버레이에 추가되어 컴파일 생산자로 재생되므로 **재컴파일을 견딥니다**. 엄격합니다: 알 수 없는 타입, 증거 없는 엣지, 이 페이로드에도 없고 기존 노드 id도 아닌 엔드포인트는 모두 거부됩니다. 그냥 틀린 것을 대체물을 지어내지 않고 **철회하려면**: `retracts` 엣지를 틀린 노드에 **id로** 겨누십시오 — 대상은 모든 기본 읽기(`search_nodes`, `fresh_insights`, `node_context`, `compile_context`)에서 억제되지만 `include_superseded: true`로는 여전히 닿을 수 있고, 아무것도 삭제되지 않습니다 |
 
@@ -112,7 +127,7 @@ tesserae projects mcp-config
 
 | Tool | 용도 |
 |---|---|
-| `ask` | 구성된 메모리 백엔드(raganything, cognee, 또는 컴파일된 위키)를 통한 자연어 Q&A. `backend`, `top_k`; `scope`/`scope_aliases`로 다중 vault 팬아웃; 다중 계정 라우팅용 `claude_config_dir` |
+| `ask` | 자연어 Q&A. `scope`를 생략하면 스마트 라우터가 등록된 프로젝트 전반에서 대상을 고르고(연합 폴백), 연속적 질문 간에 라우트를 다시 겨냅니다(`conversation_id`로 스레드 격리). 명시적 `scope`: `current`(프로젝트 하나), `all-registered`(프로젝트당 답 하나), `federated`(하나의 병합되고 상호 참조된 답, 기본값 `semantic` 활성화). 플러스 `backend`, `top_k`, `scope_aliases`, `claude_config_dir`. 그래프 라우트된 질문에서 envelop은 `plan`(플래너의 추론, 선택한 단계, `executed` — 실제로 실행된 것)을 전달하며, `proposed_write`를 전달할 수도 있습니다: 플래너가 기록할 가치가 있다고 생각하는 노드와 엣지로, *질문이* 주장한 것으로만 접지됩니다. 이것은 **제안이지, 결코 쓰기가 아닙니다** — 그것의 provenance는 항상 null이므로, `graph_write`는 agent 키와 외부 anchor를 가진 호출자가 하나를 공급할 때까지 그것을 거부합니다. 변이는 절대 질의의 부수 효과가 아닙니다 |
 | `query` | LLM 없는 원시 검색 — `tesserae query`를 그대로 반영합니다. `backend='wiki'`(기본)는 컴파일된 위키에 대한 결정적 BM25/시맨틱 검색으로 발췌가 달린 순위 결과를 돌려주고, `backend='raganything'`은 프로젝트가 활성화한 경우 선택형 멀티모달 RAG 인덱스에 질의합니다. 합성된 인용 답변은 `ask`를 쓰세요 |
 | `ingest` | 원시 웹/텍스트 콘텐츠(예: 브라우저 클립)를 해석된 프로젝트의 지식 그래프로 수집합니다 |
 | `list_projects` | 등록된 프로젝트 목록 |

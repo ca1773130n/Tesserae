@@ -207,11 +207,11 @@ Code, Codex o cualquier cliente MCP. Toda herramienta que lee el grafo acepta
 | `get_handle` | Paginar una carga grande en porciones, para que el agente no la sostenga entera en contexto |
 | `ask` · `query` · `search_nodes` · `node_context` | Respuestas planificadas, recuperación cruda y navegación sobre la base compilada |
 | `graph_map` | Budgeted Descent: recorrer el grafo de arriba abajo por ámbito en lugar de adivinar términos de búsqueda — el punto de entrada canónico |
-| `graph_ppr` · `search_facts` · `timeline` | Expansión por Personalized PageRank, hechos temporales y cronología. `search_facts` acepta `current_only` (hechos vigentes) **o** `as_of` (a una fecha pasada); juntos se rechazan, son relojes distintos |
+| `graph_ppr` · `search_facts` · `timeline` | Expansión por Personalized PageRank, hechos temporales y cronología. Dos relojes que **se componen**: `as_of` (qué era VERDAD entonces, según las marcas de tiempo de las propias fuentes) y `observed_as_of` (qué habíamos APRENDIDO para entonces, según el registro sellado en cada compilación). `current_only` y `as_of` se rechazan juntos: esos dos sí son alternativas |
 | `verify_claim` | ¿Autoriza el grafo esta tripleta? Un veredicto determinista, no una opinión generada |
 | `find_session_findings` · `fresh_insights` · `activity_summary` · `query_decisions` | Memoria derivada de sesiones, ordenada por decaimiento y deduplicada; resúmenes y registro de decisiones |
-| `agent_view_explain` · `drill_down` | Resolver la vista con ámbito de un agente; escalar una nota destilada a su evidencia original (auditado) |
-| `ingest` · `graph_write` | Fusionar web/texto crudo (p. ej. un recorte del navegador) en el grafo; permitir que un agente escriba nodos atribuidos |
+| `agent_view_explain` · `drill_down` · `read_audit` | Resolver la vista con ámbito de un agente; escalar una nota destilada a su evidencia original (auditado); y, opcional vía `TESSERAE_READ_AUDIT`, leer quién ha estado leyendo el grafo |
+| `ingest` · `graph_write` | Fusionar web/texto crudo (p. ej. un recorte del navegador) en el grafo; permitir que un agente escriba nodos atribuidos — incluida una arista `retracts` para decir «esto está mal» sin inventar un reemplazo |
 | `doctor_run` · `doctor_report` · `lint_report` | Comprobaciones de salud y lint del grafo desde dentro del bucle del agente |
 
 ## Comandos del día a día
@@ -345,7 +345,15 @@ franqueza:
 - El conjunto de herramientas MCP es estable; el esquema del grafo aún gana
   tipos de nodo. El vocabulario causal es deliberadamente de una sola arista
   —`recovers`— y se deriva solo de resultados observados, nunca lo afirma un
-  modelo.
+  modelo. La *vista `causal`* de recuperación es más ancha que eso a propósito
+  (también recorre `resolved_by` y `attributes_improvement_to`, que sirven a la
+  misma intención de «por qué se rompió esto»); una arista que nada más afirma
+  sería una vista sin nada dentro.
+- **La promoción siempre es una edición humana.** `tesserae schema-drift`
+  propone subtipos de nodo y el planificador de `ask` puede devolver un
+  `proposed_write`, pero ninguno escribe: una propuesta se adopta solo editando
+  `ResearchNodeType` usted mismo, o enviando la carga a `graph_write` con la
+  procedencia que usted aporte.
 
 ## Estructura del proyecto
 
@@ -354,7 +362,7 @@ tesserae/     # el paquete: CLI, compilador, motor, servidor MCP, adaptadores
 docs/         # documentación en inglés + docs/i18n/ para otros siete idiomas
 ontology/     # esquemas de nodos/aristas que valida el compilador
 prompts/      # prompts de extracción y síntesis
-tests/        # suite de pytest (más de 3.400 pruebas)
+tests/        # suite de pytest (más de 3.700 pruebas)
 evals/        # bancos de evaluación de calidad del grafo
 ```
 

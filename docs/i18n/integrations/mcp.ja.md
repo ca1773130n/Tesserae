@@ -67,24 +67,42 @@ tesserae projects mcp-config
 | `graph_map` | **ここから始めてください。** グラフ階層の予算付きマップ — Descent の入口です。スコープなしで呼ぶとルートのカード集合（件数、上位ハブ、最も粗いコミュニティごとに 1 枚）、`scope='<カードの scope_id>'` はデンドログラムを 1 段降り、`org:root` はエージェント組織ツリーをたどります。検索語を当てずにエージェントの位置を定めます |
 | `schema` | 管理された node、edge、wiki-kind の語彙 |
 | `graph_summary` | アクティブなプロジェクトの node + edge 数と種別分布 |
-| `search_nodes` | 公開グラフ node を `query`、`type`/`types`、`kind`、`limit`、ハイブリッド `mode`/`weights` でフィルタ。`include_superseded` で廃止済み node も表示 |
-| `node_context` | ある node とその接続 edge、隣接 node。`use_ppr` は 1-ホップ走査ではなくパーソナライズド PageRank で隣接をランキングし、`include_superseded`・`limit` で結果を制限 |
-| `embedding_status` | ハイブリッド検索を駆動するアクティブな埋め込みバックエンドを報告 |
+| `search_nodes` | 公開グラフ node を `query`、`type`/`types`、`kind`、`limit`、ハイブリッド `mode`/`weights` でフィルタ。`include_superseded` で廃止済み node も表示; `explain` で検索 `profile` を追加（下記参照） |
+| `node_context` | ある node とその接続 edge、隣接 node。`use_ppr` は 1-ホップ走査ではなくパーソナライズド PageRank で隣接をランキングし、`include_superseded`・`limit` で結果を制限。後のコンパイルでマージを失ったある `node_id` は**ミスではありません**: マージ台帳を通じてそれを吸収したノードへ解決され、応答は `status: "merged"` に `merged_from` / `merged_into` を得て、いま保持する id を学ぶ。台帳はグラフミス後のみ参照するため、生きた id は決してリダイレクトされない |
+| `embedding_status` | ハイブリッド検索を駆動するアクティブな埋め込みバックエンドと、その永続化されたベクトルキャッシュを報告 — このバックエンド/次元キーに対する `vectors_cached`、およびプロセス全体の `cache_hits` / `cache_misses` / `cache_errors`。コールドな、あるいは書き込めないキャッシュを高速パスと取り違えられないようにするため。どのプロジェクトのサイドカーを報告するかを選ぶ `graph_path` / `project` を受け付けます |
 | `search_facts` | グラフから射影された時系列ファクト（Graphiti スタイル）。ランキングはファクトの内容（主語・述語・目的語・エビデンス）のみで行い、シリアライズしたファクト全体は見ないため、ID やメタデータの断片は一致しません。`dated`（`any`、`dated`、`undated`）は利用可能な `valid_from` を持つかどうかで絞り込みます。`current_only` で現行ファクトのみ、`as_of` は過去時点での回答。両者の併用は拒否されます（異なる時計を表すため）。`undated_included` は返された行のうち日付を持たない件数を報告します |
-| `timeline` | パース済みの `valid_from` で順序付けられたファクトの縦断的ビュー。日付のないファクトは日付のあるファクトの後ろにまとめられ、混在させずに `undated_events` として件数が返ります。`dated`（`any`、`dated`、`undated`）は利用可能な `valid_from` を持つかどうかで絞り込みます。`as_of` は過去時点での回答（有効期間に対する時点指定であり、範囲の下限ではありません）。`undated_included` は返された行のうち日付を持たない件数を報告します。日付のないファクトは `as_of` でも残るため、この件数だけが薄い回答と完全な回答を見分ける手がかりになります |
+| `timeline` | パース済みの `valid_from` で順序付けられたファクトの縦断的ビュー。日付のないファクトは日付のあるファクトの後ろにまとめられ、混在させずに `undated_events` として件数が返ります。`dated`（`any`、`dated`、`undated`）は利用可能な `valid_from` を持つかどうかで絞り込みます。`as_of` は過去時点での回答（有効期間に対する時点指定であり、範囲の下限ではありません）。`undated_included` は返された行のうち日付を持たない件数を報告します。日付のないファクトは `as_of` でも残るため、この件数だけが薄い回答と完全な回答を見分ける手がかりになります。`total_events` はマッチした**すべての**ファクトをカウント、返ったページではなく — マッチ全体は前ページが切られる前に日付ソートされるため、最古のイベント（タイムラインが実際に返すもの）かつ `total_events > len(events)` は満ページか完全答かを見分ける |
 | `graph_ppr` | 1 つ以上の `seed_node_id` をシードとするパーソナライズド PageRank で最も関連性の高い top-K node を返す。`alpha`、`directed`、`edge_type_weights` を調整可能 |
-| `wiki_page` | ある node のコンパイル済み markdown ページ本文と、それが参照する内部リンク |
-| `raw_source` | 元のソース markdown（16 KB を上限としてキャップ） |
+| `wiki_page` | ある node のコンパイル済み markdown ページ本文と、それが参照する内部リンク。古い `node_id` はマージ台帳リダイレクトを黙ってたどる — 吸収されたノードの名前はサバイバーのエイリアスなため、サバイバーのページ*は*求めたページ |
+| `raw_source` | 元のソース markdown（16 KB を上限としてキャップ）。バイトを返さない: `Artifact` node の場合は `drill_down` へ指し、代わりアセットのパスとサイトアドレスを報告 |
 | `verify_claim` | トリプルを 1 つだけグラフに対して検証します — 完全一致の照会で、LLM もあいまい一致もランキング結果もありません。`{verdict, reason, triple, citation, provenance, advisory}` を返し、`verdict` は `SUPPORTED`（エッジが存在し、**その証拠が文書の逐語スパン**である）、`PRESENT_UNEVIDENCED`、または拒否です。手元に散文しかないときは `search_nodes` → `verify_claim` とつなげてください |
 | `doctor_run` | ヘルスチェックを実行し、レポートを JSON（`findings`, `exit_code` 0/1/2）で返します。**常に読み取り専用** — 修正が MCP 経由で走ることはありません。修復は CLI の `tesserae doctor --fix` を使ってください |
 | `doctor_report` | `.tesserae/doctor-report.md` の内容（64 KB を上限としてキャップ）。`tesserae doctor` を実行するまでは空です |
 | `lint_report` | 直近のコンパイル時 lint 結果（64 KB を上限としてキャップ） |
 
+台帳について補足: `current_only` と `observed_as_of` の時系列ファクトについてのテーブル説明を参照。台帳がない場合、`observed_as_of` はエラーで、「当時の全コーパス」ラベルの下で引き返すのではなく、コンパイル済みプロジェクトが必要です。
+
+**検索のプロファイリング。** `search_nodes` と `compile_context` は
+`explain: true` で `profile` と回答します — `bm25`、`lexical`
+各々のレーンについてウェイト、`candidates_in`、採点したもの、
+`embed_calls` / `cache_hits` / `cache_misses` とウォール時間、合計
+`candidates_in` / `admitted` / `returned` そして実際に返したノードに
+貢献したレーン。`search_nodes` は 1 プロファイル返し、`compile_context`
+はリスト、シード検索ごと 1。
+
+既定でオフ、オフは形式的ではありません: 計測はコストするため、ここは
+診断であって常にオンにすべきものではありません。それはランキングを
+動かせません — すべての数字は融合が既に生成したスコアと rank テーブルから
+読み込まれます — そしてフラグなしで応答はいつもの通りです。
+`cache_hits` / `cache_misses` カウンタは、その後 `embedding_status`
+を読む代わりに、ライブクエリから、暖かいベクトル cache をコールドか
+見分ける。
+
 **オンデマンドコンテキストコンパイラ**（Phase 7）
 
 | Tool | 用途 |
 |---|---|
-| `compile_context` | `query` または明示的な `seeds` に対して、調整された**引用付き**コンテキスト文書をコンパイル。深さ制限付きサブグラフ（`depth`、1–10、既定 2）を走査し、PPR でランキングして文字 `budget`（既定 32000、`0` で無制限）を埋める。既定は決定論的で、`synthesize: true` で LLM が書く叙述型 "topic" スライスを生成。`body`、`citations`、`selected_node_ids`、`char_budget_used` を返す。`view` は名前付きエッジパーティション（`semantic`、`temporal`、`causal`、`entity`）へのウォークを制限します；名前の配列を渡すと各ビューごとに 1 つのウォークを実行して融合させます（加重 RRF）。ビューを要求すると — 名前が 1 つでも複数でも — 各引用はそれに到達したビューを `via_views` で携えます |
+| `compile_context` | `query` または明示的な `seeds` に対して、調整された**引用付き**コンテキスト文書をコンパイル。深さ制限付きサブグラフ（`depth`、1–10、既定 2）を走査し、PPR でランキングして文字 `budget`（既定 32000、`0` で無制限）を埋める。既定は決定論的で、`synthesize: true` で LLM が書く叙述型 "topic" スライスを生成。`body`、`citations`、`selected_node_ids`、`char_budget_used` を返す。`view` は名前付きエッジパーティション（`semantic`、`temporal`、`causal`、`entity`）へのウォークを制限します；名前の配列を渡すと各ビューごとに 1 つのウォークを実行して融合させます（加重 RRF）。ビューを要求すると — 名前が 1 つでも複数でも — 各引用はそれに到達したビューを `via_views` で携えます。`explain` は `profile` を追加、シード検索ごと 1。 |
 | `get_handle` | 以前に `handle` として返された大きなペイロード（例: `preview` 付きの `compile_context`）をスライス（`offset`, `limit`）で取得します — すべてをコンテキストに流し込むのではなく、必要な分だけ後から取り寄せます |
 | `list_communities` | 後コンパイルパスが生成した `COMMUNITY_SUMMARY` node をメンバー数順に列挙（`min_size`、`limit`）。`node_context` で `summarizes` edge をたどってメンバーへ回帰 |
 | `fresh_insights` | エビングハウス式の減衰スコア（新しく・最もアクセスされた順）でランキングされたセッション発見。廃止された近似重複は除外。任意で `kind`、`limit`、`include_superseded` |
@@ -104,7 +122,7 @@ tesserae projects mcp-config
 | ツール | 用途 |
 |---|---|
 | `agent_view_explain` | エージェントスコープのビューを*読み込まずに*説明します: 解決モード（worker / manager / org）、メンバーエージェント、各 L1 アーティファクトのパスとノード数、そして `distilled_through` の鮮度ウォーターマーク |
-| `drill_down` | 蒸留物の `member_ref` を元の L0 ノードへ解決します — 蒸留された可視性を越える、マネージャーの明示的で監査記録の残るエスカレーションです。状態は `alive` / `changed` / `absorbed` / `gone` を返し、呼び出しはすべてサイドカーに記録されます |
+| `drill_down` | 蒸留物の `member_ref` を元の L0 ノードへ解決します — 蒸留された可視性を越える、マネージャーの明示的で監査記録の残るエスカレーションです。状態は `alive` / `changed` / `absorbed` / `gone` を返し、呼び出しはすべてサイドカーに記録されます。`Artifact`（図表、テーブル、式）をドリルするなら 3 つのキーを追加します — 他の型は決して持ちません: `asset_path`（バイトの生き場所）、`asset_sha256`（ノード id のシード元の要約）、そして `asset_site_path`（組立地の `raw-assets/` 下のコンテンツアドレス）。不正な宣言ハッシュは `asset_site_path` をドロップし、アドレスを発明しません。 |
 | `read_audit` | 誰がこのグラフを読んだか。記録された読み取りイベント (`tool`、`actor`、`node_ids`、`at`、`tesserae_version`) を新しい順に返し、アクター別の集計も添えます。これにより、不使用による忘却を駆動するアクセス回数を読み手に帰属させられます。**オプトイン** — サーバープロセスに `TESSERAE_READ_AUDIT=1` を設定しない限り何も記録されません。常時オンの監査はすべての読み取りを書き込みに変えてしまうからです。フラグをオフにしても記録済みの行は読めます。`enabled` は現在の設定を報告します。`actor` / `tool` / `node_id` で絞り込めます |
 | `graph_write` | 型付きノードとエッジをグラフへ直接書き込みます — マークダウンも抽出パスもありません。追記専用のオーバーレイに積まれ、コンパイルのプロデューサーとして再生されるため、**再コンパイルを生き延びます**。厳格です: 未知の型、証拠のないエッジ、このペイロードにも既存ノード id にも該当しないエンドポイントはいずれも拒否されます。**単に誤っているものを撤回する**には、代替を捏造せずに `retracts` エッジを誤ったノードへ **id で** 向けます — 対象は既定の読み取り (`search_nodes`、`fresh_insights`、`node_context`、`compile_context`) すべてから抑制されますが、`include_superseded: true` では依然到達でき、何も削除されません |
 
@@ -112,7 +130,7 @@ tesserae projects mcp-config
 
 | Tool | 用途 |
 |---|---|
-| `ask` | 設定されたメモリバックエンド（raganything、cognee、またはコンパイル済み wiki）経由の自然言語 Q&A。`backend`、`top_k`。`scope`/`scope_aliases` で複数 vault へのファンアウト。多アカウントルーティング用の `claude_config_dir` |
+| `ask` | 設定されたメモリバックエンド（raganything、cognee、またはコンパイル済み wiki）経由の自然言語 Q&A。`backend`、`top_k`。`scope`/`scope_aliases` で複数 vault へのファンアウト。多アカウントルーティング用の `claude_config_dir`。グラフルーテッド質問でエンベロープが `plan` を運びます（プランナーの推論、選んだステップ、`executed` — 実際に走ったもの）、そして `proposed_write` を運びうる: プランナーが記録価値があると思うノードとエッジ、*質問*が主張したことのみを根拠。これは**提案、決して書き込みではない** — その来歴は常にヌル、だから `graph_write` はエージェントキー・外部アンカーを持つ呼び出し元が供給するまで拒否。突然変異は問い合わせの副作用ではない。 |
 | `query` | LLM を使わない生の検索 — `tesserae query` と同じです。`backend='wiki'`（既定）はコンパイル済み Wiki に対する決定的な BM25 / セマンティック検索で、抜粋付きのランク結果を返します。`backend='raganything'` は、プロジェクトが有効化していればオプションのマルチモーダル RAG インデックスに問い合わせます。統合された出典付きの回答が欲しいときは `ask` を使ってください |
 | `ingest` | 生の Web / テキストコンテンツ（例: ブラウザのクリップ）を、解決されたプロジェクトの知識グラフへ取り込みます |
 | `list_projects` | 登録済みプロジェクトの一覧 |

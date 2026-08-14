@@ -131,6 +131,8 @@ LLM 会名正言顺地铸造出名为 "CVPR 2026" 的 `Event`。预留是*加性
 |---|---|
 | [`tesserae/research_graph.py`](../../tesserae/research_graph.py) | `ResearchNodeType` 枚举（含 `SYNTHESIS`）、边类型白名单（含 `synthesizes`、`summarizes`）、校验。 |
 | [`tesserae/canonicalization.py`](../../tesserae/canonicalization.py) | 别名规范化 + 近重复审查队列。 |
+| [`tesserae/merge_ledger.py`](../../tesserae/merge_ledger.py) | `.tesserae/merge-ledger.json`：一份失败方→胜方的墓碑，记录编译所折叠的每条重复，从而先前编译中的 id 能够得以解析，而非返回一个赤裸的 not-found。**导出状态，非历史** —— 发布操作会并集化已有内容，然后仅在其失败方不在刚刚发布的图谱中*且*其链条通往的节点确实存在时，才保持这条记录。重获生命的失败方会被丢弃。只在图谱本身遗漏后才被读取，这保证了活着的 id 永远不会被重定向。 |
+| [`tesserae/candidate_ledger.py`](../../tesserae/candidate_ledger.py) | `.tesserae/candidate-same-as.json`：每条候选合并对的待定 / 已确认 / 已拒绝状态，以排序后的 node-id 对为键，别无他物——分数、原因和后端刻意在键外，正是裁定所必须熬过的那种变动。**累积的，与合并账本相反**：合并是导出状态，人的裁定是流水线中唯一机器无法重新推导的东西，所以这里没有任何东西会被修剪。二者不得共用代码。 |
 | [`tesserae/code_graph.py`](../../tesserae/code_graph.py) | 面向开发切片的确定性 Python AST 提取器。 |
 | [`tesserae/llm_extractor.py`](../../tesserae/llm_extractor.py) | Claude CLI/OAuth 选择性提取器。 |
 
@@ -188,6 +190,9 @@ Phase 5 激活了持久的自我改进。每个节点的可变状态存放在 `n
 | [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | `hybrid_search`：本地优先的混合检索器，通过倒数排名融合（RRF，k=60）融合三条通道——Okapi BM25（k1=1.5、b=0.75）、大小写折叠的词法/FTS 式子串匹配，以及可插拔的嵌入通道。完全确定性。 |
 | [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | `personalized_pagerank`：HippoRAG-2 风格（arXiv:2502.14802）的图上个性化 PageRank，用于多跳种子扩展——浮现距种子数跳之外、连接良好的节点，而不只是 1 跳邻域。 |
 | 嵌入后端（Phase 6，Track B） | 混合嵌入通道的默认后端是无需额外依赖的确定性哈希桶伪嵌入；优先使用 `sentence-transformers`（`all-MiniLM-L6-v2`），在可选依赖已安装时惰性加载。`embedding_status` MCP 工具报告当前激活的后端。 |
+| [`tesserae/retrieval/vector_cache.py`](../../tesserae/retrieval/vector_cache.py) | SQLite 边车中的 `node_vectors` 表，以及所有三个 `.embed(` 调用点共同经由的唯一访问器。以 `(backend_name, backend_dim, sha256(embedded_text))` 为键 —— 此处的身份是嵌入的**文本**，而非节点 id，因此一个未修改的节点在完整重编译、项目迁移或规范化重写其 id 之后仍会命中，而被重新描述的则会失手并重新嵌入。两个模型的向量永不相会：它们的空间无法比较，默认混合会破坏余弦相似度而非失败。 |
+| [`tesserae/retrieval/views.py`](../../tesserae/retrieval/views.py) | 视图注册表：`semantic` / `temporal` / `causal` / `entity`，各自是 `ALLOWED_EDGE_TYPES` 的一个具名子集，经 `weights_for()` 解析为每种视图外边类型的显式零权重。两项分割决策都有载重：`summarizes` + `evidenced_by`（~50% 的所有边 —— 抽象和来源）属于**任何**视图都不包含，否则 semantic 视图就成了整张图；causal 视图比 `CAUSAL_EDGE_TYPES` 更宽，因为仅凭 `{recovers}` 就会是一个没有活着的边的视图。 |
+| [`tesserae/blocking.py`](../../tesserae/blocking.py) | 面向两个配对 pass（规范化的审查构建器和 `memory.supersede`）的单一阻塞层。上限按**排序的 id** 截断，因此上限运行不依赖于节点到达的顺序，而受限编译仍可重现；调用方提供其自己的分词器，因为比其评分者更粗的阻塞器会静默删除真正的匹配。每条 pass 都会报告它命中的上限，而非返回一个悄悄较短的队列。 |
 
 ### 按需上下文编译器（v0.5.0 —— 支柱 3 头条）
 
@@ -211,6 +216,7 @@ Phase 5 激活了持久的自我改进。每个节点的可变状态存放在 `n
 | [`tesserae/agent_harness.py`](../../tesserae/agent_harness.py) | Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode harness 导出。 |
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | 入站的 Claude Code/Codex 会话发现、归一化、存储到 `.tesserae/harness_sessions/`，以及脱敏的 markdown 摘要。 |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | 时间事实 JSONL + 可选的实时 Graphiti 同步。 |
+| [`tesserae/kuzu_adapter.py`](../../tesserae/kuzu_adapter.py) | 单向导出到 Kuzu 数据库（`tesserae export kuzu`）。不是存储——见 [Kuzu 导出](#kuzu-导出)。 |
 | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio 服务器。检索/图谱：`schema`、`graph_summary`、`search_nodes`、`node_context`（带 `use_ppr`）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`、`doctor_report`。上下文引擎（v0.5.0）：`compile_context`（按需上下文编译器）、`embedding_status`、`fresh_insights`（按衰减排名的会话发现）、`list_communities`、`find_session_findings`、`find_code_symbol_mentions`。外加 `ask`、多项目注册表工具（`list_projects`、`register_project`、`unregister_project`、`list_sessions`），以及 `tesserae_setup_plan` / `tesserae_setup_apply`。 |
 
 ## 项目工作区布局
@@ -338,6 +344,19 @@ Tesserae 输出什么，以及每个值诚实地来自哪里：
 **相对 Tesserae v0.1 输出的破坏性变更。** `name:` 变为 `title:`（`name` 在两个版本中从来都不是 OKF 键；读取器仍在 `title` 之后接受它）。`index.md` 与 `log.md` 失去各自的 `type:` / `name:` frontmatter（§8、§9），于是把它们当作有类型概念的消费者会少掉两个幽灵条目——而这正是目的；相关地，它们现在在层级的*任意*一级都是保留名（§3.1），不只在包根。每个概念文件的字节都会变化，所以首次 v0.2 导出会重写整个包。
 
 **已知限制。** `usage_count` 统计的是转录中触及过该文档的去重后 agent/工作会话数，而不是人类的页面浏览量——§5.1 已经提醒该信号很粗糙；请把它读作活跃度，而不是热门度。生命周期家族只对被 `supersedes` 边指向的节点触发（此处是 5197 中的 25 个）；真正的覆盖需要 `TemporalFactProjector` 在查询期推导的时间有效区间，而在导出器内部对 15k 条边跑那套逻辑被判定为超出范围而否决。`generated.by` 刻意使用 `process:tesserae-<extractor>` 而非 §7 的 `<producer>/<version>`：带版本的行为者会让约 5200 个概念文件在每次发布时全部重写，而语义毫无变化。任何路径取值的 OKF 字段（`resource`、`sources[].resource`）都绝不携带绝对路径——无法转为项目根相对的路径会被省略而非原样输出，因为按 §6.2 消费者会把它读成相对于包的路径——不过绝对路径仍可能出现在 `x_tesserae.source_path`（节点的真实身份，外部消费者会忽略）之内，以及恰好引用了某个路径的节点正文之中。
+
+## Kuzu 导出
+
+[`tesserae/kuzu_adapter.py`](../../tesserae/kuzu_adapter.py) 把 `graph.json` 投影进一个嵌入式 [Kuzu](https://kuzudb.com) 数据库，好让别的工具在图谱上跑 Cypher。`tesserae export kuzu` 负责写出；`--graph PATH` 导出的是一份裸的抽取图，而不是项目编译后的图。这是一次**单向导出**，是与 [OKF](#okf-v02-导出导入) 和 [Graphiti](../../tesserae/graphiti_adapter.py) 并列的三者之一，而 `write_graph(replace=True)` 会删除并重建数据库，因此输出是所交付图谱的纯函数。
+
+**Kuzu 刻意不是存储，而这个区分是承重的。** 直到 v0.32，一个 `KuzuResearchGraphStore` 还坐在 [`tesserae/persistence.py`](../../tesserae/persistence.py) 里、真正的 SQLite 存储旁边，只能经由一个依赖被声明为 dev-only 的 `extract --kuzu-output` 标志抵达——一个只接了一半线的第二后端，正是它让"Tesserae 是否该采用图数据库？"读起来像一个悬而未决的问题。它并不悬而未决，理由是架构上的而非法律上的（Kuzu 是 MIT 许可、嵌入式、不需要服务器）：
+
+- **第二个权威存储可以就同一个事实与 `graph.json` 相互矛盾**，而没有仲裁者。`graph.json` 是真相之源；任何能与它相抵触的东西都是 bug 面。
+- **字节级幂等会从一个纯函数移交给数据库的写入顺序。** `tests/test_byte_idempotence_phase5.py` 钉住的性质——两次编译产出逐字节相同的 `graph.json`——之所以成立，是因为编译是对其输入的、键有序的纯函数。被比较过的图记忆系统没有一个尝试过这件事，而把写入路由进一个引擎，正是丢掉它的方式。
+
+这两条反对意见都不适用于导出：数据库是派生输出，从图谱中被抹去并重写，没有任何编译或查询路径会把它读回来。`read_graph` 存在的理由和 `okf.read_okf_bundle` 一样——读不回来的导出就是验证不了的导出——而不是因为引擎里有什么东西会从 Kuzu 加载。`tests/test_kuzu_adapter.py` 断言 `tesserae.persistence` 不暴露任何 Kuzu 符号，于是一个被重新装回的存储会挂在测试套件上，而不是挂在评审上。
+
+同一个判决也排除了把 Neo4j 当作底座：见 [`docs/superpowers/specs/2026-08-14-neo4j-agent-memory-roadmap.md`](../superpowers/specs/2026-08-14-neo4j-agent-memory-roadmap.md)，它把那些能力（持久化的向量索引、软合并墓碑、事务时间时钟）当作文件与 SQLite 的 sidecar 来采纳，而不是当作引擎。
 
 ## 幂等性故事
 

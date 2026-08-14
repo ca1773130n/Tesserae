@@ -91,6 +91,14 @@ Si ejecutas Tesserae desde varias máquinas contra almacenamiento compartido,
 pruébalo directamente sobre el hardware real antes de confiar en el lock de
 compilación.
 
+`filesystem_locking` es un sondeo solo `flock` e informa "no soportado en esta
+plataforma — omitido" en Windows. Los locks en sí mismo no: `compile.lock`
+y el lock de escritura de agente toman `flock(2)` donde existe y `msvcrt.locking`
+donde no, y la comprobación `compile_lock` sondea con esos mismos dos
+helpers de modo que no puede reportar "no soportado" sobre un lock que funciona allí. En un
+intérprete que no lleva ninguna primitiva, el bloqueo se degrada a una no-op que lo dice
+una vez por proceso en lugar de silenciosamente.
+
 ## `tesserae doctor migrate-code-scope`
 
 Una limpieza de una sola vez para un espacio de trabajo compilado antes de que el
@@ -175,6 +183,7 @@ salida**: los hallazgos por debajo se siguen informando.
 | Código | Severidad | Qué significa |
 |---|---|---|
 | `AGENT_METADATA_KEY` | error | Un nodo de agente lleva una clave de metadatos fuera del conjunto controlado. El único código de nivel error; un agente malformado rompe las vistas con ámbito. |
+| `AGENT_WRITE_SKIPPED` | warning | Una línea en `.tesserae/agent-writes.jsonl` que la reproducción omitió — esa escritura **no** está en el grafo. Una línea truncada es un append concurrente roto y el agente debe volver a presentarla; una editada a mano debe corregirse o borrarse. La reproducción salta y advierte en lugar de fallar, de modo que una línea mala nunca rompe toda compilación futura — pero una línea stderr durante una compilación no es donde buscas una escritura que el agente cree haber presentado. |
 | `ORPHAN_PAPER` | warning | Un Paper sin aristas salientes y con nada más que `mentioned_in` entrando: ingerido, jamás conectado. |
 | `MISSING_IMPLEMENTED_IN` | warning | Un Paper y un Repository comparten `arxiv_id` pero ninguna arista `implemented_in` los une. `--fix-trivial` la añade. |
 | `STALE_CITATION` | warning | Una página wiki enlaza a una página que no existe. |

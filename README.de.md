@@ -210,11 +210,11 @@ Code, Codex oder jeden MCP-Client aus. Jedes graphlesende Werkzeug akzeptiert
 | `get_handle` | Eine große Nutzlast in Scheiben nachladen, damit der Agent sie nie ganz im Kontext hält |
 | `ask` · `query` · `search_nodes` · `node_context` | Geplante Antworten, rohe Suche und Graphnavigation über der kompilierten Basis |
 | `graph_map` | Budgeted Descent: den Graphen von oben nach unten nach Bereich durchlaufen, statt Suchbegriffe zu raten — der kanonische Einstieg |
-| `graph_ppr` · `search_facts` · `timeline` | Personalized-PageRank-Expansion, temporale Fakten und Chronologie. `search_facts` nimmt `current_only` (gültige Fakten) **oder** `as_of` (zu einem vergangenen Datum) — beides zusammen wird abgelehnt, das sind verschiedene Uhren |
+| `graph_ppr` · `search_facts` · `timeline` | Personalized-PageRank-Expansion, temporale Fakten und Chronologie. Zwei Uhren, die sich **komponieren**: `as_of` (was damals WAHR war, aus den Zeitstempeln der Quellen selbst) und `observed_as_of` (was wir bis dahin GELERNT hatten, aus dem beim Kompilieren gestempelten Ledger). `current_only` und `as_of` zusammen werden abgelehnt — diese beiden sind wirklich Alternativen |
 | `verify_claim` | Lässt der Graph dieses Tripel zu? Ein deterministisches Urteil, keine generierte Meinung |
 | `find_session_findings` · `fresh_insights` · `activity_summary` · `query_decisions` | Aus Sitzungen abgeleitetes Gedächtnis, nach Zerfall sortiert und dedupliziert; Digests und das Entscheidungsprotokoll |
-| `agent_view_explain` · `drill_down` | Die bereichsbeschränkte Sicht eines Agenten auflösen; eine destillierte Notiz auf ihren Rohbeleg zurückführen (protokolliert) |
-| `ingest` · `graph_write` | Rohes Web/Text (z. B. einen Browser-Clip) in den Graphen einmischen; einen Agenten zugeordnete Knoten zurückschreiben lassen |
+| `agent_view_explain` · `drill_down` · `read_audit` | Die bereichsbeschränkte Sicht eines Agenten auflösen; eine destillierte Notiz auf ihren Rohbeleg zurückführen (protokolliert); und, per `TESSERAE_READ_AUDIT` zuschaltbar, nachlesen, wer den Graphen gelesen hat |
+| `ingest` · `graph_write` | Rohes Web/Text (z. B. einen Browser-Clip) in den Graphen einmischen; einen Agenten zugeordnete Knoten zurückschreiben lassen — einschließlich einer `retracts`-Kante, um „das ist falsch" zu sagen, ohne einen Ersatz zu erfinden |
 | `doctor_run` · `doctor_report` · `lint_report` | Gesundheitsprüfungen und Graph-Lint aus der Agentenschleife heraus |
 
 ## Alltagsbefehle
@@ -348,7 +348,15 @@ gesagt:
 - Der MCP-Werkzeugsatz ist stabil; das Graphschema gewinnt weiter Knotentypen.
   Das kausale Vokabular ist bewusst nur eine Kante breit — `recovers` — und wird
   ausschließlich aus beobachteten Ergebnissen abgeleitet, nie von einem Modell
-  behauptet.
+  behauptet. Die Retrieval-*View `causal`* ist absichtlich breiter (sie
+  traversiert auch `resolved_by` und `attributes_improvement_to`, die derselben
+  Frage „warum ist das kaputtgegangen“ dienen); eine einzige Kante, die sonst
+  nichts behauptet, wäre eine View mit nichts darin.
+- **Beförderung ist immer eine menschliche Änderung.** `tesserae schema-drift`
+  schlägt Knoten-Subtypen vor und der `ask`-Planer kann ein `proposed_write`
+  zurückgeben, aber keines von beiden schreibt: Ein Vorschlag wird nur
+  übernommen, indem Sie `ResearchNodeType` selbst bearbeiten oder das Payload
+  mit selbst gelieferter Provenienz an `graph_write` übergeben.
 
 ## Projektstruktur
 
@@ -357,7 +365,7 @@ tesserae/     # das Paket — CLI, Compiler, Engine, MCP-Server, Adapter
 docs/         # englische Doku + docs/i18n/ für sieben weitere Sprachen
 ontology/     # Knoten-/Kantenschemata, gegen die der Compiler validiert
 prompts/      # Extraktions- und Synthese-Prompts
-tests/        # pytest-Suite (über 3.400 Tests)
+tests/        # pytest-Suite (über 3.700 Tests)
 evals/        # Prüfstände für die Graphqualität
 ```
 

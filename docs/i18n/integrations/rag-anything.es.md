@@ -107,6 +107,52 @@ Mapeo actual:
 | `content_list[type=table]` | nodo `Artifact` (id del hash sha256 de `table_body`, body como descripción) + `multimodal_blocks[]` (`table_body`, `caption`, `content_hash`) |
 | `content_list[type=equation]` | nodo `Artifact` (id del hash sha256 de `latex`, LaTeX como descripción) + `multimodal_blocks[]` y `metadata.equations[]` (LaTeX preservado) |
 
+### Los hechos por propietario van sobre la arista `part_of`
+
+El id de un `Artifact` se siembra del hash de contenido y nada más, de modo que el
+nodo es deliberadamente **agnóstico de documento**: la misma figura impresa en dos
+papeles es un nodo con una arista `part_of` por propietario. Pero `kind`, `page`,
+`caption` y el 1-basado por-kind `ordinal` son hechos sobre el *(artifact,
+document)* par — mantenidos solo en el nodo, un artefacto compartido guardaría
+cualesquiera que se fusionaran primero y perdería silenciosamente la página de
+cada propietario posterior. Viajen la arista, que es por-propietario por construcción. El nodo guarda sus propias copias por
+compatibilidad hacia atrás; esto añade, no se mueve. Donde los mismos bytes aparecen dos veces en
+un documento, la posición anterior gana, determinísticamente.
+
+`evidence` en esa arista permanece nula a propósito: cada `edge.evidence` en esta
+base de código es un intervalo literal que autorizó una aserción, y un caption no afirma nada.
+
+### Llegando a los bytes
+
+Una **figura** `Artifact` afirma que los bytes de una imagen existen — el nodo solo
+existe porque fueron hasheados en import — de modo que el sitio los sirve.
+`tesserae export site` lee `metadata['asset_path']` como una fuente en su propio
+derecho, dando a esa figura una página sin procesar, una entrada de sitemap, y sus bytes bajo
+`raw-assets/` bajo un **nombre dirigido por contenido** derivado del digest
+que el grafo ya declaró, nunca un re-hash. Un nombre que es función pura
+de los bytes es lo que hace que `asset_site_path` abajo sea un hecho en lugar de una predicción.
+
+Las tablas y ecuaciones no llevan `asset_path` — su contenido *es* la descripción del nodo — y un
+activo fuera del árbol cae la clave en import. Ambos son
+correctamente inservibles en lugar de errores.
+
+Por MCP, `raw_source` nunca devuelve bytes; `drill_down` reporta la dirección
+en su lugar — `asset_path` (en disco), `asset_sha256`, y `asset_site_path`
+(recuperable de un `tesserae serve` en ejecución). Un hash declarado malformado cae
+`asset_site_path` en lugar de inventar uno.
+
+### Los Artifacts permanecen fuera del lienzo del grafo
+
+`Artifact` se agrupa con `EvidenceSpan` y toda variante de Claim en la
+capa de aserción, y toda la capa de aserción se excluye de la vista interactiva del grafo — deliberada y
+permanentemente, no pendiente. Es evidencia *para*
+nodos en el lienzo en lugar de un par de ellos, y dos razones mecánicas lo dicen
+la misma cosa: la evidencia supera lo que apoya (la inundación que ya
+puso `SourceDocument` detrás de `show_sources`), y la única arista de `Artifact` es
+`part_of` a un `SourceDocument`, que se oculta por defecto — de modo que admitirlo
+solo dibujaría puntos huérfanos inalcanzables. Lee la evidencia a través de `drill_down`
+y la página de activos sin procesar, que es dónde es direccionable.
+
 La procedencia se preserva en cada nodo:
 
 ```json

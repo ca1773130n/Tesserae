@@ -107,6 +107,53 @@ Current mapping:
 | `content_list[type=table]` | `Artifact` node (id from `table_body` sha256, body as description) + `multimodal_blocks[]` (`table_body`, `caption`, `content_hash`) |
 | `content_list[type=equation]` | `Artifact` node (id from `latex` sha256, LaTeX as description) + `multimodal_blocks[]` and `metadata.equations[]` (LaTeX preserved) |
 
+### Per-owner facts ride the `part_of` edge
+
+An `Artifact`'s id is seeded from its content hash and nothing else, so the
+node is deliberately **document-agnostic**: the same figure printed in two
+papers is one node with a `part_of` edge per owner. But `kind`, `page`,
+`caption` and the 1-based per-kind `ordinal` are facts about the *(artifact,
+document)* pair — kept only on the node, a shared artifact would keep whichever
+document merged first and silently lose every later owner's page. They ride the
+edge, which is per-owner by construction. The node keeps its own copies for
+back-compat; this adds, it does not move. Where the same bytes appear twice in
+one document, the earlier position wins, deterministically.
+
+`evidence` on that edge stays null on purpose: every `edge.evidence` in this
+codebase is a verbatim span that licensed an assertion, and a caption asserts
+nothing.
+
+### Reaching the bytes
+
+A **figure** `Artifact` asserts that an image's bytes exist — the node only
+exists because they were hashed at import — so the site serves them.
+`tesserae export site` reads `metadata['asset_path']` as a source in its own
+right, giving that figure a raw page, a sitemap entry, and its bytes under
+`raw-assets/` beneath a **content-addressed** filename derived from the digest
+the graph already declared, never a re-hash. A name that is a pure function of
+the bytes is what makes `asset_site_path` below a fact rather than a prediction.
+
+Tables and equations carry no `asset_path` — their content *is* the node's
+description — and an out-of-tree asset drops the key at import. Both are
+correctly unservable rather than errors.
+
+Over MCP, `raw_source` never returns bytes; `drill_down` reports the address
+instead — `asset_path` (on disk), `asset_sha256`, and `asset_site_path`
+(fetchable from a running `tesserae serve`). A malformed declared hash drops
+`asset_site_path` rather than inventing one.
+
+### Artifacts stay off the graph canvas
+
+`Artifact` is bucketed with `EvidenceSpan` and every Claim variant in the
+assertion layer, and the whole assertion layer is excluded from the interactive
+graph view — deliberately and permanently, not pending. It is evidence *for*
+nodes on the canvas rather than a peer of them, and two mechanical reasons say
+the same thing: evidence outnumbers what it supports (the flood that already
+put `SourceDocument` behind `show_sources`), and an `Artifact`'s only edge is
+`part_of` to a `SourceDocument`, which is hidden by default — so admitting it
+alone would draw unreachable orphan dots. Read evidence through `drill_down`
+and the raw asset page, which is where it is addressable.
+
 Provenance is preserved on each node:
 
 ```json

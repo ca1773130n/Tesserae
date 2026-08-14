@@ -155,6 +155,21 @@ la pasada ansiosa activada.
 
 ---
 
+## Quién leyó el grafo
+
+| Variable | Defecto | Notas |
+|---|---|---|
+| `TESSERAE_READ_AUDIT` | **desactivado** | Registra cada lectura MCP como una fila — `{tool, actor, node_ids, at, tesserae_version}` — en una tabla `read_audit` en `.tesserae/sqlite.db`, legible de vuelta a través de la herramienta `read_audit` con un recuento por actor. Desactivado por defecto porque una auditoría siempre activa a través de toda la superficie de lectura convierte cada lectura en una escritura; la compuerta se sienta antes de abrir la tienda, ya que crear la tabla es en sí una escritura. Nada sobre esto alcanza nunca `graph.json` |
+| `TESSERAE_ACTOR` | — | A quién atribuir una lectura cuando la llamada no porta una vista de agente. El actor es el argumento `agent` si la llamada resolvió uno, de otro modo esto; sin establecer registra la lectura como anónima en lugar de inventar un nombre |
+
+Apagar `TESSERAE_READ_AUDIT` deja de registrar sin borrar lo que
+ya fue registrado, y toma efecto sin reiniciar el servidor. Lo que la
+auditoría es *para* es [olvido por desuso](agent-memory.es.md#olvido--nunca-eliminación):
+los recuentos de acceso impulsan lo que se absorbe o se degrada, y sin un actor un
+agente locuaz polleando un nodo y un humano leyéndolo una vez son la misma entrada.
+
+---
+
 ## Ejecutar varias máquinas contra un mismo proyecto
 
 La forma para la que está escrito esto: varios servidores ejecutan cada uno un

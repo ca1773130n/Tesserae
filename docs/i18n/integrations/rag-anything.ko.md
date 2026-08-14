@@ -106,6 +106,24 @@ Tesserae는 통합을 깔끔하게 분리합니다:
 | `content_list[type=table]` | `Artifact` 노드 (`table_body` sha256에서 생성된 id, body를 description으로) + `multimodal_blocks[]` (`table_body`, `caption`, `content_hash`) |
 | `content_list[type=equation]` | `Artifact` 노드 (`latex` sha256에서 생성된 id, LaTeX을 description으로) + `multimodal_blocks[]`와 `metadata.equations[]` (LaTeX 보존) |
 
+### 소유자별 사실이 `part_of` 엣지를 탑니다
+
+`Artifact`의 id는 콘텐츠 해시만에서 시종되므로, 노드는 의도적으로 **문서 불가지론**입니다: 두 논문에 인쇄된 같은 그림은 소유자별 `part_of` 엣지를 가진 하나의 노드입니다. 하지만 `kind`, `page`, `caption`과 1 기반 per-kind `ordinal`은 *(artifact, document)* 쌍에 대한 사실입니다 — 노드에만 보존되며, 공유 아티팩트가 먼저 병합된 문서를 유지하고 이후 소유자의 페이지를 묵묵히 잃을 것입니다. 그들은 엣지를 탑니다. 엣지는 소유자별이므로 구성상 그렇습니다. 노드는 뒤로 호환성을 위해 자체 복사본을 유지합니다; 이것은 추가되고 이동되지 않습니다. 같은 바이트가 한 문서에 두 번 나타나면, 이전 위치가 결정론적으로 이깁니다.
+
+그 엣지의 `evidence`는 의도적으로 null로 유지됩니다: 이 코드베이스의 모든 `edge.evidence`는 주장을 허가한 축자 구간이고, caption은 아무것도 주장하지 않습니다.
+
+### 바이트에 도달하기
+
+**그림** `Artifact`는 이미지의 바이트가 존재한다고 주장합니다 — 노드는 수입 시점에 해시되었기 때문에만 존재합니다 — 따라서 사이트가 그것들을 서빙합니다. `tesserae export site`는 `metadata['asset_path']`를 그 자신의 소스로 읽으며, 그 그림에 원시 페이지, sitemap 항목, 그리고 **콘텐츠 주소** 파일명 아래의 바이트를 `raw-assets/`에 제공하는데, 그것은 그래프가 이미 선언한 다이제스트에서 도출되며, 재해시는 절대 아닙니다. 바이트의 순수 함수인 이름이 `asset_site_path`를 아래에서 예측이 아니라 사실로 만듭니다.
+
+표와 방정식은 `asset_path`를 운반하지 않습니다 — 그들의 콘텐츠 *는* 노드의 설명입니다 — 그리고 tree 외부 asset은 수입 시점에 키를 떨어뜨립니다. 둘 다 올바르게 서빙할 수 없으며 오류가 아닙니다.
+
+MCP를 통해, `raw_source`는 절대 바이트를 반환하지 않습니다; `drill_down`이 대신 주소를 보고합니다 — `asset_path`(디스크), `asset_sha256`, `asset_site_path`(실행 중인 `tesserae serve`에서 가져올 수 있음). 잘못된 선언 해시는 주소를 지어내지 않고 `asset_site_path`를 떨어뜨립니다.
+
+### 결과물은 그래프 캔버스를 떠납니다
+
+`Artifact`는 `EvidenceSpan`과 assertion 계층의 모든 Claim 변형과 함께 묶이며, 전체 assertion 계층은 인터랙티브 그래프 뷰에서 제외됩니다 — 의도적으로 그리고 영구적으로, 미결정 아닙니다. 그것은 캔버스 위의 노드의 동료가 아니라 *그들의* 증거이며, 두 기계적 이유가 같은 것을 말합니다: 증거가 지지하는 것보다 더 많습니다(이미 `SourceDocument`를 `show_sources` 뒤에 놓은 폭주), 그리고 `Artifact`의 유일한 엣지는 `part_of`에서 기본적으로 숨겨지는 `SourceDocument`입니다 — 따라서 그것만 인정하면 도달할 수 없는 고아 점들을 그릴 것입니다. `drill_down`과 원시 asset 페이지를 통해 증거를 읽으세요. 그것이 바로 주소를 잡을 수 있는 곳입니다.
+
 각 노드에 출처가 보존됩니다:
 
 ```json

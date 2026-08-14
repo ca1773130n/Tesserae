@@ -165,6 +165,21 @@ das Sie cross-project navigieren, den eifrigen Pass ein.
 
 ---
 
+## Wer den Graphen liest
+
+| Variable | Standard | Anmerkungen |
+|---|---|---|
+| `TESSERAE_READ_AUDIT` | **aus** | Zeichnet jeden MCP-Lesevorgang als eine Zeile auf — `{tool, actor, node_ids, at, tesserae_version}` — in einer `read_audit`-Tabelle in `.tesserae/sqlite.db`, lesbar zurück durch das `read_audit`-Tool mit einer Pro-Actor-Tally. Standardmäßig aus, weil ein immer aktives Audit über jede Leseoberfläche jeden Lesevorgang zu einem Schreibvorgang macht; das Tor sitzt vor dem Öffnen des Stores, da das Erstellen der Tabelle selbst ein Schreibvorgang ist. Nichts darüber erreicht je `graph.json` |
+| `TESSERAE_ACTOR` | — | Wem ein Lesevorgang zuzurechnen ist, wenn der Aufruf keine Agent-Sicht trägt. Der Actor ist das `agent`-Argument, wenn der Aufruf eines aufgelöst hat, sonst dies; nicht gesetzt zeichnet den Lesevorgang als anonym auf, statt einen Namen zu erfinden |
+
+Das Ausschalten von `TESSERAE_READ_AUDIT` stoppt die Aufzeichnung, ohne zu löschen, was
+bereits aufgezeichnet wurde, und es tritt in Kraft, ohne den Server neu zu starten. Was das
+Audit *für* ist, ist [Vergessen-durch-Disuse](agent-memory.de.md#vergessen--keine-löschung):
+Zugriffszähler steuern, was absorbiert oder herabgestuft wird, und ohne einen Actor ist ein
+chatty Agent, der einen Node abruft, und ein Mensch, der ihn einmal liest, dieselbe Eingabe.
+
+---
+
 ## Mehrere Maschinen gegen ein Projekt fahren
 
 Die Konstellation, für die das geschrieben ist: mehrere Server lassen je einen

@@ -133,6 +133,8 @@ query / seeds
 |---|---|
 | [`tesserae/research_graph.py`](../../tesserae/research_graph.py) | `ResearchNodeType` 列挙型（`SYNTHESIS` を含む）、エッジ型のホワイトリスト（`synthesizes`、`summarizes` を含む）、バリデーション。 |
 | [`tesserae/canonicalization.py`](../../tesserae/canonicalization.py) | エイリアスの正規化 + 近似重複のレビューキュー。 |
+| [`tesserae/merge_ledger.py`](../../tesserae/merge_ledger.py) | `.tesserae/merge-ledger.json`: コンパイルが折りたたむすべての重複に対する敗者→生き残り墓碑銘。先のコンパイル由来のノード id が、単なる not-found ではなく解決される。**派生状態、歴史ではない** — パブリッシュは現在のものと和集合し、その敗者がちょうど発行グラフに存在しない間だけレコードを保ち、その外に出た連鎖が存在するノードに着地する場合のみです。敗者が復活するなら削除される。グラフ自身が見落とした後にのみ読まれ、それが生きた id を決してリダイレクトできないことを保証する。 |
+| [`tesserae/candidate_ledger.py`](../../tesserae/candidate_ledger.py) | `.tesserae/candidate-same-as.json`: 候補マージペアごとの保留中/確認済み/却下済み。ソート済みノード id ペアをキーとし、その他は何もない — スコア、理由、バックエンドは意図的にキーの外にあり、まさに評決が生き残らねばならないのと同じ変動です。**マージ台帳の対極、蓄積されるもの**: マージは派生状態、人間の評決はパイプラインの唯一のもので機械は再導出できず、ここは何も枝刈りされない。二つは同じコードを共有せず。 |
 | [`tesserae/code_graph.py`](../../tesserae/code_graph.py) | 開発スライス用の決定的 Python AST 抽出器。 |
 | [`tesserae/llm_extractor.py`](../../tesserae/llm_extractor.py) | Claude CLI/OAuth の選択的抽出器。 |
 
@@ -190,6 +192,9 @@ query / seeds
 | [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | `hybrid_search`: 3 つのレーン — Okapi BM25（k1=1.5、b=0.75）、ケースフォールドされた字句/FTS スタイルの部分文字列、プラガブルな埋め込みレーン — を相互ランク融合（RRF、k=60）で融合するローカルファーストのハイブリッドリトリーバー。完全に決定的。 |
 | [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | `personalized_pagerank`: マルチホップのシード拡張のための、グラフ上の HippoRAG-2 スタイル（arXiv:2502.14802）Personalized PageRank — 1 ホップ近傍だけでなく、シードから数ホップ先のよく接続されたノードを表面化します。 |
 | 埋め込みバックエンド（フェーズ 6、トラック B） | ハイブリッド埋め込みレーンの既定バックエンドは、追加依存を必要としない決定的なハッシュバケット疑似埋め込みです。`sentence-transformers`（`all-MiniLM-L6-v2`）が優先され、オプション依存がインストールされている場合に遅延ロードされます。`embedding_status` MCP ツールがどのバックエンドがアクティブかを報告します。 |
+| [`tesserae/retrieval/vector_cache.py`](../../tesserae/retrieval/vector_cache.py) | SQLite サイドカーの `node_vectors` テーブルと、3 つの `.embed(` サイトすべてがルーティングするアクセサ。`(backend_name, backend_dim, sha256(embedded_text))` でキーになる — アイデンティティはここでノード id ではなく埋め込まれた**テキスト**なため、フルリコンパイル後、プロジェクト移動後、または正規化による id 書き直し後に変わらないノードがヒットし、再記述されたノードはミスして再埋め込みされる。二つのモデルのベクトルは決して出会わない: それらのスペースは比較不可能であり、静かな混在は失敗ではなく余弦距離を腐らせるだろう。 |
+| [`tesserae/retrieval/views.py`](../../tesserae/retrieval/views.py) | ビューレジストリ: `semantic` / `temporal` / `causal` / `entity`、各々 `ALLOWED_EDGE_TYPES` の名前付きサブセット、`weights_for()` で解決し、ビュー外のすべての型に明示的なゼロ重みを付ける。二つの分割判定が負荷を担う: `summarizes` + `evidenced_by`（すべてのエッジの約 50% — 抽象化と来歴）は**どの**ビューにも属さない、そうでなければセマンティックビューがグラフ全体になる; 因果ビューは `CAUSAL_EDGE_TYPES` より広く、`{recovers}` だけではライブエッジのないビューになるだろう。 |
+| [`tesserae/blocking.py`](../../tesserae/blocking.py) | 両方の両側通行パス（正規化のレビュービルダーと `memory.supersede`）に対する単一ブロッキングレイヤー。キャップは**ソート済み id** で截断するため、キャップ実行は id がどのような順序で到着したかに依存せず、絞られたコンパイルは再現可能。呼び出し元はスコアラーより粗いブロッカーが真の一致を静かに削除するため、独自のトークナイザーを供給。各パスはキャップに到達したことを報告しており、静かにより短いキューを返さない。 |
 
 ### オンデマンドコンテキストコンパイラ（v0.5.0 — 柱 3 の看板）
 
@@ -213,6 +218,7 @@ query / seeds
 | [`tesserae/agent_harness.py`](../../tesserae/agent_harness.py) | Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode のハーネスエクスポート。 |
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | インバウンドの Claude Code/Codex セッションの発見、正規化、`.tesserae/harness_sessions/` 配下への保存、および秘匿化された markdown サマリ。 |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | 時間的事実の JSONL + オプションのライブ Graphiti 同期。 |
+| [`tesserae/kuzu_adapter.py`](../../tesserae/kuzu_adapter.py) | Kuzu データベースへの一方向エクスポート（`tesserae export kuzu`）。ストアではありません — [Kuzu エクスポート](#kuzu-エクスポート)を参照。 |
 | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio サーバー。検索/グラフ: `schema`、`graph_summary`、`search_nodes`、`node_context`（`use_ppr` 付き）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`、`doctor_report`。コンテキストエンジン（v0.5.0）: `compile_context`（オンデマンドコンテキストコンパイラ）、`embedding_status`、`fresh_insights`（減衰ランクのセッション発見）、`list_communities`、`find_session_findings`、`find_code_symbol_mentions`。さらに `ask`、マルチプロジェクトレジストリのツール（`list_projects`、`register_project`、`unregister_project`、`list_sessions`）、および `tesserae_setup_plan` / `tesserae_setup_apply`。 |
 
 ## プロジェクトワークスペースのレイアウト
@@ -345,6 +351,19 @@ Tesserae が何を出力し、それぞれの値が正直にどこから来る�
 **Tesserae の v0.1 出力からの破壊的変更。** `name:` は `title:` になります（`name` はどちらのバージョンでも OKF のキーであったことはありません。リーダーは `title` の後ろで今も受け付けます）。`index.md` と `log.md` は `type:` / `name:` の frontmatter を失うので（§8, §9）、それらを型付き概念として扱っていた消費者は幽霊エントリ二つを失います — それが狙いです。関連して、この二つはバンドルのルートだけでなく階層の*どの*レベルでも予約されるようになりました（§3.1）。すべての概念ファイルのバイトが変わるため、最初の v0.2 エクスポートはバンドル全体を書き直します。
 
 **既知の限界。** `usage_count` が数えるのは、その文書に触れたトランスクリプトを持つ重複除去済みのエージェント / 作業セッション数であって、人間のページ閲覧数ではありません — §5.1 もこのシグナルが粗いと警告しています。人気ではなく生存性として読んでください。ライフサイクル・ファミリーは `supersedes` エッジに指されたノードにのみ発火し（ここでは 5197 中 25）、本当の網羅には `TemporalFactProjector` がクエリ時に導く時間的妥当区間が要りますが、それを 15k エッジに対してエクスポーター内部で走らせるのはスコープ外として却下されました。`generated.by` は §7 の `<producer>/<version>` ではなく `process:tesserae-<extractor>` を意図的に使います: バージョンを帯びた行為者は、意味が何も変わらないのにリリースごとに約 5200 の概念ファイル全部を書き換えさせるからです。パス値を取る OKF フィールド（`resource`, `sources[].resource`）が絶対パスを運ぶことは決してありません — プロジェクトルート相対にできないものは生のまま出さずに省略します。§6.2 のもとでは消費者がそれをバンドル相対として読んでしまうからです — ただし絶対パスは `x_tesserae.source_path`（ノードの実体としての識別子で、外部の消費者は無視します）の中と、たまたまパスを引用しているノード本文の中には依然として現れ得ます。
+
+## Kuzu エクスポート
+
+[`tesserae/kuzu_adapter.py`](../../tesserae/kuzu_adapter.py) は `graph.json` を埋め込み [Kuzu](https://kuzudb.com) データベースへ投影し、別のツールがグラフ上で Cypher を実行できるようにします。`tesserae export kuzu` が書き出し、`--graph PATH` はプロジェクトのコンパイル済みグラフではなく、抽出しただけの素のグラフをエクスポートします。これは **一方向のエクスポート**であり、[OKF](#okf-v02-エクスポート--インポート) と [Graphiti](../../tesserae/graphiti_adapter.py) と並ぶ三つ目です。`write_graph(replace=True)` はデータベースを削除して作り直すので、出力は渡されたグラフの純粋な関数になります。
+
+**Kuzu は意図的にストアではなく、この区別が構造を支えています。** v0.32 まで `KuzuResearchGraphStore` が本物の SQLite ストアの隣、[`tesserae/persistence.py`](../../tesserae/persistence.py) に置かれ、依存関係が dev-only と宣言された `extract --kuzu-output` フラグからのみ到達できました — 半分だけ配線された second backend であり、それが「Tesserae はグラフデータベースを採用すべきか?」を未解決の問いのように見せていました。未解決ではなく、その理由は法的なものではなくアーキテクチャ上のものです（Kuzu は MIT ライセンスで、埋め込み型で、サーバーを必要としません）:
+
+- **二つ目の権威あるストアは、同じ事実について `graph.json` と食い違いうる**のに、調停者がいません。`graph.json` が真実の源であり、それに矛盾しうるものはすべてバグの表面です。
+- **バイト冪等性が純粋関数からデータベースの書き込み順序へ移ってしまいます。** `tests/test_byte_idempotence_phase5.py` が固定している性質 — 二度のコンパイルがバイト単位で同一の `graph.json` を生む — は、コンパイルが入力に対するキー整列済みの純粋関数だから成り立ちます。比較した graph-memory システムのどれもそれを試みてすらおらず、書き込みをエンジン経由にすることは、それを失う方法そのものです。
+
+エクスポートにはどちらの反論も当てはまりません: データベースは派生出力であり、グラフから消去され書き直され、どのコンパイル経路もクエリ経路も読み戻しません。`read_graph` が存在するのは `okf.read_okf_bundle` と同じ理由 — 読み戻せないエクスポートは検証できないエクスポートだから — であって、エンジンの何かが Kuzu からロードするからではありません。`tests/test_kuzu_adapter.py` は `tesserae.persistence` が Kuzu シンボルを一切公開しないことを保証するので、復活したストアはレビューではなくテストスイートで落ちます。
+
+同じ判断が Neo4j を基盤として除外します: [`docs/superpowers/specs/2026-08-14-neo4j-agent-memory-roadmap.md`](../superpowers/specs/2026-08-14-neo4j-agent-memory-roadmap.md) を参照。そこでは能力（永続化されたベクトルインデックス、ソフトマージの墓標、トランザクション時刻の時計）をエンジンではなくファイルと SQLite のサイドカーとして採り入れています。
 
 ## 冪等性の話
 

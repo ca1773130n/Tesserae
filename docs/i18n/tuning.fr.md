@@ -171,6 +171,21 @@ veut la passe hâtive activée.
 
 ---
 
+## Qui a lu le graphe
+
+| Variable | Par défaut | Remarques |
+|---|---|---|
+| `TESSERAE_READ_AUDIT` | **désactivé** | Enregistre chaque lecture MCP en tant que une ligne — `{tool, actor, node_ids, at, tesserae_version}` — dans une table `read_audit` dans `.tesserae/sqlite.db`, relue via l'outil `read_audit` avec un décompte par acteur. Désactivé par défaut car un audit toujours actif sur chaque surface de lecture transforme chaque lecture en écriture ; la porte se tient avant l'ouverture du store, car créer la table est elle-même une écriture. Rien ne sort jamais de `graph.json` |
+| `TESSERAE_ACTOR` | — | Qui attribuer une lecture à quand l'appel ne porte pas de vue d'agent. L'acteur est l'argument `agent` si l'appel en a résolu un, autrement celui-ci ; non défini enregistre la lecture comme anonyme plutôt que d'inventer un nom |
+
+Éteindre `TESSERAE_READ_AUDIT` arrête l'enregistrement sans effacer ce qui
+a déjà été enregistré, et ça prend effet sans redémarrer le serveur. Ce pour quoi
+l'audit existe *est* [oublier par non-utilisation](agent-memory.fr.md#oubli--jamais-suppression):
+les compteurs d'accès pilotent ce qui est absorbé ou rétrogradé, et sans acteur un
+agent bavard qui sonde un nœud et un humain le lisant une fois sont la même entrée.
+
+---
+
 ## Faire tourner plusieurs machines sur un seul projet
 
 La configuration visée : plusieurs serveurs exécutent chacun un agent de code,

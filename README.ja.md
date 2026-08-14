@@ -198,11 +198,11 @@ tesserae ask   "私のチームはデプロイについて何を知っている�
 | `get_handle` | 大きなペイロードをスライスして取得 — エージェントが一度にすべてを抱え込まずに済む |
 | `ask` · `query` · `search_nodes` · `node_context` | 計画された回答、生の検索、コンパイル済みベース上のグラフナビゲーション |
 | `graph_map` | Budgeted Descent: 検索語を当てずっぽうに試すのではなく、スコープに沿って上から下へグラフをたどる — 標準の入口 |
-| `graph_ppr` · `search_facts` · `timeline` | Personalized PageRank 展開、時間的ファクト、年表。`search_facts` は `current_only`（現在有効なファクト）**または** `as_of`（過去のある時点）を取ります — 異なる時計なので同時指定は拒否されます |
+| `graph_ppr` · `search_facts` · `timeline` | Personalized PageRank 展開、時間的ファクト、年表。**合成できる** 2 つの時計: `as_of`（ソース自身のタイムスタンプによる「その時点で何が真だったか」）と `observed_as_of`（コンパイル時に押された台帳による「その時点までに何を学んでいたか」）。`current_only` と `as_of` は同時指定が拒否されます — この 2 つは本当に択一です |
 | `verify_claim` | このトリプルをグラフは是認するか？ 生成された意見ではなく決定的な判定 |
 | `find_session_findings` · `fresh_insights` · `activity_summary` · `query_decisions` | セッション由来の記憶（減衰順・重複排除済み）、ダイジェスト、決定の記録 |
-| `agent_view_explain` · `drill_down` | エージェントスコープのビューを解決し、蒸留ノートを元の証拠へ昇格（監査あり） |
-| `ingest` · `graph_write` | 生の Web / テキスト（ブラウザクリップなど）をグラフへ統合。エージェントが帰属付きノードを書き戻す |
+| `agent_view_explain` · `drill_down` · `read_audit` | エージェントスコープのビューを解決し、蒸留ノートを元の証拠へ昇格（監査あり）。さらに `TESSERAE_READ_AUDIT` で任意に有効化すれば、誰がグラフを読んでいたかを読み戻せます |
+| `ingest` · `graph_write` | 生の Web / テキスト（ブラウザクリップなど）をグラフへ統合。エージェントが帰属付きノードを書き戻す — 代替を捏造せずに「これは誤りだ」と言うための `retracts` エッジも含みます |
 | `doctor_run` · `doctor_report` · `lint_report` | エージェントループの内側からのヘルスチェックとグラフ lint |
 
 ## 日常のコマンド
@@ -330,7 +330,15 @@ Tesserae は**ライブ編集ではなくソースからのコンパイル**を�
 - RAG-Anything の画像説明はまだエンドツーエンドに接続されていません。
 - MCP ツールセットは安定していますが、グラフスキーマにはまだノード型が増えます。
   因果の語彙は意図的に `recovers` の一本だけで、モデルの主張ではなく観測された
-  結果からのみ導かれます。
+  結果からのみ導かれます。検索の *`causal` ビュー* は意図的にそれより広く
+  （「なぜ壊れたのか」という同じ意図に資する `resolved_by` と
+  `attributes_improvement_to` も辿ります）、他に誰も主張しない一本のエッジだけ
+  では中身が何もないビューになってしまいます。
+- **昇格は常に人間の編集です。** `tesserae schema-drift` はノードのサブタイプを
+  提案し、`ask` のプランナーは `proposed_write` を返すことがありますが、どちらも
+  書き込みません: 提案が採用されるのは、あなた自身が `ResearchNodeType` を編集
+  したときか、あなたが供給する来歴を添えてペイロードを `graph_write` に渡した
+  ときだけです。
 
 ## プロジェクト構成
 
@@ -339,7 +347,7 @@ tesserae/     # パッケージ本体 — CLI、コンパイラ、エンジン�
 docs/         # 英語ドキュメント + 他七言語のための docs/i18n/
 ontology/     # コンパイラが検証するノード / エッジスキーマ
 prompts/      # 抽出・統合プロンプト
-tests/        # pytest スイート（3,400 件以上）
+tests/        # pytest スイート（3,700 件以上）
 evals/        # グラフ品質の評価ハーネス
 ```
 

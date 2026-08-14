@@ -208,11 +208,11 @@ accepte `graph_path` / `project` / `agent` sans surcoût. Les principaux :
 | `get_handle` | Paginer une charge volumineuse par tranches, pour que l'agent ne la garde jamais entièrement en contexte |
 | `ask` · `query` · `search_nodes` · `node_context` | Réponses planifiées, recherche brute et navigation dans la base compilée |
 | `graph_map` | Budgeted Descent : parcourir le graphe de haut en bas par portée plutôt que de deviner des termes de recherche — le point d'entrée canonique |
-| `graph_ppr` · `search_facts` · `timeline` | Expansion par Personalized PageRank, faits temporels et chronologie. `search_facts` accepte `current_only` (faits en vigueur) **ou** `as_of` (à une date passée) — les deux ensemble sont refusés, ce sont deux horloges différentes |
+| `graph_ppr` · `search_facts` · `timeline` | Expansion par Personalized PageRank, faits temporels et chronologie. Deux horloges qui **se composent** : `as_of` (ce qui était VRAI alors, d'après les horodatages des sources elles-mêmes) et `observed_as_of` (ce que nous avions APPRIS à cette date, d'après le registre estampillé à la compilation). `current_only` et `as_of` sont refusés ensemble — ces deux-là sont bien des alternatives |
 | `verify_claim` | Le graphe autorise-t-il ce triplet ? Un verdict déterministe, pas un avis généré |
 | `find_session_findings` · `fresh_insights` · `activity_summary` · `query_decisions` | Mémoire issue des sessions, classée par décroissance et dédupliquée ; digests et registre des décisions |
-| `agent_view_explain` · `drill_down` | Résoudre la vue restreinte d'un agent ; remonter d'une note distillée à sa preuve brute (audité) |
-| `ingest` · `graph_write` | Fusionner du web/texte brut (p. ex. un extrait de navigateur) dans le graphe ; laisser un agent réécrire des nœuds attribués |
+| `agent_view_explain` · `drill_down` · `read_audit` | Résoudre la vue restreinte d'un agent ; remonter d'une note distillée à sa preuve brute (audité) ; et, en option via `TESSERAE_READ_AUDIT`, relire qui a lu le graphe |
+| `ingest` · `graph_write` | Fusionner du web/texte brut (p. ex. un extrait de navigateur) dans le graphe ; laisser un agent réécrire des nœuds attribués — y compris une arête `retracts` pour dire « ceci est faux » sans inventer un remplacement |
 | `doctor_run` · `doctor_report` · `lint_report` | Vérifications de santé et lint du graphe depuis la boucle de l'agent |
 
 ## Commandes du quotidien
@@ -349,7 +349,16 @@ Honnêtement :
 - L'ensemble d'outils MCP est stable ; le schéma du graphe gagne encore des
   types de nœuds. Le vocabulaire causal ne fait délibérément qu'une arête de
   large — `recovers` — et se dérive uniquement de résultats observés, jamais
-  affirmés par un modèle.
+  affirmés par un modèle. La *vue `causal`* de récupération est plus large que
+  cela à dessein (elle traverse aussi `resolved_by` et
+  `attributes_improvement_to`, qui servent la même intention « pourquoi cela
+  a-t-il cassé ») ; une seule arête que rien d'autre n'affirme serait une vue
+  sans rien dedans.
+- **La promotion est toujours une édition humaine.** `tesserae schema-drift`
+  propose des sous-types de nœuds et le planificateur d'`ask` peut renvoyer un
+  `proposed_write`, mais ni l'un ni l'autre n'écrit : une proposition n'est
+  adoptée qu'en éditant vous-même `ResearchNodeType`, ou en soumettant la
+  charge utile à `graph_write` avec une provenance que vous fournissez.
 
 ## Structure du projet
 
@@ -358,7 +367,7 @@ tesserae/     # le paquet — CLI, compilateur, moteur, serveur MCP, adaptateurs
 docs/         # documentation anglaise + docs/i18n/ pour sept autres langues
 ontology/     # schémas de nœuds/arêtes que le compilateur valide
 prompts/      # prompts d'extraction et de synthèse
-tests/        # suite pytest (plus de 3 400 tests)
+tests/        # suite pytest (plus de 3 700 tests)
 evals/        # bancs d'évaluation de la qualité du graphe
 ```
 

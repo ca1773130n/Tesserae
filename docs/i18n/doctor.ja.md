@@ -83,6 +83,14 @@ Tesserae における並行性の保証は — なかでもコンパイルロッ
 共有ストレージに対して複数のマシンから Tesserae を動かすなら、コンパイルロックに頼る前に、実機で
 直接テストしてください。
 
+`filesystem_locking` は `flock` のみのプローブであり、Windows では
+「このプラットフォームでサポートされていません — スキップされました」と報告します。ロック自身は
+そうではありません: `compile.lock` とエージェント書き込みロックは存在する場所では `flock(2)` を、
+存在しない場所では `msvcrt.locking` を使用し、`compile_lock` チェックは同じ二つのヘルパーでプローブ
+するので、そこで動作するロックについて「サポートされていない」と報告することはできません。どちらの
+プリミティブも持たないインタープリターでは、ロックは no-op に格下げされ、プロセスごと 1 回のみ
+それを言います。
+
 ## `tesserae doctor migrate-code-scope`
 
 ソースコードが Tesserae のスコープから外れる前にコンパイルされたワークスペース向けの
@@ -159,6 +167,7 @@ tesserae doctor migrate-code-scope --apply    # 実際に削除する
 | コード | 深刻度 | 意味 |
 |---|---|---|
 | `AGENT_METADATA_KEY` | error | エージェントノードが管理された集合の外のメタデータキーを持っています。唯一の error 級コードで、不正なエージェントはスコープ付きビューを壊します。 |
+| `AGENT_WRITE_SKIPPED` | warning | `.tesserae/agent-writes.jsonl` の行をリプレイがスキップしました — その書き込みは**グラフにはありません**。断ち切られた行は同時実行の破れた append であり、エージェントが再度ファイルすべき; 手編集されたものは修正するか削除するべき。リプレイはスキップして警告し、失敗ではなく進むため、悪い 1 行が毎回のコンパイルを壊すことはありません — ただしコンパイル中の stderr 行は、エージェントがファイルしたと信じている書き込みを探すところではありません。 |
 | `ORPHAN_PAPER` | warning | 出ていくエッジがなく、入ってくるのは `mentioned_in` だけの Paper — 取り込まれたが一度も接続されていません。 |
 | `MISSING_IMPLEMENTED_IN` | warning | Paper と Repository が `arxiv_id` を共有しているのに `implemented_in` エッジが両者を結んでいません。`--fix-trivial` が追加します。 |
 | `STALE_CITATION` | warning | Wiki ページが存在しないページへリンクしています。 |

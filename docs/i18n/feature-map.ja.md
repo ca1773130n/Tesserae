@@ -14,6 +14,35 @@ Tesserae は 3 つの柱で動く**コンテキストエンジン**です: (1) �
 > 権威ある変更履歴である [`docs/release-notes/`](../release-notes/) にあります。
 > このマップが扱うのはシステムの形であって、すべてのコミットではありません。
 
+## エージェントメモリ、時間的深さ & 検索ビュー — v0.31.0 以降（2026 年 8 月）
+
+Neo4j のエージェント-メモリ設計を読み、Tesserae 自身の制約を生き残るパーツを取った
+サイクルです: 第二の時間軸、名付けられたエッジ分割、アイデンティティ墓碑銘、そして
+機械が再導出できない評決のための永続的な住処。データベース自身は外に留まりました —
+`docs/superpowers/specs/2026-08-14-neo4j-agent-memory-roadmap.md` で何が取られ、
+何を要したか、なぜかを参照してください。
+
+| 機能 | ステータス | ソース | 備考 |
+|---|---|---|---|
+| トランザクション時間（`observed_as_of`） | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py), [`tesserae/memory/store.py`](../../tesserae/memory/store.py) | 第二の時計: `as_of` が「そのとき何が真だったか」をソース自身のタイムスタンプから回答; `observed_as_of` が「そのときまでに何を学んだか」をコンパイルごとにスタンプされた `fact_observed` テーブルから回答。二つは合成します。`sqlite.db` 内にのみ存在 — `graph.json` 内の壁時計は同じソースを明日は別のバイトにコンパイルさせるだろう。以前は `as_of` が「バイテンポラル」を標榜しながら軸は一本だけだった。 |
+| ファクトが内容として検索される; `dated` が述語 | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py) | `search_facts` は subject / predicate / object / evidence の上でランク付けし、シリアライズされたファクトそのものは決して見ません。したがって id やメタデータ断片はもう一致しません。`dated`（`any`/`dated`/`undated`）は、呼び出し側が `undated_included` から推し量るしかなかったものを、日付の有無というフィルタに変えます。 |
+| `resolved_by` が区間を閉じる | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py), [`tesserae/memory/contradiction.py`](../../tesserae/memory/contradiction.py) | 矛盾パスが敗者を仲裁しますが、時間的射影はそれを無視し、仲裁された敗者は `current: true` 読み続けました。**敗者側から**閉じ — `resolved_by` は source→winner を実行、無効化述語の対極 — プラス Graphiti の重複ガード: 敗者より先か同時に観測された勝者は敗者がいつ真をやめたかは言えない。 |
+| タイムラインが自身のマッチをカウント | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py) | `timeline` は**完全な**マッチセットを日付ソートしてからページング、そして `total_events` がすべてのマッチをカウント。以前はランク選定された 100 行スライスをソートし、その固定を母集団カバレッジとして報告 — だからタイムライン向けの最古のイベントが最もドロップされやすかった。 |
+| ビューレジストリ + 複数ビュー融合 | ✅ | [`tesserae/retrieval/views.py`](../../tesserae/retrieval/views.py), [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | 一つのメモリ、四つの直交グラフとして走行可能 — `semantic` / `temporal` / `causal` / `entity`, 各々エッジ語彙の名付けられたサブセット。新しいランキングアルゴリズムではない: ビューはビュー外のすべてのエッジ型にゼロウェイトを付与するよう解決され、近傍ウォークは同じセットでフィルタするので、ビュー専用ノードは決して取り入れられません。複数ビューは重み付き RRF で融合、各引用は `via_views` を報告。 |
+| 永続的なベクトルキャッシュ | ✅ | [`tesserae/retrieval/vector_cache.py`](../../tesserae/retrieval/vector_cache.py) | すべての埋め込みコールサイトは毎実行で全コーパスを再埋め込み。`node_vectors` テーブルがいまはすべての三つをバッキング、`(backend, dim, sha256(embedded_text))` でキー — ノード id ではなく、ノード id は変わらないとヒット、全リコンパイルまたはムーブ後、再記述はミスして再埋め込み、二つのモデルのベクトルは出会わない。`embedding_status` が `vectors_cached` プラスプロセス全体ヒット/ミス/エラーを報告。 |
+| レーンごとの検索プロファイリング | ✅ | [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | `explain: true` on `search_nodes` / `compile_context` はレーンごとのウェイト、コーパス、埋め込み呼び出し、キャッシュヒット/ミス、ウォール時間を返す、プラス各勝者を供給したレーン。オプトイン、Neo4j の `PROFILE` のように、計測はコストするから — そしてそれは決してランキングを動かせない、すべての数字は融合が既に生成したテーブルから読まれるから。 |
+| マージ台帳 — 死んだ id がサバイバーに解決 | ✅ | [`tesserae/merge_ledger.py`](../../tesserae/merge_ledger.py) | すべてのコンパイルが三つの方法で重複を折りたたみ、以前は各回答を捨てたため、最後のコンパイルのノード id を持つエージェントは単なる not-found を得た。`merge-ledger.json` は敗者→サバイバー墓碑銘、グラフミス後のみ参照（生きた id は決してリダイレクトされない）; `node_context` は `status: merged` に `merged_from` / `merged_into` で報告。派生状態、歴史ではない: 敗者が復活するなら落ちる。 |
+| 取消（`retracts`） | ✅ | [`tesserae/research_graph.py`](../../tesserae/research_graph.py), [`tesserae/graph_filters.py`](../../tesserae/graph_filters.py) | エージェントは「これは誤り」と言え、置き換えを発明せずに: `retracts` エッジがノードに**id で**指さすと、デフォルト読みから抑止される（`search_nodes`, `fresh_insights`, `node_context`, `compile_context`）一方 `include_superseded: true` の下で到達可能。何も削除されない。 |
+| 候補 same-as 評決台帳 | ✅ | [`tesserae/candidate_ledger.py`](../../tesserae/candidate_ledger.py) | 「これらは異なる」と答えたレビュアーは永遠に同じ質問を尋ねられた — `apply_decisions` は `keep_separate` を消費し何もしなかった。`.tesserae/candidate-same-as.json` は評決をソート済みノード id ペアでキー、ほかは何もなく、書き直された説明、新しいソース、別の埋め込みバックエンドはすべてそれを置き去り。蓄積され、決して枝刈りされない: 評決はここで機械が再導出できない唯一。`PENDING_REVIEW` として表面化。 |
+| 両側通行パス用一ブロッキングレイヤー | ✅ | [`tesserae/blocking.py`](../../tesserae/blocking.py) | 正規化はインライン逆索引を持つ; `supersede` は検索グループのすべてのペアをバウンドなしで比較。いまは両方が一レイヤーを共有、二つのプロパティを試す: キャップは**ソート済み id** で截断、キャップ実行は到着順序に依存しない、そし呼び出し元はスコアラーより粗いブロッカーは真のマッチを静かに削除するので自分のトークナイザーを供給。各パスはキャップに到達したことを報告し、静かにより短いキューを返さない。 |
+| アーティファクト証拠ノード がサイトに達する | ✅ | [`tesserae/raganything_adapter.py`](../../tesserae/raganything_adapter.py), [`tesserae/site/raw_view.py`](../../tesserae/site/raw_view.py) | 図表、テーブル、式は一等市民 `Artifact` ノードになり、各 id はコンテンツハッシュのみから生成。図表はさらに生ページとコンテンツアドレス指定バイト `raw-assets/` 配下（テーブルと式はアセット持たない — その内容*は*記述）、そして `drill_down` は `asset_path` / `asset_sha256` / `asset_site_path` を引き渡す。オーナーごとのファクト — kind, page, caption, ordinal — は `part_of` エッジに乗る、そのノードは設計でドキュメント不可知であり 2 つのドキュメント図書が一枚を印字したら 2 番目のページを失うだろう。証拠は**グラフキャンバスオフ**: 全アサーション層は永遠に除外。[rag-anything](integrations/rag-anything.ja.md) を参照。 |
+| プランナーがグラフを歩き、書き込みを提案 | ✅ | [`tesserae/ask_planner.py`](../../tesserae/ask_planner.py) | カタログは 7 つの射影プリミティブを持ち、グラフを歩く方法なし; `compile_context` はそれを結び、ビューユニオンをレジストリから補間。プランナーは `proposed_write` も返しうる — ノードとエッジは*質問*が主張したことのみを根拠 — **提案、決して実行ではない**: 来歴は常にヌル、だから `graph_write` はエージェントキー・外部アンカーを持つ呼び出し元が供給するまで拒否。 |
+| 読み取り監査 — グラフを読んだのは誰 | ✅ | [`tesserae/memory/store.py`](../../tesserae/memory/store.py), [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | アクセスカウントは不使用による忘却を駆動、だが何もが*誰を*引き起こしたかを記録しません。`TESSERAE_READ_AUDIT=1` は `{tool, actor, node_ids, at, tesserae_version}` を読取ごとに記録し、読取直後に `read_audit` で。**既定でオフ**、そしてゲートはストア開き前に座る — テーブル作成自身が書き込み。[agent memory](agent-memory.ja.md#忘却--削除されない) を参照。 |
+| `tesserae schema-drift` がファーストクラス動詞 | ✅ | [`tesserae/schema_drift.py`](../../tesserae/schema_drift.py) | サブタイプ提案は `lab` のみを通して到達可能。提案は `.tesserae/schema-drift-proposals.json` に生き、ノードメタデータではない — そのメタデータキーは増分コンパイルを生き残り、全コンパイルで消えるだろう、バイト冪等ブラインドスポット、このリポは 4 回ヒット。`SUGGESTED_SUBTYPE` として表面化; **昇格は人的編集のまま** `ResearchNodeType` へ、その後 `"approved": true` と `TESSERAE_SCHEMA_DRIFT_APPLY=1`。 |
+| ポータブルコンパイル + エージェント-書き込みロック | ✅ | [`tesserae/locking.py`](../../tesserae/locking.py) | ロックは `if fcntl is None: yield` — Windows ではそれはロックなし、そしてエージェント-書き込みオーバーレイは 2 つの非同期 append がアネックス行を破く唯一のパス。いまは存在する場所では `flock(2)`, 存在しない場所では `msvcrt.locking`（1 バイト範囲にピン、msvcrt ロックはファイル位置から）。二つのプリミティブもないプラットフォームは警告する（プロセスごと 1 回のみ、黙ってではなく）。スキップ再生行はいまリント検出（`AGENT_WRITE_SKIPPED`）、stderr 警告のみではない。 |
+| サイドカーレジストリ | ✅ | [`tesserae/sidecars.py`](../../tesserae/sidecars.py) | すべての `.tesserae/` エントリがその所有者、種類（`derived` / `accumulated` / `cache` / `scratch`）、削除コストを宣言 — そして `safe_to_delete` は別フィールド、`cache` がモデルから来た回答はドロップ安全ではない、`derived` ファイルは人的承認を実施しうるから。Doctor の `sidecars` チェックは実ディレクトリを読み込む。[sidecars](sidecars.ja.md) を参照。 |
+| Kuzu は export、決してストアではない | ✅ | [`tesserae/kuzu_adapter.py`](../../tesserae/kuzu_adapter.py) | 一方向の支配: `tesserae export kuzu` は `graph.kuzu` を書き込み、何も読み戻す。[architecture § Kuzu export](architecture.ja.md#kuzu-エクスポート) を参照。 |
+
 ## 認知メモリとスコープ — v0.29.0 → v0.31.0（2026 年 8 月）
 
 グラフに、何が書かれたかだけでなく*何が起きたか*を知らせたサイクルです: 結果が

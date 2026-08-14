@@ -108,6 +108,56 @@ Correspondance actuelle :
 | `content_list[type=table]` | nœud `Artifact` (id issu du sha256 du `table_body`, corps comme description) + `multimodal_blocks[]` (`table_body`, `caption`, `content_hash`) |
 | `content_list[type=equation]` | nœud `Artifact` (id issu du sha256 du `latex`, LaTeX comme description) + `multimodal_blocks[]` et `metadata.equations[]` (LaTeX préservé) |
 
+### Les faits par propriétaire chevauchent l'arête `part_of`
+
+L'id d'un `Artifact` est amorcé à partir de son hash de contenu et rien d'autre, donc
+le nœud est délibérément **doc-agnostique**: la même figure imprimée dans deux
+documents est un nœud avec une arête `part_of` par propriétaire. Mais `kind`, `page`,
+`caption` et le `ordinal` 1-basé par kind sont des faits sur la paire *(artifact,
+document)* — conservés uniquement sur le nœud, un artifact partagé conserverait le
+document qui a fusionné en premier et perdrait silencieusement la page de chaque
+propriétaire ultérieur. Ils chevauchent l'arête, qui est par-propriétaire par
+construction. Le nœud en garde ses propres copies pour la compatibilité rétroactive ;
+ce qui s'ajoute, ne se déplace pas. Où les mêmes bytes apparaissent deux fois dans
+un document, la position antérieure gagne, déterministement.
+
+`evidence` sur cette arête reste nulle à dessein : chaque `edge.evidence` dans ce
+code est un extrait littéral qui a autorisé une affirmation, et une caption
+n'affirme rien.
+
+### Atteindre les bytes
+
+Un `Artifact` de **figure** affirme que les bytes d'une image existent — le nœud
+n'existe que parce qu'ils ont été hachés à l'importation — donc le site les
+sert. `tesserae export site` lit `metadata['asset_path']` comme source à part
+entière, donnant à cette figure une page brute, une entrée sitemap, et ses bytes
+sous `raw-assets/` sous un nom de fichier adressé au contenu dérivé du digest
+que le graphe a déjà déclaré, jamais un re-hash. Un nom qui est une fonction pure
+des bytes est ce qui fait `asset_site_path` ci-dessous un fait plutôt qu'une
+prédiction.
+
+Les tableaux et équations ne portent pas d'`asset_path` — leur contenu *est* la
+description du nœud — et un asset hors-tree supprime la clé à l'importation.
+Les deux sont correctement non-servables plutôt que des erreurs.
+
+Via MCP, `raw_source` ne retourne jamais les bytes ; `drill_down` rapporte
+l'adresse à la place — `asset_path` (sur disque), `asset_sha256`, et
+`asset_site_path` (récupérable depuis un `tesserae serve` en cours
+d'exécution). Un hash déclaré malformé supprime `asset_site_path` plutôt
+que d'en inventer un.
+
+### Les artifacts restent hors du canvas du graphe
+
+`Artifact` est regroupé avec `EvidenceSpan` et chaque variante de Claim dans la
+couche d'assertion, et toute la couche d'assertion est exclue de la vue graphe
+interactive — délibérément et définitivement, pas en attente. C'est l'evidence
+*pour* les nœuds du canvas plutôt qu'un pair d'eux, et deux raisons mécaniques
+disent la même chose : l'evidence surpasse ce qu'elle soutient (l'inondation qui
+a déjà mis `SourceDocument` derrière `show_sources`), et la seule arête d'un
+`Artifact` est `part_of` vers un `SourceDocument`, qui est masqué par défaut —
+donc l'admettre seul dessinerait des points orphelins inaccessibles. Lisez l'evidence
+via `drill_down` et la page d'asset brute, c'est là qu'elle est adressable.
+
 La provenance est préservée sur chaque nœud :
 
 ```json
