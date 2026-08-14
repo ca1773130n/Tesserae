@@ -63,6 +63,19 @@ Comportement complet, drapeaux CLI(`--consolidate-idle` / `--consolidate-every` 
 - **Rétrograder**: tout le reste dans le pire des cas tombe du corps complet à une ligne de titre+référence dans la note d'index de l'agent. L'âge seul ne rend jamais la connaissance invisible.
 - **Par désuétude (LRU)**: la décadence est entraînée par *récence de récupération*, pas seulement l'âge de création. Lire les accès de surface d'enregistrement — `last_accessed_at` / `access_count` — dans un `node_memory` side-car (jamais dans `graph.json`). La distillation fusionne cet état d'accès en direct dans sa vue de travail **avant** de calculer la décadence, de sorte qu'une découverte que personne ne récupère jamais se dégrade et devient admissible à l'absorption ou à la rétrogradation, tandis qu'une qui a été lue récemment est conservée quel que soit l'âge. Un side-car vide reproduit exactement l'ancien comportement d'âge uniquement.
 - **Livre**：chaque promotion/rétrogradation/absorption est ajoutée à un livre d'oubli et présentée par `tesserae lint` (`AGENT_FORGET_LEDGER`), ainsi qu'une métrique de carnet non distillé par agent (`AGENT_UNDISTILLED_BACKLOG`).
+- **Qui l'a lu** (sur activation explicite) : le compteur d'accès ci-dessus dit
+  qu'un nœud a été lu, pas par qui — un agent bavard qui sonde un nœud et un
+  humain qui le lit une fois sont donc la même entrée pour l'oubli. Définissez
+  `TESSERAE_READ_AUDIT=1` sur le serveur MCP et chaque lecture est aussi
+  enregistrée comme `{tool, actor, node_ids, at, tesserae_version}` dans le même
+  sidecar `.tesserae/sqlite.db`, lisible via l'outil `read_audit` avec un
+  décompte par acteur. L'acteur est l'argument `agent` quand l'appel résout une
+  vue d'agent, sinon `TESSERAE_ACTOR` ; sans l'un ni l'autre, la lecture est
+  enregistrée comme anonyme plutôt qu'attribuée à un nom inventé. **Désactivé
+  par défaut, délibérément** — un journal toujours actif sur chaque surface de
+  lecture transforme chaque lecture en écriture. L'éteindre arrête
+  l'enregistrement sans effacer l'enregistré, et rien de tout cela n'atteint
+  jamais `graph.json`.
 
 ## Connexions découvertes
 

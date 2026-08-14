@@ -998,6 +998,40 @@ class LLMWikiMCPServer:
                 },
             },
             {
+                "name": "read_audit",
+                "description": (
+                    "Who has been reading this graph. Returns recorded read events "
+                    "(tool, actor, node_ids, at, tesserae_version) newest first, plus "
+                    "a per-actor tally, so the access counts driving forgetting-by-disuse "
+                    "can be attributed to a reader instead of being anonymous demand. "
+                    "OPT-IN: nothing is recorded unless TESSERAE_READ_AUDIT is set "
+                    "(1/true/yes/on) on the server process — an always-on audit would "
+                    "make every read a write. Already-recorded rows stay readable after "
+                    "the flag is turned off; 'enabled' reports the current setting."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                        "actor": {
+                            "type": "string",
+                            "description": "Only reads attributed to this actor.",
+                        },
+                        "tool": {
+                            "type": "string",
+                            "description": "Only reads performed through this tool.",
+                        },
+                        "node_id": {
+                            "type": "string",
+                            "description": "Only reads that touched this node id.",
+                        },
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 50},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
                 "name": "node_context",
                 "description": (
                     "Return a node plus incident edges and neighboring nodes by node_id or name. "
@@ -2462,6 +2496,41 @@ class LLMWikiMCPServer:
     # --------------------------------------------------------------- Tool dispatch
 
     def call_tool(self, name: str, arguments: Optional[JSONDict] = None) -> JSONDict:
+        """Dispatch one tool call, attributing every read it performs.
+
+        The tool name and the actor are known HERE and nowhere below: the
+        ``bump_access`` writes they explain happen several frames down, inside
+        surfaces that take a node list and no caller identity. Binding them to
+        a context for the duration of the call is what lets the opt-in read
+        audit name a reader without threading two arguments through every read
+        path. The binding is unconditional and costs one ContextVar set — the
+        audit's own gate is in :func:`tesserae.memory.store.record_read`, so
+        turning it on never requires a restart.
+        """
+        from .memory.store import reading_as
+
+        with reading_as(name, self._resolve_read_actor(arguments or {})):
+            return self._dispatch_tool(name, arguments)
+
+    @staticmethod
+    def _resolve_read_actor(args: JSONDict) -> str:
+        """Who is reading: the agent view if the call has one, else the env.
+
+        ``agent`` and nothing else, deliberately: a call that resolves an agent
+        view IS that agent reading, and no tool declares an identity argument a
+        caller could pass instead — every ``inputSchema`` here sets
+        ``additionalProperties: false``, so reading one would be a rule that
+        only ever fires in tests. (``read_audit``'s own ``actor`` is a FILTER
+        over recorded rows, not the identity of whoever is calling it, and must
+        not be read as one here.) ``TESSERAE_ACTOR`` covers the case where the
+        process is the reader and no argument carries an identity; unset leaves
+        the actor empty rather than inventing a name, because a made-up actor
+        is worse than an anonymous read.
+        """
+        agent = str(args.get("agent") or "").strip()
+        return agent or os.environ.get("TESSERAE_ACTOR", "").strip()
+
+    def _dispatch_tool(self, name: str, arguments: Optional[JSONDict] = None) -> JSONDict:
         args = arguments or {}
         if name == "schema":
             return {
@@ -2506,6 +2575,14 @@ class LLMWikiMCPServer:
             return result
         if name == "embedding_status":
             return self.embedding_status(self._resolve_project_root_quiet(args))
+        if name == "read_audit":
+            return self.read_audit(
+                self._resolve_project_root_quiet(args),
+                actor=str(args.get("actor") or ""),
+                tool=str(args.get("tool") or ""),
+                node_id=str(args.get("node_id") or ""),
+                limit=int(args.get("limit", 50)),
+            )
         if name == "node_context":
             graph, project_root = self._load_requested_graph_with_root(args)
             return self.node_context(
@@ -4189,6 +4266,49 @@ class LLMWikiMCPServer:
                 "cache_errors": stats.errors,
             }
 
+    def read_audit(
+        self,
+        project_root: Optional[Path] = None,
+        *,
+        actor: str = "",
+        tool: str = "",
+        node_id: str = "",
+        limit: int = 50,
+    ) -> JSONDict:
+        """Recorded read events plus a per-actor tally.
+
+        This is the surface that consumes the audit, and it exists so the
+        ledger cannot become write-only state nobody reads back — the exact
+        shape of agent-memory's ``:ConsolidationRun``, which is only ever
+        created. ``enabled`` reports the flag's CURRENT setting, which is
+        deliberately separate from whether rows came back: turning the audit
+        off must not erase what it already recorded, and an empty answer while
+        enabled means "nothing has been read yet", not "not switched on".
+        """
+        from .memory.store import read_audit_actors, read_audit_enabled, read_audit_rows
+
+        enabled = read_audit_enabled()
+        if project_root is None:
+            return {"enabled": enabled, "audit_db": None, "reads": [], "actors": []}
+        db_path = project_root / ".tesserae" / "sqlite.db"
+        rows = read_audit_rows(db_path, limit=limit, actor=actor, tool=tool, node_id=node_id)
+        return {
+            "enabled": enabled,
+            "audit_db": str(db_path),
+            "reads": [
+                {
+                    "at": row.at,
+                    "tool": row.tool,
+                    "actor": row.actor,
+                    "node_ids": list(row.node_ids),
+                    "tesserae_version": row.tesserae_version,
+                    "schema_version": row.schema_version,
+                }
+                for row in rows
+            ],
+            "actors": read_audit_actors(rows),
+        }
+
     # ------------------------------------------------------------------ wiki / raw / lint
 
     def wiki_page(
@@ -4750,6 +4870,11 @@ class LLMWikiMCPServer:
         only, never graph.json. Degrades silently when the project root or
         sidecar db cannot be resolved — a read must never fail because the
         memory layer is unavailable.
+
+        Its caller (``fresh_insights``) bumps inside its own loop, so with the
+        read audit enabled this surface records one row per surfaced node
+        rather than one per call. That is the honest shape for a per-node bump:
+        each row still explains exactly the access count it produced.
         """
         if project_root is None:
             return
@@ -4761,6 +4886,7 @@ class LLMWikiMCPServer:
             db_path = project_root / ".tesserae" / "sqlite.db"
             now = datetime.now(timezone.utc).isoformat()
             _bump_access(db_path, node_id, now)
+            self._record_read_audit(db_path, [node_id], now)
         except Exception:
             # Best-effort signal; never propagate sidecar failures to a read.
             _LOG.debug("bump_access failed for node %s", node_id, exc_info=True)
@@ -4776,6 +4902,10 @@ class LLMWikiMCPServer:
         (one connection per distinct id). Writes the ``node_memory`` sidecar
         ONLY, never ``graph.json``. Best-effort: a
         sidecar failure is logged at debug and swallowed so a read never breaks.
+
+        One read event here is ONE audit row naming every id it bumped — the
+        list is what makes a row explain the access counts it produced, so it
+        is not split per node.
         """
         if project_root is None:
             return
@@ -4787,6 +4917,7 @@ class LLMWikiMCPServer:
             db_path = project_root / ".tesserae" / "sqlite.db"
             now = datetime.now(timezone.utc).isoformat()
             seen: set[str] = set()
+            bumped: List[str] = []
             for raw in node_ids:
                 nid = str(raw) if raw else ""
                 if not nid or nid in seen:
@@ -4794,10 +4925,34 @@ class LLMWikiMCPServer:
                 seen.add(nid)
                 try:
                     _bump_access(db_path, nid, now)
+                    bumped.append(nid)
                 except Exception:
                     _LOG.debug("bump_access failed for node %s", nid, exc_info=True)
+            self._record_read_audit(db_path, bumped, now)
         except Exception:
             _LOG.debug("bump_nodes_access setup failed", exc_info=True)
+
+    @staticmethod
+    def _record_read_audit(db_path: Path, node_ids: Sequence[str], at: str) -> None:
+        """Attribute the reads just counted, when the audit is switched on.
+
+        Records only ids whose ``bump_access`` actually landed: an audit row is
+        an explanation of access counts, and naming a node whose count did not
+        move would make it one that misleads. ``at`` is the instant those bumps
+        were stamped with, so the two never disagree.
+
+        Failure is logged at WARNING, not debug, and deliberately louder than
+        the bump above it: the audit is off unless someone asked for it, so a
+        row that silently fails to appear is an answer that is quietly wrong.
+        """
+        if not node_ids:
+            return
+        try:
+            from .memory.store import record_read
+
+            record_read(db_path, node_ids, at)
+        except Exception as exc:  # noqa: BLE001 — a read must survive its audit
+            _LOG.warning("read audit write failed (%s)", exc)
 
     def _resolve_project_root_quiet(self, args: JSONDict) -> Optional[Path]:
         """Project root for a tool that needs a sidecar but NOT a graph.

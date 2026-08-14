@@ -56,6 +56,16 @@ _MEMORY_FIELDS = (
     "loser_id",
     "survivor_id",
     "merged_into",
+    # Sidecar-only, same as the rest: the opt-in read audit
+    # (TESSERAE_READ_AUDIT) lives in the read_audit SQLite table. Who read a
+    # node, when, and which release recorded it are all query history — baking
+    # any of it into node metadata would make graph.json a function of how the
+    # graph has been read, which is the byte-idempotence leak in its purest
+    # form. The version stamp is named here too because it is the field most
+    # tempting to "just add" to an artifact.
+    "read_audit",
+    "tesserae_version",
+    "node_ids_json",
 )
 
 

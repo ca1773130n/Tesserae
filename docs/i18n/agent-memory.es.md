@@ -63,6 +63,19 @@ Comportamiento completo, banderas CLI(`--consolidate-idle` / `--consolidate-ever
 - **Degradar**: todo lo demás en el peor de los casos cae de la cuerpo completo a una línea de título+referencia en la nota de Índice del agente. Solo la edad nunca hace que el conocimiento sea invisible.
 - **Por desuso (LRU)**: la decadencia es impulsada por *recencia de recuperación*, no solo por edad de creación. Leer acceso de registro de superficie — `last_accessed_at` / `access_count` — en un `node_memory` sidecar (nunca en `graph.json`). La destilación fusiona ese estado de acceso en vivo en su vista de trabajo **antes de** calcular la decadencia, por lo que un hallazgo que nunca se recupera decae y se vuelve elegible para ser absorbido o degradado, mientras que uno que fue leído recientemente se mantiene independientemente de la edad. Un sidecar vacío reproduce exactamente el comportamiento anterior solo por edad.
 - **Libro mayor**: cada promoción/degradación/absorción se agrega al libro mayor de olvido y se muestra en `tesserae lint` (`AGENT_FORGET_LEDGER`), junto con una métrica de atraso sin destilar por agente (`AGENT_UNDISTILLED_BACKLOG`).
+- **Quién lo leyó** (opcional): el contador de acceso anterior dice que un nodo
+  fue leído, no por quién — así que un agente parlanchín sondeando un nodo y una
+  persona leyéndolo una vez son la misma entrada para el olvido. Define
+  `TESSERAE_READ_AUDIT=1` en el servidor MCP y cada lectura se registra además
+  como `{tool, actor, node_ids, at, tesserae_version}` en el mismo sidecar
+  `.tesserae/sqlite.db`, legible mediante la herramienta `read_audit` con un
+  recuento por actor. El actor es el argumento `agent` cuando la llamada
+  resuelve una vista de agente, y si no `TESSERAE_ACTOR`; sin ninguno de los
+  dos la lectura se registra como anónima en lugar de atribuirse a un nombre
+  inventado. **Apagado por defecto a propósito** — un libro siempre activo sobre
+  cada superficie de lectura convierte cada lectura en una escritura. Apagarlo
+  detiene el registro sin borrar lo registrado, y nada de esto llega nunca a
+  `graph.json`.
 
 ## Conexiones descubiertas
 

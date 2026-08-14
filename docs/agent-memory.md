@@ -113,6 +113,17 @@ Full behavior, CLI flags (`--consolidate-idle` / `--consolidate-every` /
 - **Ledger**: every promotion/demotion/absorption is appended to a forget
   ledger and surfaced by `tesserae lint` (`AGENT_FORGET_LEDGER`), along with
   an undistilled-backlog metric per agent (`AGENT_UNDISTILLED_BACKLOG`).
+- **Who read it** (opt-in): the access count above says a node was read, not by
+  whom — so one chatty agent polling a node and a human reading it once are the
+  same input to forgetting. Set `TESSERAE_READ_AUDIT=1` on the MCP server and
+  each read is also recorded as `{tool, actor, node_ids, at, tesserae_version}`
+  in the same `.tesserae/sqlite.db` sidecar, readable through the `read_audit`
+  tool with a per-actor tally. The actor is the `agent` argument when the call
+  resolves an agent view, otherwise `TESSERAE_ACTOR`; unset means the read is
+  recorded as anonymous rather than attributed to an invented name. **Default
+  off on purpose** — an always-on ledger across every read surface turns every
+  read into a write. Turning it off stops recording without erasing what was
+  recorded, and nothing about it ever reaches `graph.json`.
 
 ## Discovered connections
 
