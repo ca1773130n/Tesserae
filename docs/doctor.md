@@ -43,7 +43,7 @@ The checks, grouped by category:
 | `idempotence` | hygiene | the output-snapshot `idempotence_suspect` tripwire | report-only (it's a bug signal, not something to auto-repair) |
 | `orphan_worktrees` | hygiene | stale `git worktree` registrations | **SAFE**: `git worktree prune`; deleting directories is report-only |
 | `hook_log_bloat` | hygiene | `.tesserae/.session-*-hook.log` growth | **SAFE**: rotates/truncates logs over 10 MB |
-| `sidecars` | hygiene | `.tesserae/` entries against the sidecar registry (`tesserae/sidecars.py`): orphaned `*.tmp.<pid>.<hex>` halves, manual `graph.json.bak-*` copies, unclassified entries | **SAFE**: removes orphaned tmp files whose writer pid is gone and that are over 24 h old; backups and unclassified entries are report-only |
+| `sidecars` | hygiene | `.tesserae/` entries against the sidecar registry ([`tesserae/sidecars.py`](sidecars.md)): orphaned `*.tmp.<pid>.<hex>` halves, manual `graph.json.bak-*` copies, unclassified entries | **SAFE**: removes orphaned tmp files whose writer pid is gone and that are over 24 h old; backups and unclassified entries are report-only |
 | `code_scope_leftovers` | hygiene | leftovers from the retired code layer: `code-graph*.json`, code-typed rows in `sqlite.db` | report-only — the cleanup is a mass delete, so it lives on its own verb (see below) |
 
 A crashing check is reported as an error finding — doctor itself never raises.

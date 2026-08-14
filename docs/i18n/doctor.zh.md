@@ -39,7 +39,7 @@ tesserae doctor --project ~/src/other
 | `idempotence` | hygiene | 输出快照的 `idempotence_suspect` 触发线 | 仅报告（这是 bug 信号，不应自动修复） |
 | `orphan_worktrees` | hygiene | 陈旧的 `git worktree` 注册项 | **SAFE**：`git worktree prune`；删除目录仅报告 |
 | `hook_log_bloat` | hygiene | `.tesserae/.session-*-hook.log` 的增长 | **SAFE**：轮转/截断超过 10 MB 的日志 |
-| `sidecars` | hygiene | 依据边车登记表（`tesserae/sidecars.py`）检查 `.tesserae/` 条目：孤立的 `*.tmp.<pid>.<hex>`、手工的 `graph.json.bak-*` 副本、未分类条目 | **SAFE**：仅删除写入进程已消失且超过 24 小时的孤立 tmp 文件；备份与未分类条目仅报告 |
+| `sidecars` | hygiene | 依据边车登记表（[`tesserae/sidecars.py`](sidecars.zh.md)）检查 `.tesserae/` 条目：孤立的 `*.tmp.<pid>.<hex>`、手工的 `graph.json.bak-*` 副本、未分类条目 | **SAFE**：仅删除写入进程已消失且超过 24 小时的孤立 tmp 文件；备份与未分类条目仅报告 |
 | `code_scope_leftovers` | hygiene | 已退役代码层的残留：`code-graph*.json`、`sqlite.db` 中的代码类型行 | 仅报告 —— 清理是批量删除，因此单独作为一个动词（见下文） |
 
 崩溃的检查会作为一条 error 级发现被报告——doctor 本身永不抛出异常。
