@@ -5584,9 +5584,18 @@ def _handle_domains_status(args: argparse.Namespace) -> int:
         # .tesserae/charter/ is never created for it. That is correct
         # behaviour, not a failure, so this prints to stdout and exits 0
         # rather than looking like an error a caller should retry or alert on.
+        #
+        # This used to add "or has not been compiled since the charter pass
+        # landed", which was advice no recompile could ever satisfy: nothing
+        # derived a charter at all, so an operator following it recompiled
+        # forever. Now that ``_write_charter_sidecar`` runs on every compile,
+        # the honest remaining causes are the bound and a project that has
+        # not been compiled at all — so say those.
         print(
-            "no charter yet — the project is below the one-read bound, or has "
-            "not been compiled since the charter pass landed."
+            "no charter yet — the project is below the one-read bound (its "
+            "research layer fits a single read, so there is nothing to route "
+            "through), or it has not been compiled yet. Run `tesserae "
+            "compile`."
         )
         return 0
     if getattr(args, "as_json", False):

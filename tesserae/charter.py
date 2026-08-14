@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence, Set
 
-from .agent_distill import _render_member_block
+from .agent_distill import ARTIFACT_CHAR_BUDGET, _render_member_block
 from .community_summaries import detect_communities
 from .hierarchy import undirected_degrees
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
@@ -300,13 +300,71 @@ def split(graph: ResearchGraph, member_ids: Sequence[str]) -> SplitResult:
     return SplitResult(children=children, direct=direct, stalled=False)
 
 
+#: Node types that must not NAME a domain while any other member could.
+#:
+#: Not a quality ranking of the ontology — a demotion list, so a type nobody
+#: has measured stays eligible by default and a new producer gets a fair shot
+#: at naming its own subject. Every entry is here because it was MEASURED
+#: heading a live domain with a name that cannot serve as a slug. Censused on
+#: the 47,132-node graph, 205 of 779 anchored domains (26%) were headed by one
+#: of these, including two of the six divisions:
+#:
+#:   * SOURCE_DOCUMENT (121 domains) — a container for text, not a subject.
+#:     Its name is whatever heading the parser found: the 7,955-member
+#:     division anchored on ``한 줄 요약`` ("one-line summary"), which strips to
+#:     nothing under NFKD+ASCII and hashes to ``domain-bfd88123``. Both of the
+#:     charter's two unreadable hash slugs come from this type.
+#:   * EVIDENCE_SPAN (44) — a quoted span; names are extractor boilerplate
+#:     ("Repository metadata evidence").
+#:   * SESSION (24) — a transcript envelope named ``<date> — <first line of
+#:     the prompt>``, which is where nearly all 155 slugs over 50 characters
+#:     come from (``2026-06-09-why-we-don-t-have-ingest-commnad-sometimes-``…,
+#:     typo included and pinned forever).
+#:   * EVENT (9) — named ``Event {turn_id}: {actor} · {action}``: turn-scoped,
+#:     so the slug names one keystroke of one session.
+#:   * AGENT (5) — named ``harness:account:role``, i.e. it puts an operator's
+#:     email address in a permanent, shareable attach path.
+#:   * TECHNICAL_TERM (2) — extraction's catch-all for jargon; it gave the
+#:     6,283-member division the slug ``python``.
+#:   * The SESSION_* finding types (3) — this module's own CH-04 note measures
+#:     their names at a median of 24 words.
+#:   * STUB (0 today) — a tombstone for a wikilink that resolves to nothing,
+#:     so it names a node that does not exist.
+#:
+#: Demoting does NOT change what a domain HOLDS — the anchor is an identity
+#: and a name, not a member filter — and it does not weaken the identity
+#: substrate the 97.0%/81.0% preservation measurement is about. It arguably
+#: strengthens it: every demoted type is a per-ingest artifact (a document a
+#: re-parse renames, a span an extractor re-mints, one transcript, one turn),
+#: while the types left eligible are producer-owned knowledge that outlives
+#: the file it arrived in.
+_ANCHOR_DEMOTED_TYPES = frozenset(
+    {
+        ResearchNodeType.SOURCE_DOCUMENT,
+        ResearchNodeType.EVIDENCE_SPAN,
+        ResearchNodeType.TECHNICAL_TERM,
+        ResearchNodeType.STUB,
+        ResearchNodeType.SESSION,
+        ResearchNodeType.SESSION_INSIGHT,
+        ResearchNodeType.SESSION_DECISION,
+        ResearchNodeType.SESSION_QUESTION,
+        ResearchNodeType.SESSION_TODO,
+        ResearchNodeType.SESSION_HYPOTHESIS,
+        ResearchNodeType.SESSION_TAKEAWAY,
+        ResearchNodeType.SESSION_FAILURE,
+        ResearchNodeType.EVENT,
+        ResearchNodeType.AGENT,
+    }
+)
+
+
 def assign_anchors(
     graph: ResearchGraph,
     member_sets: Sequence[Sequence[str]],
     *,
     claimed: Optional[set[str]] = None,
 ) -> list[str]:
-    """Pick each domain's top-degree member, greedily, no two the same.
+    """Pick each domain's top-degree NAMEABLE member, greedily, no two the same.
 
     The anchor is the identity substrate: a hub does not move when 15 nodes
     arrive. Measured preservation under a one-document perturbation is 97.0%
@@ -338,18 +396,47 @@ def assign_anchors(
     (a member already claimed by an ancestor or a sibling is skipped, so the
     domain falls to its next-highest-degree unclaimed member) and mutated in
     place (every anchor handed out is recorded for later calls).
+
+    ``_ANCHOR_DEMOTED_TYPES`` outranks degree rather than merely breaking ties
+    on it, and that ordering is the whole fix. The roadmap proposed type as a
+    MIDDLE key — ``(-degree, type, id)`` — which measurement shows is a no-op:
+    the two unusable divisions are not degree ties. ``한 줄 요약`` heads its
+    division at degree 116 against 112 for the next candidate, and ``Python``
+    at 112 against 108, so a tie-break never runs and both slugs survive
+    unchanged. Ranking by type FIRST and by degree within the type is what
+    actually moves them, and it is why this lands before the first charter is
+    written: the slug is an operator-pinned attach path, so a selector fixed
+    afterwards is a refound of every domain it touches.
     """
     degrees = undirected_degrees(graph)
-    ranked: list[tuple[int, int, str]] = []
+    # Restricted to the ids actually being ranked, not every node of the
+    # graph. ``build_charter`` calls this once per router — 89 times on the
+    # live graph — always against the WHOLE graph (degree is global by
+    # design, see above), so an unrestricted set comprehension rebuilt a
+    # ~20k-id set on each call and cost 2.8s of the 10.7s build.
+    wanted = {member_id for members in member_sets for member_id in members}
+    demoted = {
+        node.id
+        for node in graph.nodes
+        if node.id in wanted and node.type in _ANCHOR_DEMOTED_TYPES
+    }
+    ranked: list[tuple[int, int, int, str]] = []
     for index, members in enumerate(member_sets):
         for member_id in members:
-            ranked.append((-degrees.get(member_id, 0), index, member_id))
-    ranked.sort(key=lambda row: (row[0], row[2]))
+            ranked.append(
+                (
+                    1 if member_id in demoted else 0,
+                    -degrees.get(member_id, 0),
+                    index,
+                    member_id,
+                )
+            )
+    ranked.sort(key=lambda row: (row[0], row[1], row[3]))
 
     anchors: dict[int, str] = {}
     if claimed is None:
         claimed = set()
-    for _degree, index, member_id in ranked:
+    for _rank, _degree, index, member_id in ranked:
         if index in anchors or member_id in claimed:
             continue
         anchors[index] = member_id
@@ -477,6 +564,27 @@ def write_charter(project_root: Path | str, charter: dict) -> Path:
         path, json.dumps(charter, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     )
     return path
+
+
+def worth_chartering(graph: ResearchGraph) -> bool:
+    """Is this graph too big to be one read? Only then does an institution exist.
+
+    The one-read bound, applied as the FOUNDING test: a research layer that
+    fits ``ARTIFACT_CHAR_BUDGET`` can be handed to an agent whole, so dividing
+    it into divisions and departments adds a routing decision to a corpus that
+    never needed one. Below the bound ``.tesserae/charter/`` is never created
+    and every downstream reader stays byte-identical to its no-charter output.
+
+    Measured in the same ``mass`` units the split threshold uses, so "the
+    charter exists" and "a domain must split" are answers to the same
+    question at two scales.
+
+    Deliberately NOT a maintenance test. ``_write_charter_sidecar`` consults
+    this only when there is no charter yet: once an institution exists its
+    slugs are pinned attach paths, and a corpus oscillating around 48,000
+    characters must not found and abandon them on alternating compiles.
+    """
+    return mass(graph.nodes) >= ARTIFACT_CHAR_BUDGET
 
 
 def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> dict:
@@ -656,12 +764,60 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
         for mid in intake:
             member_index[mid] = _INTAKE_SLUG
 
+    _verify_partition(scoped, domains, member_index)
     return {
         "version": 1,
         "reorg_seq": 0,
         "domains": domains,
         "member_index": member_index,
     }
+
+
+def _verify_partition(
+    graph: ResearchGraph, domains: dict[str, dict], member_index: dict[str, str]
+) -> None:
+    """CH-01, checked on the charter this call actually produced.
+
+    CH-01 — every member held by exactly one domain — is true by construction
+    here, and was true by construction the three previous times it was voided:
+    the intake-slug overwrite, the ancestor/descendant anchor collision and
+    anchorless-child emission each left ``member_index`` naming a domain that
+    did not hold those members, and each shipped a charter that read as
+    healthy. What caught all three was a test on a fixture. Now that a compile
+    derives this on every real corpus, the invariant has to be checked on the
+    charter being written rather than on the ones a suite happens to build —
+    a partition that is void is worse than no charter, because every reader
+    downstream trusts it to say where a node lives.
+
+    Raising rather than degrading, matching the two guards above: a caller
+    given a silently void partition routes agents into domains that hold
+    nothing, and the failure surfaces far from its cause. This is deliberately
+    NOT the ordering-window check — whether these ids survive into
+    ``graph.json`` is decided by three passes that run after this one, and
+    belongs to lint, not here.
+    """
+    held: dict[str, str] = {}
+    duplicated: set[str] = set()
+    for slug, entry in domains.items():
+        for member_id in entry["direct_member_ids"]:
+            if member_id in held:
+                duplicated.add(member_id)
+            held[member_id] = slug
+
+    universe = {node.id for node in graph.nodes}
+    missing = sorted(universe - held.keys())
+    unknown = sorted(held.keys() - universe)
+    if duplicated or missing or unknown or held != member_index:
+        raise RuntimeError(
+            "CH-01 violated by the charter just built: "
+            f"{len(duplicated)} member(s) held by more than one domain "
+            f"(e.g. {sorted(duplicated)[:3]}), {len(missing)} held by none "
+            f"(e.g. {missing[:3]}), {len(unknown)} not in the graph "
+            f"(e.g. {unknown[:3]}), member_index "
+            f"{'disagrees with' if held != member_index else 'agrees with'} "
+            "the direct blocks. Refusing to return a charter whose "
+            "member_index names domains that do not hold those members."
+        )
 
 
 def succeed(prior: dict, fresh: dict) -> dict:
@@ -873,6 +1029,57 @@ def succeed(prior: dict, fresh: dict) -> dict:
         "domains": domains,
         "member_index": member_index,
     }
+
+
+#: The two keys ``succeed`` rewrites on EVERY call regardless of whether the
+#: institution moved. Excluded from the no-op comparison below, and from
+#: nothing else.
+_REORG_BOOKKEEPING = frozenset({"reorg_seq", "transition"})
+
+
+def is_noop_reorg(prior: dict, merged: dict) -> bool:
+    """Did ``succeed`` change the institution, or only its bookkeeping?
+
+    ``succeed`` is unconditional by construction: ``next_seq`` is
+    ``prior.reorg_seq + 1`` and every carried domain is re-stamped ``stable``
+    at that seq, so calling it on an UNCHANGED graph still returns a different
+    payload from the one on disk. Writing that payload every compile would
+    make ``charter.json`` the one compile output that can never be
+    byte-idempotent — churning a file whose entire purpose is to be the stable
+    thing everything else is keyed on — and would redefine ``reorg_seq`` from
+    "how many times this institution has been reorganised" into "how many
+    times this project has been compiled", which is not a fact anyone can use.
+
+    So the seq advances when the institution advances. Comparing everything
+    EXCEPT the two bookkeeping keys is what decides that: same slugs, same
+    parents, same children, same anchors, same members, same statuses means no
+    reorg happened and the bytes on disk are already correct.
+
+    A domain therefore keeps the ``transition`` and ``reorg_seq`` of the reorg
+    that last MOVED it, which is the same rule ``succeed`` already applies to
+    tombstones ("a frozen snapshot of the domain as it last was live, not a
+    record this reorg touched") — now applied to live domains too.
+    """
+
+    def identity(charter: dict) -> str:
+        return json.dumps(
+            {
+                "version": charter.get("version"),
+                "member_index": charter.get("member_index", {}),
+                "domains": {
+                    slug: {
+                        key: value
+                        for key, value in entry.items()
+                        if key not in _REORG_BOOKKEEPING
+                    }
+                    for slug, entry in charter.get("domains", {}).items()
+                },
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+
+    return identity(prior) == identity(merged)
 
 
 def _altitude_for(tier: int, member_count: int) -> str:

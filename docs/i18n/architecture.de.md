@@ -306,19 +306,27 @@ Also fixiert die Charta die Institution: Abschnitte werden erkannt, zu einem
 Quotientengraphen zusammengefaltet (ein Knoten je Abschnitt, eine `part_of`-Kante
 je abschnittsübergreifender L0-Kante) und **nach Sub-Community, nie nach Größe**
 in Bereiche → Abteilungen → Teams zerlegt. Der Anker jeder Domäne ist ihr
-Mitglied mit dem höchsten Grad, gierig gewählt, sodass keine zwei Domänen
-denselben teilen; der für Menschen sichtbare Slug wird einmal aus diesem Anker
+Mitglied mit dem höchsten Grad unter den Typen, die ein Thema benennen können —
+`SourceDocument`, `TechnicalTerm`, `EvidenceSpan`, `Session`, `Event` und `Agent`
+werden zurückgestuft, denn eine Abschnittsüberschrift, ein Zitat, die erste Zeile
+eines Transkripts oder eine Kontokennung ist kein Name, an den jemand einen
+Agenten heften kann. Gewählt wird gierig, sodass keine zwei Domänen denselben
+Anker teilen; der für Menschen sichtbare Slug wird einmal aus diesem Anker
 geprägt und festgehalten. Über eine Reorganisation hinweg trägt `succeed` die
 Slugs weiter, indem es über den Anker zuordnet — ein stabiler Name überlebt also
 das Durchmischen der Mitglieder darunter. Jeder Knoten landet in genau einer
 Domäne: `intake_members` fängt die verworfenen Singletons und kantenisolierten
 Abschnitte auf, die die Erkennung sonst stillschweigend verlöre.
 
-`tesserae domains status [--json]` gibt den Baum aus. **Stand:** Das Modul und
-sein CLI-Verb sind ausgeliefert und durch Tests abgedeckt, doch `compile`
-schreibt noch keine Charta — bis dahin meldet der Befehl „no charter yet" und
-endet mit 0, was auch für ein Projekt unterhalb der Ein-Lesevorgang-Schwelle die
-ehrliche Antwort ist.
+`tesserae domains status [--json]` gibt den Baum aus. **Status:** Jede
+Kompilierung leitet die Charta nach `.tesserae/charter/charter.json` ab, aus
+demselben kanonisierten Graphen, aus dem auch das Hierarchie-Sidecar gebaut
+wird. Eine Neukompilierung, die nichts reorganisiert, schreibt nicht — die
+Datei bleibt Byte für Byte gleich, denn `reorg_seq` zählt Reorganisationen,
+nicht Kompilierungen. Ein Projekt, dessen Forschungsschicht in einen einzigen
+Lesevorgang passt, liegt unter der Schwelle und bekommt gar keine Charta; dort
+meldet der Befehl weiterhin „no charter yet" und endet mit 0, was die ehrliche
+Antwort ist.
 
 ## Was bewusst ausgeschlossen ist
 

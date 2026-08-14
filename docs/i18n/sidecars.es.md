@@ -82,7 +82,7 @@ datos, no una demora.
 | `vault_snapshot.json` | `accumulated` | la línea base contra la que compara `vault_pull`. Bórrala a mitad de una edición y la siguiente compilación no podrá distinguir tu edición de su propia proyección anterior — todo el mecanismo de anulación del vault |
 | `obsidian_vault` | `accumulated` | bidireccional y del usuario: tus ediciones aquí se reincorporan al grafo, así que no es una proyección que baste con redibujar |
 | `config.json` | `accumulated` | configuración del proyecto, incluido `obsidian.vault_path` — entrada del usuario, nunca se regenera |
-| `charter` | `accumulated` | el charter del proyecto se escribe, no se extrae |
+| `charter` | `derived` | cada compilación lo deriva de `graph.json`, pero ninguna reconstrucción lo reproduce: los slugs se acuñan a partir de las anclas que la reconstrucción escoja, así que borrarlo refunda cada dominio con otro nombre, rompe toda ruta de anclaje fijada y descarta las lápidas que eran el único registro de adónde fueron los nombres viejos |
 | `agents` | `accumulated` | el `registry.json` por agente y el `purpose.md` escrito a mano |
 | `discovered_links.json` | `accumulated` | la capa de asociación acumula enlaces puntuados a lo largo de varias ejecuciones; una sola no la reconstruye |
 | `extraction-feedback.jsonl` | `accumulated` | correcciones humanas capturadas durante la superposición del vault y review-apply |

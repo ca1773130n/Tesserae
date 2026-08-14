@@ -306,19 +306,25 @@ La charte fige donc l'institution : les sections sont détectées, repliées en 
 graphe quotient (un nœud par section, une arête `part_of` par arête L0
 inter-sections), puis découpées en divisions → départements → équipes **par
 sous-communauté, jamais par taille**. L'ancre de chaque domaine est son membre de
-plus haut degré, choisi gloutonnement pour que deux domaines n'en partagent
-jamais une seule ; le slug destiné aux humains est frappé une fois à partir de
+plus haut degré parmi les types capables de nommer un sujet — `SourceDocument`,
+`TechnicalTerm`, `EvidenceSpan`, `Session`, `Event` et `Agent` sont rétrogradés,
+car un titre de section, une citation, la première ligne d'une transcription ou
+un identifiant de compte ne sont pas un nom auquel on puisse épingler un agent —,
+choisi gloutonnement pour que deux domaines n'en partagent jamais une seule ; le slug destiné aux humains est frappé une fois à partir de
 cette ancre, puis épinglé. Au fil d'une réorganisation, `succeed` reporte les
 slugs en appariant les ancres, si bien qu'un nom stable survit au brassage des
 membres qui se trouvent dessous. Chaque nœud atterrit dans exactement un domaine :
 `intake_members` rattrape les singletons écartés et les sections isolées côté
 arêtes que la détection perdrait sinon en silence.
 
-`tesserae domains status [--json]` affiche l'arbre. **État :** le module et son
-verbe CLI sont livrés et couverts par des tests, mais `compile` n'écrit pas
-encore de charte ; d'ici là, la commande renvoie « no charter yet » et sort avec
-0, ce qui est aussi la réponse honnête pour un projet sous le seuil d'une seule
-lecture.
+`tesserae domains status [--json]` affiche l'arbre. **État :** chaque
+`compile` dérive la charte dans `.tesserae/charter/charter.json`, à partir du
+même graphe canonisé que celui dont est bâti le sidecar de hiérarchie. Une
+recompilation qui ne réorganise rien refuse d'écrire : le fichier reste
+identique octet pour octet, car `reorg_seq` compte les réorganisations et non
+les compilations. Un projet dont la couche de recherche tient en une seule
+lecture est sous le seuil et n'a aucune charte ; là, la commande renvoie
+toujours « no charter yet » et sort avec 0, ce qui est la réponse honnête.
 
 ## Ce qui est délibérément exclu
 

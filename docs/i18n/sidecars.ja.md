@@ -77,7 +77,7 @@
 | `vault_snapshot.json` | `accumulated` | `vault_pull` が差分の基準にするベースライン。編集の途中で消すと、次のコンパイルはユーザーの編集と自分自身の以前の射影を区別できません — vault の上書き機構そのものです |
 | `obsidian_vault` | `accumulated` | 双方向かつユーザー所有です。ここでの編集はグラフへ引き戻されるため、単純に描き直せる射影ではありません |
 | `config.json` | `accumulated` | `obsidian.vault_path` を含むプロジェクト設定 — ユーザー入力であり、再生成されません |
-| `charter` | `accumulated` | プロジェクトの charter は抽出物ではなく、書かれたものです |
+| `charter` | `derived` | コンパイルのたびに `graph.json` から導出されますが、再ビルドしても同じものは復元されません。スラッグは再ビルドがたまたま選んだアンカーから作られるため、削除するとすべてのドメインが別名で再創設され、ピン留めしたアタッチパスがすべて壊れ、旧名の行き先を唯一記録していた tombstone も失われます |
 | `agents` | `accumulated` | エージェントごとの `registry.json` と、手書きの `purpose.md` |
 | `discovered_links.json` | `accumulated` | 関連オーバーレイは複数回の実行にわたってスコア付きリンクを積み上げます。一回の実行では再構成できません |
 | `extraction-feedback.jsonl` | `accumulated` | vault オーバーレイと review-apply の過程で集めた人間の訂正 |

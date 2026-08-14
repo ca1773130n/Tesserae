@@ -1119,3 +1119,228 @@ def test_repeated_reorgs_never_churn_when_a_cluster_is_starved_of_anchors():
         assert current["member_index"] == charter["member_index"], (
             f"reorg {reorg} moved members between domains on unchanged input"
         )
+
+
+# ---------------------------------------------------------------------------
+# the anchor selector: a slug is permanent, so the namer is fixed by picking a
+# nameable anchor, never by rewriting the name
+# ---------------------------------------------------------------------------
+
+from tesserae.charter import (
+    _ANCHOR_DEMOTED_TYPES,
+    _verify_partition,
+    is_noop_reorg,
+    worth_chartering,
+)
+from tesserae.hierarchy import undirected_degrees
+
+
+def _typed(nid: str, name: str, node_type: ResearchNodeType) -> ResearchNode:
+    return ResearchNode(id=nid, name=name, type=node_type)
+
+
+def _hub_of_type_beats(node_type: ResearchNodeType) -> ResearchGraph:
+    """One cluster whose HIGHEST-degree member is ``node_type`` and whose
+    second-highest is a Concept, with the degrees deliberately UNEQUAL."""
+    nodes = [
+        _typed("X:hub", "Hub Document", node_type),
+        _typed("Concept:runner", "Runner Up", ResearchNodeType.CONCEPT),
+    ]
+    nodes += [_typed(f"Concept:leaf{i}", f"Leaf {i}", ResearchNodeType.CONCEPT) for i in range(6)]
+    edges = []
+    # hub touches all six leaves (degree 6); runner-up touches four (degree 4).
+    for i in range(6):
+        edges.append(ResearchEdge(source="X:hub", target=f"Concept:leaf{i}", type="shares_concept_with"))
+    for i in range(4):
+        edges.append(ResearchEdge(source="Concept:runner", target=f"Concept:leaf{i}", type="shares_concept_with"))
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+@pytest.mark.parametrize(
+    "demoted_type",
+    [
+        ResearchNodeType.SOURCE_DOCUMENT,
+        ResearchNodeType.TECHNICAL_TERM,
+        ResearchNodeType.EVIDENCE_SPAN,
+        ResearchNodeType.SESSION,
+        ResearchNodeType.EVENT,
+        ResearchNodeType.AGENT,
+        ResearchNodeType.STUB,
+        ResearchNodeType.SESSION_INSIGHT,
+    ],
+)
+def test_a_demoted_type_loses_the_anchor_even_when_it_has_the_higher_degree(
+    demoted_type: ResearchNodeType,
+):
+    """The roadmap proposed node type as a MIDDLE sort key — a tie-break on
+    equal degree. Measured on the live graph that is a no-op: the SourceDocument
+    heading a 7,955-member division has degree 116 against 112 for the next
+    candidate, and the TechnicalTerm ``Python`` 112 against 108, so a tie-break
+    never runs and both unusable slugs survive. Type has to outrank degree.
+
+    This fixture reproduces that shape exactly — strictly higher degree on the
+    demoted node — so a tie-break implementation fails it.
+    """
+    graph = _hub_of_type_beats(demoted_type)
+    members = [n.id for n in graph.nodes]
+
+    degrees = undirected_degrees(graph)
+    assert degrees["X:hub"] > degrees["Concept:runner"], "fixture must not be a tie"
+
+    (anchor,) = assign_anchors(graph, [members])
+    assert anchor == "Concept:runner", (
+        f"a {demoted_type.value} outranked every nameable member on degree alone"
+    )
+
+
+def test_a_demoted_type_still_anchors_when_nothing_else_can():
+    """Demotion is a preference, not a ban. A domain whose every member is a
+    demoted type must still get an anchor — an empty anchor is the anchorless
+    slug ``domain-e3b0c442`` that can never succeed itself, and folding the
+    domain away would drop its members from the partition."""
+    nodes = [
+        _typed(f"SourceDocument:d{i}", f"Doc {i}", ResearchNodeType.SOURCE_DOCUMENT)
+        for i in range(4)
+    ]
+    edges = [
+        ResearchEdge(source="SourceDocument:d0", target=f"SourceDocument:d{i}", type="shares_concept_with")
+        for i in range(1, 4)
+    ]
+    graph = ResearchGraph(nodes=nodes, edges=edges)
+
+    (anchor,) = assign_anchors(graph, [[n.id for n in nodes]])
+    assert anchor == "SourceDocument:d0", "top-degree member must still win when all are demoted"
+
+
+def test_demoting_never_changes_which_members_a_domain_holds():
+    """The anchor is an identity and a name, not a member filter. Whatever the
+    selector picks, CH-01 must hold over the same node universe."""
+    graph = _two_fat_triangles_plus_orphan()
+    charter = build_charter(graph)
+
+    held = [m for e in charter["domains"].values() for m in e["direct_member_ids"]]
+    assert sorted(held) == sorted(n.id for n in graph.nodes)
+    assert len(held) == len(set(held))
+
+
+def test_every_demoted_type_is_a_real_node_type():
+    """A typo in the frozenset would silently demote nothing — the failure
+    would be invisible, because an unmatched entry just never matches."""
+    for node_type in _ANCHOR_DEMOTED_TYPES:
+        assert isinstance(node_type, ResearchNodeType)
+    assert ResearchNodeType.SOURCE_DOCUMENT in _ANCHOR_DEMOTED_TYPES
+    assert ResearchNodeType.TECHNICAL_TERM in _ANCHOR_DEMOTED_TYPES
+    # Producer-owned knowledge types must stay eligible, or the four readable
+    # divisions on the live graph lose their names too.
+    for keep in (
+        ResearchNodeType.RESEARCH_TOPIC,
+        ResearchNodeType.RESEARCH_FIELD,
+        ResearchNodeType.PAPER,
+        ResearchNodeType.PROJECT,
+    ):
+        assert keep not in _ANCHOR_DEMOTED_TYPES
+
+
+# ---------------------------------------------------------------------------
+# CH-01 at runtime
+# ---------------------------------------------------------------------------
+
+
+def test_a_void_partition_raises_instead_of_being_returned():
+    """CH-01 was true by construction the three previous times it was voided.
+    ``build_charter`` now checks the charter it actually produced, so a fourth
+    regression fails at the point of corruption rather than shipping a
+    member_index naming domains that do not hold those members."""
+    graph = _two_fat_triangles()
+    ids = [n.id for n in graph.nodes]
+
+    # held by two domains
+    with pytest.raises(RuntimeError, match="CH-01 violated"):
+        _verify_partition(
+            graph,
+            {"a": {"direct_member_ids": ids}, "b": {"direct_member_ids": ids[:1]}},
+            {mid: "a" for mid in ids},
+        )
+    # held by none
+    with pytest.raises(RuntimeError, match="CH-01 violated"):
+        _verify_partition(
+            graph,
+            {"a": {"direct_member_ids": ids[:-1]}},
+            {mid: "a" for mid in ids[:-1]},
+        )
+    # member_index disagreeing with the direct blocks — the exact shape the
+    # intake-slug overwrite produced
+    with pytest.raises(RuntimeError, match="CH-01 violated"):
+        _verify_partition(
+            graph,
+            {"a": {"direct_member_ids": ids}},
+            {mid: "intake" for mid in ids},
+        )
+    # and the healthy case passes
+    _verify_partition(graph, {"a": {"direct_member_ids": ids}}, {mid: "a" for mid in ids})
+
+
+# ---------------------------------------------------------------------------
+# the founding bound, and the no-op reorg that keeps charter.json idempotent
+# ---------------------------------------------------------------------------
+
+
+def test_a_graph_that_fits_one_read_is_not_worth_chartering():
+    from tesserae.agent_distill import ARTIFACT_CHAR_BUDGET
+
+    small = ResearchGraph(nodes=[_node("Concept:a", "Alpha")], edges=[])
+    assert not worth_chartering(small)
+    assert not worth_chartering(ResearchGraph(nodes=[], edges=[]))
+
+    # Grown one node at a time rather than asserting on a fixture's incidental
+    # size: _two_fat_triangles is 30,000 chars, i.e. BELOW the budget, so a
+    # test that used it would have been asserting the bound is never reached.
+    big = ResearchGraph(nodes=[], edges=[])
+    while mass(big.nodes) < ARTIFACT_CHAR_BUDGET:
+        big.nodes.append(_fat_node(f"Concept:big{len(big.nodes)}", 5_000))
+    assert worth_chartering(big)
+    big.nodes.pop()
+    assert not worth_chartering(big), "the bound must be the budget, not merely near it"
+
+
+def test_a_reorg_that_moves_nothing_is_recognised_as_a_no_op():
+    """``succeed`` is unconditional: it bumps reorg_seq and re-stamps every
+    domain ``stable`` even on an unchanged graph. Writing that every compile
+    would make charter.json the one output that can never be byte-idempotent,
+    and would turn reorg_seq into a compile counter."""
+    graph = _two_fat_triangles_plus_orphan()
+    founded = build_charter(graph)
+    merged = succeed(founded, build_charter(graph))
+
+    assert merged != founded, "succeed must still bump its bookkeeping"
+    assert merged["reorg_seq"] == founded["reorg_seq"] + 1
+    assert is_noop_reorg(founded, merged), "an unchanged graph is not a reorg"
+
+
+def test_a_reorg_that_moves_a_member_is_not_a_no_op():
+    graph = _two_fat_triangles_plus_orphan()
+    founded = build_charter(graph)
+
+    moved = json.loads(json.dumps(founded))
+    victim = sorted(moved["member_index"])[0]
+    moved["member_index"][victim] = "somewhere-else"
+    assert not is_noop_reorg(founded, moved)
+
+    renamed = json.loads(json.dumps(founded))
+    slug = sorted(renamed["domains"])[0]
+    renamed["domains"]["renamed-" + slug] = renamed["domains"].pop(slug)
+    assert not is_noop_reorg(founded, renamed)
+
+    retired = json.loads(json.dumps(founded))
+    retired["domains"][sorted(retired["domains"])[0]]["status"] = "retired"
+    assert not is_noop_reorg(founded, retired)
+
+
+def test_repeated_no_op_reorgs_never_advance_past_the_first():
+    """The property the compile relies on: derive, succeed, decline to write,
+    forever. If ``is_noop_reorg`` ever went False on unchanged input, every
+    compile would rewrite charter.json."""
+    graph = _two_fat_triangles_plus_orphan()
+    on_disk = build_charter(graph)
+    for _ in range(4):
+        assert is_noop_reorg(on_disk, succeed(on_disk, build_charter(graph)))

@@ -1564,6 +1564,13 @@ class ProjectWiki:
         # Returns the all-level live-cid manifest used to prune stale summary
         # caches after that pass (§9.5).
         live_community_ids = self._write_hierarchy_sidecar(graph)
+        # The chartered institution (.tesserae/charter/charter.json), derived
+        # from the SAME graph at the SAME moment and for the same reason: this
+        # is the one point where a canonicalized research-layer partition
+        # exists and Louvain has not yet seen a COMMUNITY_SUMMARY node. Its
+        # ordering window is the one _write_hierarchy_sidecar documents, and
+        # it applies verbatim to ``member_index``.
+        self._write_charter_sidecar(graph)
         # Community-summary pass (Microsoft GraphRAG playbook applied to
         # the typed graph). Opt-in via ``TESSERAE_COMMUNITY_SUMMARIES=true``
         # so quiet ``compile`` runs stay free of incremental LLM
@@ -2119,6 +2126,115 @@ class ProjectWiki:
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         )
         return {cid for level_map in levels_payload for cid in level_map}
+
+    def _write_charter_sidecar(self, graph: ResearchGraph) -> Optional[Path]:
+        """Derive ``.tesserae/charter/charter.json`` — the chartered institution.
+
+        Returns the path written, or ``None`` when this compile deliberately
+        wrote nothing (below the founding bound, nothing to divide, no reorg,
+        or a charter on disk that could not be read).
+
+        **Not gated on an env flag, and that is a decision rather than an
+        oversight.** :func:`_env_truthy`'s own docstring scopes the convention
+        it implements — gating "destructive / credential-dependent compile
+        passes ... so the default compile stays deterministic and
+        credential-free". ``build_charter`` is neither: it is a pure function
+        of graph content, LLM-free, credential-free and measured
+        byte-identical across runs, which is the profile of the passes this
+        compile already runs unconditionally rather than the profile of the
+        ones it gates. Putting it behind ``TESSERAE_*`` would also make every
+        reader downstream of it conditional on an env var — an entry point
+        that is a size rank unless you knew to opt out of it.
+
+        The cost is real and is bounded by the founding test instead. Measured
+        on the 47,132-node live graph: 8.2s, against 2.7s for
+        ``detect_community_levels`` in :meth:`_write_hierarchy_sidecar`, which
+        this compile already pays unconditionally on the same graph.
+        :func:`charter.worth_chartering` is a cheap ``mass`` pass, so a
+        project small enough to be one read pays that and nothing else — the
+        Louvain work only happens on corpora big enough to need routing.
+
+        Partitions the research layer itself rather than taking
+        ``_write_hierarchy_sidecar``'s, following the same two-independent-
+        ``partition_graph``-calls idiom :meth:`_merge_community_summaries`
+        already uses: O(n) twice on an in-memory graph, and each function then
+        defends its own invariant. That invariant here is CH-01 against
+        ``graph.json`` specifically — ``member_index`` maps node ids to slugs,
+        and a code-layer id is one ``graph.json`` never carries, which is the
+        measured 169/1360 skew arriving through a third door.
+        """
+        from .charter import (
+            _INTAKE_SLUG,
+            CharterUnreadable,
+            build_charter,
+            is_noop_reorg,
+            read_charter,
+            succeed,
+            write_charter,
+            worth_chartering,
+        )
+
+        try:
+            prior = read_charter(self.project_root)
+        except CharterUnreadable as exc:
+            # Do NOT fall through to the founding path. ``read_charter``
+            # raises precisely so that "unreadable" cannot be mistaken for
+            # "absent", and founding here would re-mint every slug, break
+            # every pinned attach path and leave no tombstone explaining
+            # where the old ones went — with the operator's only clue being
+            # a charter file that silently changed. Skipping keeps the
+            # damaged file intact for them to restore, and the compile
+            # itself is not failed over a sidecar.
+            logger.error("charter: %s", exc)
+            print(f"[tesserae] charter: {exc}", flush=True)
+            return None
+
+        research_layer, _code_layer = partition_graph(graph)
+        if prior is None and not worth_chartering(research_layer):
+            # Below the one-read bound: never create .tesserae/charter/. The
+            # bound is a FOUNDING test only — an existing institution keeps
+            # being maintained even if the corpus later shrinks, because its
+            # slugs are pinned paths and must not be abandoned by a corpus
+            # oscillating around the budget.
+            return None
+
+        fresh = build_charter(research_layer)
+        real_domains = [slug for slug in fresh["domains"] if slug != _INTAKE_SLUG]
+        if prior is None and len(real_domains) < 2:
+            # Detection found nothing to divide, so there is no institution to
+            # charter — one division plus intake is a rename of the graph, not
+            # a structure an agent can route through.
+            return None
+
+        if prior is None:
+            print(
+                f"[tesserae] charter: founded {len(fresh['domains'])} domain(s) "
+                f"over {len(fresh['member_index'])} member(s).",
+                flush=True,
+            )
+            return write_charter(self.project_root, fresh)
+
+        merged = succeed(prior, fresh)
+        if is_noop_reorg(prior, merged):
+            # Nothing reorganised, so nothing is written and charter.json stays
+            # byte-identical. Without this every compile would bump reorg_seq
+            # and re-stamp all 780 domains ``stable``, making the one file the
+            # rest of the system keys on the only output that churns on an
+            # unchanged corpus. See ``is_noop_reorg``.
+            return None
+        retired = sum(
+            1 for e in merged["domains"].values() if e.get("status") == "retired"
+        )
+        founded = sum(
+            1 for e in merged["domains"].values() if e.get("transition") == "founded"
+        )
+        print(
+            f"[tesserae] charter: reorg {merged['reorg_seq']} — "
+            f"{len(merged['domains'])} domain(s), {founded} founded, "
+            f"{retired} retired.",
+            flush=True,
+        )
+        return write_charter(self.project_root, merged)
 
     def _merge_community_summaries(self, graph: ResearchGraph, cfg: dict) -> ResearchGraph:
         """Mint COMMUNITY_SUMMARY nodes + ``summarizes`` edges (opt-in).

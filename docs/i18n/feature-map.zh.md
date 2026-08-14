@@ -53,7 +53,7 @@ Tesserae 是一个运行在三大支柱上的**上下文引擎**：(1) 会话监
 | 过程性检索池 | ✅ | [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py)、[`tesserae/research_graph.py`](../../tesserae/research_graph.py) | `context` 为过程性记忆——运行了什么、结果如何——预留一个槽位，而这个槽位**靠出处挣得**，不是默认奉送。当它无法被诚实填满时，`PROCEDURAL_POOLS` lint 会报告。 |
 | 工具结果也是轮次 | ✅ | [`tesserae/session_event.py`](../../tesserae/session_event.py)、[`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | 退出码与错误标志挺过摄取并落到 `Event` 节点上。图谱因而能区分失败的命令与仅仅运行过的命令。主目录在进入时被遮蔽。 |
 | `recovers` 边 | ✅ | [`tesserae/session_recovery.py`](../../tesserae/session_recovery.py) | 唯一的因果边：“在那次失败之后这次成功了”，由同一会话中两个**被观测到**的结果推导，二者须在工具、程序家族、工作目录与操作对象上一致。`CAUSAL_EDGE_TYPES` 刻意只有一个成员。见[会话历史](session-history.zh.md)。 |
-| 章程化的领域结构 | ⚠ | [`tesserae/charter.py`](../../tesserae/charter.py)、`cli.py` | 社区检测*提议*一套领域词汇，章程在两次显式重组之间*拥有*它——因为检测虽确定却不稳定（一篇 15 个节点的文档就会挪动约 29% 的成员）。`tesserae domains status` 读取它。**目前 `compile` 尚未生成**——在那之前该命令报告 "no charter yet"。 |
+| 章程化的领域结构 | ✅ | [`tesserae/charter.py`](../../tesserae/charter.py)、[`tesserae/project.py`](../../tesserae/project.py)、`cli.py` | 社区检测*提议*一套领域词汇，章程在两次显式重组之间*拥有*它——因为检测虽确定却不稳定（一篇 15 个节点的文档就会挪动约 29% 的成员）。现在每次 `compile` 都会把它派生到 `.tesserae/charter/charter.json`，由 `tesserae domains status` 读取。没有发生重组的重新编译会让该文件逐字节保持不变——`reorg_seq` 数的是重组次数，不是编译次数。小到一次即可读完的项目低于阈值，不会有章程。 |
 | 共享磁盘上的多主机 | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | `TESSERAE_HOST_ID` 按*是谁写下了这条记录*来限定 prune 与覆盖，于是共用一块磁盘的 N 台服务器不再互相删除会话历史。见[会话历史](session-history.zh.md)。 |
 
 ## 跨项目与 UX — v0.11.0（2026 年 6 月）
