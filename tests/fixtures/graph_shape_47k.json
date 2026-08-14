@@ -1,0 +1,549 @@
+{
+ "provenance": {
+  "source": ".tesserae/graph.json of the Tesserae project itself",
+  "captured": "2026-08-14",
+  "nodes": 47132,
+  "edges": 104677
+ },
+ "edges_per_node": 2.2209,
+ "isolated_share": 0.039061,
+ "evidence_share": 0.574185,
+ "evidence_len": 64.6,
+ "edge_meta": 19.3,
+ "hubs": [
+  {
+   "type": "CommunitySummary",
+   "degree_share": 0.289863
+  },
+  {
+   "type": "Synthesis",
+   "degree_share": 0.048244
+  },
+  {
+   "type": "Project",
+   "degree_share": 0.008932
+  },
+  {
+   "type": "Paper",
+   "degree_share": 0.004929
+  }
+ ],
+ "node_types": {
+  "EvidenceSpan": {
+   "share": 0.243762,
+   "name": 38.7,
+   "desc": 88.2,
+   "aliases": 0.0,
+   "meta": 62.2,
+   "src": 90.9,
+   "slug": 29.8
+  },
+  "Claim": {
+   "share": 0.101927,
+   "name": 48.6,
+   "desc": 80.3,
+   "aliases": 0.0,
+   "meta": 3.3,
+   "src": 90.3,
+   "slug": 40.0
+  },
+  "Capability": {
+   "share": 0.053255,
+   "name": 26.4,
+   "desc": 63.1,
+   "aliases": 0.2,
+   "meta": 2.4,
+   "src": 91.0,
+   "slug": 26.0
+  },
+  "PerformanceClaim": {
+   "share": 0.049584,
+   "name": 49.5,
+   "desc": 85.5,
+   "aliases": 0.0,
+   "meta": 7.6,
+   "src": 93.1,
+   "slug": 40.0
+  },
+  "SourceDocument": {
+   "share": 0.042986,
+   "name": 63.5,
+   "desc": 69.1,
+   "aliases": 0.3,
+   "meta": 252.6,
+   "src": 91.4,
+   "slug": 36.7
+  },
+  "Person": {
+   "share": 0.040206,
+   "name": 12.1,
+   "desc": 17.5,
+   "aliases": 0.2,
+   "meta": 2.3,
+   "src": 95.4,
+   "slug": 12.0
+  },
+  "ApproachFamily": {
+   "share": 0.033608,
+   "name": 27.2,
+   "desc": 70.8,
+   "aliases": 0.4,
+   "meta": 5.0,
+   "src": 92.3,
+   "slug": 26.9
+  },
+  "ContributionClaim": {
+   "share": 0.028982,
+   "name": 58.4,
+   "desc": 92.7,
+   "aliases": 0.0,
+   "meta": 2.7,
+   "src": 92.8,
+   "slug": 42.7
+  },
+  "Paper": {
+   "share": 0.027709,
+   "name": 38.0,
+   "desc": 67.3,
+   "aliases": 0.7,
+   "meta": 97.7,
+   "src": 88.5,
+   "slug": 28.4
+  },
+  "Concept": {
+   "share": 0.02476,
+   "name": 20.5,
+   "desc": 61.6,
+   "aliases": 0.3,
+   "meta": 2.5,
+   "src": 91.9,
+   "slug": 20.4
+  },
+  "ResearchTopic": {
+   "share": 0.024612,
+   "name": 24.9,
+   "desc": 59.1,
+   "aliases": 0.5,
+   "meta": 7.0,
+   "src": 90.4,
+   "slug": 24.7
+  },
+  "Algorithm": {
+   "share": 0.024293,
+   "name": 21.2,
+   "desc": 69.3,
+   "aliases": 0.4,
+   "meta": 6.7,
+   "src": 93.3,
+   "slug": 21.1
+  },
+  "LimitationClaim": {
+   "share": 0.02389,
+   "name": 43.9,
+   "desc": 86.4,
+   "aliases": 0.0,
+   "meta": 2.8,
+   "src": 93.7,
+   "slug": 36.9
+  },
+  "Model": {
+   "share": 0.022936,
+   "name": 14.7,
+   "desc": 61.6,
+   "aliases": 0.4,
+   "meta": 12.8,
+   "src": 93.3,
+   "slug": 14.5
+  },
+  "ArchitecturePattern": {
+   "share": 0.018968,
+   "name": 25.2,
+   "desc": 72.7,
+   "aliases": 0.4,
+   "meta": 2.9,
+   "src": 90.4,
+   "slug": 24.9
+  },
+  "Project": {
+   "share": 0.018607,
+   "name": 13.9,
+   "desc": 69.1,
+   "aliases": 0.6,
+   "meta": 49.9,
+   "src": 91.3,
+   "slug": 13.5
+  },
+  "Dataset": {
+   "share": 0.018501,
+   "name": 19.2,
+   "desc": 58.8,
+   "aliases": 0.4,
+   "meta": 15.2,
+   "src": 93.5,
+   "slug": 18.9
+  },
+  "Task": {
+   "share": 0.018395,
+   "name": 24.8,
+   "desc": 56.5,
+   "aliases": 0.3,
+   "meta": 2.4,
+   "src": 91.0,
+   "slug": 24.7
+  },
+  "Repository": {
+   "share": 0.017737,
+   "name": 18.8,
+   "desc": 52.4,
+   "aliases": 0.8,
+   "meta": 152.4,
+   "src": 89.3,
+   "slug": 18.7
+  },
+  "MethodologicalConcept": {
+   "share": 0.016273,
+   "name": 25.1,
+   "desc": 67.4,
+   "aliases": 0.3,
+   "meta": 2.9,
+   "src": 92.8,
+   "slug": 24.8
+  },
+  "Metric": {
+   "share": 0.015213,
+   "name": 17.0,
+   "desc": 47.6,
+   "aliases": 0.4,
+   "meta": 11.4,
+   "src": 91.7,
+   "slug": 16.8
+  },
+  "TechnicalTerm": {
+   "share": 0.01343,
+   "name": 16.1,
+   "desc": 60.9,
+   "aliases": 0.4,
+   "meta": 2.4,
+   "src": 91.1,
+   "slug": 16.0
+  },
+  "ProblemArea": {
+   "share": 0.009569,
+   "name": 27.9,
+   "desc": 68.5,
+   "aliases": 0.3,
+   "meta": 2,
+   "src": 92.9,
+   "slug": 26.6
+  },
+  "SessionInsight": {
+   "share": 0.009357,
+   "name": 164.0,
+   "desc": 0.2,
+   "aliases": 0,
+   "meta": 437.6,
+   "src": 0.2,
+   "slug": 47.9
+  },
+  "MathematicalConcept": {
+   "share": 0.008678,
+   "name": 21.8,
+   "desc": 63.7,
+   "aliases": 0.4,
+   "meta": 2.3,
+   "src": 94.5,
+   "slug": 21.5
+  },
+  "ComparisonClaim": {
+   "share": 0.007384,
+   "name": 54.1,
+   "desc": 93.7,
+   "aliases": 0.0,
+   "meta": 4.4,
+   "src": 92.7,
+   "slug": 42.3
+  },
+  "InferenceStrategy": {
+   "share": 0.00715,
+   "name": 26.6,
+   "desc": 71.8,
+   "aliases": 0.3,
+   "meta": 2.5,
+   "src": 90.7,
+   "slug": 26.4
+  },
+  "Benchmark": {
+   "share": 0.007065,
+   "name": 20.1,
+   "desc": 59.7,
+   "aliases": 0.3,
+   "meta": 13.1,
+   "src": 93.7,
+   "slug": 19.8
+  },
+  "SessionTakeaway": {
+   "share": 0.006471,
+   "name": 143.1,
+   "desc": 0.4,
+   "aliases": 0,
+   "meta": 407.9,
+   "src": 0.6,
+   "slug": 47.8
+  },
+  "Result": {
+   "share": 0.006004,
+   "name": 29.1,
+   "desc": 62.8,
+   "aliases": 0.0,
+   "meta": 28.7,
+   "src": 91.6,
+   "slug": 27.3
+  },
+  "Organization": {
+   "share": 0.005623,
+   "name": 15.0,
+   "desc": 44.8,
+   "aliases": 0.6,
+   "meta": 3.6,
+   "src": 92.6,
+   "slug": 14.7
+  },
+  "EvaluationProtocol": {
+   "share": 0.004837,
+   "name": 26.2,
+   "desc": 69.1,
+   "aliases": 0.2,
+   "meta": 5.8,
+   "src": 91.3,
+   "slug": 25.5
+  },
+  "Event": {
+   "share": 0.004795,
+   "name": 22.7,
+   "desc": 58.8,
+   "aliases": 0.5,
+   "meta": 30.2,
+   "src": 85.2,
+   "slug": 22.0
+  },
+  "CausalClaim": {
+   "share": 0.004498,
+   "name": 51.8,
+   "desc": 105.3,
+   "aliases": 0,
+   "meta": 2.3,
+   "src": 94.2,
+   "slug": 42.5
+  },
+  "TrainingParadigm": {
+   "share": 0.004413,
+   "name": 25.7,
+   "desc": 61.3,
+   "aliases": 0.4,
+   "meta": 2,
+   "src": 94.1,
+   "slug": 25.6
+  },
+  "Synthesis": {
+   "share": 0.004052,
+   "name": 30.2,
+   "desc": 39.5,
+   "aliases": 0.0,
+   "meta": 1169.3,
+   "src": 1.3,
+   "slug": 30.5
+  },
+  "SessionDecision": {
+   "share": 0.003925,
+   "name": 139.6,
+   "desc": 2.0,
+   "aliases": 0.0,
+   "meta": 412.8,
+   "src": 2.3,
+   "slug": 47.4
+  },
+  "Session": {
+   "share": 0.003437,
+   "name": 80.1,
+   "desc": 0.7,
+   "aliases": 0,
+   "meta": 5304.1,
+   "src": 1.0,
+   "slug": 47.7
+  },
+  "SessionTODO": {
+   "share": 0.003352,
+   "name": 142.7,
+   "desc": 0.8,
+   "aliases": 0,
+   "meta": 429.2,
+   "src": 1.1,
+   "slug": 47.5
+  },
+  "OpenQuestion": {
+   "share": 0.003119,
+   "name": 35.2,
+   "desc": 72.4,
+   "aliases": 0.1,
+   "meta": 2.4,
+   "src": 95.2,
+   "slug": 29.9
+  },
+  "ResearchField": {
+   "share": 0.002949,
+   "name": 18.6,
+   "desc": 54.8,
+   "aliases": 0.6,
+   "meta": 16.9,
+   "src": 92.4,
+   "slug": 18.3
+  },
+  "ObjectiveFunction": {
+   "share": 0.002673,
+   "name": 24.9,
+   "desc": 60.7,
+   "aliases": 0.3,
+   "meta": 2,
+   "src": 97.5,
+   "slug": 24.8
+  },
+  "Gotcha": {
+   "share": 0.002185,
+   "name": 38.2,
+   "desc": 90.5,
+   "aliases": 0.1,
+   "meta": 3.9,
+   "src": 93.8,
+   "slug": 34.8
+  },
+  "Trend": {
+   "share": 0.002185,
+   "name": 53.2,
+   "desc": 95.0,
+   "aliases": 0.3,
+   "meta": 2,
+   "src": 87.1,
+   "slug": 39.7
+  },
+  "Agent": {
+   "share": 0.00191,
+   "name": 13.7,
+   "desc": 57.2,
+   "aliases": 0.3,
+   "meta": 15.1,
+   "src": 81.3,
+   "slug": 13.7
+  },
+  "SessionHypothesis": {
+   "share": 0.001655,
+   "name": 143.4,
+   "desc": 10.0,
+   "aliases": 0.0,
+   "meta": 393.6,
+   "src": 10.5,
+   "slug": 46.6
+  },
+  "SessionQuestion": {
+   "share": 0.001443,
+   "name": 137.5,
+   "desc": 3.0,
+   "aliases": 0,
+   "meta": 413.9,
+   "src": 3.9,
+   "slug": 46.9
+  },
+  "Runbook": {
+   "share": 0.000997,
+   "name": 28.2,
+   "desc": 81.3,
+   "aliases": 0.2,
+   "meta": 5.0,
+   "src": 80.2,
+   "slug": 27.1
+  },
+  "CommunitySummary": {
+   "share": 0.000276,
+   "name": 23.9,
+   "desc": 68.7,
+   "aliases": 0.2,
+   "meta": 1856.6,
+   "src": 75.2,
+   "slug": 22.3
+  },
+  "ExpertiseProfile": {
+   "share": 0.000233,
+   "name": 34.8,
+   "desc": 41.1,
+   "aliases": 0.7,
+   "meta": 209.9,
+   "src": 46.9,
+   "slug": 31.7
+  },
+  "Stub": {
+   "share": 0.000127,
+   "name": 22.7,
+   "desc": 73.8,
+   "aliases": 0.3,
+   "meta": 2,
+   "src": 71.5,
+   "slug": 22.7
+  }
+ },
+ "edge_types": {
+  "summarizes": 0.357653,
+  "evidenced_by": 0.143852,
+  "supports_claim": 0.057109,
+  "uses": 0.042397,
+  "synthesizes": 0.036894,
+  "addresses": 0.031659,
+  "supersedes": 0.030513,
+  "discusses": 0.028698,
+  "contains": 0.027112,
+  "authored_by": 0.024972,
+  "implements": 0.021867,
+  "references": 0.021447,
+  "documents": 0.014769,
+  "discussed_in": 0.014569,
+  "reports_result": 0.013718,
+  "mentioned_in": 0.012305,
+  "derived_from_session": 0.011598,
+  "belongs_to_approach_family": 0.010499,
+  "evaluated_on": 0.010155,
+  "introduces": 0.009773,
+  "implemented_in": 0.008875,
+  "uses_metric": 0.008273,
+  "has_limitation": 0.007977,
+  "compares_against": 0.007566,
+  "derived_from": 0.006773,
+  "achieves_score": 0.006735,
+  "uses_dataset": 0.00555,
+  "is_a": 0.003859,
+  "part_of": 0.003573,
+  "optimizes_for": 0.003382,
+  "released_by": 0.002656,
+  "attributes_improvement_to": 0.002541,
+  "performed_by": 0.002216,
+  "improves_on": 0.002035,
+  "reports_to": 0.001041,
+  "shares_concept_with": 0.000879,
+  "subfield_of": 0.000793,
+  "extends": 0.000669,
+  "returns": 0.00064,
+  "precedes": 0.000583,
+  "contradicts_claim": 0.000296,
+  "defines": 0.000267,
+  "type_of": 0.000267,
+  "criticizes": 0.000258,
+  "exports": 0.000248,
+  "resolved_by": 0.000172,
+  "emerged_after": 0.000105,
+  "overrides": 6.7e-05,
+  "instantiates": 5.7e-05,
+  "declared_in": 2.9e-05,
+  "calls": 1.9e-05,
+  "user_link": 1e-05,
+  "decorates": 1e-05,
+  "inherits_from": 1e-05,
+  "rising_in": 1e-05
+ }
+}
