@@ -141,6 +141,7 @@ tesserae doctor migrate-code-scope --apply    # 真正删除
 | `LOW_TITLE_QUALITY` | info | 某篇 Paper 的标题更像文件名或残缺片段，而不像标题。 |
 | `SUGGESTED_MERGE` | info | 多个 Repository 节点共享同一个 `github_repo` URL——是合并候选，但绝不自动合并。 |
 | `SUGGESTED_SUBTYPE` | info | 一个由 schema-drift 提议了子类型的同类型节点集群——已呈现，从不自动采纳。升级是对 `ResearchNodeType` 的人工编辑，然后在 `.tesserae/schema-drift-proposals.json` 中设置 `"approved": true`。 |
+| `PENDING_REVIEW` | info | 在 `.tesserae/candidate-same-as.json` 中仍等待人工裁决的候选合并对。被评审者拒绝的配对永不再次呈现，因此该数字代表未决工作量而非语料规模。用 `tesserae extract --apply-review-decisions … --reviewed-by <你>` 作答。 |
 | `STALE_BUILD_HISTORY` | info | 超过 90 天的构建历史条目。 |
 | `CODE_GRAPH_BEHIND` · `CODE_GRAPH_HEAD_UNRESOLVED` · `CODE_GRAPH_STALE_FILE` | info | 可选的代码层与 `HEAD` 脱节——编译于更早的提交、编译于 git 已无法解析的提交，或所依据的文件此后已被改动。 |
 | `CLAIM_SUPPORT_SKIPPED` · `CLAIM_SUPPORT_SUMMARY` | info | 可选 `--verify-claims` 流程的结果：抽样了什么、得分如何，或它为何没有运行。 |

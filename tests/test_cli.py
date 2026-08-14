@@ -186,6 +186,82 @@ def test_cli_can_apply_review_decision_file(monkeypatch, tmp_path):
     assert graph["edges"] == []
 
 
+def test_cli_extract_remembers_a_keep_separate_verdict(monkeypatch, tmp_path):
+    """End to end: the human answers once, and the pair does not come back.
+
+    Three runs against an unchanged corpus — surface, decide, and then a run
+    that must be SILENT about the pair. Without the durable ledger the third run
+    is byte-identical to the first, which is exactly the bug.
+    """
+    project = tmp_path / "proj"
+    (project / ".tesserae").mkdir(parents=True)
+    graph_output = project / ".tesserae" / "graph.json"
+    ledger_path = project / ".tesserae" / "candidate-same-as.json"
+    review_output = tmp_path / "review.json"
+    source = tmp_path / "paper.md"
+    source.write_text("# ignored by the fake extractor", encoding="utf-8")
+
+    class FakeExtractor:
+        def extract_file(self, path, source_kind="SourceDocument"):
+            return ResearchGraph(
+                nodes=[
+                    ResearchNode(id="MethodologicalConcept:gs:test", name="Gaussian Splatting", type=ResearchNodeType.METHODOLOGICAL_CONCEPT),
+                    ResearchNode(id="MethodologicalConcept:4dgs:test", name="4D Gaussian Splatting", type=ResearchNodeType.METHODOLOGICAL_CONCEPT),
+                ],
+                edges=[],
+            )
+
+    import tesserae.cli as cli
+
+    monkeypatch.setattr(cli, "ResearchGraphExtractor", lambda: FakeExtractor())
+
+    def run(*extra):
+        return main([
+            "extract", str(source), "--canonicalize",
+            "--review-output", str(review_output),
+            "-o", str(graph_output), *extra,
+        ])
+
+    assert run() == 0
+    items = json.loads(review_output.read_text(encoding="utf-8"))["items"]
+    assert len(items) == 1
+    assert items[0]["prior_score"] is None  # first sighting
+    records = json.loads(ledger_path.read_text(encoding="utf-8"))["records"]
+    assert [r["status"] for r in records] == ["pending"]
+
+    decisions_path = tmp_path / "decisions.json"
+    decisions_path.write_text(
+        json.dumps({"decisions": [{"item_id": items[0]["id"], "action": "keep_separate"}]}),
+        encoding="utf-8",
+    )
+    assert run("--apply-review-decisions", str(decisions_path), "--reviewed-by", "ada") == 0
+
+    record = json.loads(ledger_path.read_text(encoding="utf-8"))["records"][0]
+    assert record["status"] == "rejected"
+    assert record["decided_by"] == "ada"
+    assert record["decided_at"] and record["tesserae_version"]
+
+    assert run() == 0
+    assert json.loads(review_output.read_text(encoding="utf-8"))["items"] == []
+
+
+def test_cli_extract_writes_no_ledger_outside_a_project_layout(monkeypatch, tmp_path):
+    """A durable human-verdict file must not land beside a scratch output."""
+    source = tmp_path / "paper.md"
+    source.write_text(
+        "# Alias Paper\nGaussian Splatting and 3D Gaussian Splatting are discussed.\n",
+        encoding="utf-8",
+    )
+
+    assert main([
+        "extract", str(source), "--source-kind", "Paper", "--canonicalize",
+        "-o", str(tmp_path / "graph.json"),
+    ]) == 0
+
+    assert not (tmp_path / "candidate-same-as.json").exists()
+    assert not (tmp_path / ".tesserae").exists()
+
+
 def test_cli_can_write_markdown_projection(tmp_path):
     source = tmp_path / "paper.md"
     source.write_text("# Projection Paper\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
@@ -379,9 +455,10 @@ def test_cli_extract_accepts_canonicalize_semantic(monkeypatch, tmp_path, capsys
         str(graph_output),
     ]) == 0
     # ``-o`` here is an ad-hoc path, not ``<root>/.tesserae/graph.json``, so
-    # there is no sidecar to cache vectors in and the pass runs uncached rather
-    # than creating one as a side effect of an extract.
-    assert captured == {"semantic": True, "vector_cache": None}
+    # there is neither a sidecar to cache vectors in nor a project to hold the
+    # durable review verdicts: both pass through as None and the extract creates
+    # neither as a side effect.
+    assert captured == {"semantic": True, "vector_cache": None, "candidate_ledger": None}
     err = capsys.readouterr().err
     assert "3 review candidates via stub" in err
     assert "candidates only, nothing merged" in err

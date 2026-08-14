@@ -9,10 +9,19 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .blocking import blocked_pairs
+from .candidate_ledger import (
+    SOURCE_EMBEDDING,
+    SOURCE_TOKEN,
+    STATUS_CONFIRMED,
+    STATUS_PENDING,
+    STATUS_REJECTED,
+    CandidateLedger,
+    CandidateVerdict,
+)
 from .merge_ledger import BASIS_EXACT_KEY, record_merge
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 
@@ -51,7 +60,14 @@ class ReviewItem:
     node_type: str
     reason: str
     score: float
-    status: str = "pending"
+    status: str = STATUS_PENDING
+    #: The score this pair was FIRST surfaced at, from the candidate ledger, or
+    #: ``None`` for a pair nobody has seen before. Carried beside the fresh
+    #: ``score`` rather than replacing it so drift is VISIBLE — a pair that has
+    #: drifted from 0.61 to 0.94 since a reviewer last passed over it is a
+    #: different question from one that has not moved, and collapsing the two
+    #: into one number hides exactly that.
+    prior_score: Optional[float] = None
 
     def model_dump(self) -> Dict[str, object]:
         return asdict(self)
@@ -69,7 +85,8 @@ class CanonicalizationResult:
     graph: ResearchGraph
     merged_nodes: Dict[str, str] = field(default_factory=dict)
     review_items: List[ReviewItem] = field(default_factory=list)
-    # Why the semantic pass did / did not contribute. Same vocabulary as
+    # Why the semantic pass did / did not contribute, and how many pairs the
+    # candidate ledger suppressed. Same vocabulary as
     # federation.add_semantic_links so a skip always says WHY rather than
     # looking like "ran and found nothing".
     stats: Dict[str, object] = field(default_factory=dict)
@@ -101,8 +118,15 @@ class GraphCanonicalizer:
         max_semantic_items: int = 200,
         max_block: int = 1500,
         vector_cache: Optional[object] = None,
+        candidate_ledger: Optional[CandidateLedger] = None,
     ) -> None:
         self.similarity_threshold = similarity_threshold
+        # Durable verdicts from .tesserae/candidate-same-as.json (see
+        # tesserae.candidate_ledger). READ-ONLY here: the canonicalizer is a
+        # pure function of the graph plus this ledger, and never writes it —
+        # recording a verdict is the applier's job, which is what keeps
+        # ``decided_by`` honest.
+        self.candidate_ledger = candidate_ledger
         self.semantic = semantic
         self.embedding_backend = embedding_backend
         # Optional VectorCache (see tesserae.retrieval.vector_cache). Cost
@@ -149,6 +173,11 @@ class GraphCanonicalizer:
             # APPENDED, never interleaved: today's string items keep today's
             # bytes and order, so turning the flag on is purely additive.
             review_items = review_items + semantic_items
+        # AFTER both passes, never inside either one. The embedding pass suppresses
+        # pairs the token pass already emitted, so filtering the token items first
+        # would let a rejected pair back in through the semantic lane.
+        review_items, ledger_stats = self._apply_candidate_ledger(review_items)
+        stats.update(ledger_stats)
         return CanonicalizationResult(
             graph=canonicalized_graph,
             merged_nodes=merged_nodes,
@@ -182,6 +211,47 @@ class GraphCanonicalizer:
                 for term in own_terms:
                     alias_owner.setdefault((node.type, normalize_key(term)), node)
         return canonical_for
+
+    def _apply_candidate_ledger(
+        self, items: Sequence[ReviewItem]
+    ) -> Tuple[List[ReviewItem], Dict[str, object]]:
+        """Drop pairs a human rejected; re-surface the rest with their history.
+
+        The whole point of the ledger reaching this far: a reviewer who answered
+        "these are different" is not asked again, so the queue's length becomes a
+        function of UNRESOLVED work rather than of corpus size.
+
+        A ``confirmed`` pair is re-surfaced carrying its status rather than being
+        merged here. Recording a verdict and acting on it are separate steps on
+        purpose — :meth:`ReviewQueue.apply_decisions` is still the only thing in
+        this module that merges anything, and a stored ``confirmed`` that
+        silently merged on the next run would be an auto-merge with extra steps.
+
+        No ledger is not the same as an empty one, but it behaves identically
+        here, and that is deliberate: a project that has never recorded a verdict
+        must see exactly today's queue, byte for byte.
+        """
+        ledger = self.candidate_ledger
+        if ledger is None:
+            return list(items), {}
+        kept: List[ReviewItem] = []
+        rejected = 0
+        for item in items:
+            record = ledger.record_for(item.left_node_id, item.right_node_id)
+            if record is None:
+                kept.append(item)
+                continue
+            if record.status == STATUS_REJECTED:
+                rejected += 1
+                continue
+            kept.append(replace(item, status=record.status, prior_score=float(record.score)))
+        stats: Dict[str, object] = {}
+        if rejected:
+            # Reported rather than silent: a queue that shrank because verdicts
+            # were remembered and one that shrank because the candidate pass
+            # stopped finding pairs look identical without this number.
+            stats["review_rejected_suppressed"] = rejected
+        return kept, stats
 
     def _build_review_items(
         self,
@@ -419,12 +489,73 @@ def _review_sort_key(item: ReviewItem) -> Tuple[int, float, str, str, str, str]:
     return (band, -item.score, item.left_name, item.right_name, item.left_node_id, item.right_node_id)
 
 
+#: Which candidate pass a review reason came from, for the durable ledger.
+#: Mapped rather than passed through, so the ledger's vocabulary stays stable
+#: even if a third candidate pass adds a fourth reason string.
+_REASON_TO_SOURCE = {
+    "similar_name": SOURCE_TOKEN,
+    "similar_embedding": SOURCE_EMBEDDING,
+}
+
+
+def candidate_observations(items: Sequence[ReviewItem]) -> List[CandidateVerdict]:
+    """Turn a review queue into ledger observations — all ``pending``.
+
+    An observation is only ever the question, never the answer: every record
+    minted here is pending and unattributed, and
+    :func:`tesserae.candidate_ledger.publish_candidate_ledger` lets a stored
+    verdict beat it. Items already carrying a stored verdict are re-emitted as
+    pending here too and are simply ignored on publish, which is cheaper than
+    filtering and cannot get the direction wrong.
+    """
+    return [
+        CandidateVerdict(
+            a=item.left_node_id,
+            b=item.right_node_id,
+            score=float(item.score),
+            source=_REASON_TO_SOURCE.get(item.reason, SOURCE_TOKEN),
+            status=STATUS_PENDING,
+        )
+        for item in items
+    ]
+
+
 class ReviewQueue:
     def __init__(self, items: Sequence[ReviewItem]) -> None:
         self.items = list(items)
 
     def model_dump(self) -> Dict[str, object]:
         return {"items": [item.model_dump() for item in self.items]}
+
+    def decision_verdicts(
+        self, decisions: Sequence[ReviewDecision]
+    ) -> List[Tuple[str, str, str]]:
+        """``(a, b, status)`` triples for decisions that name a known item.
+
+        The bridge between a one-shot decision file and the durable ledger:
+        ``merge`` records ``confirmed`` and ``keep_separate`` records
+        ``rejected``, which is the verdict that had nowhere to live before —
+        applying a keep_separate did literally nothing, so the same pair came
+        back on the next run.
+
+        Unknown item ids are skipped rather than raising, because this is the
+        RECORDING path: :meth:`apply_decisions` is what validates a decision
+        file, and a ledger write must never be the thing that fails a run.
+        """
+        item_by_id = {item.id: item for item in self.items}
+        verdicts: List[Tuple[str, str, str]] = []
+        for decision in decisions:
+            item = item_by_id.get(decision.item_id)
+            if item is None:
+                continue
+            if decision.action == "merge":
+                status = STATUS_CONFIRMED
+            elif decision.action == "keep_separate":
+                status = STATUS_REJECTED
+            else:
+                continue
+            verdicts.append((item.left_node_id, item.right_node_id, status))
+        return verdicts
 
     def apply_decisions(self, graph: ResearchGraph, decisions: Sequence[ReviewDecision]) -> ResearchGraph:
         item_by_id = {item.id: item for item in self.items}

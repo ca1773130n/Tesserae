@@ -174,6 +174,7 @@ tesserae doctor migrate-code-scope --apply    # 実際に削除する
 | `LOW_TITLE_QUALITY` | info | Paper のタイトルが、題名というよりファイル名や断片のように見えます。 |
 | `SUGGESTED_MERGE` | info | 複数の Repository ノードが同じ `github_repo` URL を共有しています — 併合候補であり、自動併合はしません。 |
 | `SUGGESTED_SUBTYPE` | info | スキーマドリフトが提案した同型ノードのクラスタ — 表示されるものの自動採用はされない。昇格は `ResearchNodeType` への人的編集であり、その後 `.tesserae/schema-drift-proposals.json` で `"approved": true` に設定される。 |
+| `PENDING_REVIEW` | info | `.tesserae/candidate-same-as.json` で人的判断をまだ待っているマージ候補ペア。レビュアーが却下したペアは二度と提示されないため、この数はコーパス規模ではなく未解決の作業量を表す。回答は `tesserae extract --apply-review-decisions … --reviewed-by <あなた>`。 |
 | `STALE_BUILD_HISTORY` | info | 90 日より古いビルド履歴のエントリ。 |
 | `CODE_GRAPH_BEHIND` · `CODE_GRAPH_HEAD_UNRESOLVED` · `CODE_GRAPH_STALE_FILE` | info | オプトインのコードレイヤーが `HEAD` とずれています — より古いコミットでコンパイルされた、git がもう解決できないコミットである、あるいはその後変更されたファイルの上でコンパイルされた。 |
 | `CLAIM_SUPPORT_SKIPPED` · `CLAIM_SUPPORT_SUMMARY` | info | オプトインの `--verify-claims` パスの結果: 何をサンプリングしどう採点されたか、あるいはなぜ実行されなかったか。 |
