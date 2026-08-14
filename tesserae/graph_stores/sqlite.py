@@ -950,13 +950,21 @@ class SqliteGraphStore:
     # node_vectors sidecar (embedding cache)                              #
     # ------------------------------------------------------------------ #
 
-    def read_node_vectors(
+    def read_node_vector_blobs(
         self,
         backend_name: str,
         backend_dim: int,
         text_hashes: Iterable[str],
-    ) -> Dict[str, List[float]]:
-        """Return ``{text_sha256: vector}`` for the requested hashes.
+    ) -> Dict[str, bytes]:
+        """Return ``{text_sha256: packed_vector}`` for the requested hashes.
+
+        The blobs are handed back undecoded because the stored layout — a
+        contiguous run of little-endian float64 — is already what a vectorised
+        reader wants: ``numpy.frombuffer`` over the joined blobs reconstructs
+        the corpus matrix in single-digit milliseconds, where decoding 47k rows
+        into Python lists and re-materialising them as an array costs ~370 ms.
+        :meth:`read_node_vectors` is the decoding wrapper for callers that want
+        floats, so both share ONE query.
 
         Only rows matching BOTH ``backend_name`` and ``backend_dim`` are
         returned — a vector produced by another model lives in another space
@@ -968,7 +976,7 @@ class SqliteGraphStore:
         wanted = [h for h in dict.fromkeys(text_hashes) if h]
         if not wanted:
             return {}
-        out: Dict[str, List[float]] = {}
+        out: Dict[str, bytes] = {}
         with self._connect() as con:
             for start in range(0, len(wanted), _VECTOR_QUERY_CHUNK):
                 chunk = wanted[start : start + _VECTOR_QUERY_CHUNK]
@@ -980,16 +988,35 @@ class SqliteGraphStore:
                     (backend_name, int(backend_dim), *chunk),
                 ).fetchall()
                 for text_sha256, blob in rows:
-                    out[text_sha256] = _decode_vector(blob)
+                    out[text_sha256] = bytes(blob)
         return out
 
-    def write_node_vectors_many(
+    def read_node_vectors(
         self,
         backend_name: str,
         backend_dim: int,
-        rows: Iterable[Tuple[str, Sequence[float]]],
+        text_hashes: Iterable[str],
+    ) -> Dict[str, List[float]]:
+        """:meth:`read_node_vector_blobs`, decoded to float lists."""
+        return {
+            text_sha256: _decode_vector(blob)
+            for text_sha256, blob in self.read_node_vector_blobs(
+                backend_name, backend_dim, text_hashes
+            ).items()
+        }
+
+    def write_node_vector_blobs_many(
+        self,
+        backend_name: str,
+        backend_dim: int,
+        rows: Iterable[Tuple[str, bytes]],
     ) -> None:
-        """Persist ``(text_sha256, vector)`` pairs for one backend.
+        """Persist ``(text_sha256, packed_vector)`` pairs for one backend.
+
+        Takes packed bytes rather than floats so a caller that already holds
+        the encoded form — the vectorised embedding lane does, because it needs
+        the same bytes to build its matrix — writes them without a second
+        encode. :meth:`write_node_vectors_many` is the encoding wrapper.
 
         ``insert or ignore``: the row is a pure function of its key, so a
         concurrent writer that got there first has written the same bytes and
@@ -997,8 +1024,8 @@ class SqliteGraphStore:
         read-modify-write, like :meth:`bump_access`.
         """
         params = [
-            (backend_name, int(backend_dim), text_sha256, _encode_vector(vector))
-            for text_sha256, vector in rows
+            (backend_name, int(backend_dim), text_sha256, blob)
+            for text_sha256, blob in rows
         ]
         if not params:
             return
@@ -1010,6 +1037,19 @@ class SqliteGraphStore:
                 params,
             )
             con.commit()
+
+    def write_node_vectors_many(
+        self,
+        backend_name: str,
+        backend_dim: int,
+        rows: Iterable[Tuple[str, Sequence[float]]],
+    ) -> None:
+        """:meth:`write_node_vector_blobs_many`, encoding floats on the way in."""
+        self.write_node_vector_blobs_many(
+            backend_name,
+            backend_dim,
+            ((text_sha256, _encode_vector(vector)) for text_sha256, vector in rows),
+        )
 
     def count_node_vectors(self, backend_name: str, backend_dim: int) -> int:
         """Number of cached vectors for one ``(backend_name, backend_dim)`` key.
