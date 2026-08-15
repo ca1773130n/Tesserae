@@ -169,6 +169,27 @@ project's scopes and domains are summarized the sleep cycle spends nothing
 until the graph changes. Set either budget to `0` to switch its op off, or
 raise `--consolidate-idle` to make ticks rarer.
 
+**A budget is a ceiling, not a quota.** Both budgets are spent *sequentially*
+inside one tick, and the tick holds the compile gate for the whole pass — so at
+the defaults a tick could occupy the gate across 33 consecutive LLM calls. A
+file save landing mid-tick had to wait out every remaining call before its
+pipeline run could start, which with a CLI provider is minutes. Both pre-warm
+loops now check, at the top of each iteration, whether a pipeline run is
+blocked on the gate, and **abandon their remaining budget** if one is:
+
+- the check happens *between* calls, never mid-call, so the run already in
+  flight always finishes and the pipeline waits out at most that one call;
+- stopping early is lossless. Warming is idempotent, so a scope or domain the
+  tick never reached is simply still cold on the next one, at the same rank —
+  nothing is lost, corrupted, or paid for twice;
+- an abandoned domain takes **no back-off strike**. Strikes are for a domain
+  whose warm attempt burned a call and failed; an abandoned one was never
+  tried, so charging it would push a warmable domain down the queue because an
+  unrelated file was saved;
+- it is reported, not silent. The tick's summary dict gains `abandoned` and
+  `unspent` (how many budget slots went unused), so the daemon log distinguishes
+  "stood down for a pipeline" from "there was nothing to warm".
+
 **Why here and not in compile.** A brief costs one LLM call. Minting them
 during compile would put one call per domain on every compile, and compile is
 the path this project keeps deterministic and cheap. Minting them lazily on
@@ -177,10 +198,17 @@ is the only place left that can spend a call nobody is waiting on.
 
 ## Safety and determinism
 
-- **Runs under the compile gate.** Consolidation acquires the same lock a
-  recompile does, so it serializes with compiles and **never overlaps one**. A
-  pending compile waits for an in-flight consolidation and vice versa — the
-  graph is never read mid-write.
+- **Runs under the compile gate, for the whole pass.** Consolidation acquires
+  the same lock a recompile does, so it serializes with compiles and **never
+  overlaps one**. A pending compile waits for an in-flight consolidation and
+  vice versa — the graph is never read mid-write. The gate is deliberately
+  **not** released between LLM calls: every op in a tick reads the one
+  `graph.json` the tick loaded, so handing the gate back mid-pass would let a
+  compile rewrite the graph underneath and leave the briefs written early in a
+  pass describing a different graph than the ones written late. That is why a
+  tick waiting on a pipeline **abandons its remaining budget** rather than
+  yielding the gate — it trades speculative warming for latency, never
+  consistency for latency.
 - **Never raises into the daemon loop.** The whole pass is wrapped; any error
   is logged and the thread keeps looping. A failed consolidation never takes
   the engine down.
