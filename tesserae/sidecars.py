@@ -267,8 +267,12 @@ SIDECARS: Tuple[Sidecar, ...] = (
             "stat manifest for delta-scoped re-extraction; deterministic to "
             "rebuild because the extractor is a parser, not a model"),
     Sidecar("community_summaries", "tesserae.community_summaries", KIND_CACHE, False,
-            "LLM-written community summaries keyed on the member hash — "
-            "rebuilding calls a model, so the rebuilt bytes differ"),
+            "LLM-written summaries from two writers sharing one layout: "
+            "community summaries keyed on the member hash, which moves with "
+            "every ingest and whose files a compile prunes; and charter domain "
+            "briefs keyed on the slug, which does not move and which pruning "
+            "leaves alone. Rebuilding either calls a model, so the rebuilt "
+            "bytes differ"),
     Sidecar("distill_cache", "tesserae.agent_distill", KIND_CACHE, False,
             "LLM distillation results; rebuilding calls a model"),
     Sidecar("distillation_cache", "tesserae.project", KIND_CACHE, False,

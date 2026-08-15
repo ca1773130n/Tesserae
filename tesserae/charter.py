@@ -18,17 +18,24 @@ from __future__ import annotations
 
 import json
 import hashlib
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Sequence, Set
+from typing import Mapping, Optional, Sequence, Set
 
 from .agent_distill import ARTIFACT_CHAR_BUDGET, _render_member_block
-from .community_summaries import detect_communities
+from .community_summaries import (
+    detect_communities,
+    materialize_community_summary,
+    read_warm_summary,
+)
 from .hierarchy import undirected_degrees
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 from .temporal import _latest_ts, _source_ts, graph_project_roots
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # CH-04 was not written, and will not be
@@ -1240,3 +1247,254 @@ def _altitude_for(tier: int, member_count: int) -> str:
     if tier == 2 and member_count >= 100:
         return "department"
     return "team"
+
+
+# ---------------------------------------------------------------------------
+# Briefs — the shipped summarizer, re-keyed on a slug
+# ---------------------------------------------------------------------------
+#
+# There is no second summarizer below, and that is the whole content of this
+# section. ``materialize_community_summary`` (community_summaries.py:474)
+# already does everything a domain brief needs: exactly one ``complete_json``
+# call on a cold cache, a level-keyed cache, ``_members_digest`` invalidation,
+# refusal of prose that cites none of its children, and it never raises.
+#
+# What it lacks is a key that survives an ingest. ``community_id`` (:213) is a
+# sha256 over the sorted member ids — deliberately, so ``graph.json`` stays
+# byte-idempotent — and the consequence is that the cache PATH moves whenever
+# membership moves. A single 15-node document moves ~29% of members, so the
+# file written last ingest is not merely stale, it is UNREACHABLE: no lookup
+# names it, ``community_card`` falls back to structural, and
+# ``prune_stale_summary_caches`` deletes it on the next compile. A slug does
+# not move (97.0% fine / 81.0% coarse anchor preservation), so the path stays
+# put and a re-summarization overwrites the same file instead of orphaning it.
+#
+# What this does NOT claim, because the distinction is the honest half: the
+# brief's CONTENT is still invalidated by member drift — ``_members_digest``
+# hashes the exact member lines the prompt used, and those move with the
+# corpus. Only the KEY becomes stable. That is what makes a warm read possible
+# at all, and it is what makes ``summarize_community``'s own degradation path
+# (a digest-stale cache served with a warning when no LLM is available)
+# reachable, which under a moving cid it never is.
+
+
+#: Cid namespace for a domain brief. NOT ``CommunitySummary:``, and the
+#: difference is load-bearing rather than cosmetic:
+#: ``prune_stale_summary_caches`` (community_summaries.py:281-313) deletes
+#: every ``CommunitySummary_*.json`` under the cache dir — flat or under a
+#: numeric ``<level>/`` — whose name is absent from the hierarchy's all-level
+#: live-cid manifest, and a charter slug is never in that manifest. Minting
+#: briefs into that namespace would therefore delete every brief on the next
+#: compile: the same per-ingest cache wipe this surface exists to end,
+#: arriving through a different door. Under a distinct prefix the two writers
+#: share the ``<level>/`` directories and can collide on neither a path nor a
+#: pruning rule.
+_BRIEF_CID_PREFIX = "CharterDomain"
+
+#: What a slug may contain before it is used as a FILENAME. ``slug_for``
+#: (:462) mints only ``[a-z0-9-]``, so this rejects nothing it produces — but
+#: ``charter.json`` is a file on disk that a bad hand-merge can mangle, a
+#: condition ``read_charter`` (:511) already refuses to paper over, and a slug
+#: carrying ``/`` or ``..`` would write a cache file outside the cache
+#: directory entirely.
+_BRIEF_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+def brief_cid(slug: str) -> str:
+    """The cache identity of ``slug``'s brief. See ``_BRIEF_CID_PREFIX``."""
+    return f"{_BRIEF_CID_PREFIX}:{slug}"
+
+
+def domain_member_ids(charter: dict, slug: str) -> list[str]:
+    """Every member ``slug`` holds — its direct block plus its whole subtree.
+
+    A router's ``direct_member_ids`` is routinely EMPTY, because ``_emit``
+    hands every member it can to a child: on the two-fat-triangles fixture the
+    tier-1 division holds 6 members and 0 of them directly. Summarizing a
+    domain from its direct block alone would therefore leave the top of the
+    institution — the domains an agent routes from FIRST — with nothing to
+    summarize. This set is what ``member_count`` counts, so the two are
+    checkable against each other.
+
+    Raises ``ValueError`` when ``child_slugs`` revisits a domain: a cycle or a
+    shared child voids the tree the CH-01 partition rests on, and walking it
+    would not terminate. A child slug naming a domain the charter does not
+    define is SKIPPED rather than raised on — ``succeed`` deliberately
+    preserves an unmapped child verbatim (:986-990) so an operator can see the
+    corruption, and refusing to brief the whole institution over one dangling
+    name would be the worse failure.
+    """
+    domains = charter.get("domains") or {}
+    if slug not in domains:
+        raise KeyError(f"charter defines no domain {slug!r}")
+    collected: set[str] = set()
+    visited: set[str] = set()
+    stack = [slug]
+    while stack:
+        current = stack.pop()
+        if current in visited:
+            raise ValueError(
+                f"charter domain {current!r} is reachable twice from {slug!r}: "
+                "child_slugs must form a tree, and a cycle or a shared child "
+                "means the partition every reader trusts is void"
+            )
+        visited.add(current)
+        entry = domains.get(current)
+        if entry is None:
+            continue  # dangling child; see the docstring
+        collected.update(entry.get("direct_member_ids") or [])
+        stack.extend(entry.get("child_slugs") or [])
+    return sorted(collected)
+
+
+def _ordered_members(
+    member_ids: Sequence[str],
+    by_id: Mapping[str, ResearchNode],
+    degrees: Mapping[str, int],
+) -> list[ResearchNode]:
+    """The members of ``member_ids`` present in the graph, highest-degree first.
+
+    The order is not cosmetic. ``materialize_community_summary`` prompts on
+    the FIRST ``max_members_in_prompt`` members and ``_members_digest`` hashes
+    exactly those, so the order decides both what the brief describes and
+    whether a later warm read hits. Sorted by id — the order the community
+    path inherits from the sidecar — the first 25 of a 7,581-member division
+    would be 25 nodes of whichever type sorts first, because every id is
+    ``<Type>:<...>``; that is a sample of one node type, not of the domain.
+    ``(-degree, id)`` is the key ``_structural_summary`` (hierarchy.py:228)
+    already ranks card titles by, and it samples the hubs — which is also the
+    most cache-stable choice available, since hub degree is precisely what the
+    97.0%/81.0% anchor-preservation measurement is about.
+
+    Ids absent from ``by_id`` are dropped rather than faked: they are the
+    ordering window ``_write_charter_sidecar`` documents (a member named in
+    ``member_index`` that three later passes removed from ``graph.json``), and
+    counting them is lint's job, not the prompt's.
+    """
+    members = [by_id[mid] for mid in member_ids if mid in by_id]
+    members.sort(key=lambda node: (-degrees.get(node.id, 0), node.id))
+    return members
+
+
+def _brief_child_cids(charter: dict, slug: str) -> list[str]:
+    """``slug``'s children as verbatim brief cids, for the citation lint.
+
+    A router's brief is a summary of summaries, which is the exact shape
+    ``_cites_child_communities`` (community_summaries.py:331) exists for:
+    prose citing none of its children is rejected and never cached, so a
+    reader always has a named child to descend into. Children the charter does
+    not define are dropped — an id nothing resolves is not descendable, so
+    citing it would satisfy the lint while failing its purpose.
+    """
+    domains = charter.get("domains") or {}
+    entry = domains.get(slug) or {}
+    return [
+        brief_cid(child)
+        for child in sorted(entry.get("child_slugs") or [])
+        if child in domains
+    ]
+
+
+def _brief_level(charter: dict, slug: str) -> int:
+    """The cache level for ``slug``: its tier.
+
+    Tier is the charter's own altitude index, so a domain read one tier up is
+    the same member set at a coarser level — which is the cache key
+    ``level_cache_path`` already takes.
+
+    A reorg that MOVES a domain's tier therefore re-keys its brief and leaves
+    the old file behind, unpruned. That is the intended reading, not a leak: a
+    promoted domain summarizes a different altitude and its old prose no longer
+    describes it. The residue is bounded by tiers × domains and stays readable,
+    which is the same posture ``succeed`` takes towards tombstones.
+    """
+    domains = charter.get("domains") or {}
+    entry = domains.get(slug) or {}
+    return int(entry.get("tier") or 1)
+
+
+def _brief_slug_ok(slug: str, cache_dir: Path) -> bool:
+    if _BRIEF_SLUG_RE.match(slug):
+        return True
+    logger.warning(
+        "charter: refusing to key a brief on slug %r — it is not a name "
+        "slug_for could have minted, so using it as a filename could write "
+        "outside %s. Fix charter.json rather than the slug.",
+        slug,
+        cache_dir,
+    )
+    return False
+
+
+def read_domain_brief(
+    charter: dict,
+    slug: str,
+    by_id: Mapping[str, ResearchNode],
+    degrees: Mapping[str, int],
+    *,
+    cache_dir: Path,
+) -> Optional[tuple[str, str, list[str]]]:
+    """A warm, digest-valid brief for ``slug``, or ``None``. NEVER calls an LLM.
+
+    The read half of the pair, for card builders and lints that must stay
+    offline and deterministic — ``community_card``'s warm lookup one axis
+    over. ``None`` means "no brief to serve", never "something went wrong":
+    the caller keeps its structural card.
+    """
+    cache_dir = Path(cache_dir)
+    try:
+        if not _brief_slug_ok(slug, cache_dir):
+            return None
+        members = _ordered_members(
+            domain_member_ids(charter, slug), by_id, degrees
+        )
+        if not members:
+            return None
+        return read_warm_summary(
+            cache_dir, _brief_level(charter, slug), brief_cid(slug), members
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("charter: warm brief read failed for %r: %s", slug, exc)
+        return None
+
+
+def materialize_domain_brief(
+    charter: dict,
+    slug: str,
+    by_id: Mapping[str, ResearchNode],
+    degrees: Mapping[str, int],
+    *,
+    cache_dir: Path,
+    json_client: Optional[object],
+) -> Optional[tuple[str, str, list[str]]]:
+    """Lazily brief ONE domain. NEVER raises; at most one LLM call.
+
+    Four arguments over ``materialize_community_summary`` — the member set,
+    the slug as the cid, the tier as the level, and the child slugs as the
+    citation ids — not a second renderer. Every property the caller depends on
+    is that function's: the single cold call, the atomic level-scoped write,
+    digest invalidation, the citation lint, and ``None`` on every failure so
+    the caller keeps its deterministic structural card.
+    """
+    cache_dir = Path(cache_dir)
+    try:
+        if not _brief_slug_ok(slug, cache_dir):
+            return None
+        member_ids = domain_member_ids(charter, slug)
+        members = _ordered_members(member_ids, by_id, degrees)
+        if not members:
+            return None
+        return materialize_community_summary(
+            members,
+            cid=brief_cid(slug),
+            member_ids=member_ids,
+            level=_brief_level(charter, slug),
+            cache_dir=cache_dir,
+            json_client=json_client,
+            child_cids=_brief_child_cids(charter, slug),
+        )
+    except Exception as exc:  # noqa: BLE001
+        # materialize_community_summary already absorbs its own failures; this
+        # covers the charter walk above it, which raises on a mangled tree.
+        logger.warning("charter: brief materialization failed for %r: %s", slug, exc)
+        return None

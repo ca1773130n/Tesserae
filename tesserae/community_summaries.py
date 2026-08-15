@@ -292,6 +292,13 @@ def prune_stale_summary_caches(cache_dir: Path, live_cids: Iterable[str]) -> Lis
     lazy path writes (:func:`level_cache_path`) — so tmp files and foreign
     artifacts are never touched. Returns the deleted paths relative to
     ``cache_dir`` in sorted order.
+
+    That prefix restriction is load-bearing rather than tidy. Charter domain
+    briefs share these ``<level>/`` directories under a ``CharterDomain_``
+    prefix (``tesserae.charter._BRIEF_CID_PREFIX``) precisely because they are
+    keyed on a slug, and a slug is never a community id — so widening this
+    glob to ``*.json`` would delete every brief on every compile, which is the
+    per-ingest cache wipe a stable key exists to end.
     """
     if not cache_dir.is_dir():
         return []
