@@ -35,8 +35,22 @@ Pre-req: `tesserae` already installed (`pip install tesserae` or `pipx install t
 > `graphed` only once the artifacts land, so the next `compile --changed-only`
 > refuses its no-op, says `graph.json is not known to cover every tracked
 > document`, and re-extracts the whole corpus, which rebuilds the projections too.
+> That whole-corpus re-extract is a re-walk, not a re-purchase. Responses from
+> the codex and claude CLI providers are cached under `~/.tesserae/llm_cache`,
+> addressed by a digest of the prompt actually sent, so every document the killed
+> run had already finished is replayed from disk at no cost and the repair pays
+> only for the documents it never reached. A kill costs you the run's elapsed
+> time, not its extractions. Two things undo that: deleting the cache directory,
+> and using the direct API provider, which has only the SDK's short-lived prompt
+> caching and nothing that survives a kill. In either case the repair re-buys the
+> whole corpus from the provider at full price.
 > Don't build a workflow that assumes a long compile survives
 > the session that started it — run it in the foreground, or via `tesserae engine`.
+>
+> Either way you can watch it. A compile with no terminal attached — detached,
+> redirected, or under CI — logs one line per document to stderr on the
+> `tesserae.compile` channel, giving position, path, and whether that document
+> came from the cache or cost a model call; `--quiet` turns it off.
 
 Full details, the complete command/hook tables, and per-project opt-out instructions are in the plugin's own [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md).
 

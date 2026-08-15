@@ -104,6 +104,7 @@ def test_batch_runner_drives_progress_scan_and_advance(tmp_path):
             self.scanned = None
             self.advances = 0
             self.extract_done_n = None
+            self.reported = []
 
         def scan(self, total):
             self.scanned = total
@@ -111,8 +112,9 @@ def test_batch_runner_drives_progress_scan_and_advance(tmp_path):
         def extract_start(self, total):
             self.started = total
 
-        def advance(self):
+        def advance(self, *, path=None, outcome=None):
             self.advances += 1
+            self.reported.append((path, outcome))
 
         def extract_done(self, n):
             self.extract_done_n = n
@@ -125,6 +127,12 @@ def test_batch_runner_drives_progress_scan_and_advance(tmp_path):
     assert prog.scanned == 3
     assert prog.advances == 3  # one per file visited (processed or skipped)
     assert prog.extract_done_n == 3
+    # Each tick names the document it just finished, so a compile that stalls
+    # says WHICH file it stalled on rather than only how far it got.
+    assert sorted(path for path, _ in prog.reported) == sorted(str(f) for f in (f1, f2, f3))
+    # CountingExtractor never consults the LLM cache, so the cost is honestly
+    # reported as unknown rather than guessed at.
+    assert {outcome for _, outcome in prog.reported} == {None}
 
 
 def test_batch_runner_progress_is_optional(tmp_path):

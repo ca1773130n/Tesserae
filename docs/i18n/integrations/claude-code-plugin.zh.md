@@ -31,8 +31,16 @@ Tesserae 提供了一个 [Claude Code](https://docs.claude.com/en/docs/claude-co
 > 缺失或落后一次 compile。不过这绝不会悄无声息 —— `.tesserae/manifest.json` 只在工件
 > 落盘后才给文档打上 `graphed`,因此下一次 `compile --changed-only` 会拒绝 no-op,
 > 提示 `graph.json is not known to cover every tracked document`,并重新抽取整个语料,
-> 顺带把投影重建回来。不要假设长时间 compile 能活得比启动
-> 它的会话更久 —— 请在前台运行,或使用 `tesserae engine`。
+> 顺带把投影重建回来。这个全语料重新抽取是再走一遍,不是再购买一遍。来自 codex 和 claude CLI 供应商的响应缓存在
+> `~/.tesserae/llm_cache` 下,按实际发送的 prompt 摘要寻址,所以被杀掉的运行已经完成的每个文档
+> 都从磁盘无代价地重放,修复只需为它未曾抵达的文档付费。杀掉一次运行的代价是运行的耗时,不是
+> 它的提取。两件事会破坏这一点:删除缓存目录,以及使用直接 API 供应商,它只有 SDK 的短期 prompt
+> 缓存,没有任何能在杀掉后活下来的东西。无论哪种情况,修复都要从供应商处全价重购整个语料。不要假设长时间 compile
+> 能活得比启动它的会话更久 —— 请在前台运行,或使用 `tesserae engine`。
+> 
+> 无论哪种方式你都可以看到进度。一个没有终端附加的 compile —— 分离、重定向或在 CI 下 ——
+> 在 `tesserae.compile` 频道向 stderr 记录每个文档一行日志,给出位置、路径和该文档是来自缓存还是花费了
+> 一个模型调用;`--quiet` 可以关闭它。
 
 完整细节、完整的命令/hook 表以及每个项目的 opt-out 说明在插件自己的 [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md) 中。
 

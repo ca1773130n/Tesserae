@@ -37,9 +37,12 @@ Prérequis : `tesserae` déjà installé (`pip install tesserae` ou `pipx instal
 > artefacts posés, donc la prochaine `compile --changed-only` refuse son no-op,
 > annonce `graph.json is not known to cover every tracked document` et ré-extrait
 > tout le corpus, ce qui reconstruit aussi les projections.
+> Cette ré-extraction de corpus entier est un ré-parcours, pas un ré-achat. Les réponses des fournisseurs CLI codex et claude sont mises en cache sous `~/.tesserae/llm_cache`, adressées par un digest du prompt réellement envoyé, donc chaque document que l'exécution interrompue avait déjà terminé est relu depuis le disque sans frais et la réparation ne paie que pour les documents qu'elle n'a jamais atteints. Un arrêt vous coûte le temps écoulé de l'exécution, pas ses extractions. Deux choses annulent cela : supprimer le répertoire de cache, et utiliser le fournisseur API direct, qui n'a que la mise en cache de prompt de courte durée du SDK et rien qui ne survit à un arrêt. Dans les deux cas, la réparation réachète l'ensemble du corpus auprès du fournisseur au prix fort.
 > Ne construisez pas un flux qui suppose qu'une longue compilation
 > survit à la session qui l'a lancée — exécutez-la au premier plan, ou via
 > `tesserae engine`.
+>
+> De toute façon vous pouvez le regarder. Une compilation sans terminal attaché — détachée, redirigée, ou sous CI — enregistre une ligne par document sur stderr sur le canal `tesserae.compile`, indiquant la position, le chemin, et si ce document provient du cache ou a coûté un appel de modèle ; `--quiet` le désactive.
 
 Les détails complets, les tableaux complets des commandes/hooks et les instructions d'opt-out par projet se trouvent dans le propre [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md) du plugin.
 

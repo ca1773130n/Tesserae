@@ -609,3 +609,99 @@ def test_a_cache_drop_that_raises_does_not_replace_the_validation_error():
     with pytest.raises(GraphJSONValidationError):
         LLMResearchExtractor(client).extract_text("body", "/proj/doc.md")
     assert len(calls) == _VALIDATION_RETRIES + 1  # the re-asks still happened
+
+
+def test_a_killed_compile_replays_its_finished_documents_for_free(tmp_path, monkeypatch):
+    """The resumability that already exists but was documented and tested nowhere.
+
+    A compile killed at document 900 of 2,524 advances no ``graphed`` marker, so
+    the next ``--changed-only`` correctly refuses its no-op and re-walks the
+    WHOLE corpus. Read as "3h35m of work thrown away" that looks catastrophic —
+    and it is what the operator on the 2026-08-15 run believed. It is wrong.
+
+    The re-walk is not a re-purchase. ``LLMResearchExtractor`` addresses the
+    response cache under ``~/.tesserae/llm_cache`` by a digest over
+    (guidance, source_kind, source_path, text) — and since #171 the client folds
+    the assembled prompt in too — so every document the killed run FINISHED is
+    replayed from disk and costs no model call at all. The re-walk pays only for
+    the documents that had not finished.
+
+    This test is the guard on that claim: run the same corpus twice through
+    ``BatchIngestRunner`` with a counting client, kill the first run partway,
+    and assert the second run's real calls cover only the unfinished remainder.
+    If the cache key ever stops being content-addressed, the second count jumps
+    to the full corpus and this fails — which is precisely the regression that
+    would turn an interrupted compile into genuinely lost work.
+
+    The one thing that does NOT survive is clearing the cache. That is asserted
+    at the end, because it is the difference between a cheap re-run and a full
+    re-purchase, and an operator deleting a cache directory to "clean up" has no
+    other warning.
+    """
+    import json
+    import shutil
+
+    from tesserae import llm_json as lj
+    from tesserae.batch import BatchIngestRunner
+    from tesserae.llm_extractor import LLMResearchExtractor
+
+    cache_dir = tmp_path / "llm-cache"
+    monkeypatch.setattr(lj, "_CLI_CACHE_DIR", cache_dir)
+
+    class _CountingClient:
+        """Counts REAL calls. Never touches a network or a subprocess."""
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def _cache_coords(self, schema_name):
+            return ("test-model", schema_name)
+
+        def complete_json(self, *, system, user, schema_name, cache_key=None, max_retries=2):
+            prompt = lj._stitch_json_prompt(system=system, user=user, schema_name=schema_name)
+            model, extra = self._cache_coords(schema_name)
+            cached = lj._cli_cache_get(cache_key, model=model, prompt=prompt, extra=extra)
+            if cached is not None:
+                return json.loads(cached)
+            self.calls += 1
+            raw = json.dumps(
+                {"nodes": [{"id": f"Concept:c{self.calls}", "type": "Concept",
+                            "name": f"c{self.calls}"}], "edges": []}
+            )
+            lj._cli_cache_put(cache_key, raw, model=model, prompt=prompt, extra=extra)
+            return json.loads(raw)
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    paths = []
+    for i in range(6):
+        p = docs / f"doc-{i:02d}.md"
+        p.write_text(f"# Doc {i}\n\nDistinct body {i}.\n", encoding="utf-8")
+        paths.append(p)
+
+    client = _CountingClient()
+    extractor = LLMResearchExtractor(client)
+
+    # The interrupted run: four of six documents finished before the kill.
+    BatchIngestRunner(extractor, tmp_path / "killed.json").run(paths[:4])
+    assert client.calls == 4
+
+    # The repair run. It re-walks EVERY document — a fresh manifest, exactly
+    # like the full re-extract the missing ``graphed`` marker forces — but the
+    # four already-extracted ones are served from disk.
+    BatchIngestRunner(extractor, tmp_path / "repair.json").run(paths)
+    assert client.calls == 6, (
+        "the re-walk re-purchased finished documents; the response cache is no "
+        "longer content-addressed and an interrupted compile now loses work"
+    )
+
+    # A third run over an untouched corpus is entirely free.
+    before = client.calls
+    BatchIngestRunner(extractor, tmp_path / "third.json").run(paths)
+    assert client.calls == before
+
+    # ...unless the cache is gone. Then the same re-walk pays full price, which
+    # is the caveat the docs have to carry.
+    shutil.rmtree(cache_dir)
+    BatchIngestRunner(extractor, tmp_path / "cleared.json").run(paths)
+    assert client.calls == before + 6

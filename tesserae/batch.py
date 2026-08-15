@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Protocol
 
+from .llm_json import cache_tally
 from .research_graph import ResearchGraph, link_paper_repo_pairs, prefer_research_node
 
 #: Documents extracted concurrently. Each one is a blocking CLI subprocess
@@ -113,7 +114,7 @@ class BatchIngestRunner:
                 skipped += 1
                 skipped_paths.append(key)
                 if progress is not None:
-                    progress.advance()
+                    progress.advance(path=key, outcome="skip")
                 continue
             if limit is not None and len(todo) >= limit:
                 break
@@ -126,7 +127,24 @@ class BatchIngestRunner:
         def _extract_one(index: int) -> None:
             file_path, key, digest = todo[index]
             content = read_markdown_text(file_path)
+            # Bracket the extraction to learn what this document COST. The
+            # tallies are thread-local and this whole function runs on one
+            # worker thread, so the delta is this document's alone even at
+            # TESSERAE_EXTRACT_CONCURRENCY > 1. A document large enough to be
+            # chunked makes several calls; "cache" therefore means EVERY call it
+            # made was served from disk, which is the only reading under which
+            # the label predicts the document was free.
+            hits_before, misses_before = cache_tally()
             graph = self.extractor.extract_text(content, str(file_path), source_kind)
+            hits_after, misses_after = cache_tally()
+            if misses_after > misses_before:
+                outcome = "llm"
+            elif hits_after > hits_before:
+                outcome = "cache"
+            else:
+                # The cache was never consulted: the deterministic extractor, or
+                # TESSERAE_LLM_CACHE=0. Report no label rather than guess one.
+                outcome = None
             entry: Dict[str, object] = {"sha256": digest, "source_kind": source_kind}
             # Only present when true — an entry for a clean extraction stays
             # byte-identical to what prior versions wrote. The flag is
@@ -143,7 +161,7 @@ class BatchIngestRunner:
                 manifest[key] = entry
                 self._write_manifest(manifest)
                 if progress is not None:
-                    progress.advance()
+                    progress.advance(path=key, outcome=outcome)
 
         try:
             if workers > 1 and len(todo) > 1:

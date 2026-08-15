@@ -601,9 +601,9 @@ def test_compile_flag_surface_is_small():
     # sessions_enabled + distill_enabled + strict) + the provider-agnostic
     # extractor surface: extractor + llm_model/llm_include/llm_limit (LLM is the
     # default), with the deprecated claude_include/limit/timeout/model hidden
-    # aliases, plus lock_wait and the three --all dests
-    # (all_projects/name/jobs) = 23 dests max.
-    assert len({a.dest for a in flags}) <= 23, sorted({a.dest for a in flags})
+    # aliases, plus lock_wait, quiet, and the three --all dests
+    # (all_projects/name/jobs) = 24 dests max.
+    assert len({a.dest for a in flags}) <= 24, sorted({a.dest for a in flags})
 
 
 def test_compile_keeps_exactly_the_dieted_dests():
@@ -642,6 +642,16 @@ def test_compile_keeps_exactly_the_dieted_dests():
         # capture and CI. A background engine holding the lock previously made
         # every interactive compile fail outright.
         "lock_wait",
+        # ``--quiet`` is the off switch for a default that changed. A compile
+        # with no terminal used to print nothing at all for its entire runtime
+        # — a measured 3h35m of zero bytes, which is indistinguishable from a
+        # hang and got a healthy run killed — so per-document progress is now
+        # the non-TTY default. Making a run noisier by default without an opt-out
+        # is not a change anyone can live with, and the same reasoning that made
+        # ``lock_wait`` a flag applies here: whether a run should narrate itself
+        # is a property of how it was invoked, not of the project. Peer of the
+        # pre-existing ``site --quiet``.
+        "quiet",
         # ``--all`` / ``--name`` / ``--jobs`` run one compile per registered
         # project with per-project failure isolation. They are flags rather
         # than config because WHICH projects a single invocation covers is a
