@@ -1,0 +1,2725 @@
+{
+ "_comment": "Structural drift between each English doc under docs/ and its translation, as it stood when this file was written. This is a RATCHET: the tests in tests/test_docs_i18n.py fail when a pair drifts further than its entry here, and fail again when an entry outlives the drift it records. Regenerate with `uv run python tests/test_docs_i18n.py --write-baseline`.",
+ "pairs": {
+  "README.de.md": {
+   "missing_spans": [
+    "compile <paths>",
+    "tesserae ask \"<q>\"",
+    "tesserae context \"<q>\"",
+    "tesserae query \"<q>\""
+   ],
+   "structure": {
+    "bold": 2
+   }
+  },
+  "README.es.md": {
+   "missing_spans": [
+    "compile <paths>",
+    "tesserae ask \"<q>\"",
+    "tesserae context \"<q>\"",
+    "tesserae query \"<q>\""
+   ],
+   "structure": {
+    "bold": 1
+   }
+  },
+  "README.fr.md": {
+   "missing_spans": [
+    "compile <paths>"
+   ],
+   "structure": {
+    "bold": -2
+   }
+  },
+  "README.ja.md": {
+   "missing_spans": [
+    "compile <paths>",
+    "tesserae ask \"<q>\"",
+    "tesserae context \"<q>\"",
+    "tesserae query \"<q>\""
+   ],
+   "structure": {
+    "bold": 1
+   }
+  },
+  "README.ko.md": {
+   "missing_spans": [
+    "compile <paths>",
+    "tesserae ask \"<q>\"",
+    "tesserae context \"<q>\"",
+    "tesserae query \"<q>\""
+   ]
+  },
+  "README.ru.md": {
+   "missing_spans": [
+    "compile <paths>",
+    "tesserae ask \"<q>\"",
+    "tesserae context \"<q>\"",
+    "tesserae query \"<q>\""
+   ],
+   "structure": {
+    "bold": 2
+   }
+  },
+  "README.zh.md": {
+   "missing_spans": [
+    "compile <paths>",
+    "tesserae ask \"<q>\"",
+    "tesserae context \"<q>\"",
+    "tesserae query \"<q>\""
+   ],
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/agent-memory.de.md": {
+   "structure": {
+    "bold": 4
+   }
+  },
+  "docs/i18n/agent-memory.es.md": {
+   "structure": {
+    "bold": 4
+   }
+  },
+  "docs/i18n/agent-memory.fr.md": {
+   "structure": {
+    "bold": 3
+   }
+  },
+  "docs/i18n/agent-memory.ja.md": {
+   "structure": {
+    "bold": 3
+   }
+  },
+  "docs/i18n/agent-memory.ko.md": {
+   "structure": {
+    "bold": 4
+   }
+  },
+  "docs/i18n/agent-memory.ru.md": {
+   "structure": {
+    "bold": 3
+   }
+  },
+  "docs/i18n/agent-memory.zh.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/architecture.de.md": {
+   "missing_spans": [
+    "distilled_through",
+    "distilled_through: null",
+    "git",
+    "quality: undated",
+    "temporal._source_ts",
+    "undated_member_count"
+   ],
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/architecture.es.md": {
+   "missing_spans": [
+    "distilled_through",
+    "distilled_through: null",
+    "git",
+    "quality: undated",
+    "temporal._source_ts",
+    "undated_member_count"
+   ],
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/architecture.fr.md": {
+   "missing_spans": [
+    "distilled_through",
+    "distilled_through: null",
+    "git",
+    "quality: undated",
+    "temporal._source_ts",
+    "undated_member_count"
+   ],
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/architecture.ja.md": {
+   "missing_spans": [
+    "distilled_through",
+    "distilled_through: null",
+    "git",
+    "quality: undated",
+    "temporal._source_ts",
+    "undated_member_count"
+   ],
+   "untranslated_words": [
+    "second"
+   ]
+  },
+  "docs/i18n/architecture.ko.md": {
+   "missing_spans": [
+    "distilled_through",
+    "distilled_through: null",
+    "git",
+    "quality: undated",
+    "temporal._source_ts",
+    "undated_member_count"
+   ],
+   "structure": {
+    "bold": -1
+   },
+   "untranslated_words": [
+    "call-graph",
+    "confirmed",
+    "fact",
+    "fusion",
+    "pending",
+    "reciprocal-rank",
+    "rejected",
+    "vanilla"
+   ]
+  },
+  "docs/i18n/architecture.ru.md": {
+   "missing_spans": [
+    "distilled_through",
+    "distilled_through: null",
+    "git",
+    "quality: undated",
+    "temporal._source_ts",
+    "undated_member_count"
+   ]
+  },
+  "docs/i18n/architecture.zh.md": {
+   "missing_spans": [
+    "distilled_through",
+    "distilled_through: null",
+    "git",
+    "quality: undated",
+    "temporal._source_ts",
+    "undated_member_count"
+   ],
+   "untranslated_words": [
+    "code-class",
+    "code-function",
+    "vendor"
+   ]
+  },
+  "docs/i18n/context-engine-audit.de.md": {
+   "missing_spans": [
+    "graph.json",
+    "kuzu_adapter.py"
+   ],
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/context-engine-audit.es.md": {
+   "missing_spans": [
+    "graph.json",
+    "kuzu_adapter.py"
+   ],
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/context-engine-audit.fr.md": {
+   "missing_spans": [
+    "graph.json",
+    "kuzu_adapter.py"
+   ]
+  },
+  "docs/i18n/context-engine-audit.ja.md": {
+   "missing_spans": [
+    "graph.json",
+    "kuzu_adapter.py"
+   ],
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/context-engine-audit.ko.md": {
+   "missing_spans": [
+    "graph.json",
+    "kuzu_adapter.py"
+   ],
+   "structure": {
+    "bold": 2
+   },
+   "untranslated_words": [
+    "cross-cutting"
+   ]
+  },
+  "docs/i18n/context-engine-audit.ru.md": {
+   "missing_spans": [
+    "graph.json",
+    "kuzu_adapter.py"
+   ]
+  },
+  "docs/i18n/context-engine-audit.zh.md": {
+   "missing_spans": [
+    "graph.json",
+    "kuzu_adapter.py"
+   ],
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/context-engine-roadmap.de.md": {
+   "missing_spans": [
+    "slice_export_context_for_topic",
+    "url_resolver"
+   ],
+   "structure": {
+    "bold": 1,
+    "table_cells": -10
+   }
+  },
+  "docs/i18n/context-engine-roadmap.es.md": {
+   "missing_spans": [
+    "slice_export_context_for_topic",
+    "url_resolver"
+   ],
+   "structure": {
+    "bold": 1,
+    "table_cells": -10
+   }
+  },
+  "docs/i18n/context-engine-roadmap.fr.md": {
+   "missing_spans": [
+    "slice_export_context_for_topic",
+    "url_resolver"
+   ],
+   "structure": {
+    "table_cells": -10
+   }
+  },
+  "docs/i18n/context-engine-roadmap.ja.md": {
+   "missing_spans": [
+    "slice_export_context_for_topic",
+    "url_resolver"
+   ],
+   "structure": {
+    "bold": 2,
+    "table_cells": -10
+   }
+  },
+  "docs/i18n/context-engine-roadmap.ko.md": {
+   "missing_spans": [
+    "slice_export_context_for_topic",
+    "url_resolver"
+   ],
+   "structure": {
+    "bold": 2,
+    "table_cells": -10
+   },
+   "untranslated_words": [
+    "per-call"
+   ]
+  },
+  "docs/i18n/context-engine-roadmap.ru.md": {
+   "missing_spans": [
+    "slice_export_context_for_topic",
+    "url_resolver"
+   ],
+   "structure": {
+    "bold": 1,
+    "table_cells": -10
+   }
+  },
+  "docs/i18n/context-engine-roadmap.zh.md": {
+   "missing_spans": [
+    "slice_export_context_for_topic",
+    "url_resolver"
+   ],
+   "structure": {
+    "bold": 2,
+    "table_cells": -10
+   }
+  },
+  "docs/i18n/doctor.de.md": {
+   "missing_spans": [
+    "CHARTER_FALLBACK",
+    "CHARTER_PARTITION",
+    "build_charter",
+    "child_slugs",
+    "member_count",
+    "member_index",
+    "tesserae extract --apply-review-decisions … --reviewed-by <you>"
+   ],
+   "structure": {
+    "table_cells": -8,
+    "table_rows": -2
+   }
+  },
+  "docs/i18n/doctor.es.md": {
+   "missing_spans": [
+    "CHARTER_FALLBACK",
+    "CHARTER_PARTITION",
+    "build_charter",
+    "child_slugs",
+    "member_count",
+    "member_index",
+    "tesserae extract --apply-review-decisions … --reviewed-by <you>"
+   ],
+   "structure": {
+    "bold": -2,
+    "table_cells": -8,
+    "table_rows": -2
+   }
+  },
+  "docs/i18n/doctor.fr.md": {
+   "missing_spans": [
+    "CHARTER_FALLBACK",
+    "CHARTER_PARTITION",
+    "build_charter",
+    "child_slugs",
+    "member_count",
+    "member_index",
+    "tesserae extract --apply-review-decisions … --reviewed-by <you>"
+   ],
+   "structure": {
+    "bold": -3,
+    "table_cells": -8,
+    "table_rows": -2
+   }
+  },
+  "docs/i18n/doctor.ja.md": {
+   "missing_spans": [
+    "CHARTER_FALLBACK",
+    "CHARTER_PARTITION",
+    "build_charter",
+    "child_slugs",
+    "member_count",
+    "member_index",
+    "tesserae extract --apply-review-decisions … --reviewed-by <you>"
+   ],
+   "structure": {
+    "bold": -1,
+    "table_cells": -8,
+    "table_rows": -2
+   }
+  },
+  "docs/i18n/doctor.ko.md": {
+   "missing_spans": [
+    "CHARTER_FALLBACK",
+    "CHARTER_PARTITION",
+    "build_charter",
+    "child_slugs",
+    "member_count",
+    "member_index",
+    "tesserae extract --apply-review-decisions … --reviewed-by <you>"
+   ],
+   "structure": {
+    "bold": -2,
+    "table_cells": -8,
+    "table_rows": -2
+   },
+   "untranslated_words": [
+    "delta",
+    "resolve"
+   ]
+  },
+  "docs/i18n/doctor.ru.md": {
+   "missing_spans": [
+    "CHARTER_FALLBACK",
+    "CHARTER_PARTITION",
+    "build_charter",
+    "child_slugs",
+    "member_count",
+    "member_index",
+    "tesserae extract --apply-review-decisions … --reviewed-by <you>"
+   ],
+   "structure": {
+    "bold": -2,
+    "table_cells": -8,
+    "table_rows": -2
+   }
+  },
+  "docs/i18n/doctor.zh.md": {
+   "missing_spans": [
+    "CHARTER_FALLBACK",
+    "CHARTER_PARTITION",
+    "build_charter",
+    "child_slugs",
+    "member_count",
+    "member_index",
+    "tesserae extract --apply-review-decisions … --reviewed-by <you>"
+   ],
+   "structure": {
+    "bold": -1,
+    "table_cells": -8,
+    "table_rows": -2
+   },
+   "untranslated_words": [
+    "engine"
+   ]
+  },
+  "docs/i18n/engine-consolidation.de.md": {
+   "structure": {
+    "bold": 9
+   }
+  },
+  "docs/i18n/engine-consolidation.es.md": {
+   "structure": {
+    "bold": 6
+   }
+  },
+  "docs/i18n/engine-consolidation.fr.md": {
+   "structure": {
+    "bold": 9
+   }
+  },
+  "docs/i18n/engine-consolidation.ja.md": {
+   "structure": {
+    "bold": 11
+   }
+  },
+  "docs/i18n/engine-consolidation.ko.md": {
+   "structure": {
+    "bold": 10
+   }
+  },
+  "docs/i18n/engine-consolidation.ru.md": {
+   "structure": {
+    "bold": 9
+   }
+  },
+  "docs/i18n/engine-consolidation.zh.md": {
+   "structure": {
+    "bold": 11
+   }
+  },
+  "docs/i18n/feature-map.de.md": {
+   "missing_spans": [
+    "description",
+    "distilled_through",
+    "generated",
+    "null",
+    "plan.executed",
+    "quality: undated",
+    "resource",
+    "since",
+    "sources",
+    "stale_after",
+    "status",
+    "title",
+    "usage_window",
+    "verified"
+   ],
+   "structure": {
+    "bold": -3
+   }
+  },
+  "docs/i18n/feature-map.es.md": {
+   "missing_spans": [
+    "PROFILE",
+    "description",
+    "distilled_through",
+    "generated",
+    "null",
+    "plan.executed",
+    "quality: undated",
+    "resource",
+    "since",
+    "sources",
+    "stale_after",
+    "status",
+    "title",
+    "usage_window",
+    "verified"
+   ],
+   "structure": {
+    "bold": -3
+   }
+  },
+  "docs/i18n/feature-map.fr.md": {
+   "missing_spans": [
+    "description",
+    "distilled_through",
+    "generated",
+    "null",
+    "plan.executed",
+    "quality: undated",
+    "resource",
+    "since",
+    "sources",
+    "stale_after",
+    "status",
+    "title",
+    "usage_window",
+    "verified"
+   ],
+   "structure": {
+    "bold": -4
+   }
+  },
+  "docs/i18n/feature-map.ja.md": {
+   "missing_spans": [
+    "description",
+    "distilled_through",
+    "generated",
+    "include_superseded",
+    "null",
+    "plan.executed",
+    "quality: undated",
+    "resource",
+    "since",
+    "sources",
+    "stale_after",
+    "status",
+    "title",
+    "usage_window",
+    "verified"
+   ],
+   "structure": {
+    "bold": -4
+   },
+   "untranslated_words": [
+    "predicate",
+    "subject"
+   ]
+  },
+  "docs/i18n/feature-map.ko.md": {
+   "missing_spans": [
+    "description",
+    "distilled_through",
+    "generated",
+    "null",
+    "plan.executed",
+    "quality: undated",
+    "resource",
+    "since",
+    "sources",
+    "stale_after",
+    "status",
+    "title",
+    "usage_window",
+    "verified"
+   ],
+   "structure": {
+    "bold": -3
+   },
+   "untranslated_words": [
+    "agent-memory",
+    "best-effort",
+    "bitemporal",
+    "drop",
+    "embed",
+    "lock",
+    "loser",
+    "opacity",
+    "survivor"
+   ]
+  },
+  "docs/i18n/feature-map.ru.md": {
+   "missing_spans": [
+    "description",
+    "distilled_through",
+    "generated",
+    "null",
+    "plan.executed",
+    "quality: undated",
+    "resource",
+    "since",
+    "sources",
+    "stale_after",
+    "status",
+    "title",
+    "usage_window",
+    "verified"
+   ],
+   "structure": {
+    "bold": -3
+   }
+  },
+  "docs/i18n/feature-map.zh.md": {
+   "missing_spans": [
+    "description",
+    "distilled_through",
+    "generated",
+    "null",
+    "plan.executed",
+    "quality: undated",
+    "resource",
+    "since",
+    "sources",
+    "stale_after",
+    "status",
+    "title",
+    "usage_window",
+    "verified"
+   ],
+   "structure": {
+    "bold": -4
+   },
+   "untranslated_words": [
+    "golden"
+   ]
+  },
+  "docs/i18n/frontend-redesign.ja.md": {
+   "untranslated_words": [
+    "chrome",
+    "context",
+    "contributor",
+    "entries",
+    "field-overview",
+    "module",
+    "nav",
+    "out-edges",
+    "page-search",
+    "palette",
+    "pool",
+    "pushes",
+    "query",
+    "records",
+    "route",
+    "search",
+    "short-circuit",
+    "status",
+    "styling",
+    "sub-topics",
+    "turn-by-turn",
+    "visualisation",
+    "zoom"
+   ]
+  },
+  "docs/i18n/frontend-redesign.zh.md": {
+   "untranslated_words": [
+    "decoration",
+    "intro",
+    "org-aware"
+   ]
+  },
+  "docs/i18n/ingest.ja.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/ingest.ko.md": {
+   "structure": {
+    "bold": 2
+   },
+   "untranslated_words": [
+    "deprecated"
+   ]
+  },
+  "docs/i18n/ingest.zh.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/installation.de.md": {
+   "missing_spans": [
+    "graph.json",
+    "tesserae export kuzu"
+   ],
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/installation.es.md": {
+   "missing_spans": [
+    "graph.json",
+    "tesserae export kuzu"
+   ],
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/installation.fr.md": {
+   "missing_spans": [
+    "graph.json",
+    "tesserae export kuzu"
+   ],
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/installation.ja.md": {
+   "missing_spans": [
+    "graph.json",
+    "tesserae export kuzu"
+   ],
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/installation.ko.md": {
+   "missing_spans": [
+    "graph.json",
+    "tesserae export kuzu"
+   ],
+   "structure": {
+    "bold": -2
+   },
+   "untranslated_words": [
+    "editable"
+   ]
+  },
+  "docs/i18n/installation.ru.md": {
+   "missing_spans": [
+    "graph.json",
+    "tesserae export kuzu"
+   ],
+   "structure": {
+    "bold": -2
+   }
+  },
+  "docs/i18n/installation.zh.md": {
+   "missing_spans": [
+    "graph.json",
+    "tesserae export kuzu"
+   ],
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/integrations/chrome-extension.de.md": {
+   "missing_spans": [
+    "--project",
+    "400 {\"error\": \"specify 'project'\", \"available\": [<aliases>]}",
+    "tesserae serve --project /path"
+   ],
+   "structure": {
+    "bold": -7,
+    "bullets": -2,
+    "h3": -1,
+    "table_cells": -5,
+    "table_rows": -1
+   }
+  },
+  "docs/i18n/integrations/chrome-extension.es.md": {
+   "missing_spans": [
+    "--project",
+    "400 {\"error\": \"specify 'project'\", \"available\": [<aliases>]}",
+    "tesserae serve --project /path"
+   ],
+   "structure": {
+    "bold": -7,
+    "bullets": -2,
+    "h3": -1,
+    "table_cells": -5,
+    "table_rows": -1
+   }
+  },
+  "docs/i18n/integrations/chrome-extension.fr.md": {
+   "missing_spans": [
+    "--project",
+    "400 {\"error\": \"specify 'project'\", \"available\": [<aliases>]}",
+    "tesserae serve --project /path"
+   ],
+   "structure": {
+    "bold": -7,
+    "bullets": -2,
+    "h3": -1,
+    "table_cells": -5,
+    "table_rows": -1
+   }
+  },
+  "docs/i18n/integrations/chrome-extension.ja.md": {
+   "missing_spans": [
+    "--project",
+    "400 {\"error\": \"specify 'project'\", \"available\": [<aliases>]}",
+    "tesserae serve --project /path"
+   ],
+   "structure": {
+    "bold": -7,
+    "bullets": -2,
+    "h3": -1,
+    "table_cells": -5,
+    "table_rows": -1
+   }
+  },
+  "docs/i18n/integrations/chrome-extension.ko.md": {
+   "missing_spans": [
+    "--project",
+    "400 {\"error\": \"specify 'project'\", \"available\": [<aliases>]}",
+    "tesserae serve --project /path"
+   ],
+   "structure": {
+    "bold": -7,
+    "bullets": -2,
+    "h3": -1,
+    "table_cells": -5,
+    "table_rows": -1
+   }
+  },
+  "docs/i18n/integrations/chrome-extension.ru.md": {
+   "missing_spans": [
+    "--project",
+    "400 {\"error\": \"specify 'project'\", \"available\": [<aliases>]}",
+    "tesserae serve --project /path"
+   ],
+   "structure": {
+    "bold": -7,
+    "bullets": -2,
+    "h3": -1,
+    "table_cells": -5,
+    "table_rows": -1
+   }
+  },
+  "docs/i18n/integrations/chrome-extension.zh.md": {
+   "missing_spans": [
+    "--project",
+    "400 {\"error\": \"specify 'project'\", \"available\": [<aliases>]}",
+    "tesserae serve --project /path"
+   ],
+   "structure": {
+    "bold": -7,
+    "bullets": -2,
+    "h3": -1,
+    "table_cells": -5,
+    "table_rows": -1
+   }
+  },
+  "docs/i18n/integrations/claude-code-plugin.de.md": {
+   "missing_spans": [
+    "graph.json is not known to cover every tracked > document"
+   ]
+  },
+  "docs/i18n/integrations/claude-code-plugin.es.md": {
+   "missing_spans": [
+    "graph.json is not known to cover every tracked > document"
+   ]
+  },
+  "docs/i18n/integrations/claude-code-plugin.fr.md": {
+   "missing_spans": [
+    "graph.json is not known to cover every tracked > document"
+   ]
+  },
+  "docs/i18n/integrations/claude-code-plugin.ja.md": {
+   "missing_spans": [
+    "graph.json is not known to cover every tracked > document"
+   ]
+  },
+  "docs/i18n/integrations/claude-code-plugin.ko.md": {
+   "missing_spans": [
+    "graph.json is not known to cover every tracked > document"
+   ]
+  },
+  "docs/i18n/integrations/claude-code-plugin.zh.md": {
+   "missing_spans": [
+    "graph.json is not known to cover every tracked > document"
+   ]
+  },
+  "docs/i18n/integrations/mcp.de.md": {
+   "missing_spans": [
+    ".tesserae/sqlite.db",
+    "as_of: \"2026-03-01\"",
+    "by_project",
+    "fact_observed",
+    "graph.json",
+    "numpy",
+    "observed_as_of: \"2026-05-01\"",
+    "preview: N",
+    "scope='<card scope_id>'",
+    "temporal_facts.jsonl",
+    "tesserae federation explain <node>",
+    "tesserae federation status",
+    "unobserved_included",
+    "valid_to",
+    "vectorized",
+    "vectorized: false"
+   ],
+   "structure": {
+    "bold": -8,
+    "bullets": -4,
+    "h3": 1
+   }
+  },
+  "docs/i18n/integrations/mcp.es.md": {
+   "missing_spans": [
+    ".tesserae/sqlite.db",
+    "all-registered",
+    "as_of: \"2026-03-01\"",
+    "by_project",
+    "conversation_id",
+    "current",
+    "fact_observed",
+    "federated",
+    "graph.json",
+    "numpy",
+    "observed_as_of: \"2026-05-01\"",
+    "scope='<card scope_id>'",
+    "temporal_facts.jsonl",
+    "tesserae federation explain <node>",
+    "tesserae federation status",
+    "unobserved_included",
+    "valid_to",
+    "vectorized",
+    "vectorized: false"
+   ],
+   "structure": {
+    "bold": -8,
+    "bullets": -4,
+    "h3": 1
+   }
+  },
+  "docs/i18n/integrations/mcp.fr.md": {
+   "missing_spans": [
+    ".tesserae/sqlite.db",
+    "all-registered",
+    "as_of: \"2026-03-01\"",
+    "by_project",
+    "conversation_id",
+    "current",
+    "fact_observed",
+    "federated",
+    "graph.json",
+    "numpy",
+    "observed_as_of: \"2026-05-01\"",
+    "preview: N",
+    "scope='<card scope_id>'",
+    "temporal_facts.jsonl",
+    "tesserae federation explain <node>",
+    "tesserae federation status",
+    "unobserved_included",
+    "valid_to",
+    "vectorized",
+    "vectorized: false"
+   ],
+   "structure": {
+    "bold": -8,
+    "bullets": -4,
+    "h3": 1
+   }
+  },
+  "docs/i18n/integrations/mcp.ja.md": {
+   "missing_spans": [
+    ".tesserae/sqlite.db",
+    "all-registered",
+    "as_of: \"2026-03-01\"",
+    "by_project",
+    "conversation_id",
+    "current",
+    "embedding",
+    "fact_observed",
+    "federated",
+    "graph.json",
+    "numpy",
+    "observed_as_of: \"2026-05-01\"",
+    "preview: N",
+    "scope='<card scope_id>'",
+    "temporal_facts.jsonl",
+    "tesserae federation explain <node>",
+    "tesserae federation status",
+    "unobserved_included",
+    "valid_to",
+    "vectorized",
+    "vectorized: false"
+   ],
+   "structure": {
+    "bold": -7,
+    "bullets": -4,
+    "h3": 1
+   },
+   "untranslated_words": [
+    "picker",
+    "rank"
+   ]
+  },
+  "docs/i18n/integrations/mcp.ko.md": {
+   "missing_spans": [
+    ".tesserae/sqlite.db",
+    "as_of: \"2026-03-01\"",
+    "by_project",
+    "fact_observed",
+    "graph.json",
+    "numpy",
+    "observed_as_of",
+    "observed_as_of: \"2026-05-01\"",
+    "preview: N",
+    "scope='<card scope_id>'",
+    "temporal_facts.jsonl",
+    "tesserae federation explain <node>",
+    "tesserae federation status",
+    "unobserved_included",
+    "valid_to",
+    "vectorized",
+    "vectorized: false"
+   ],
+   "structure": {
+    "bold": -7,
+    "bullets": -4,
+    "h3": 1
+   },
+   "untranslated_words": [
+    "fuse",
+    "incident",
+    "names",
+    "partition",
+    "walk",
+    "weighted"
+   ]
+  },
+  "docs/i18n/integrations/mcp.ru.md": {
+   "missing_spans": [
+    ".tesserae/sqlite.db",
+    "all-registered",
+    "as_of: \"2026-03-01\"",
+    "by_project",
+    "conversation_id",
+    "current",
+    "fact_observed",
+    "federated",
+    "graph.json",
+    "numpy",
+    "observed_as_of: \"2026-05-01\"",
+    "preview: N",
+    "scope='<card scope_id>'",
+    "temporal_facts.jsonl",
+    "tesserae federation explain <node>",
+    "tesserae federation status",
+    "unobserved_included",
+    "valid_to",
+    "vectorized",
+    "vectorized: false"
+   ],
+   "structure": {
+    "bold": -8,
+    "bullets": -4,
+    "h3": 1
+   }
+  },
+  "docs/i18n/integrations/mcp.zh.md": {
+   "missing_spans": [
+    ".tesserae/sqlite.db",
+    "as_of: \"2026-03-01\"",
+    "by_project",
+    "fact_observed",
+    "graph.json",
+    "numpy",
+    "observed_as_of",
+    "observed_as_of: \"2026-05-01\"",
+    "preview: N",
+    "scope='<card scope_id>'",
+    "temporal_facts.jsonl",
+    "tesserae federation explain <node>",
+    "tesserae federation status",
+    "unobserved_included",
+    "valid_to",
+    "vectorized",
+    "vectorized: false"
+   ],
+   "structure": {
+    "bold": -6,
+    "bullets": -4,
+    "h3": 1
+   },
+   "untranslated_words": [
+    "both",
+    "chartered",
+    "optional",
+    "overlay",
+    "required"
+   ]
+  },
+  "docs/i18n/integrations/obsidian-sync.ja.md": {
+   "untranslated_words": [
+    "always",
+    "initial",
+    "never",
+    "preserved",
+    "written"
+   ]
+  },
+  "docs/i18n/integrations/obsidian-sync.ko.md": {
+   "untranslated_words": [
+    "compile-from-source",
+    "edit",
+    "editing",
+    "export",
+    "notes",
+    "orphan",
+    "over",
+    "picks",
+    "pruning",
+    "use",
+    "want",
+    "wins",
+    "you"
+   ]
+  },
+  "docs/i18n/integrations/obsidian.de.md": {
+   "missing_spans": [
+    "tesserae vault export --output <path>"
+   ]
+  },
+  "docs/i18n/integrations/obsidian.ja.md": {
+   "missing_spans": [
+    "tesserae vault export --output <path>"
+   ],
+   "untranslated_words": [
+    "destination"
+   ]
+  },
+  "docs/i18n/integrations/obsidian.ko.md": {
+   "untranslated_words": [
+    "community-plugins",
+    "vault-wins"
+   ]
+  },
+  "docs/i18n/integrations/obsidian.zh.md": {
+   "missing_spans": [
+    "tesserae vault export --output <path>"
+   ],
+   "structure": {
+    "bold": 1
+   },
+   "untranslated_words": [
+    "wikilinks"
+   ]
+  },
+  "docs/i18n/integrations/rag-anything.de.md": {
+   "missing_spans": [
+    "); a future PR can wire real subgraph scoping into",
+    "--project > --name > router",
+    "cd"
+   ]
+  },
+  "docs/i18n/integrations/rag-anything.es.md": {
+   "missing_spans": [
+    "); a future PR can wire real subgraph scoping into"
+   ]
+  },
+  "docs/i18n/integrations/rag-anything.fr.md": {
+   "missing_spans": [
+    "); a future PR can wire real subgraph scoping into",
+    "--project > --name > router"
+   ],
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/integrations/rag-anything.ja.md": {
+   "missing_spans": [
+    "); a future PR can wire real subgraph scoping into",
+    "--project > --name > router"
+   ]
+  },
+  "docs/i18n/integrations/rag-anything.ko.md": {
+   "missing_spans": [
+    "); a future PR can wire real subgraph scoping into"
+   ],
+   "untranslated_words": [
+    "bytes",
+    "document",
+    "figure",
+    "join",
+    "per-kind",
+    "sitemap",
+    "vision"
+   ]
+  },
+  "docs/i18n/integrations/rag-anything.ru.md": {
+   "missing_spans": [
+    "); a future PR can wire real subgraph scoping into"
+   ]
+  },
+  "docs/i18n/integrations/rag-anything.zh.md": {
+   "missing_spans": [
+    "); a future PR can wire real subgraph scoping into"
+   ],
+   "untranslated_words": [
+    "compiler"
+   ]
+  },
+  "docs/i18n/integrations/sessions.de.md": {
+   "missing_spans": [
+    "CLAUDE_CONFIG_DIR",
+    "ClaudeCLIResearchExtractor",
+    "claude /login",
+    "tesserae ask \"what did we decide about 3D Gaussian Splatting?\""
+   ],
+   "structure": {
+    "bold": -3
+   }
+  },
+  "docs/i18n/integrations/sessions.es.md": {
+   "missing_spans": [
+    "CLAUDE_CONFIG_DIR",
+    "ClaudeCLIResearchExtractor",
+    "claude /login",
+    "tesserae ask \"what did we decide about 3D Gaussian Splatting?\""
+   ],
+   "structure": {
+    "bold": -3
+   }
+  },
+  "docs/i18n/integrations/sessions.fr.md": {
+   "missing_spans": [
+    "CLAUDE_CONFIG_DIR",
+    "ClaudeCLIResearchExtractor",
+    "claude /login",
+    "tesserae ask \"what did we decide about 3D Gaussian Splatting?\""
+   ],
+   "structure": {
+    "bold": -3
+   }
+  },
+  "docs/i18n/integrations/sessions.ja.md": {
+   "missing_spans": [
+    "CLAUDE_CONFIG_DIR",
+    "ClaudeCLIResearchExtractor",
+    "claude /login",
+    "tesserae ask \"what did we decide about 3D Gaussian Splatting?\""
+   ],
+   "structure": {
+    "bold": -3
+   }
+  },
+  "docs/i18n/integrations/sessions.ko.md": {
+   "missing_spans": [
+    "CLAUDE_CONFIG_DIR",
+    "ClaudeCLIResearchExtractor",
+    "claude /login",
+    "tesserae ask \"what did we decide about 3D Gaussian Splatting?\""
+   ],
+   "structure": {
+    "bold": -3
+   }
+  },
+  "docs/i18n/integrations/sessions.ru.md": {
+   "missing_spans": [
+    "CLAUDE_CONFIG_DIR",
+    "ClaudeCLIResearchExtractor",
+    "claude /login",
+    "tesserae ask \"what did we decide about 3D Gaussian Splatting?\""
+   ],
+   "structure": {
+    "bold": -3
+   }
+  },
+  "docs/i18n/integrations/sessions.zh.md": {
+   "missing_spans": [
+    "CLAUDE_CONFIG_DIR",
+    "ClaudeCLIResearchExtractor",
+    "claude /login",
+    "tesserae ask \"what did we decide about 3D Gaussian Splatting?\""
+   ],
+   "structure": {
+    "bold": -3
+   }
+  },
+  "docs/i18n/publishing-checklist.de.md": {
+   "missing_spans": [
+    "tesserae==<npm version>"
+   ],
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/publishing-checklist.es.md": {
+   "missing_spans": [
+    "tesserae==<npm version>"
+   ],
+   "structure": {
+    "bold": -1,
+    "bullets": -1
+   }
+  },
+  "docs/i18n/publishing-checklist.fr.md": {
+   "missing_spans": [
+    "tesserae==<npm version>"
+   ],
+   "structure": {
+    "bold": -1,
+    "bullets": -1
+   }
+  },
+  "docs/i18n/publishing-checklist.ja.md": {
+   "missing_spans": [
+    "tesserae==<npm version>"
+   ],
+   "structure": {
+    "bold": -1,
+    "bullets": -1
+   },
+   "untranslated_words": [
+    "changelog",
+    "projections",
+    "raw"
+   ]
+  },
+  "docs/i18n/publishing-checklist.ko.md": {
+   "missing_spans": [
+    "tesserae==<npm version>"
+   ],
+   "structure": {
+    "bold": -1,
+    "bullets": -1
+   }
+  },
+  "docs/i18n/publishing-checklist.ru.md": {
+   "missing_spans": [
+    "tesserae==<npm version>"
+   ],
+   "structure": {
+    "bold": -1,
+    "bullets": -1
+   }
+  },
+  "docs/i18n/publishing-checklist.zh.md": {
+   "missing_spans": [
+    "tesserae==<npm version>"
+   ],
+   "structure": {
+    "bold": -1,
+    "bullets": -1
+   }
+  },
+  "docs/i18n/quickstart.es.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/quickstart.ja.md": {
+   "untranslated_words": [
+    "none"
+   ]
+  },
+  "docs/i18n/quickstart.ko.md": {
+   "untranslated_words": [
+    "dev",
+    "drain",
+    "staleness",
+    "supervised"
+   ]
+  },
+  "docs/i18n/quickstart.zh.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.10.0.es.md": {
+   "missing_spans": [
+    "type"
+   ]
+  },
+  "docs/i18n/release-notes/v0.10.0.fr.md": {
+   "missing_spans": [
+    "type"
+   ]
+  },
+  "docs/i18n/release-notes/v0.10.0.ja.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.10.0.ko.md": {
+   "missing_spans": [
+    "nicosuave/memex"
+   ]
+  },
+  "docs/i18n/release-notes/v0.10.0.ru.md": {
+   "missing_spans": [
+    ".tesserae/config.json"
+   ]
+  },
+  "docs/i18n/release-notes/v0.10.1.ja.md": {
+   "structure": {
+    "bold": 1
+   },
+   "untranslated_words": [
+    "filter",
+    "prompts"
+   ]
+  },
+  "docs/i18n/release-notes/v0.10.1.ko.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.10.1.zh.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.11.0.ko.md": {
+   "untranslated_words": [
+    "extension",
+    "identity",
+    "merge",
+    "precision",
+    "recall",
+    "swamping"
+   ]
+  },
+  "docs/i18n/release-notes/v0.12.0.de.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.12.0.ja.md": {
+   "untranslated_words": [
+    "pip-less"
+   ]
+  },
+  "docs/i18n/release-notes/v0.12.1.ko.md": {
+   "structure": {
+    "bold": -1
+   },
+   "untranslated_words": [
+    "live-ask"
+   ]
+  },
+  "docs/i18n/release-notes/v0.12.2.de.md": {
+   "missing_spans": [
+    "ended_at",
+    "started_at"
+   ]
+  },
+  "docs/i18n/release-notes/v0.12.2.es.md": {
+   "missing_spans": [
+    "ended_at",
+    "started_at"
+   ]
+  },
+  "docs/i18n/release-notes/v0.12.2.fr.md": {
+   "missing_spans": [
+    "ended_at",
+    "started_at"
+   ]
+  },
+  "docs/i18n/release-notes/v0.12.2.ja.md": {
+   "missing_spans": [
+    "ended_at",
+    "started_at"
+   ],
+   "untranslated_words": [
+    "fd-exhaustion"
+   ]
+  },
+  "docs/i18n/release-notes/v0.12.2.ko.md": {
+   "missing_spans": [
+    "ended_at",
+    "started_at"
+   ]
+  },
+  "docs/i18n/release-notes/v0.12.2.ru.md": {
+   "missing_spans": [
+    "ended_at",
+    "started_at"
+   ]
+  },
+  "docs/i18n/release-notes/v0.12.2.zh.md": {
+   "missing_spans": [
+    "ended_at",
+    "started_at"
+   ]
+  },
+  "docs/i18n/release-notes/v0.13.1.ja.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.13.2.ja.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.14.0.ko.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.14.0.ru.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.15.0.de.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.15.0.fr.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.16.0.ja.md": {
+   "structure": {
+    "bold": -2
+   }
+  },
+  "docs/i18n/release-notes/v0.16.0.ko.md": {
+   "untranslated_words": [
+    "origin-gated"
+   ]
+  },
+  "docs/i18n/release-notes/v0.16.0.zh.md": {
+   "untranslated_words": [
+    "clip"
+   ]
+  },
+  "docs/i18n/release-notes/v0.17.0.ru.md": {
+   "missing_spans": [
+    "reused"
+   ]
+  },
+  "docs/i18n/release-notes/v0.17.0.zh.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.2.0.de.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.2.0.ja.md": {
+   "untranslated_words": [
+    "integration"
+   ]
+  },
+  "docs/i18n/release-notes/v0.2.0.ko.md": {
+   "untranslated_words": [
+    "column-stochastic",
+    "mass",
+    "matrix",
+    "paraphrase",
+    "stationary-distribution"
+   ]
+  },
+  "docs/i18n/release-notes/v0.2.0.zh.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.20.0.ko.md": {
+   "untranslated_words": [
+    "redacted"
+   ]
+  },
+  "docs/i18n/release-notes/v0.20.1.fr.md": {
+   "missing_spans": [
+    "100,000"
+   ]
+  },
+  "docs/i18n/release-notes/v0.20.1.ko.md": {
+   "missing_spans": [
+    "npm i -g @jokerized/tesserae@0.20.1"
+   ]
+  },
+  "docs/i18n/release-notes/v0.21.0.ja.md": {
+   "untranslated_words": [
+    "and",
+    "design",
+    "spec"
+   ]
+  },
+  "docs/i18n/release-notes/v0.21.0.ko.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.21.0.zh.md": {
+   "structure": {
+    "escaped_backticks": 6,
+    "fences": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.22.0.ja.md": {
+   "untranslated_words": [
+    "absorbed",
+    "alive",
+    "changed",
+    "gone"
+   ]
+  },
+  "docs/i18n/release-notes/v0.22.1.zh.md": {
+   "untranslated_words": [
+    "already",
+    "exists",
+    "registry"
+   ]
+  },
+  "docs/i18n/release-notes/v0.23.0.ko.md": {
+   "untranslated_words": [
+    "before",
+    "ceiling",
+    "checks",
+    "clock",
+    "consolidating",
+    "cycle",
+    "enable",
+    "how",
+    "least",
+    "often",
+    "quiet",
+    "seconds",
+    "thread"
+   ]
+  },
+  "docs/i18n/release-notes/v0.24.0.de.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.24.0.es.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.24.0.fr.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.24.0.ja.md": {
+   "missing_spans": [
+    ".tesserae",
+    "agents drill",
+    "ask",
+    "context",
+    "docs/engine-consolidation.md",
+    "drill_down",
+    "graph.json",
+    "last_accessed_at",
+    "node_context",
+    "node_memory",
+    "npm i -g @jokerized/tesserae@0.24.0",
+    "pip install \"tesserae[semantic]\"",
+    "query",
+    "shares_concept_with"
+   ],
+   "structure": {
+    "bold": -8
+   }
+  },
+  "docs/i18n/release-notes/v0.24.0.ko.md": {
+   "structure": {
+    "bold": 2
+   },
+   "untranslated_words": [
+    "associate"
+   ]
+  },
+  "docs/i18n/release-notes/v0.24.0.zh.md": {
+   "structure": {
+    "bold": 3
+   }
+  },
+  "docs/i18n/release-notes/v0.25.0.de.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.25.0.es.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.25.0.ja.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.25.0.ru.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.25.0.zh.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.25.1.de.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.25.1.es.md": {
+   "missing_spans": [
+    "timeout × configured profiles"
+   ],
+   "structure": {
+    "bold": 1,
+    "escaped_backticks": 58
+   }
+  },
+  "docs/i18n/release-notes/v0.25.1.fr.md": {
+   "missing_spans": [
+    "timeout × configured profiles"
+   ],
+   "structure": {
+    "bold": 1,
+    "escaped_backticks": 64,
+    "fences": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.25.1.ja.md": {
+   "missing_spans": [
+    "timeout × configured profiles"
+   ],
+   "structure": {
+    "bold": 1
+   },
+   "untranslated_words": [
+    "stuck"
+   ]
+  },
+  "docs/i18n/release-notes/v0.25.1.ko.md": {
+   "missing_spans": [
+    "timeout × configured profiles"
+   ],
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.25.1.ru.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.25.1.zh.md": {
+   "missing_spans": [
+    "timeout × configured profiles"
+   ],
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.26.0.de.md": {
+   "structure": {
+    "bold": -2
+   }
+  },
+  "docs/i18n/release-notes/v0.26.0.es.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.26.0.fr.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.26.0.ja.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.26.0.ko.md": {
+   "structure": {
+    "bold": -1
+   },
+   "untranslated_words": [
+    "pytest",
+    "tmpdirs"
+   ]
+  },
+  "docs/i18n/release-notes/v0.26.0.zh.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.27.0.fr.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.27.0.ja.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.27.0.ko.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.27.0.ru.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.27.0.zh.md": {
+   "structure": {
+    "bold": 3
+   }
+  },
+  "docs/i18n/release-notes/v0.28.0.ja.md": {
+   "missing_spans": [
+    "usage_count"
+   ],
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.0.ko.md": {
+   "missing_spans": [
+    ".tesserae"
+   ]
+  },
+  "docs/i18n/release-notes/v0.28.0.zh.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.2.de.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.2.fr.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.2.ja.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.2.ko.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.2.ru.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.2.zh.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.3.ja.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.4.de.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.4.fr.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.5.ko.md": {
+   "untranslated_words": [
+    "machine"
+   ]
+  },
+  "docs/i18n/release-notes/v0.28.5.ru.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.5.zh.md": {
+   "untranslated_words": [
+    "first",
+    "patch",
+    "runner",
+    "store"
+   ]
+  },
+  "docs/i18n/release-notes/v0.28.6.de.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.6.es.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.6.fr.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.6.ja.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.28.6.ko.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.6.ru.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.6.zh.md": {
+   "structure": {
+    "bold": 3
+   }
+  },
+  "docs/i18n/release-notes/v0.28.7.de.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.7.es.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.7.fr.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.7.ja.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.7.ko.md": {
+   "structure": {
+    "bold": 1
+   },
+   "untranslated_words": [
+    "fixture",
+    "legacy"
+   ]
+  },
+  "docs/i18n/release-notes/v0.28.7.ru.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.28.7.zh.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.29.0.de.md": {
+   "structure": {
+    "bold": -2
+   }
+  },
+  "docs/i18n/release-notes/v0.29.0.fr.md": {
+   "structure": {
+    "bold": -2
+   }
+  },
+  "docs/i18n/release-notes/v0.29.0.ja.md": {
+   "structure": {
+    "bold": 1
+   },
+   "untranslated_words": [
+    "exit"
+   ]
+  },
+  "docs/i18n/release-notes/v0.29.0.ko.md": {
+   "untranslated_words": [
+    "probe",
+    "router"
+   ]
+  },
+  "docs/i18n/release-notes/v0.29.0.ru.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.3.0.de.md": {
+   "missing_spans": [
+    "(no backticks, no dot) | Accepted **only** if the identifier is present in the code-graph index, and only after stopword filtering (",
+    "| Accepted if any segment matches an index entry; rejected if any segment is a stopword. | | **Weak: bare identifier** |",
+    "| Always accepted — the author marked it as code. | | **Strong: dotted** |"
+   ]
+  },
+  "docs/i18n/release-notes/v0.3.0.es.md": {
+   "missing_spans": [
+    "(no backticks, no dot) | Accepted **only** if the identifier is present in the code-graph index, and only after stopword filtering (",
+    "| Accepted if any segment matches an index entry; rejected if any segment is a stopword. | | **Weak: bare identifier** |",
+    "| Always accepted — the author marked it as code. | | **Strong: dotted** |"
+   ]
+  },
+  "docs/i18n/release-notes/v0.3.0.fr.md": {
+   "missing_spans": [
+    "(no backticks, no dot) | Accepted **only** if the identifier is present in the code-graph index, and only after stopword filtering (",
+    "| Accepted if any segment matches an index entry; rejected if any segment is a stopword. | | **Weak: bare identifier** |",
+    "| Always accepted — the author marked it as code. | | **Strong: dotted** |"
+   ]
+  },
+  "docs/i18n/release-notes/v0.3.0.ja.md": {
+   "missing_spans": [
+    "(no backticks, no dot) | Accepted **only** if the identifier is present in the code-graph index, and only after stopword filtering (",
+    ",",
+    "| Accepted if any segment matches an index entry; rejected if any segment is a stopword. | | **Weak: bare identifier** |",
+    "| Always accepted — the author marked it as code. | | **Strong: dotted** |"
+   ]
+  },
+  "docs/i18n/release-notes/v0.3.0.ko.md": {
+   "missing_spans": [
+    "(no backticks, no dot) | Accepted **only** if the identifier is present in the code-graph index, and only after stopword filtering (",
+    "| Accepted if any segment matches an index entry; rejected if any segment is a stopword. | | **Weak: bare identifier** |",
+    "| Always accepted — the author marked it as code. | | **Strong: dotted** |"
+   ],
+   "untranslated_words": [
+    "opt-in",
+    "post-compile",
+    "three-tier"
+   ]
+  },
+  "docs/i18n/release-notes/v0.3.0.ru.md": {
+   "missing_spans": [
+    "(no backticks, no dot) | Accepted **only** if the identifier is present in the code-graph index, and only after stopword filtering (",
+    "| Accepted if any segment matches an index entry; rejected if any segment is a stopword. | | **Weak: bare identifier** |",
+    "| Always accepted — the author marked it as code. | | **Strong: dotted** |"
+   ]
+  },
+  "docs/i18n/release-notes/v0.3.0.zh.md": {
+   "missing_spans": [
+    "(no backticks, no dot) | Accepted **only** if the identifier is present in the code-graph index, and only after stopword filtering (",
+    ",",
+    "| Accepted if any segment matches an index entry; rejected if any segment is a stopword. | | **Weak: bare identifier** |",
+    "| Always accepted — the author marked it as code. | | **Strong: dotted** |"
+   ]
+  },
+  "docs/i18n/release-notes/v0.30.0.ja.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.30.0.ko.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.30.0.zh.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.31.0.de.md": {
+   "missing_spans": [
+    "OKF v0.2 export/import"
+   ],
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.31.0.es.md": {
+   "missing_spans": [
+    "/Users/<name>",
+    "/home/<name>",
+    "OKF v0.2 export/import"
+   ]
+  },
+  "docs/i18n/release-notes/v0.31.0.fr.md": {
+   "missing_spans": [
+    "/Users/<name>",
+    "/home/<name>",
+    "OKF v0.2 export/import"
+   ],
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.31.0.ja.md": {
+   "missing_spans": [
+    "OKF v0.2 export/import"
+   ],
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.31.0.ko.md": {
+   "missing_spans": [
+    "OKF v0.2 export/import"
+   ],
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.31.0.ru.md": {
+   "missing_spans": [
+    "OKF v0.2 export/import"
+   ],
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.31.0.zh.md": {
+   "missing_spans": [
+    "OKF v0.2 export/import"
+   ]
+  },
+  "docs/i18n/release-notes/v0.4.0.ko.md": {
+   "untranslated_words": [
+    "deep-research"
+   ]
+  },
+  "docs/i18n/release-notes/v0.5.0.ko.md": {
+   "untranslated_words": [
+    "memory-bank",
+    "watch"
+   ]
+  },
+  "docs/i18n/release-notes/v0.6.0.de.md": {
+   "missing_spans": [
+    "tesserae project <26 hidden subcommands>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.6.0.es.md": {
+   "missing_spans": [
+    "tesserae project <26 hidden subcommands>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.6.0.fr.md": {
+   "missing_spans": [
+    "tesserae project <26 hidden subcommands>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.6.0.ja.md": {
+   "missing_spans": [
+    "tesserae project <26 hidden subcommands>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.6.0.ko.md": {
+   "missing_spans": [
+    "tesserae project <26 hidden subcommands>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.6.0.ru.md": {
+   "missing_spans": [
+    "tesserae project <26 hidden subcommands>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.6.0.zh.md": {
+   "missing_spans": [
+    "tesserae project <26 hidden subcommands>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.7.0.de.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.7.0.es.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.7.0.fr.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.7.0.ja.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.7.0.ko.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.7.0.ru.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.7.0.zh.md": {
+   "structure": {
+    "bold": 2
+   }
+  },
+  "docs/i18n/release-notes/v0.7.2.de.md": {
+   "missing_spans": [
+    "TESSERAE_COMPILE_LOCK_WAIT=<seconds>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.7.2.es.md": {
+   "missing_spans": [
+    "TESSERAE_COMPILE_LOCK_WAIT=<seconds>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.7.2.fr.md": {
+   "missing_spans": [
+    "TESSERAE_COMPILE_LOCK_WAIT=<seconds>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.7.2.ja.md": {
+   "missing_spans": [
+    "TESSERAE_COMPILE_LOCK_WAIT=<seconds>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.7.2.ko.md": {
+   "missing_spans": [
+    "TESSERAE_COMPILE_LOCK_WAIT=<seconds>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.7.2.ru.md": {
+   "missing_spans": [
+    "TESSERAE_COMPILE_LOCK_WAIT=<seconds>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.7.2.zh.md": {
+   "missing_spans": [
+    "TESSERAE_COMPILE_LOCK_WAIT=<seconds>"
+   ]
+  },
+  "docs/i18n/release-notes/v0.8.0.de.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.8.0.es.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.8.0.fr.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.8.0.ja.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.8.0.ko.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.8.0.ru.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.8.0.zh.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.9.0.de.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.9.0.es.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.9.0.fr.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.9.0.ja.md": {
+   "structure": {
+    "bold": 1
+   },
+   "untranslated_words": [
+    "every"
+   ]
+  },
+  "docs/i18n/release-notes/v0.9.0.ko.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.9.0.ru.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.9.0.zh.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/release-notes/v0.9.1.ja.md": {
+   "untranslated_words": [
+    "stale"
+   ]
+  },
+  "docs/i18n/release-notes/v0.9.1.zh.md": {
+   "untranslated_words": [
+    "bugfixes"
+   ]
+  },
+  "docs/i18n/self-dogfood.fr.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/self-dogfood.ja.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/self-dogfood.ko.md": {
+   "untranslated_words": [
+    "compile",
+    "near-duplicate",
+    "recurrence",
+    "self-improvement"
+   ]
+  },
+  "docs/i18n/self-dogfood.zh.md": {
+   "structure": {
+    "bold": 1
+   },
+   "untranslated_words": [
+    "scripts",
+    "tests"
+   ]
+  },
+  "docs/i18n/session-chunks.de.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/session-chunks.fr.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/session-chunks.ko.md": {
+   "untranslated_words": [
+    "name",
+    "truth"
+   ]
+  },
+  "docs/i18n/session-chunks.ru.md": {
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/session-chunks.zh.md": {
+   "untranslated_words": [
+    "chunk",
+    "daemon"
+   ]
+  },
+  "docs/i18n/session-history.de.md": {
+   "missing_spans": [
+    "{turn_id, actor, action, brief state-change}"
+   ]
+  },
+  "docs/i18n/session-history.es.md": {
+   "missing_spans": [
+    "/Users/<name>",
+    "/home/<name>",
+    "{turn_id, actor, action, brief state-change}"
+   ],
+   "structure": {
+    "bold": -1
+   }
+  },
+  "docs/i18n/session-history.fr.md": {
+   "missing_spans": [
+    "/Users/<name>",
+    "/home/<name>",
+    "{turn_id, actor, action, brief state-change}"
+   ]
+  },
+  "docs/i18n/session-history.ja.md": {
+   "missing_spans": [
+    "{turn_id, actor, action, brief state-change}"
+   ]
+  },
+  "docs/i18n/session-history.ko.md": {
+   "missing_spans": [
+    "{turn_id, actor, action, brief state-change}"
+   ],
+   "untranslated_words": [
+    "batch",
+    "config",
+    "full-text"
+   ]
+  },
+  "docs/i18n/session-history.ru.md": {
+   "missing_spans": [
+    "{turn_id, actor, action, brief state-change}"
+   ]
+  },
+  "docs/i18n/session-history.zh.md": {
+   "missing_spans": [
+    "{turn_id, actor, action, brief state-change}"
+   ],
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/sidecars.ko.md": {
+   "untranslated_words": [
+    "attach"
+   ]
+  },
+  "docs/i18n/sidecars.zh.md": {
+   "untranslated_words": [
+    "domain"
+   ]
+  },
+  "docs/i18n/synthesis-llm.de.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/synthesis-llm.es.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/synthesis-llm.fr.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/synthesis-llm.ja.md": {
+   "structure": {
+    "bold": 1
+   },
+   "untranslated_words": [
+    "blip",
+    "capped",
+    "contributors",
+    "full",
+    "network",
+    "ranked",
+    "tracking"
+   ]
+  },
+  "docs/i18n/synthesis-llm.ko.md": {
+   "structure": {
+    "bold": 1
+   },
+   "untranslated_words": [
+    "body",
+    "line"
+   ]
+  },
+  "docs/i18n/synthesis-llm.ru.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/synthesis-llm.zh.md": {
+   "structure": {
+    "bold": 1
+   }
+  },
+  "docs/i18n/tuning.de.md": {
+   "missing_spans": [
+    "citation.evidence_span.is_edge_endpoint",
+    "citation.evidence_span.is_edge_endpoint: true",
+    "discussed_in",
+    "evidence_span",
+    "node_id == edge.target",
+    "part_of",
+    "tesserae code sync",
+    "timeout × configured profiles",
+    "true"
+   ],
+   "structure": {
+    "bold": -3,
+    "bullets": 5,
+    "escaped_backticks": 38,
+    "fences": -1
+   }
+  },
+  "docs/i18n/tuning.es.md": {
+   "missing_spans": [
+    "citation.evidence_span.is_edge_endpoint",
+    "citation.evidence_span.is_edge_endpoint: true",
+    "discussed_in",
+    "evidence_span",
+    "node_id == edge.target",
+    "part_of",
+    "timeout × configured profiles",
+    "true"
+   ],
+   "structure": {
+    "bold": -3,
+    "escaped_backticks": 38,
+    "fences": -1
+   }
+  },
+  "docs/i18n/tuning.fr.md": {
+   "missing_spans": [
+    "citation.evidence_span.is_edge_endpoint",
+    "citation.evidence_span.is_edge_endpoint: true",
+    "discussed_in",
+    "evidence_span",
+    "node_id == edge.target",
+    "part_of",
+    "timeout × configured profiles",
+    "true"
+   ],
+   "structure": {
+    "bold": -4,
+    "bullets": 5,
+    "escaped_backticks": 38,
+    "fences": -1
+   }
+  },
+  "docs/i18n/tuning.ja.md": {
+   "missing_spans": [
+    "citation.evidence_span.is_edge_endpoint",
+    "citation.evidence_span.is_edge_endpoint: true",
+    "discussed_in",
+    "evidence_span",
+    "node_id == edge.target",
+    "part_of",
+    "timeout × configured profiles",
+    "true"
+   ],
+   "structure": {
+    "bold": -2,
+    "escaped_backticks": 38,
+    "fences": -1
+   }
+  },
+  "docs/i18n/tuning.ko.md": {
+   "missing_spans": [
+    "citation.evidence_span.is_edge_endpoint",
+    "citation.evidence_span.is_edge_endpoint: true",
+    "discussed_in",
+    "evidence_span",
+    "node_id == edge.target",
+    "part_of",
+    "timeout × configured profiles",
+    "true"
+   ],
+   "structure": {
+    "bold": -2,
+    "escaped_backticks": 38,
+    "fences": -1
+   },
+   "untranslated_words": [
+    "artifacts",
+    "backend",
+    "bad",
+    "baseline",
+    "blocking",
+    "branches",
+    "byte-identical",
+    "caches",
+    "calling",
+    "card",
+    "carry",
+    "claude-shaped",
+    "cluster",
+    "cold",
+    "content",
+    "cost",
+    "cross-project",
+    "current",
+    "dead",
+    "degradation",
+    "descend",
+    "descent",
+    "detection",
+    "directory",
+    "distilled-memory",
+    "eager",
+    "eagerly",
+    "enrichment",
+    "exercise",
+    "expertise",
+    "extraction",
+    "federated-graph",
+    "forever",
+    "generation",
+    "hang",
+    "hierarchy",
+    "hitting",
+    "idle",
+    "in-graph",
+    "interactive",
+    "keyed",
+    "lazily",
+    "legitimate",
+    "level",
+    "loop",
+    "members",
+    "membership",
+    "modest",
+    "multi-document",
+    "named",
+    "navigate",
+    "ones",
+    "parallel",
+    "pay",
+    "permanent",
+    "persist",
+    "planner",
+    "plus",
+    "producer",
+    "provider-specific",
+    "rate",
+    "resolved",
+    "round-trip",
+    "safety",
+    "secret",
+    "sequential",
+    "served",
+    "serving",
+    "shared",
+    "sibling",
+    "skipped",
+    "stage",
+    "strategy",
+    "strictly",
+    "subprocess",
+    "switching",
+    "symbols",
+    "typo",
+    "valve",
+    "wall-clock",
+    "watermark",
+    "work",
+    "work-list"
+   ]
+  },
+  "docs/i18n/tuning.ru.md": {
+   "missing_spans": [
+    "citation.evidence_span.is_edge_endpoint",
+    "citation.evidence_span.is_edge_endpoint: true",
+    "discussed_in",
+    "evidence_span",
+    "node_id == edge.target",
+    "part_of",
+    "timeout × configured profiles",
+    "true"
+   ],
+   "structure": {
+    "bold": -3,
+    "escaped_backticks": 34,
+    "fences": -1
+   }
+  },
+  "docs/i18n/tuning.zh.md": {
+   "missing_spans": [
+    "citation.evidence_span.is_edge_endpoint",
+    "citation.evidence_span.is_edge_endpoint: true",
+    "discussed_in",
+    "evidence_span",
+    "node_id == edge.target",
+    "part_of",
+    "timeout × configured profiles",
+    "true"
+   ],
+   "structure": {
+    "bold": -3,
+    "escaped_backticks": 38,
+    "fences": -1
+   }
+  }
+ }
+}
