@@ -28,6 +28,7 @@ from typing import Mapping, Optional, Sequence, Set
 from .agent_distill import ARTIFACT_CHAR_BUDGET, _render_member_block
 from .community_summaries import (
     detect_communities,
+    level_cache_path,
     materialize_community_summary,
     read_warm_summary,
 )
@@ -1575,6 +1576,35 @@ def _brief_slug_ok(slug: str, cache_dir: Path) -> bool:
         cache_dir,
     )
     return False
+
+
+def brief_cache_path(charter: dict, slug: str, *, cache_dir: Path) -> Optional[Path]:
+    """The one file ``slug``'s brief is ever written to or read from.
+
+    The same three pieces :func:`read_domain_brief` hands the summary layer —
+    the cache dir, ``_brief_level``, ``brief_cid`` — composed the way
+    ``read_warm_summary`` composes them internally
+    (community_summaries.py:468). Offline and touches no disk: it answers
+    *where*, and a caller that only needs *whether* can stat the result.
+
+    It is public because a probe that restates the filename instead of asking
+    for it silently stops matching the writer. That is not hypothetical:
+    ``CHARTER_FALLBACK`` was first written keying on
+    ``CommunitySummary_<slug>.json`` — the namespace ``_BRIEF_CID_PREFIX``
+    exists to stay OUT of — so every live domain read as cold, the count could
+    never be a strict subset of the institution, and the frozen-slice branch
+    the lint exists for was unreachable. Deriving the name removes the class.
+
+    ``None`` for a slug ``_brief_slug_ok`` refuses — the same gate both halves
+    of the pair take before touching the cache, so a mangled ``charter.json``
+    cannot make a caller stat a path outside ``cache_dir``. It is also the
+    honest answer for a census: a slug the writer will not write is a domain
+    that can never be warm.
+    """
+    cache_dir = Path(cache_dir)
+    if not _brief_slug_ok(slug, cache_dir):
+        return None
+    return level_cache_path(cache_dir, _brief_level(charter, slug), brief_cid(slug))
 
 
 def read_domain_brief(

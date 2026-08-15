@@ -171,7 +171,8 @@ floor for the **exit code** — findings below it are still reported.
 
 | Code | Severity | What it means |
 |---|---|---|
-| `AGENT_METADATA_KEY` | error | An agent node carries a metadata key outside the controlled set. The only error-level code; a malformed agent breaks scoped views. |
+| `AGENT_METADATA_KEY` | error | An agent node carries a metadata key outside the controlled set. A malformed agent breaks scoped views. |
+| `CHARTER_PARTITION` | error | The charter's partition is void **against `graph.json`** — a member id that does not resolve, a member held by two live domains, a `member_index` entry the domains disagree with, a `child_slugs` dead end, or a `member_count` that does not cover its own tree. `build_charter` verifies CH-01 on the graph it was handed; this checks the file that three later compile passes actually wrote. Recompile to re-derive it. |
 | `AGENT_WRITE_SKIPPED` | warning | A line in `.tesserae/agent-writes.jsonl` that replay skipped — that write is **not** in the graph. A truncated line is a torn concurrent append and the agent should re-file it; a hand-edited one should be corrected or removed. Replay skips and warns rather than failing, so one bad line never bricks every future compile — but a stderr line during a compile is not where you look for a write the agent believes it filed. |
 | `ORPHAN_PAPER` | warning | A Paper with no outgoing edges and nothing but `mentioned_in` coming in — ingested, never connected. |
 | `MISSING_IMPLEMENTED_IN` | warning | A Paper and a Repository share an `arxiv_id` but no `implemented_in` edge joins them. `--fix-trivial` adds it. |
@@ -183,7 +184,8 @@ floor for the **exit code** — findings below it are still reported.
 | `SYNTHESIS_GHOST_INPUT` | warning | Synthesis frontmatter cites a node id that no longer exists. `--fix-trivial` prunes it. |
 | `AGENT_FORGET_LEDGER` | warning | The last distill demoted findings — the ledger of what an agent stopped surfacing. |
 | `INTERVAL_COVERAGE` | info | *How many facts carry no `valid_from`* and therefore sort last in any temporal answer. Previously silent; now stated as a percentage. |
-| `LINT_PROBE_FAILED` | info | `INTERVAL_COVERAGE` could not run because the graph would not load — the check abstaining, said out loud rather than passing by default. |
+| `LINT_PROBE_FAILED` | info | A probe could not run — the graph or a sidecar would not load. The message names which one. A check abstaining, said out loud rather than passing by default, because "nothing found" and "nothing looked" are different answers. |
+| `CHARTER_FALLBACK` | info | Charter domains left on a structural card because no warm summary exists for them, plus the count with no resolvable date. Silent until a materialization pass has actually run: a count that rises across compiles means an LLM outage froze a slice of the institution and nothing is retrying it. No threshold — the number is the instrument. |
 | `PROCEDURAL_POOLS` | info | How much of the producer-owned procedural layer was actually minted. The reserved procedural retrieval slot is earned by provenance; this reports when it can't be filled honestly. |
 | `AGENT_UNDISTILLED_BACKLOG` | info | An agent has accumulated scope findings well past its distill watermark. |
 | `LOW_TITLE_QUALITY` | info | A Paper's title looks like a filename or a fragment rather than a title. |

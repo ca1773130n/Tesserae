@@ -311,6 +311,8 @@ class WikiLinter:
         findings.extend(self._check_suggested_merges(nodes_by_id))
         findings.extend(self._check_suggested_subtypes())
         findings.extend(self._check_pending_review())
+        findings.extend(self._check_charter_partition(nodes_by_id))
+        findings.extend(self._check_charter_fallback())
         findings.extend(self._check_stale_build_history())
         findings.extend(self._check_code_graph_staleness(nodes_by_id))
         findings.extend(self._check_agent_metadata_allowlist(nodes_by_id))
@@ -1447,6 +1449,389 @@ class WikiLinter:
                 "--apply-review-decisions … --reviewed-by <you>`, or set a row's "
                 f'"status" to "rejected" in .tesserae/{CANDIDATE_LEDGER_FILENAME}. '
                 "A rejected pair is never re-surfaced."
+            ),
+        )
+
+    def _read_charter_for_lint(
+        self, code: str
+    ) -> Tuple[Optional[dict], Optional[LintFinding]]:
+        """``(charter, None)``, ``(None, None)`` for no charter, or a probe failure.
+
+        Shared by the two charter probes so each reads ONE JSON file and no
+        graph traversal, LLM or network is involved — ``tesserae lint`` stays
+        deterministic, offline and free.
+
+        Absent = silence. A project under :func:`charter.worth_chartering`'s
+        founding bound never gets a ``.tesserae/charter/`` at all, so a "no
+        charter" row would appear in every small project's report forever.
+        Present-but-unreadable is a DIFFERENT state and says so: collapsing it
+        into silence would make "the partition is intact" and "the charter is
+        truncated" the same report, which is the mistake ``LINT_PROBE_FAILED``
+        exists for — and it is the more dangerous half here, because
+        ``read_charter`` raises on a mangled charter precisely so nothing
+        downstream mistakes it for a project that never had one.
+        """
+        from .charter import charter_path, read_charter
+
+        path = charter_path(self.project_root)
+        try:
+            payload = read_charter(self.project_root)
+            if payload is None:
+                return None, None
+            # Shape is checked here rather than trusted: charter.json is a file
+            # on disk that a bad hand-merge can leave in any state, and a
+            # non-dict ``domains`` escaping this method takes the WHOLE lint run
+            # down, which `compile --strict` then reports as "lint did not run".
+            if (
+                not isinstance(payload, dict)
+                or not isinstance(payload.get("domains"), dict)
+                or not isinstance(payload.get("member_index"), dict)
+            ):
+                raise ValueError(
+                    "unrecognised charter shape (expected 'domains' and "
+                    "'member_index' objects)"
+                )
+        except Exception as exc:  # noqa: BLE001 — lint never dies on sidecar trouble
+            return None, LintFinding(
+                severity="info",
+                code="LINT_PROBE_FAILED",
+                message=(
+                    f"{code} did not run: the charter could not be read "
+                    f"({type(exc).__name__}: {exc}). The state of the "
+                    f"institution is unknown for this project, not healthy."
+                ),
+                path=str(path),
+                suggested_fix=(
+                    "Restore .tesserae/charter/charter.json from version control. "
+                    "Deleting it and recompiling re-founds the charter, which "
+                    "mints new slugs and breaks every pinned attach path."
+                ),
+            )
+        return payload, None
+
+    def _check_charter_partition(
+        self, nodes_by_id: Dict[str, dict]
+    ) -> Iterable[LintFinding]:
+        """CH-01 checked against ``graph.json`` — the half runtime cannot check.
+
+        ``charter._verify_partition`` already raises inside ``build_charter``,
+        so this probe deliberately does NOT re-assert what it covers. Two gaps
+        are left, and both are about the file on disk rather than the object in
+        memory:
+
+        **The ordering window.** ``_write_charter_sidecar`` runs at
+        ``project.py:1573``, after which ``compile()`` rebinds ``graph``
+        through ``_merge_community_summaries``, ``_merge_distillation`` and
+        ``_write_artifacts``'s own passes before ``graph.json`` is written. A
+        pass in that window that changes a node's ``type`` moves it across
+        :func:`partition_graph`'s split without touching its id — concretely
+        ``apply_schema_drift`` (opt-in, ``TESSERAE_SCHEMA_DRIFT_APPLY``) — so
+        ``member_index`` can name an id ``graph.json`` does not carry. That is
+        the same systematic cause behind the measured 169/1360 hierarchy-sidecar
+        skew, and ``_verify_partition``'s docstring hands this case to lint by
+        name because no fixture can produce it.
+
+        **Succession.** ``_verify_partition`` runs on the FRESH charter inside
+        ``build_charter``; what a reorg writes is ``succeed``'s output, which is
+        never re-verified. ``succeed`` remaps ``domains`` and ``member_index``
+        through ``rename`` in independent passes, and its own docstring records
+        the review finding where exactly that let ``member_index`` keep pointing
+        members at a slug that no longer held them.
+
+        ``error`` because the remedy is in the tripping project's control and a
+        void partition routes agents into domains that hold nothing: a
+        recompile re-derives the charter from the graph on disk, and the one
+        known in-project trigger is an opt-in env flag. It is not a gate whose
+        remedy is a human editing the Tesserae package.
+
+        Only ``live`` domains are examined. A tombstone keeps the
+        ``direct_member_ids`` it had when it was last live — deliberately, so an
+        old citation still resolves — and those same members are held by live
+        domains now, so counting tombstones would report the whole institution
+        as duplicated on every healthy charter.
+        """
+        payload, failure = self._read_charter_for_lint("CHARTER_PARTITION")
+        if failure is not None:
+            yield failure
+            return
+        if payload is None:
+            return
+        charter_file = str(self.wiki_root / "charter" / "charter.json")
+        if not nodes_by_id:
+            # ``_load_graph`` returns an EMPTY graph for a missing or corrupt
+            # graph.json, which would make every member_index id read as
+            # unresolved — thousands of errors describing a graph nobody could
+            # parse. A charter cannot exist for a genuinely empty graph
+            # (``worth_chartering`` requires ARTIFACT_CHAR_BUDGET of mass), so
+            # this is the unreadable case and has to say so.
+            yield LintFinding(
+                severity="info",
+                code="LINT_PROBE_FAILED",
+                message=(
+                    "CHARTER_PARTITION did not run: a charter exists but "
+                    "graph.json carries no nodes, so member ids cannot be "
+                    "resolved. The partition is unknown for this project, "
+                    "not intact."
+                ),
+                path=str(self.graph_path),
+                suggested_fix="Recompile the project to rewrite .tesserae/graph.json.",
+            )
+            return
+
+        domains = payload["domains"]
+        # Every field is untrusted for the same reason the shape is: this file
+        # can be hand-merged, and a scalar where a list belongs must not take
+        # the lint run down.
+        live = {
+            str(slug): entry
+            for slug, entry in sorted(domains.items(), key=lambda kv: str(kv[0]))
+            if isinstance(entry, dict) and entry.get("status") == "live"
+        }
+        member_index = {
+            str(mid): str(slug) for mid, slug in payload["member_index"].items()
+        }
+
+        unresolved = sorted(mid for mid in member_index if mid not in nodes_by_id)
+        if unresolved:
+            yield LintFinding(
+                severity="error",
+                code="CHARTER_PARTITION",
+                message=(
+                    f"{len(unresolved)} charter member id(s) do not resolve in "
+                    f"graph.json: {', '.join(unresolved[:3])}"
+                    + ("…" if len(unresolved) > 3 else "")
+                    + ". The charter routes agents to nodes that are not there."
+                ),
+                node_id=unresolved[0],
+                path=charter_file,
+                suggested_fix=(
+                    "Recompile to re-derive the charter from the graph on disk. "
+                    "If it survives a recompile with TESSERAE_SCHEMA_DRIFT_APPLY "
+                    "unset, charter.json and graph.json were written by different "
+                    "compiles."
+                ),
+            )
+
+        held: Dict[str, str] = {}
+        duplicated: Set[str] = set()
+        for slug, entry in live.items():
+            direct = entry.get("direct_member_ids")
+            for member_id in direct if isinstance(direct, list) else []:
+                member_id = str(member_id)
+                if member_id in held:
+                    duplicated.add(member_id)
+                held[member_id] = slug
+        if duplicated:
+            sample = sorted(duplicated)
+            yield LintFinding(
+                severity="error",
+                code="CHARTER_PARTITION",
+                message=(
+                    f"{len(sample)} member id(s) are held by more than one live "
+                    f"domain: {', '.join(sample[:3])}"
+                    + ("…" if len(sample) > 3 else "")
+                    + ". CH-01 requires exactly one."
+                ),
+                node_id=sample[0],
+                path=charter_file,
+                suggested_fix=(
+                    "Recompile to re-derive the charter; a partition this broken "
+                    "cannot be repaired by hand."
+                ),
+            )
+        disagreeing = sorted(
+            mid for mid, slug in member_index.items() if held.get(mid) != slug
+        )
+        if disagreeing:
+            yield LintFinding(
+                severity="error",
+                code="CHARTER_PARTITION",
+                message=(
+                    f"{len(disagreeing)} member id(s) are indexed to a live domain "
+                    f"whose direct block does not hold them: "
+                    f"{', '.join(disagreeing[:3])}"
+                    + ("…" if len(disagreeing) > 3 else "")
+                    + ". member_index and the domains disagree about where they live."
+                ),
+                node_id=disagreeing[0],
+                path=charter_file,
+                suggested_fix=(
+                    "Recompile to re-derive the charter; member_index is written "
+                    "from the direct blocks and cannot be re-aligned by hand."
+                ),
+            )
+
+        # ``union(child members) ∪ direct == own members``, in the only form the
+        # record can express it: the tree carries per-domain counts, not per-domain
+        # member lists. A dangling child is reported separately and excluded from
+        # the arithmetic, because "child_slugs names a domain that does not exist"
+        # and "the counts disagree" have different remedies and one causes the
+        # other. ``succeed`` preserves an unmapped child VERBATIM rather than
+        # raising, so this state is reachable by design and lint is where it lands.
+        dangling: List[Tuple[str, str]] = []
+        mismatched: List[str] = []
+        for slug, entry in live.items():
+            raw_children = entry.get("child_slugs")
+            children = (
+                [str(c) for c in raw_children] if isinstance(raw_children, list) else []
+            )
+            absent = [child for child in children if child not in live]
+            if absent:
+                dangling.extend((slug, child) for child in sorted(absent))
+                continue
+            direct = entry.get("direct_member_ids")
+            own = entry.get("member_count")
+            if not isinstance(own, int) or not isinstance(direct, list):
+                continue
+            covered = len(direct)
+            for child in children:
+                child_count = live[child].get("member_count")
+                if not isinstance(child_count, int):
+                    covered = -1
+                    break
+                covered += child_count
+            if covered >= 0 and covered != own:
+                mismatched.append(slug)
+        if dangling:
+            sample = "; ".join(f"{slug} → {child}" for slug, child in dangling[:3])
+            yield LintFinding(
+                severity="error",
+                code="CHARTER_PARTITION",
+                message=(
+                    f"{len(dangling)} child_slugs entr(ies) name a domain no live "
+                    f"charter domain defines: {sample}"
+                    + ("…" if len(dangling) > 3 else "")
+                    + ". Agents descending the charter reach a dead end."
+                ),
+                path=charter_file,
+                suggested_fix="Recompile to re-derive the charter.",
+            )
+        if mismatched:
+            yield LintFinding(
+                severity="error",
+                code="CHARTER_PARTITION",
+                message=(
+                    f"{len(mismatched)} domain(s) claim a member_count that is not "
+                    f"their direct block plus their children's counts: "
+                    f"{', '.join(sorted(mismatched)[:3])}"
+                    + ("…" if len(mismatched) > 3 else "")
+                    + ". The tree does not cover what it says it covers."
+                ),
+                path=charter_file,
+                suggested_fix="Recompile to re-derive the charter.",
+            )
+
+    def _check_charter_fallback(self) -> Iterable[LintFinding]:
+        """CH-06 — how much of the institution is frozen at structural quality.
+
+        ``materialize_community_summary`` never raises and caches nothing on
+        failure, and no later compile revisits a scope whose cache is cold. One
+        LLM outage during a materialization pass therefore leaves a slice of the
+        charter with a structural card and nothing to retry it, indefinitely and
+        invisibly. A count is the entire mechanism: ``info`` severity, because a
+        cold cache is the normal state of a lazy cache and the number — not the
+        severity — is the instrument, exactly as ``REASONING_EDGE_RATIO`` puts
+        its counts into lint-report.json for CI to diff.
+
+        Deliberately NOT a threshold. The spec asks for "exit non-zero above a
+        threshold" and gives no value, no default and no config key anywhere;
+        inventing one would gate every project's build on a number nobody chose.
+
+        Silent unless there is a frozen slice. "0 of 780 domains are warm" is
+        true of every project that never ran the pass — the never-ran noise
+        absent optional state must not generate — and "0 of 780 are cold" is a
+        row saying nothing is wrong. A cold remainder is CH-06's subject only
+        once at least one domain is warm, because that is what proves a pass ran
+        and stopped partway. The undated count is reported on its own terms: it
+        is a property of the corpus rather than of the cache, so it does not
+        wait on a materialization pass.
+
+        Warmth is decided by :func:`charter.brief_cache_path`, never by a
+        filename spelled out here — see the comment on the loop for what
+        spelling one out cost.
+        """
+        from .charter import brief_cache_path
+
+        payload, failure = self._read_charter_for_lint("CHARTER_FALLBACK")
+        if failure is not None:
+            yield failure
+            return
+        if payload is None:
+            return
+        cache_dir = self.wiki_root / "community_summaries"
+        live = {
+            str(slug): entry
+            for slug, entry in payload["domains"].items()
+            if isinstance(entry, dict) and entry.get("status") == "live"
+        }
+        if not live:
+            return
+        # The path is ASKED FOR rather than restated. ``brief_cache_path``
+        # composes the cid namespace and the level exactly as
+        # ``read_domain_brief`` does, so "warm" here means the one file that
+        # reader will open — no other file can serve a brief, and a rename on
+        # the writer's side moves the probe with it. Restating the name is how
+        # this probe was dead on arrival: it keyed on
+        # ``CommunitySummary_<slug>.json``, the namespace charter briefs
+        # deliberately avoid, so no domain was ever warm and the frozen branch
+        # below could not be reached.
+        #
+        # One level per domain, not a scan of all of them. A brief is written
+        # at the domain's OWN tier and nowhere else, and a copy left at another
+        # level by a tier move is residue ``read_domain_brief`` will not find
+        # (``_brief_level``'s docstring calls that residue intended). Counting
+        # it warm would tell an operator a domain has prose when every reader
+        # of it gets a structural card.
+        cold: List[str] = []
+        for slug in live:
+            try:
+                path = brief_cache_path(payload, slug, cache_dir=cache_dir)
+                warm = path is not None and path.is_file()
+            except (TypeError, ValueError, OSError):
+                # A hand-merged charter can carry a non-numeric ``tier``.
+                # Unknown is not warm, and it must not take the lint run down.
+                warm = False
+            if not warm:
+                cold.append(slug)
+        cold.sort()
+        # ``quality`` is written by the domain clock when no member of a domain
+        # carries a resolvable timestamp on any rung of ``temporal._source_ts``'s
+        # ladder — ``charter.py:790``/``:858`` write exactly ``"undated"`` or
+        # ``"dated"`` on every live record, so an ABSENT key means a charter
+        # written before that clock shipped rather than a healthy domain. Not
+        # counting it is still right: the count is a rising extraction-quality
+        # signal, and an old charter has no undated domains to report rather
+        # than an unknown number of them.
+        undated = sorted(
+            slug for slug, entry in live.items() if entry.get("quality") == "undated"
+        )
+        frozen = bool(cold) and len(cold) < len(live)
+        if not frozen and not undated:
+            return
+        message = ""
+        if frozen:
+            message = (
+                f"{len(cold)} of {len(live)} live charter domain(s) have no warm "
+                f"summary and fall back to a structural card: "
+                f"{', '.join(cold[:3])}" + ("…" if len(cold) > 3 else "") + "."
+            )
+        if undated:
+            message += (
+                f"{' ' if message else ''}{len(undated)} domain(s) are undated "
+                f"(no member carries a resolvable timestamp): "
+                f"{', '.join(undated[:3])}"
+                + ("…" if len(undated) > 3 else "")
+                + "."
+            )
+        yield LintFinding(
+            severity="info",
+            code="CHARTER_FALLBACK",
+            message=message,
+            path=str(cache_dir),
+            suggested_fix=(
+                "Cold domains materialize lazily on first read; a count that "
+                "rises across compiles means an LLM outage froze a slice of the "
+                "institution and nothing is retrying it."
             ),
         )
 
