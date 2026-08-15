@@ -2647,6 +2647,7 @@ def _handle_engine(args: argparse.Namespace) -> int:
             consolidate_max_interval_seconds=getattr(args, "consolidate_every", 21600.0),
             consolidate_check_interval=getattr(args, "consolidate_check", 30.0),
             summarize_budget=getattr(args, "summarize_budget", 25),
+            brief_budget=getattr(args, "brief_budget", 8),
         )
         try:
             return fleet.run(once=args.once)
@@ -2677,6 +2678,7 @@ def _handle_engine(args: argparse.Namespace) -> int:
         consolidate_max_interval_seconds=getattr(args, "consolidate_every", 21600.0),
         consolidate_check_interval=getattr(args, "consolidate_check", 30.0),
         summarize_budget=getattr(args, "summarize_budget", 25),
+        brief_budget=getattr(args, "brief_budget", 8),
     )
     try:
         return daemon.run(once=args.once)
@@ -2962,6 +2964,17 @@ def _build_engine_parser() -> argparse.ArgumentParser:
             "Sleep cycle: max LLM calls per consolidation tick spent pre-warming "
             "community-summary caches for the most-demanded graph_map scopes; "
             "0 disables the SUMMARIZE op (default: 25)."
+        ),
+    )
+    parser.add_argument(
+        "--brief-budget",
+        type=int,
+        default=8,
+        help=(
+            "Sleep cycle: max LLM calls per consolidation tick spent pre-warming "
+            "charter domain briefs for the most-demanded live domains; "
+            "0 disables the BRIEF op (default: 8, which warms the charter's "
+            "divisions — graph_map's root card set — in one tick)."
         ),
     )
     return parser

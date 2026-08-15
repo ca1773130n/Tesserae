@@ -19,9 +19,9 @@ Un thread de consolidation dédié se réveille à un **intervalle de vérificat
 
 Chaque édition, tour de session ou recompilation augmente l'horloge d'activité, donc la fenêtre d'inactivité n'elapses que pendant un vrai repos. Les deux horloges sont **monotones**, jamais l'heure murale, et ne sont jamais persistées dans aucun artefact — le minutage de la consolidation ne peut jamais déranger le graphe déterministe en octets.
 
-## Ce qui s'exécute — trois opérations
+## Ce qui s'exécute — cinq opérations
 
-Chaque déclenchement charge le graphe compilé depuis `.tesserae/graph.json` (si le fichier est absent, le passage est ignoré) et exécute trois opérations de consolidation, dans l'ordre. Ensemble, ils reflètent ce qu'un cerveau au repos fait : compresser le matériel récent bruyant, laisser le matériel jamais revisité s'estomper, et créer de nouvelles associations entre ce qui survit.
+Chaque déclenchement charge le graphe compilé depuis `.tesserae/graph.json` (si le fichier est absent, le passage est ignoré) et exécute cinq opérations de consolidation, dans l'ordre. Ensemble, ils reflètent ce qu'un cerveau au repos fait : compresser le matériel récent bruyant, laisser le matériel jamais revisité s'estomper, créer de nouvelles associations entre ce qui survit, et se préparer — passer un peu d'effort maintenant, pendant que personne n'attend, sur les descriptions qu'un lecteur voudra ensuite.
 
 ### 1. Compresser / oublier — distillation
 
@@ -43,13 +43,43 @@ L'opération finale recherche des relations *nouvelles* entre ce qui a survécu.
 
 De manière cruciale, ces arêtes découvertes sont écrites dans une **superposition de side-car** sous `.tesserae`, *jamais* dans `graph.json`. La superposition **s'accumule entre les cycles** — chaque passage d'association déduplique par rapport et étend ce que les passages antérieurs ont trouvé. Au moment de la lecture (requête, expansion PPR, vues de fédération), la superposition est fusionnée dans le graphe **uniquement en mémoire**, exactement comme la superposition de vue par agent — donc le `graph.json` déterministe en octets n'est jamais touché. L'opération entière est enveloppe et ne remonte jamais dans la boucle du daemon.
 
+### 4. Résumer — préchauffer les caches de communauté dans lesquels les agents descendent
+
+`graph_map` sert une carte par portée. Une portée dont le cache de résumé est froid obtient une carte *structurelle* déterministe — un décompte des membres et une liste des meilleurs membres — et le premier agent qui la visite paie un appel LLM synchrone pour obtenir la prose. Cette opération déplace ce coût en dehors du chemin de lecture : dans un budget par tick (`--summarize-budget`, par défaut 25 ; `0` le désactive) il matérialise les résumés pour les portées les plus susceptibles d'être visitées ensuite, de sorte que la visite trouve un cache chaud.
+
+Les candidats sont classés par **demande** — les augmentations d'accès propre de la portée à partir de la traversée `graph_map` plus les décomptes d'accès de ses membres — puis par taille, degré et niveau, dans un ordre total, donc deux ticks sur l'état identique choisissent les mêmes portées. Un cache qui est déjà chaud et encore valide en termes de digestion ne coûte rien ; seule une matérialisation froide le fait. Sans un client LLM, l'opération entière est un non-op.
+
+### 5. Brève — préchauffer les brèves de domaine de la charte
+
+La même forme, un axe au-dessus : les candidats sont les domaines vivants de [la charte](../README.md) plutôt que les communautés du dendrogramme. Un domaine froid s'affiche comme une carte *structurelle* partout où il apparaît — dans `graph_map`, dans le corpus de notation de `charter_route`, et dans le recensement `CHARTER_FALLBACK` de lint — donc ce passage est ce qui donne à l'institution de la charte de la prose.
+
+Le budget est son propre commutateur (`--brief-budget`, par défaut 8 ; `0` le désactive), délibérément séparé de `--summarize-budget` pour qu'aucune opération ne puisse affamer l'autre, et délibérément plus petit : les **divisions** de la charte sont ce que `graph_map` sert comme son ensemble de cartes racine, et il n'y en a que quelques-unes, donc 8 réchauffe le point d'entrée au premier tick d'inactivité et les niveaux plus profonds suivent à 8 par tick derrière.
+
+L'ordre est **en largeur d'abord**, pas un classement de demande. L'ensemble de membres d'un domaine contient son sous-arbre entier, donc la demande d'un parent domine toujours celle de ses enfants et aucun domaine n'est réchauffé avant ses ancêtres. C'est délibéré : les agents descendent de la racine, donc la carte grossière est celle lue en premier et celle qui mérite d'avoir de la prose. Les décomptes d'accès ordonnent les domaines où ni l'un ni l'autre ne contient l'autre, et les **divisions** vivantes — domaines sans parent vivant, la même règle que la racine de `graph_map` utilise, pas `tier == 1` — se classent avant tout le reste.
+
+Certains domaines ne coûtent jamais une fente de budget, car une fente est destinée à être un appel LLM : domaines retirés du service, le recensement `intake` (qui n'a pas de sujet, donc une brève écrite à partir de 25 de ses milliers de membres serait une description confiante d'une fraction d'un pour cent), un domaine dont les membres ont quitté le graphe, et tout ce qui est déjà chaud. Et un domaine dont la matérialisation **échoue** — le plus souvent parce que sa prose n'a cité aucun de ses enfants et a été rejetée — est tenu à distance pendant un nombre de ticks doublant plutôt que réessayé au même classement éternellement, de sorte qu'un domaine définitivement irréchauffable ne peut pas tenir une fente qu'un domaine réchauffable pourrait utiliser.
+
+### Quel est le coût par heure
+
+Les deux budgets sont par **tick**, et un tick se déclenche au maximum une fois par fenêtre `--consolidate-idle`. Par défaut :
+
+| | par tick | ticks/heure à `--consolidate-idle 300` | plafond |
+|---|---|---|---|
+| Résumer | 25 | 12 | 300 appels LLM/heure |
+| Brève | 8 | 12 | 96 appels LLM/heure |
+| **Total** | **33** | **12** | **396 appels LLM/heure** |
+
+C'est un **plafond atteint uniquement pendant que les caches sont froids**, et il décroît jusqu'à **zéro** : un cache chaud et valide en termes de digestion ne coûte aucun appel et aucune fente, de sorte qu'une fois que les portées et domaines d'un projet sont résumés, le cycle de sommeil ne dépense rien jusqu'à ce que le graphe change. Réglez l'un ou l'autre budget à `0` pour désactiver son opération, ou augmentez `--consolidate-idle` pour rendre les ticks plus rares.
+
+**Pourquoi ici et pas dans la compilation.** Une brève coûte un appel LLM. Les frapper pendant la compilation mettrait un appel par domaine à chaque compilation, et la compilation est le chemin que ce projet maintient déterministe et bon marché. Les frapper paresseusement à la lecture signifierait qu'un appel `graph_map` pourrait bloquer sur un modèle. Le cycle de sommeil inactif est le seul endroit qui reste qui peut dépenser un appel que personne n'attend.
+
 ## Sécurité et déterminisme
 
 - **S'exécute sous le portail de compilation.** La consolidation acquiert le même verrou qu'une recompilation, donc elle **s'exécute en série** avec les compilations et **ne chevauche jamais**. Une compilation en attente attend une consolidation en vol et inversement — le graphe n'est jamais lu en cours d'écriture.
 - **Ne remonte jamais dans la boucle du daemon.** Le passage entier est enveloppe ; toute erreur est enregistrée et le thread continue de boucler. Une consolidation échouée ne casse jamais le moteur.
 - **Non-op quand le portail est fermé.** Avec `TESSERAE_AGENT_DISTILL` non défini, le passage ne charge rien de coûteux et retourne immédiatement, donc laisser le cycle de sommeil actif ne coûte essentiellement rien.
 - **Artefacts déterministes, inchangés.** Les artefacts distillés restent déterministes étant donné leurs entrées ; le cycle de sommeil ne change que *quand* la distillation s'exécute, jamais *ce* qu'elle produit. Le minutage d'inactivité ne fuit jamais dans `graph.json` ou aucune couche distillée.
-- **`graph.json` reste octet-idempotent.** Ni nouvelle opération ne l'écrit. L'état d'accès vit dans le side-car `node_memory` et les connexions découvertes dans une superposition cumulative — tous deux sous `.tesserae`, tous deux fusionnés en mémoire uniquement au moment de la lecture. Les octets de graphe faisant autorité ne sont pas affectés par l'historique de récupération ou les liens découverts.
+- **`graph.json` reste octet-idempotent.** Aucune opération ici ne l'écrit. L'état d'accès vit dans le side-car `node_memory`, les connexions découvertes dans une superposition cumulative, et les résumés comme les brèves de domaine dans le cache `community_summaries` — tous sous `.tesserae`, tous fusionnés en mémoire uniquement au moment de la lecture. Les octets de graphe faisant autorité ne sont affectés ni par l'historique de récupération, ni par les liens découverts, ni par la prose préchauffée. Les résumés et les brèves sont des **caches, pas de la connaissance** : supprimer le répertoire de cache ne coûte au prochain lecteur qu'une carte structurelle, rien de plus.
 - **Arrêt propre.** Le thread de consolidation observe l'événement d'arrêt du daemon et quitte promptement sur `Ctrl-C` / arrêt. C'est une fonctionnalité en mode d'exécution longue uniquement : `tesserae engine ... --once` ne le démarre jamais.
 
 ## Drapeaux CLI
@@ -60,6 +90,8 @@ De manière cruciale, ces arêtes découvertes sont écrites dans une **superpos
 | `--consolidate-idle SECONDS` | `300` | Fenêtre de repos : consolider après ce nombre de secondes sans activité. |
 | `--consolidate-every SECONDS` | `21600` | Plafond : consolider au moins aussi souvent indépendamment de l'activité. `0` désactive le plafond. |
 | `--consolidate-check SECONDS` | `30` | À quelle fréquence le thread de consolidation se réveille pour réévaluer les déclencheurs. |
+| `--summarize-budget N` | `25` | Max appels LLM par tick dépensés préchauffant les résumés de communauté. `0` désactive l'opération RÉSUMER. |
+| `--brief-budget N` | `8` | Max appels LLM par tick dépensés préchauffant les brèves de domaine de charte. `0` désactive l'opération BRÈVE. |
 
 ## Comportement de flotte(`--all`)
 

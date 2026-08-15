@@ -44,13 +44,14 @@ window only elapses during genuine rest. Both clocks are **monotonic**, never
 wall-clock, and are never persisted into any artifact — consolidation timing
 can never perturb the byte-deterministic graph.
 
-## What it runs — three operations
+## What it runs — five operations
 
 Each fire loads the compiled graph from `.tesserae/graph.json` (if the file is
-absent, the pass is skipped) and runs three consolidation operations, in order.
+absent, the pass is skipped) and runs five consolidation operations, in order.
 Together they mirror what a resting brain does: compact the loud recent stuff,
-let the never-revisited stuff fade, and wire up new associations between what
-survives.
+let the never-revisited stuff fade, wire up new associations between what
+survives, and rehearse — spend a little effort now, while nobody is waiting, on
+the descriptions a reader will want next.
 
 ### 1. Compress / forget — distillation
 
@@ -102,6 +103,78 @@ merged into the graph **in memory only**, exactly like the per-agent view
 overlay — so the byte-deterministic `graph.json` is never touched. The whole
 operation is wrapped and never raises into the daemon loop.
 
+### 4. Summarize — pre-warm the community caches agents descend into
+
+`graph_map` serves a card per scope. A scope whose summary cache is cold gets a
+deterministic *structural* card — a member count and a list of top members —
+and the first agent to visit it pays a synchronous LLM call to get prose. This
+operation moves that cost off the read path: within a per-tick budget
+(`--summarize-budget`, default 25; `0` disables it) it materializes summaries
+for the scopes most likely to be visited next, so the visit finds a warm cache.
+
+Candidates are ranked by **demand** — the scope's own access bumps from
+`graph_map` traversal plus the access counts of its members — then by size,
+degree and level, in a total order, so two ticks over identical state pick the
+same scopes. A cache that is already warm and still digest-valid costs no
+budget; only a cold materialization does. Without an LLM client the whole
+operation is a no-op.
+
+### 5. Brief — pre-warm the charter's domain briefs
+
+The same shape, one axis over: the candidates are the live domains of
+[the charter](../README.md) rather than the dendrogram's communities. A cold
+domain renders as a structural card everywhere it appears — in `graph_map`, in
+`charter_route`'s scoring corpus, and in lint's `CHARTER_FALLBACK` census — so
+this pass is what gives the chartered institution prose at all.
+
+The budget is its own knob (`--brief-budget`, default 8; `0` disables it),
+deliberately separate from `--summarize-budget` so neither op can starve the
+other, and deliberately smaller: the charter's **divisions** are what
+`graph_map` serves as its root card set, and there are only a handful of them,
+so 8 warms the entry point in the first idle tick and deeper tiers follow at 8
+per tick behind it.
+
+The order is **breadth-first**, not a demand rank. A domain's member set
+contains its whole subtree, so a parent's demand always dominates its
+children's and no domain is warmed before its ancestors. That is deliberate:
+agents descend from the root, so the coarse card is the one read first and the
+one worth having prose for. Access counts order domains where neither contains
+the other, and the live **divisions** — domains with no live parent, the same
+rule `graph_map`'s root uses, not `tier == 1` — sort ahead of everything else.
+
+Some domains never cost a budget slot, because a slot is meant to be an LLM
+call: retired domains, the `intake` census (which has no subject, so a brief
+written from 25 of its thousands of members would be a confident description
+of a fraction of a percent), a domain whose members have left the graph, and
+anything already warm. And a domain whose materialization **fails** — most
+often because its prose cited none of its children and was rejected — is held
+off for a doubling number of ticks rather than retried at the same rank
+forever, so a permanently unwarmable domain cannot hold a slot that a warmable
+one could use.
+
+### What this costs per hour
+
+Both budgets are per **tick**, and a tick fires at most once per
+`--consolidate-idle` window. At the defaults:
+
+| | per tick | ticks/hour at `--consolidate-idle 300` | ceiling |
+|---|---|---|---|
+| Summarize | 25 | 12 | 300 LLM calls/hour |
+| Brief | 8 | 12 | 96 LLM calls/hour |
+| **Total** | **33** | **12** | **396 LLM calls/hour** |
+
+That is a **ceiling reached only while caches are cold**, and it decays to
+**zero**: a warm, digest-valid cache costs no call and no slot, so once a
+project's scopes and domains are summarized the sleep cycle spends nothing
+until the graph changes. Set either budget to `0` to switch its op off, or
+raise `--consolidate-idle` to make ticks rarer.
+
+**Why here and not in compile.** A brief costs one LLM call. Minting them
+during compile would put one call per domain on every compile, and compile is
+the path this project keeps deterministic and cheap. Minting them lazily on
+read would mean a `graph_map` call could block on a model. The idle sleep cycle
+is the only place left that can spend a call nobody is waiting on.
+
 ## Safety and determinism
 
 - **Runs under the compile gate.** Consolidation acquires the same lock a
@@ -118,11 +191,14 @@ operation is wrapped and never raises into the daemon loop.
   deterministic given their inputs; the sleep cycle only changes *when*
   distillation runs, never *what* it produces. Idle timing never leaks into
   `graph.json` or any distilled layer.
-- **`graph.json` stays byte-idempotent.** Neither new operation writes it.
-  Access state lives in the `node_memory` sidecar and discovered connections
-  in an accumulating overlay — both under `.tesserae`, both merged in memory
-  only at read time. The authoritative graph bytes are untouched by
-  retrieval history or discovered links.
+- **`graph.json` stays byte-idempotent.** No operation here writes it. Access
+  state lives in the `node_memory` sidecar, discovered connections in an
+  accumulating overlay, and both summaries and domain briefs in the
+  `community_summaries` cache — all under `.tesserae`, all merged in memory
+  only at read time. The authoritative graph bytes are untouched by retrieval
+  history, discovered links or pre-warmed prose. Summaries and briefs are
+  **caches, not knowledge**: deleting the cache directory costs the next reader
+  a structural card and nothing else.
 - **Clean shutdown.** The consolidation thread observes the daemon's stop
   event and exits promptly on `Ctrl-C` / shutdown. It is a long-running-mode
   feature only: `tesserae engine ... --once` never starts it.
@@ -135,6 +211,8 @@ operation is wrapped and never raises into the daemon loop.
 | `--consolidate-idle SECONDS` | `300` | Rest window: consolidate after this many seconds with no activity. |
 | `--consolidate-every SECONDS` | `21600` | Ceiling: consolidate at least this often regardless of activity. `0` disables the ceiling. |
 | `--consolidate-check SECONDS` | `30` | How often the consolidation thread wakes to re-evaluate the triggers. |
+| `--summarize-budget N` | `25` | Max LLM calls per tick spent pre-warming community summaries. `0` disables the SUMMARIZE op. |
+| `--brief-budget N` | `8` | Max LLM calls per tick spent pre-warming charter domain briefs. `0` disables the BRIEF op. |
 
 ## Fleet behavior (`--all`)
 

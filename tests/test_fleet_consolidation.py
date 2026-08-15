@@ -142,5 +142,6 @@ def test_fleet_defaults_match_daemon_defaults():
         "consolidate_max_interval_seconds",
         "consolidate_check_interval",
         "summarize_budget",
+        "brief_budget",
     ):
         assert fleet_params[knob].default == daemon_params[knob].default

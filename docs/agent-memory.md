@@ -84,16 +84,19 @@ You do not have to remember to distill. Like a brain consolidating memory
 during rest, the always-on `tesserae engine` daemon consolidates on its own
 whenever a project goes **idle** (no edits or sessions for a few minutes), plus
 a periodic ceiling so a continuously busy project still consolidates. Each fire
-runs three operations: it **compresses and forgets** (the distillation pass
+runs five operations: it **compresses and forgets** (the distillation pass
 below), lets unretrieved knowledge **fade by disuse** (the LRU decay above),
-and **discovers new connections** between what survives. The distillation step
+**discovers new connections** between what survives, and then spends two small
+per-tick LLM budgets **pre-warming** the summaries agents read — community
+summaries for the scopes `graph_map` descends into, and domain briefs for the
+charter's live domains. The distillation step
 wraps exactly the `maybe_distill_on_refresh` trigger described above — the same
 opt-in gate, per-agent watermark, and memory-pressure checks — so the cycle is
 a no-op unless `TESSERAE_AGENT_DISTILL` is set, runs under the compile gate, and
 never disturbs the deterministic artifacts.
 
 Full behavior, CLI flags (`--consolidate-idle` / `--consolidate-every` /
-`--consolidate-check`), and fleet notes:
+`--consolidate-check` / `--summarize-budget` / `--brief-budget`), and fleet notes:
 [docs/engine-consolidation.md](engine-consolidation.md).
 
 ## Forgetting — never deletion

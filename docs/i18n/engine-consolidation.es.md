@@ -19,9 +19,9 @@ Un hilo de consolidación dedicado se despierta en un **intervalo de verificaci�
 
 Cada edición, turno de sesión o recompilación aumenta el reloj de actividad, por lo que la ventana de inactividad solo transcurre durante el descanso genuino. Ambos relojes son **monótonos**, nunca reloj de pared, y nunca se persisten en ningún artefacto — el tiempo de consolidación nunca puede perturbar el gráfico byte-determinista.
 
-## Qué se ejecuta — tres operaciones
+## Qué se ejecuta — cinco operaciones
 
-Cada disparo carga el gráfico compilado desde `.tesserae/graph.json` (si el archivo está ausente, el paso se omite) y ejecuta tres operaciones de consolidación, en orden. Juntos reflejan lo que hace un cerebro descansado: comprime lo reciente ruidoso, deja que lo nunca revisitado se desvanezca, y crea nuevas asociaciones entre lo que sobrevive.
+Cada disparo carga el gráfico compilado desde `.tesserae/graph.json` (si el archivo está ausente, el paso se omite) y ejecuta cinco operaciones de consolidación, en orden. Juntos reflejan lo que hace un cerebro descansado: comprime lo reciente ruidoso, deja que lo nunca revisitado se desvanezca, crea nuevas asociaciones entre lo que sobrevive, y ensaya — dedica un pequeño esfuerzo ahora, mientras nadie está esperando, en las descripciones que un lector querrá después.
 
 ### 1. Comprimir / olvidar — destilación
 
@@ -43,13 +43,43 @@ La operación final busca *nuevas* relaciones entre lo que sobrevivió. Incrusta
 
 Crucialmente, estos bordes descubiertos se escriben en una **superposición de sidecar** bajo `.tesserae`, *nunca* en `graph.json`. La superposición **acumula entre ciclos** — cada paso de asociación deduplica contra y extiende lo que encontraron los pasos anteriores. En tiempo de lectura (consulta, expansión PPR, vistas de federación) la superposición se fusiona en el gráfico **en memoria solo**, exactamente como la superposición de vista por agente — por lo que el `graph.json` byte-determinista nunca se toca. Toda la operación se envuelve y nunca se eleva al bucle del demonio.
 
+### 4. Resumir — pre-calentar los cachés de resumen de comunidad en los que descienden los agentes
+
+`graph_map` sirve una tarjeta por alcance. Un alcance cuyo caché de resumen está frío obtiene una tarjeta *estructural* determinista — un recuento de miembros y una lista de los mejores miembros — y el primer agente que lo visita paga una llamada LLM síncrona para obtener prosa. Esta operación traslada ese costo fuera de la ruta de lectura: dentro de un presupuesto por tick (`--summarize-budget`, predeterminado 25; `0` lo desactiva) materializa resúmenes para los alcances más probables de ser visitados a continuación, para que la visita encuentre un caché caliente.
+
+Los candidatos se clasifican por **demanda** — los propios incrementos de acceso del alcance de la travesía `graph_map` más los conteos de acceso de sus miembros — luego por tamaño, grado y nivel, en un orden total, por lo que dos ticks sobre estado idéntico eligen los mismos alcances. Un caché que ya está caliente y aún tiene digest válido no cuesta presupuesto; solo una materialización fría lo hace. Sin un cliente LLM, toda la operación es una operación sin cambios.
+
+### 5. Breve — pre-calentar los resúmenes de dominio del acta
+
+La misma forma, un eje sobre: los candidatos son los dominios activos de [la acta](../README.md) en lugar de las comunidades del dendrograma. Un dominio frío se representa como una tarjeta estructural dondequiera que aparezca — en `graph_map`, en el corpus de puntuación de `charter_route`, y en el censo `CHARTER_FALLBACK` de lint — así que este pase es lo que le da a la institución estatutaria prosa en definitiva.
+
+El presupuesto es su propio control (`--brief-budget`, predeterminado 8; `0` lo desactiva), deliberadamente separado de `--summarize-budget` para que ninguna operación pueda agotar la otra, y deliberadamente más pequeño: las **divisiones** del acta son lo que `graph_map` sirve como su conjunto de tarjeta raíz, y hay solo un puñado de ellas, así que 8 calienta el punto de entrada en el primer tick inactivo y los niveles más profundos lo siguen a 8 por tick detrás.
+
+El orden es **primero en amplitud**, no una clasificación por demanda. El conjunto de miembros de un dominio contiene su subárbol completo, por lo que la demanda de un padre siempre domina la de sus hijos y ningún dominio se calienta antes de sus ancestros. Eso es deliberado: los agentes descienden desde la raíz, por lo que la tarjeta gruesa es la que se lee primero y la que vale la pena tener prosa para. Los conteos de acceso ordenan dominios donde ninguno contiene al otro, y las **divisiones** activas — dominios sin padre activo, la misma regla que usa `graph_map` en su raíz, no `tier == 1` — se clasifican por delante de todo lo demás.
+
+Algunos dominios nunca cuestan un espacio de presupuesto, porque un espacio está destinado a ser una llamada LLM: dominios retirados, el censo `intake` (que no tiene sujeto, así que un resumen escrito desde 25 de sus miles de miembros sería una descripción confiada de una fracción de un por ciento), un dominio cuyos miembros han dejado el gráfico, y cualquier cosa ya caliente. Y un dominio cuya materialización **falla** — más a menudo porque su prosa no citó ninguno de sus hijos y fue rechazada — se mantiene alejado por un número duplicador de ticks en lugar de reintentarse en el mismo rango para siempre, así que un dominio permanentemente que no se puede calentar no puede mantener un espacio que uno calentable pudiera usar.
+
+### Qué cuesta esto por hora
+
+Ambos presupuestos son por **tick**, y un tick se dispara como máximo una vez por ventana `--consolidate-idle`. En los valores predeterminados:
+
+| | por tick | ticks/hora en `--consolidate-idle 300` | techo |
+|---|---|---|---|
+| Resumir | 25 | 12 | 300 llamadas LLM/hora |
+| Breve | 8 | 12 | 96 llamadas LLM/hora |
+| **Total** | **33** | **12** | **396 llamadas LLM/hora** |
+
+Ese es un **techo alcanzado solo mientras los cachés están fríos**, y decae a **cero**: un caché caliente y con digest válido no cuesta ninguna llamada ni espacio, así que una vez que se resumen los alcances y dominios de un proyecto, el ciclo de sueño no gasta nada hasta que el gráfico cambia. Establece cualquier presupuesto en `0` para apagar su operación, o sube `--consolidate-idle` para hacer los ticks más raros.
+
+**Por qué aquí y no en compile.** Un resumen cuesta una llamada LLM. Acuñarlos durante la compilación pondría una llamada por dominio en cada compilación, y la compilación es la ruta que este proyecto mantiene determinista y barata. Acuñarlos perezosamente en lectura significaría que una llamada `graph_map` podría bloquearse en un modelo. El ciclo de sueño inactivo es el único lugar que queda que puede gastar una llamada en la que nadie está esperando.
+
 ## Seguridad y determinismo
 
 - **Se ejecuta bajo la puerta de compilación.** La consolidación adquiere el mismo bloqueo que una recompilación, por lo que se serializa con compilaciones y **nunca se superpone**. Una compilación pendiente espera una consolidación en vuelo y viceversa — el gráfico nunca se lee durante la escritura.
 - **Nunca se eleva al bucle del demonio.** Todo el paso se envuelve; cualquier error se registra y el hilo mantiene el bucle. Una consolidación fallida nunca derriba el motor.
 - **No-op cuando la puerta está apagada.** Con `TESSERAE_AGENT_DISTILL` sin establecer, el paso no carga nada costoso y regresa inmediatamente, por lo que dejar el ciclo de sueño encendido cuesta esencialmente nada.
 - **Artefactos deterministas, sin cambios.** Los artefactos destilados permanecen deterministas dadas sus entradas; el ciclo de sueño solo cambia *cuándo* se ejecuta la destilación, nunca *qué* produce. El tiempo de inactividad nunca se filtra en `graph.json` o ninguna capa destilada.
-- **`graph.json` sigue siendo byte-idempotente.** Ninguna operación nueva lo escribe. El estado de acceso vive en el sidecar `node_memory` y las conexiones descubiertas en una superposición acumulativa — ambas bajo `.tesserae`, ambas fusionadas en memoria solo en tiempo de lectura. Los bytes de gráfico autorizados no se ven afectados por el historial de recuperación o enlaces descubiertos.
+- **`graph.json` sigue siendo byte-idempotente.** Ninguna operación aquí lo escribe. El estado de acceso vive en el sidecar `node_memory`, las conexiones descubiertas en una superposición acumulativa, y tanto los resúmenes como los resúmenes de dominio en el caché `community_summaries` — todos bajo `.tesserae`, todos fusionados en memoria solo en tiempo de lectura. Los bytes de gráfico autorizados no se ven afectados por el historial de recuperación, enlaces descubiertos o prosa pre-calentada. Los resúmenes y resúmenes son **cachés, no conocimiento**: eliminar el directorio de caché cuesta al lector siguiente una tarjeta estructural y nada más.
 - **Apagado limpio.** El hilo de consolidación observa el evento de parada del demonio y sale adecuadamente en `Ctrl-C` / apagado. Es solo una característica de modo de larga duración: `tesserae engine ... --once` nunca la inicia.
 
 ## Banderas CLI
@@ -60,6 +90,8 @@ Crucialmente, estos bordes descubiertos se escriben en una **superposición de s
 | `--consolidate-idle SECONDS` | `300` | Ventana de descanso: consolida después de esta cantidad de segundos sin actividad. |
 | `--consolidate-every SECONDS` | `21600` | Techo: consolida al menos tan a menudo independientemente de la actividad. `0` desactiva el techo. |
 | `--consolidate-check SECONDS` | `30` | Con qué frecuencia el hilo de consolidación se despierta para reevaluar los disparadores. |
+| `--summarize-budget N` | `25` | Máximo de llamadas LLM por tick gastadas en pre-calentar resúmenes de comunidad. `0` desactiva la operación SUMMARIZE. |
+| `--brief-budget N` | `8` | Máximo de llamadas LLM por tick gastadas en pre-calentar resúmenes de dominio del acta. `0` desactiva la operación BRIEF. |
 
 ## Comportamiento de flota(`--all`)
 
