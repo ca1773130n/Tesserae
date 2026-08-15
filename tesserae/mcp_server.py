@@ -1186,6 +1186,78 @@ class LLMWikiMCPServer:
                 },
             },
             {
+                "name": "charter_route",
+                "description": (
+                    "Place ONE task in the chartered domain tree in one call — "
+                    "the alternative to paging graph_map's card set when you "
+                    "cannot pick a card by name. Ranks every live domain "
+                    "(slug, anchor name, and its brief where one is cached) "
+                    "and walks beam-1 from a division down to the domain whose "
+                    "subtree carries the best evidence. Returns {routed, path, "
+                    "brief, parent, siblings, route_quality}; path cards carry "
+                    "{slug, tier, altitude, anchor, member_count, child_count}, "
+                    "and a slug is a scope you can pin — it survives ingest, "
+                    "where a community id does not. BEST-EFFORT, and the split "
+                    "matters: charter.json's BYTES are idempotent, this ROUTE "
+                    "is not — it fuses a lexical and an embedding lane, and the "
+                    "embedding lane varies with the machine's embedding "
+                    "backend. A domain's row carries its brief once one has "
+                    "been written; NO COMPILE WRITES BRIEFS YET, so today every "
+                    "row is cold and warm_rows is 0. "
+                    "route_quality reports {backend, semantic, corpus_rows, "
+                    "warm_rows, evidenced_rows} so you can see which machinery "
+                    "answered, and every card carries evidence: 'lexical' (a "
+                    "term match, which survives a backend change), 'semantic' "
+                    "(embedding similarity alone, which does not) or 'none' "
+                    "(walked through — the evidence is below it). When the "
+                    "task cannot be placed the response "
+                    "names NO domain — routed:false, empty path, null brief, "
+                    "and a note saying why. There is no low-confidence "
+                    "candidate to fall back on, deliberately: a domain that "
+                    "matched nothing but a word every domain shares is not a "
+                    "weak answer, it is not an answer. Requires "
+                    ".tesserae/charter/charter.json, written by `tesserae "
+                    "compile` on a project above the one-read bound."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop, "agent": agent_prop,
+                        "task": {
+                            "type": "string",
+                            "description": (
+                                "The task or question to place, in natural "
+                                "language. Name the subject, not the tool: the "
+                                "corpus is domain names and briefs."
+                            ),
+                        },
+                        "altitude": {
+                            "type": "string",
+                            "enum": ["auto", "division", "department", "team"],
+                            "default": "auto",
+                            "description": (
+                                "A CAP on how deep the walk may go, on the "
+                                "ordered axis division < department < team. "
+                                "'auto' follows the evidence; a named altitude "
+                                "stops at the first domain sitting at that "
+                                "level or past it — past it, because a branch "
+                                "need not carry every label (a small tier-2 "
+                                "domain is a 'team', never a 'department'). "
+                                "route_quality.altitude_reached therefore "
+                                "reports the level the walk ACTUALLY stopped "
+                                "at, not the one requested. Guaranteed: a "
+                                "shallower request never returns a deeper "
+                                "domain than a deeper one, and none go past "
+                                "'auto'."
+                            ),
+                        },
+                    },
+                    "required": ["task"],
+                    "additionalProperties": False,
+                },
+            },
+            {
                 "name": "search_nodes",
                 "description": (
                     "Search public research-graph nodes by name, aliases, description, type, "
@@ -2813,6 +2885,8 @@ class LLMWikiMCPServer:
             return self.graph_summary(self._load_requested_graph(args))
         if name == "graph_map":
             return self._mcp_graph_map(args)
+        if name == "charter_route":
+            return self._mcp_charter_route(args)
         if name == "search_nodes":
             # Accept both 'query' and 'q' (short alias), plus singular 'type'
             # alongside the legacy 'types' list. Either may be omitted.
@@ -3825,6 +3899,41 @@ class LLMWikiMCPServer:
         items.sort(key=lambda d: (-int(d["member_count"]), d["community_id"]))
         items = items[: max(1, int(limit))]
         return {"communities": items, "total": len(items)}
+
+    def _mcp_charter_route(self, args: JSONDict) -> JSONDict:
+        """One-call route into the chartered domain tree (re-scope step 5).
+
+        ``CharterUnreadable`` is re-raised as ``ValueError`` rather than
+        absorbed into "no charter": the two conditions are different and the
+        CLI/dispatch layer only surfaces ValueError/OSError as an actionable
+        message. Collapsing them would report a truncated charter.json as a
+        project that simply has none, which is the exact confusion
+        ``read_charter``'s own docstring exists to prevent.
+        """
+        from .charter import CharterUnreadable, read_charter
+        from .charter_route import charter_route as _charter_route
+
+        graph, project_root = self._load_requested_graph_with_root(args)
+        try:
+            charter = read_charter(project_root) if project_root else None
+        except CharterUnreadable as exc:
+            raise ValueError(str(exc)) from exc
+        summary_cache_dir = (
+            Path(project_root) / ".tesserae" / "community_summaries"
+            if project_root
+            else None
+        )
+        return _charter_route(
+            graph,
+            charter,
+            str(args.get("task") or ""),
+            altitude=str(args.get("altitude") or "auto"),
+            summary_cache_dir=summary_cache_dir,
+            # The corpus is 780 synthetic rows re-embedded on every call
+            # without this; the cache keys on sha256(text), not node id, so a
+            # charter row can never collide with a graph node's vector.
+            vector_cache=_VectorCache.for_project(project_root) if project_root else None,
+        )
 
     def _mcp_graph_map(self, args: JSONDict) -> JSONDict:
         """Budgeted Descent map over the hierarchy sidecar (§5.1 + §5.2).
