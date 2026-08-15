@@ -536,6 +536,30 @@ def test_read_charter_raises_on_a_corrupt_file_instead_of_saying_no_charter(tmp_
     )
 
 
+@pytest.mark.parametrize("body", ["[]", '"hello"', "42", "null"])
+def test_read_charter_refuses_valid_json_that_is_not_an_object(tmp_path: Path, body: str):
+    """A parse that SUCCEEDS but yields a non-object is unreadable too.
+
+    Two distinct damages, one cause. ``[]``/``"hello"``/``42`` returned a value
+    with no ``.get``, so every reader downstream — including ``graph_map()``,
+    the default entry point — died on an AttributeError rather than degrading.
+    ``null`` returned None, which is worse and quieter: it is the value that
+    means "this project has no charter yet", so the compile path would
+    RE-FOUND the whole institution over a damaged file. Both belong to
+    ``read_charter``, the one place that turns bytes into the dict every other
+    signature in this module promises.
+    """
+    from tesserae.charter import CharterUnreadable
+
+    path = charter_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+
+    with pytest.raises(CharterUnreadable) as excinfo:
+        read_charter(tmp_path)
+    assert str(path) in str(excinfo.value)
+
+
 def _dense_fat_clique_bridged_to_peripheral() -> ResearchGraph:
     """An 8-node clique of fat nodes bridged by a single edge to a small
     peripheral triangle.
@@ -1584,3 +1608,101 @@ def test_a_charter_written_before_the_clock_existed_gains_one_without_a_reorg():
     assert carried != prior, "the clock must reach disk on this compile"
     assert carried["reorg_seq"] == prior["reorg_seq"]
     assert all("distilled_through" in e for e in carried["domains"].values())
+
+
+# ---------------------------------------------------------------------------
+# The read side the charter entry point is built on (re-scope step 2)
+# ---------------------------------------------------------------------------
+
+
+def _read_side_charter() -> dict:
+    """A charter exercising every degraded shape the readers have to survive."""
+    def _row(**over):
+        row = {
+            "tier": 1, "own_altitude": "division", "parent_slug": None,
+            "child_slugs": [], "anchor_id": "", "direct_member_ids": [],
+            "member_count": 0, "reorg_seq": 0, "status": "live",
+            "transition": "founded", "unsplittable": False,
+        }
+        row.update(over)
+        return row
+
+    return {
+        "version": 1,
+        "reorg_seq": 3,
+        "domains": {
+            "beta": _row(child_slugs=["beta-old", "beta-new"],
+                         direct_member_ids=["Concept:b0"], member_count=4),
+            "beta-new": _row(tier=2, parent_slug="beta",
+                             direct_member_ids=["Concept:b1", "Concept:b2"]),
+            # A retired CHILD still carrying its frozen member snapshot.
+            "beta-old": _row(tier=2, parent_slug="beta", status="retired",
+                             transition="retired",
+                             direct_member_ids=["Concept:b1"]),
+            "alpha": _row(direct_member_ids=["Concept:a1"], member_count=1),
+            "dead": _row(status="retired", transition="retired"),
+            # Live, but its parent is a tombstone — an orphan.
+            "stranded": _row(tier=2, parent_slug="dead",
+                             direct_member_ids=["Concept:s1"], member_count=1),
+        },
+        "member_index": {},
+    }
+
+
+def test_live_divisions_sorts_by_name_and_drops_tombstones():
+    from tesserae.charter import live_divisions
+
+    # Name order, not size order: that inversion IS the entry-point fix.
+    assert live_divisions(_read_side_charter()) == ["alpha", "beta", "stranded"]
+
+
+def test_an_orphaned_domain_surfaces_at_the_root_instead_of_vanishing():
+    """Keying the root on tier==1 would hide a live domain behind a tombstone.
+
+    ``stranded`` is tier 2 and holds a member; its parent was retired without
+    it. Hiding it makes its slice unreachable from every descent path there
+    is while CH-01 still reports the partition complete.
+    """
+    from tesserae.charter import live_divisions, live_parent_slug
+
+    charter = _read_side_charter()
+    assert charter["domains"]["stranded"]["tier"] == 2
+    assert "stranded" in live_divisions(charter)
+    # And it ascends to the root rather than to a scope that would raise.
+    assert live_parent_slug(charter, "stranded") is None
+    assert live_parent_slug(charter, "beta-new") == "beta"
+
+
+def test_domain_members_walks_live_children_only():
+    """A tombstone's frozen members were re-assigned; folding them back in
+    would report one id under two domains and contradict member_index."""
+    from tesserae.charter import domain_members
+
+    charter = _read_side_charter()
+    assert domain_members(charter, "beta") == [
+        "Concept:b0", "Concept:b1", "Concept:b2",
+    ]
+    # b1 is reachable only through the LIVE child, never through beta-old.
+    assert domain_members(charter, "beta-new") == ["Concept:b1", "Concept:b2"]
+    assert domain_members(charter, "alpha") == ["Concept:a1"]
+
+
+def test_domain_members_terminates_on_a_cyclic_child_chain():
+    """The walk is handed files off disk, not only charters build_charter made."""
+    from tesserae.charter import domain_members
+
+    charter = _read_side_charter()
+    charter["domains"]["beta-new"]["child_slugs"] = ["beta"]
+    assert domain_members(charter, "beta") == [
+        "Concept:b0", "Concept:b1", "Concept:b2",
+    ]
+
+
+def test_split_domain_scope_is_the_only_reader_of_the_grammar():
+    from tesserae.charter import DOMAIN_SCOPE_PREFIX, split_domain_scope
+
+    assert DOMAIN_SCOPE_PREFIX == "domain:"
+    assert split_domain_scope("domain:alpha-1") == "alpha-1"
+    assert split_domain_scope("domain:") is None  # a prefix is not a slug
+    assert split_domain_scope("CommunitySummary:abc") is None
+    assert split_domain_scope("agent:writer") is None

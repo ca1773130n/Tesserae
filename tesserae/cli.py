@@ -6599,7 +6599,9 @@ def _build_graph_map_parser() -> argparse.ArgumentParser:
         description=(
             "Budgeted Descent navigation over the compiled graph + hierarchy sidecar "
             "(the graph_map MCP tool, exposed as a CLI verb for non-MCP callers). No "
-            "--scope prints the root map; pass a card's scope_id to descend, its "
+            "--scope prints the root map: one card per named charter division when "
+            "the project has a charter, otherwise one card per coarsest community "
+            "(header.entry says which). Pass a card's scope_id to descend, its "
             "parent_scope to ascend, --cursor to page an oversized level. Emits the "
             "tool's JSON result on stdout. Requires a >= 0.25 compile (which writes "
             ".tesserae/hierarchy.json)."
@@ -6607,14 +6609,16 @@ def _build_graph_map_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
-            "  tesserae graph-map                      # root map\n"
-            "  tesserae graph-map --scope <cid>        # descend a community\n"
-            "  tesserae graph-map --scope org:root     # agent org tree\n"
+            "  tesserae graph-map                          # root map\n"
+            "  tesserae graph-map --scope domain:<slug>    # descend a charter domain\n"
+            "  tesserae graph-map --scope communities:root # the community dendrogram\n"
+            "  tesserae graph-map --scope <cid>            # descend a community\n"
+            "  tesserae graph-map --scope org:root         # agent org tree\n"
             "  tesserae graph-map --scope <cid> --cursor 50\n"
         ),
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to CWD.")
-    parser.add_argument("--scope", default=None, help="Scope id: a community/node scope_id, 'org:root', 'agent:<key>', or '<alias>::[<cid>]'. Omit for the root map.")
+    parser.add_argument("--scope", default=None, help="Scope id: a community/node scope_id, 'domain:<slug>', 'communities:root', 'org:root', 'agent:<key>', or '<alias>::[<cid>]'. Omit for the root map.")
     parser.add_argument("--cursor", type=int, default=0, help="Pagination cursor for an oversized level (from a prior '+N more' continuation).")
     parser.add_argument("--budget-chars", type=int, default=None, help="Response character budget (default 32000; 0 = uncapped).")
     parser.set_defaults(_handler="_handle_graph_map")

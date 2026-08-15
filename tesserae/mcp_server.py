@@ -303,6 +303,119 @@ def _paginate_cards(
     return result
 
 
+def _int_or_zero(raw: Any) -> int:
+    """``raw`` as an int, or 0 when it is not one. Total by construction.
+
+    A header field read straight off a hand-editable sidecar. ``charter.json``
+    is a file an operator can mangle, and ``int("abc")`` raising here would
+    fail ``graph_map()`` — the entry point that is specifically documented to
+    survive a damaged optional sidecar and degrade instead. Zero is the same
+    answer this reader already gave for a missing key.
+    """
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _domain_card(
+    charter: Dict[str, Any],
+    hierarchy: "Hierarchy",
+    slug: str,
+    members: Sequence[str],
+    by_id: Dict[str, Any],
+    degrees: Dict[str, int],
+    *,
+    summary_cache_dir: Optional[Path] = None,
+) -> JSONDict:
+    """The uniform card for one chartered domain — ``community_card``, re-keyed.
+
+    Deliberately NOT a second card shape. A domain is a ``(slug, members)``
+    pair exactly as a community is a ``(cid, members)`` pair, so it goes
+    through the same builder and inherits the same deterministic structural
+    floor, the same ``live_member_count`` skew signal and the same twelve
+    keys. A client that can read one card can read both.
+
+    The warm-summary lookup is the one thing it cannot inherit.
+    ``community_card`` gates its cache read on ``hierarchy.find_scope(cid)``,
+    which is None for every charter slug — a slug is not in the dendrogram
+    manifest and never will be — so routing a domain through it can never
+    yield ``quality="llm"`` no matter what is cached. The read therefore
+    happens HERE, through ``charter.read_domain_brief``, which is the reader
+    paired with the ``materialize_domain_brief`` writer and so keys on
+    ``CharterDomain:<slug>`` at the domain's tier by construction. Calling the
+    paired reader rather than re-deriving its key here is the point: a reader
+    that spells the cache convention out for itself passes every test it has
+    and still misses every file the writer wrote, which is exactly how this
+    card served ``quality="structural"`` over a warm brief.
+
+    Three fields are overridden because ``community_card`` derives them from
+    the dendrogram, where a slug does not appear:
+
+    * ``scope_id`` — contractually the string a caller passes back as
+      ``scope``, so it carries the ``domain:`` prefix.
+    * ``children_count`` — what ``graph_map('domain:<slug>')`` returns
+      pre-budget: live child domains plus this domain's own direct members.
+      ``hierarchy.children(slug)`` finds nothing and would report every
+      subtree member as a child card.
+    * ``parent_scope`` — the charter's parent, not the containing community.
+
+    A fourth is overridden only when no brief is warm: the title becomes
+    the ANCHOR's name, or the slug itself when the domain has no anchor.
+    ``_structural_summary`` titles a card with its top-degree member, which
+    for a domain is not the node the slug was minted from and on the live
+    graph openly contradicts it — ``domain:psnr`` came back titled
+    ``한 줄 요약``, the exact SourceDocument anchor step 1's selector fix
+    demoted, and ``domain:intake``, which is a census of everything structure
+    could not route, came back titled ``PEP 8 Style Guide: Essentials``. A
+    card whose name disagrees with the scope you pass to reach it is not a
+    choosable name, and naming a 7,581-member census after one arbitrary
+    member of it is worse than admitting it has no name. The count and the
+    top members stay in the summary either way. A warm/LLM summary keeps its
+    own title: that one describes the domain rather than merely naming it.
+    """
+    from .charter import (
+        DOMAIN_SCOPE_PREFIX,
+        live_child_slugs,
+        live_parent_slug,
+        read_domain_brief,
+    )
+    from .hierarchy import SUMMARY_CHAR_CAP, community_card
+
+    record = (charter.get("domains") or {}).get(slug) or {}
+    # No summary_cache_dir: for a slug that read is dead code (see docstring),
+    # and the live lookup is read_domain_brief below.
+    card = community_card(hierarchy, slug, list(members), by_id, degrees)
+    brief = (
+        read_domain_brief(charter, slug, by_id, degrees, cache_dir=summary_cache_dir)
+        if summary_cache_dir is not None
+        else None
+    )
+    parent = live_parent_slug(charter, slug)
+    children_count = len(live_child_slugs(charter, slug)) + len(
+        record.get("direct_member_ids") or []
+    )
+    if brief is not None:
+        brief_title, description, tags = brief
+        card = {
+            **card,
+            "title": brief_title,
+            "summary": _truncate_text(description, SUMMARY_CHAR_CAP),
+            "tags": tags,
+            "quality": "llm",
+        }
+    else:
+        anchor = by_id.get(str(record.get("anchor_id") or ""))
+        card["title"] = anchor.name if anchor is not None else slug
+    return {
+        **card,
+        "scope_id": f"{DOMAIN_SCOPE_PREFIX}{slug}",
+        "kind": "domain",
+        "children_count": children_count,
+        "parent_scope": f"{DOMAIN_SCOPE_PREFIX}{parent}" if parent else None,
+    }
+
+
 def _budget_chars_arg(args: Mapping[str, Any]) -> int:
     """Parse the ``budget_chars`` tool argument, preserving an explicit 0.
 
@@ -984,13 +1097,23 @@ class LLMWikiMCPServer:
                 "description": (
                     "Budgeted map of the knowledge-graph hierarchy — the Descent "
                     "entry point (start here to orient). Scope grammar: call with "
-                    "NO scope for the root card set (graph counts, top-hub names, "
-                    "and one card per coarsest community, largest first); pass "
+                    "NO scope for the root card set. On a project with a charter "
+                    "that is one card per named DIVISION in slug order, and "
+                    "header.entry='charter'; otherwise it is one card per "
+                    "coarsest community, largest first, and header.entry="
+                    "'communities'. header.charter says which state the charter "
+                    "file is in (present|absent|unreadable) — an unreadable one "
+                    "degrades to the community root rather than failing the map. "
+                    "Descend a division with scope='domain:<slug>' (a card's "
+                    "scope_id) for its child domains plus the members it holds "
+                    "itself, top-degree first. The community dendrogram is never "
+                    "removed: scope='communities:root' always serves the "
+                    "coarsest-community root card set. Pass "
                     "scope='<a card's scope_id>' to descend one dendrogram level "
                     "(cards for its sub-communities; at the finest level, its "
                     "member nodes); pass a card's parent_scope to ascend (null "
                     "parent_scope = the root, i.e. call with no scope). Every "
-                    "card has the uniform shape {scope_id, kind: community|node, "
+                    "card has the uniform shape {scope_id, kind: domain|community|node, "
                     "title, summary, size, children_count, leaf_member_count, "
                     "parent_scope, tags, quality: llm|structural, stale} — use "
                     "children_count/leaf_member_count to gauge branch mass "
@@ -1037,6 +1160,9 @@ class LLMWikiMCPServer:
                             "description": (
                                 "Scope to descend into (a card's scope_id from "
                                 "a previous graph_map call): a community id, "
+                                "'domain:<slug>' for a chartered domain, "
+                                "'communities:root' for the coarsest-community "
+                                "root card set, "
                                 "'agent:<key>' for an agent's distilled index, "
                                 "'org:root' for the agent org tree, or "
                                 "'<alias>::' / '<alias>::<scope_id>' for a "
@@ -1787,10 +1913,13 @@ class LLMWikiMCPServer:
                             "type": "string",
                             "description": (
                                 "Restrict the whole pipeline — seed search, PPR and "
-                                "the neighbourhood walk — to one community's members. "
+                                "the neighbourhood walk — to one scope's members. "
                                 "Takes a community id (a graph_map card's scope_id, "
-                                "e.g. 'CommunitySummary:<hash>'); start from "
-                                "graph_map() and descend. Requires a project root."
+                                "e.g. 'CommunitySummary:<hash>') or 'domain:<slug>' "
+                                "for a chartered domain, which resolves to the "
+                                "members it holds plus its live subtree's; start "
+                                "from graph_map() and descend. Requires a project "
+                                "root."
                             ),
                         },
                         "edge_type_weights": {
@@ -3723,8 +3852,31 @@ class LLMWikiMCPServer:
         :meth:`_graph_map_federated_scope` for the same reason: a sibling
         project's tree is resolved through the registry and its OWN sidecar,
         and the local graph is never loaded for it.
+
+        CHARTER ENTRY POINT (re-scope step 2). With a charter on disk,
+        ``scope=None`` serves one card per live division, in SLUG order,
+        instead of one card per coarsest community sorted
+        ``(-len(members), cid)``. That ordering was the defect: measured on
+        this project, the root was 1,852 cards with a median of 2 members,
+        1,124 of them at 2 or fewer — an entry point whose first discriminator
+        is a size and whose second is a sha256 digest. The charter's 7 roots
+        are choosable by name. NOTHING is removed: the dendrogram root is
+        still one call away at the explicit ``communities:root`` scope, every
+        community id still resolves, and a project with no charter (or an
+        unreadable one) gets exactly the pre-charter root it always got. The
+        header says which of the two it served (``entry``) and what state the
+        charter file is in (``charter``), because a map that quietly changed
+        what it maps is the failure this whole surface is being fixed for.
         """
         from .agent_identity import ORG_ROOT
+        from .charter import (
+            DENDROGRAM_ROOT_SCOPE,
+            CharterUnreadable,
+            domain_members,
+            live_divisions,
+            read_charter,
+            split_domain_scope,
+        )
         from .community_summaries import materialize_community_summary
         from .hierarchy import (
             AGENT_SCOPE_PREFIX,
@@ -3761,37 +3913,101 @@ class LLMWikiMCPServer:
         degrees = undirected_degrees(graph)
         summary_cache_dir = project_root / ".tesserae" / "community_summaries"
 
-        if scope is None:
+        # Read the charter ONCE, only on the paths that consult it, and hold
+        # an unreadable one as a value rather than letting it escape here.
+        #
+        # Conditional because charter.json is 7.2MB on this project — parsing
+        # it to descend a community that has nothing to do with it would put a
+        # measurable cost on the one path the charter does not touch.
+        #
+        # Held rather than raised because the two entry points owe the
+        # operator different things, and ``read_charter`` deliberately
+        # distinguishes ABSENT from UNREADABLE so they can: a caller who named
+        # ``domain:<slug>`` asked for the charter and gets the actionable
+        # error, while ``graph_map()`` — the surface every agent starts from —
+        # must not become unusable because an optional sidecar was truncated.
+        # It degrades to the dendrogram and SAYS SO in header.charter.
+        domain_slug = split_domain_scope(scope) if scope is not None else None
+        charter: Optional[dict] = None
+        charter_error: Optional[CharterUnreadable] = None
+        if domain_slug is not None or scope is None or scope == DENDROGRAM_ROOT_SCOPE:
+            try:
+                charter = read_charter(project_root)
+            except CharterUnreadable as exc:
+                charter_error = exc
+        charter_state = (
+            "unreadable" if charter_error is not None
+            else ("present" if charter else "absent")
+        )
+
+        if domain_slug is not None:
+            if charter_error is not None:
+                raise charter_error
+            return self._graph_map_domain_scope(
+                charter, domain_slug, hierarchy, by_id, degrees,
+                summary_cache_dir=summary_cache_dir, project_root=project_root,
+                budget_chars=budget_chars, cursor=cursor,
+            )
+
+        if scope is None or scope == DENDROGRAM_ROOT_SCOPE:
             coarsest = hierarchy.coarsest
-            cards = [
-                community_card(
-                    hierarchy, cid, members, by_id, degrees,
-                    summary_cache_dir=summary_cache_dir,
-                )
-                for cid, members in sorted(
-                    coarsest.items(), key=lambda kv: (-len(kv[1]), kv[0])
-                )
-            ]
+            available = live_divisions(charter) if charter is not None else []
+            # An explicit communities:root is the caller opting OUT of the
+            # charter — that is the whole reason the scope exists — so it
+            # serves the dendrogram even when divisions are available. The
+            # header still reports division_count, so "you bypassed a charter
+            # of 7" and "the charter is empty" stay distinguishable.
+            divisions = available if scope is None else []
             counts = self.graph_summary(graph)
             header: JSONDict = {
-                "scope": None,
+                "scope": scope,
                 "kind": "root",
+                "entry": "charter" if divisions else "communities",
+                "charter": charter_state,
                 "levels": len(hierarchy.levels),
                 "node_count": counts["node_count"],
                 "edge_count": counts["edge_count"],
                 "community_count": len(coarsest),
                 "hubs": [by_id[h].name for h in hierarchy.hubs[:10] if h in by_id],
             }
+            if charter is not None:
+                header["division_count"] = len(available)
+                header["reorg_seq"] = _int_or_zero(charter.get("reorg_seq"))
+            if divisions:
+                cards = [
+                    _domain_card(
+                        charter, hierarchy, slug,
+                        domain_members(charter, slug), by_id, degrees,
+                        summary_cache_dir=summary_cache_dir,
+                    )
+                    for slug in divisions
+                ]
+                # Named in the response rather than only in the tool
+                # description: displacing the dendrogram is only honest if the
+                # way back rides in the same payload that displaced it.
+                header["dendrogram_scope"] = DENDROGRAM_ROOT_SCOPE
+            else:
+                cards = [
+                    community_card(
+                        hierarchy, cid, members, by_id, degrees,
+                        summary_cache_dir=summary_cache_dir,
+                    )
+                    for cid, members in sorted(
+                        coarsest.items(), key=lambda kv: (-len(kv[1]), kv[0])
+                    )
+                ]
         else:
             found = hierarchy.find_scope(scope)
             if found is None:
                 raise ValueError(
                     f"graph_map: unknown scope {scope!r}. Valid scopes are "
                     f"community ids from a previous graph_map call (a card's "
-                    f"scope_id, e.g. 'CommunitySummary:<hash>'), 'agent:<key>' "
-                    f"for an agent's distilled index, or 'org:root' for the "
-                    f"agent org tree; start from the root with graph_map() "
-                    f"(no scope) and descend."
+                    f"scope_id, e.g. 'CommunitySummary:<hash>'), "
+                    f"'domain:<slug>' for a chartered domain, "
+                    f"'{DENDROGRAM_ROOT_SCOPE}' for the community root card "
+                    f"set, 'agent:<key>' for an agent's distilled index, or "
+                    f"'org:root' for the agent org tree; start from the root "
+                    f"with graph_map() (no scope) and descend."
                 )
             level, members = found
             community_children, loose = hierarchy.children(scope) or ([], list(members))
@@ -3843,15 +4059,157 @@ class LLMWikiMCPServer:
             }
 
         result = _paginate_cards(header, cards, budget_chars, cursor)
-        # LRU + demand: every surfaced scope_id counts as a read. Coarsest
-        # cids ARE graph node ids when summaries are minted; finer-level cids
-        # are pseudo-id rows that exist ONLY as the SUMMARIZE demand signal
-        # (daemon._summarize_once ranks by the cid row + member sums). Decay,
-        # distill and forget-by-disuse all key node_memory by graph node id,
-        # so those rows never leak into leaf memory semantics.
+        self._bump_card_access(project_root, result["cards"])
+        return result
+
+    def _bump_card_access(self, project_root: Path, cards: List[JSONDict]) -> None:
+        """LRU + demand for one ``graph_map`` page: every surfaced scope is a read.
+
+        Coarsest cids ARE graph node ids when summaries are minted;
+        finer-level cids are pseudo-id rows that exist ONLY as the SUMMARIZE
+        demand signal (daemon._summarize_once ranks by the cid row + member
+        sums). Decay, distill and forget-by-disuse all key node_memory by
+        graph node id, so those rows never leak into leaf memory semantics.
+
+        ``kind="domain"`` cards are skipped, and that is not an oversight.
+        ``_summarize_once`` ranks candidates drawn from the hierarchy sidecar
+        alone, so a ``domain:<slug>`` row is a key nothing on any read path
+        looks up — a write whose only effect is to grow node_memory with rows
+        no consumer can resolve. The node cards INSIDE a domain are real graph
+        ids and are still bumped, so descending a domain keeps feeding the
+        signal that actually exists.
+        """
         self._bump_nodes_access(
-            project_root, (str(c.get("scope_id")) for c in result["cards"])
+            project_root,
+            (
+                str(card.get("scope_id"))
+                for card in cards
+                if card.get("kind") != "domain"
+            ),
         )
+
+    def _graph_map_domain_scope(
+        self,
+        charter: Optional[dict],
+        slug: str,
+        hierarchy: "Hierarchy",
+        by_id: Dict[str, Any],
+        degrees: Dict[str, int],
+        *,
+        summary_cache_dir: Path,
+        project_root: Path,
+        budget_chars: int,
+        cursor: int,
+    ) -> JSONDict:
+        """Chartered-domain scopes for ``graph_map``: ``domain:<slug>``.
+
+        Descent inside the institution rather than the dendrogram: cards are
+        this domain's live child domains in slug order, then node cards for
+        the members it holds itself. Direct members are ordered by
+        ``(-degree, id)``, NOT by id — id order over the 7,581 members
+        ``intake`` holds makes the first page an arbitrary alphabetical slice,
+        while degree order makes it the part of the domain worth reading, and
+        it is the same ranking ``hierarchy._structural_summary`` already uses
+        to title a card.
+
+        No LLM call happens here — this path only ever READS. The
+        community-scope path materializes a cold summary on first visit; the
+        domain equivalent is deliberately not symmetric. A domain renders at
+        ``quality: llm`` when ``charter.materialize_domain_brief`` has already
+        written a warm, digest-valid brief for the slug, and at
+        ``quality: structural`` when it has not — which is still every domain
+        on a project nothing has briefed, because that writer has no caller in
+        the compile yet. Both are honest, and neither costs this call a
+        ``complete_json``.
+        """
+        from .charter import (
+            DENDROGRAM_ROOT_SCOPE,
+            DOMAIN_SCOPE_PREFIX,
+            domain_members,
+            live_child_slugs,
+            live_divisions,
+            live_parent_slug,
+        )
+        from .hierarchy import node_card
+
+        if charter is None:
+            # "No charter" and "no such domain" are different repairs — the
+            # first is a compile question, the second a typo — so they must
+            # not share one message.
+            raise ValueError(
+                f"graph_map: this project has no charter, so "
+                f"'{DOMAIN_SCOPE_PREFIX}{slug}' names nothing. A charter is "
+                f"derived by `tesserae compile`, and only once the research "
+                f"layer is too big to be one read; start from graph_map() "
+                f"(no scope) for whatever this project does map."
+            )
+        domains = charter.get("domains") or {}
+        record = domains.get(slug)
+        if not isinstance(record, dict):
+            offer = ", ".join(live_divisions(charter)[:10]) or "(none)"
+            raise ValueError(
+                f"graph_map: unknown charter domain {slug!r}. This project's "
+                f"live divisions are: {offer}. Start from graph_map() (no "
+                f"scope) for the full division list, or pass "
+                f"'{DENDROGRAM_ROOT_SCOPE}' for the community dendrogram."
+            )
+        if record.get("status") != "live":
+            # A tombstone is kept precisely so a pinned attach path gets an
+            # explanation instead of a 404, so this error must be that
+            # explanation and must not pretend the slug was never real.
+            superseded = record.get("superseded_by")
+            where = (
+                f"reorganised into {superseded!r}" if superseded
+                else "reorganised, and the charter does not record into what"
+            )
+            raise ValueError(
+                f"graph_map: charter domain {slug!r} is retired ({where}). "
+                f"Its members now live under other domains; start from "
+                f"graph_map() (no scope) to find them."
+            )
+
+        members = domain_members(charter, slug)
+        child_slugs = live_child_slugs(charter, slug)
+        direct = sorted(
+            (str(m) for m in record.get("direct_member_ids") or []),
+            key=lambda mid: (-degrees.get(mid, 0), mid),
+        )
+        scope_card = _domain_card(
+            charter, hierarchy, slug, members, by_id, degrees,
+            summary_cache_dir=summary_cache_dir,
+        )
+        cards: List[JSONDict] = [
+            _domain_card(
+                charter, hierarchy, child, domain_members(charter, child),
+                by_id, degrees, summary_cache_dir=summary_cache_dir,
+            )
+            for child in child_slugs
+        ]
+        cards.extend(
+            node_card(member_id, f"{DOMAIN_SCOPE_PREFIX}{slug}", by_id)
+            for member_id in direct
+        )
+        parent = live_parent_slug(charter, slug)
+        header: JSONDict = {
+            "scope": f"{DOMAIN_SCOPE_PREFIX}{slug}",
+            "kind": "domain",
+            "tier": record.get("tier"),
+            "altitude": record.get("own_altitude"),
+            "title": scope_card["title"],
+            "summary": scope_card["summary"],
+            "quality": scope_card["quality"],
+            "leaf_member_count": len(members),
+            # The charter's own count, beside the count of ids this call could
+            # actually walk. They diverge under the compile ordering window
+            # _write_hierarchy_sidecar documents, and a reader that can only
+            # see one of them cannot tell a healthy domain from a skewed one.
+            "charter_member_count": record.get("member_count"),
+            "parent_scope": (
+                f"{DOMAIN_SCOPE_PREFIX}{parent}" if parent else None
+            ),
+        }
+        result = _paginate_cards(header, cards, budget_chars, cursor)
+        self._bump_card_access(project_root, result["cards"])
         return result
 
     def _graph_map_agent_scope(

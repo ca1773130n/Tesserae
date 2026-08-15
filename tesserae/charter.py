@@ -504,11 +504,21 @@ _SYNTHESIS_TYPES = frozenset(
 _INTAKE_SLUG = "intake"
 
 
-class CharterUnreadable(RuntimeError):
+class CharterUnreadable(ValueError):
     """A charter file exists but could not be parsed.
 
     Distinct from "no charter", and that distinction is the whole reason this
     class exists — see ``read_charter``.
+
+    ``ValueError`` and not ``RuntimeError``, because every CLI verb in this
+    tree sorts exceptions by that exact line: ValueError/OSError are the
+    actionable USER/STATE cases and get ``error: <verb> failed: ...``, while
+    anything else is a programming error and is allowed to traceback. A
+    truncated charter.json is a state case whose message is already a repair
+    instruction, so a RuntimeError put it on the wrong side of that split and
+    printed a traceback at the operator — ``tesserae graph-map --scope
+    domain:<slug>`` did exactly that. Typing it here rather than widening a
+    catch tuple fixes every consumer at once, including ones not yet written.
     """
 
 
@@ -530,6 +540,14 @@ def read_charter(project_root: Path | str) -> Optional[dict]:
     JSONDecodeError here would therefore destroy exactly the stability this
     module exists to provide, in the one situation where an operator most
     needs to be told.
+
+    A parse that SUCCEEDS but yields something other than an object is
+    unreadable too. ``[]``, ``"hello"`` and ``42`` are all valid JSON, and
+    returning any of them hands every reader a value whose ``.get`` does not
+    exist — which crashed ``graph_map()``, the surface an agent starts from,
+    with an AttributeError rather than degrading to the community root. The
+    shape belongs here because this is the one place that turns bytes into the
+    dict the rest of the module's type signatures promise.
     """
     path = charter_path(project_root)
     if not path.is_file():
@@ -542,15 +560,148 @@ def read_charter(project_root: Path | str) -> Optional[dict]:
             "Fix the file's permissions or delete it and recompile to re-found "
             "the charter (which will mint new slugs, so prefer restoring it)."
         ) from exc
+    repair = (
+        "Restore it from version control if you can — deleting it and "
+        "recompiling re-founds the charter from scratch, which mints new "
+        "slugs and breaks every pinned attach path."
+    )
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise CharterUnreadable(
-            f"charter at {path} is not valid JSON: {exc}. "
-            "Restore it from version control if you can — deleting it and "
-            "recompiling re-founds the charter from scratch, which mints new "
-            "slugs and breaks every pinned attach path."
+            f"charter at {path} is not valid JSON: {exc}. {repair}"
         ) from exc
+    if not isinstance(parsed, dict):
+        raise CharterUnreadable(
+            f"charter at {path} is valid JSON but not an object: it parsed as "
+            f"{type(parsed).__name__}, and a charter is a mapping with "
+            f"'domains'. {repair}"
+        )
+    return parsed
+
+
+#: Scope-grammar prefix for a chartered domain, in ``graph_map`` and
+#: ``compile_context``. Prefixed rather than bare because a slug is
+#: ``[a-z0-9-]+`` and would otherwise be indistinguishable from a malformed
+#: community id in an error message — and because a card's ``scope_id`` is
+#: contractually the string a caller passes straight back as ``scope``.
+DOMAIN_SCOPE_PREFIX = "domain:"
+
+#: The explicit scope that reaches the Louvain root card set once a charter
+#: has taken over ``graph_map()``. The dendrogram is not removed by the
+#: charter entry point, only displaced, and a view an agent cannot name is a
+#: view that is gone.
+DENDROGRAM_ROOT_SCOPE = "communities:root"
+
+
+def split_domain_scope(scope: str) -> Optional[str]:
+    """``"domain:<slug>"`` -> ``"<slug>"``, or None when this is not one.
+
+    Mirrors ``hierarchy.split_federated_scope``: one reader for the grammar,
+    so the dispatcher's "is this a domain scope?" test and the resolver's
+    "which domain?" answer cannot disagree about a stray prefix.
+    """
+    if not scope.startswith(DOMAIN_SCOPE_PREFIX):
+        return None
+    slug = scope[len(DOMAIN_SCOPE_PREFIX):]
+    return slug or None
+
+
+def _is_live(domains: dict, slug: str) -> bool:
+    record = domains.get(slug)
+    return isinstance(record, dict) and record.get("status") == "live"
+
+
+def live_divisions(charter: dict) -> list[str]:
+    """Slugs of the live domains with no live parent, in NAME order.
+
+    Name order, not size order, is the entire point of the charter entry
+    point: ``graph_map()`` on the dendrogram sorts ``(-len(members), cid)``,
+    which makes the first discriminator a member count and the second a
+    sha256 digest. Sorting a handful of named things alphabetically makes the
+    root a directory an agent reads rather than a rank it pages through.
+
+    Tombstones are excluded: a retired domain is still in the file so that a
+    pinned attach path can be told what happened to it, but it holds no
+    members and must never be offered as somewhere to go.
+
+    "No LIVE parent" rather than ``tier == 1`` on purpose, and the difference
+    only shows in the degraded case. ``tier`` is a label; ``parent_slug`` is
+    the tree. A domain whose parent was retired without it — or one carrying a
+    ``parent_slug`` a hand-edit left dangling — is still holding members, and
+    keying on tier would hide it from every descent path there is, making its
+    slice of the graph unreachable from the entry point while CH-01 still
+    reports the partition complete. Surfacing it at the root is the visible
+    degradation; silence is not.
+    """
+    domains = charter.get("domains") or {}
+    return sorted(
+        slug
+        for slug, record in domains.items()
+        if _is_live(domains, slug)
+        and not _is_live(domains, str(record.get("parent_slug") or ""))
+    )
+
+
+def domain_members(charter: dict, slug: str) -> list[str]:
+    """Every member id held by ``slug`` OR by any LIVE domain beneath it, sorted.
+
+    A domain record's ``direct_member_ids`` is only what that domain holds
+    itself; ``member_count`` is the subtree total. Readers that need the ids
+    behind the count (a card's member set, a ``compile_context`` restriction)
+    have to walk ``child_slugs``, and doing that once here keeps both of this
+    walk's guards in one place.
+
+    Retired children are not descended into. A tombstone keeps the
+    ``direct_member_ids`` it had when it was last live — deliberately, it is a
+    frozen snapshot (``succeed``) — but those members were re-assigned by the
+    reorg that retired it, so folding them back in would report the same id
+    under two domains and make a card's member set disagree with
+    ``member_index``, which is CH-01's own witness.
+
+    A charter is a tree by construction, but this function is handed files off
+    disk: the ``seen`` guard is what keeps a hand-edited or truncated one with
+    a cyclic ``child_slugs`` from hanging the entry point.
+    """
+    domains = charter.get("domains") or {}
+    seen: set[str] = set()
+    members: set[str] = set()
+    stack = [slug]
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        record = domains.get(current)
+        if not isinstance(record, dict):
+            continue
+        members.update(str(m) for m in record.get("direct_member_ids") or [])
+        stack.extend(live_child_slugs(charter, current))
+    return sorted(members)
+
+
+def live_parent_slug(charter: dict, slug: str) -> Optional[str]:
+    """``slug``'s parent, or None when it has none or its parent is retired.
+
+    A card's ``parent_scope`` is contractually a scope a caller may pass
+    straight back, so it must not name a tombstone: an ascend that raises is
+    worse than an ascend to the root, which is what None means and what
+    :func:`live_divisions` has already decided such a domain is.
+    """
+    domains = charter.get("domains") or {}
+    record = domains.get(slug) or {}
+    parent = str(record.get("parent_slug") or "")
+    return parent if _is_live(domains, parent) else None
+
+
+def live_child_slugs(charter: dict, slug: str) -> list[str]:
+    """Live children of ``slug``, in name order — the same rule as the root."""
+    domains = charter.get("domains") or {}
+    record = domains.get(slug) or {}
+    return sorted(
+        str(child) for child in record.get("child_slugs") or []
+        if _is_live(domains, str(child))
+    )
 
 
 def write_charter(project_root: Path | str, charter: dict) -> Path:
