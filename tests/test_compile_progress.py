@@ -201,3 +201,35 @@ def test_logging_progress_counters_hold_under_concurrent_advances(caplog):
         if "/200" in msg and msg.startswith(" ")
     }
     assert positions == set(range(1, 201))
+
+
+def test_compile_defaults_to_narrating_rather_than_silence():
+    """`progress=None` must resolve to the logging reporter, not silence.
+
+    Only `tesserae compile` ever passed a reporter. `refresh`, `watch`, the MCP
+    compile, the ingest orchestrator and the engine daemon all passed nothing,
+    and `batch.py` guards every call with `if progress is not None` — so those
+    five ran completely mute. They are also the detached, long-running entry
+    points nobody can watch, which is the worst possible place for silence: a
+    compile that prints nothing for hours cannot be told apart from a hung one.
+    A real 3h35m run was killed on exactly that ambiguity while it was ~60%
+    through a forced full re-extract and behaving correctly.
+
+    This pins the default. Silence is still available — but only by asking for
+    it with NullCompileProgress, never by omission.
+    """
+    import inspect
+
+    from tesserae.project import ProjectWiki
+
+    src = inspect.getsource(ProjectWiki.compile)
+    assert "if progress is None" in src, (
+        "ProjectWiki.compile no longer defaults `progress`; every caller that "
+        "omits it is silent again"
+    )
+    assert "LoggingCompileProgress" in src, (
+        "the default reporter is not the logging one — a non-CLI compile is mute"
+    )
+    assert "progress" in inspect.signature(ProjectWiki.compile).parameters, (
+        "callers can no longer opt out with NullCompileProgress"
+    )
