@@ -83,7 +83,7 @@ Datenverlust, keine Verzögerung.
 | `vault_snapshot.json` | `accumulated` | die Basislinie, gegen die `vault_pull` diffed. Mitten in einer Bearbeitung gelöscht, kann die nächste Kompilierung Ihre Änderung nicht von ihrer eigenen früheren Projektion unterscheiden — der gesamte Override-Mechanismus des Vaults |
 | `obsidian_vault` | `accumulated` | bidirektional und dem Nutzer gehörend: Ihre Änderungen hier werden in den Graphen zurückgezogen, das ist also keine Projektion, die man einfach neu zeichnet |
 | `config.json` | `accumulated` | Projektkonfiguration, einschließlich `obsidian.vault_path` — Nutzereingabe, wird nie neu erzeugt |
-| `charter` | `accumulated` | die Projekt-Charter wird verfasst, nicht extrahiert |
+| `charter` | `derived` | jede Kompilierung leitet sie aus `graph.json` ab, doch kein Neuaufbau stellt sie wieder her: Slugs entstehen aus den Ankern, die ein Neuaufbau gerade wählt — wer sie löscht, gründet jede Domain unter neuem Namen neu, zerstört jeden gepinnten Attach-Pfad und verwirft die Tombstones, die als Einzige festhielten, wohin die alten Namen gingen |
 | `agents` | `accumulated` | die `registry.json` je Agent und die handgeschriebene `purpose.md` |
 | `discovered_links.json` | `accumulated` | das Assoziations-Overlay sammelt bewertete Verknüpfungen über Läufe hinweg; ein einzelner Lauf rekonstruiert es nicht |
 | `extraction-feedback.jsonl` | `accumulated` | menschliche Korrekturen aus Vault-Overlay und review-apply |

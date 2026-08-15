@@ -305,7 +305,11 @@ Así que la carta fija la institución: se detectan secciones, se colapsan en un
 grafo cociente (un nodo por sección, una arista `part_of` por cada arista L0
 entre secciones) y se dividen en divisiones → departamentos → equipos **por
 subcomunidad, nunca por tamaño**. El ancla de cada dominio es su miembro de mayor
-grado, elegido con avidez de modo que dos dominios nunca compartan una; el slug
+grado entre los tipos que pueden nombrar un tema — `SourceDocument`,
+`TechnicalTerm`, `EvidenceSpan`, `Session`, `Event` y `Agent` quedan relegados,
+porque un encabezado de sección, una cita, la primera línea de una transcripción
+o el identificador de una cuenta no son un nombre al que nadie pueda fijar un
+agente —, elegido con avidez de modo que dos dominios nunca compartan una; el slug
 de cara al humano se acuña una sola vez a partir de esa ancla y queda fijado. A
 través de una reorganización, `succeed` arrastra los slugs emparejando por ancla,
 de modo que un nombre estable sobrevive a la barajada de los miembros que hay
@@ -313,11 +317,14 @@ debajo. Cada nodo cae en exactamente un dominio: `intake_members` recoge los
 singletons descartados y las secciones aisladas por aristas que, de otro modo, la
 detección perdería en silencio.
 
-`tesserae domains status [--json]` imprime el árbol. **Estado:** el módulo y su
-verbo de CLI se publican y están cubiertos por pruebas, pero `compile` todavía no
-escribe una carta; hasta que lo haga, el comando informa "no charter yet" y sale
-con 0, que es también la respuesta honesta para un proyecto por debajo del umbral
-de una lectura.
+`tesserae domains status [--json]` imprime el árbol. **Estado:** cada
+`compile` deriva la carta a `.tesserae/charter/charter.json`, desde el mismo
+grafo canonizado con el que se construye el sidecar de jerarquía. Una
+recompilación que no reorganiza nada se niega a escribir, así que el archivo
+queda idéntico byte a byte: `reorg_seq` cuenta reorganizaciones, no
+compilaciones. Un proyecto cuya capa de investigación cabe en una sola lectura
+queda por debajo del umbral y no tiene carta alguna; ahí el comando sigue
+informando "no charter yet" y sale con 0, que es la respuesta honesta.
 
 ## Qué queda deliberadamente excluido
 

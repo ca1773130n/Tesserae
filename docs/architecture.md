@@ -301,18 +301,24 @@ near-total cache miss per ingest — and this corpus ingests daily.
 So the charter pins the institution: sections are detected, collapsed into a
 quotient graph (one node per section, one `part_of` edge per cross-section L0
 edge), and split into divisions → departments → teams **by sub-community, never
-by size**. Each domain's anchor is its top-degree member, picked greedily so no
-two domains share one, and the human-facing slug is minted once from that anchor
+by size**. Each domain's anchor is its top-degree member among the types
+that can name a subject — `SourceDocument`, `TechnicalTerm`, `EvidenceSpan`,
+`Session`, `Event` and `Agent` are demoted, because a section heading, a quoted
+span, a transcript's opening line or an account identifier is not a name anyone
+can pin an agent to — picked greedily so no two domains share one, and the human-facing slug is minted once from that anchor
 and pinned. Across a reorg, `succeed` carries slugs forward by matching on
 anchor, so a stable name survives a reshuffle of the members under it. Every
 node lands in exactly one domain: `intake_members` catches the dropped
 singletons and edge-isolated sections that detection would otherwise silently
 lose.
 
-`tesserae domains status [--json]` prints the tree. **Status:** the module and
-its CLI verb ship and are covered by tests, but `compile` does not yet write a
-charter — until it does, the command reports "no charter yet" and exits 0,
-which is the honest answer for a project below the one-read bound as well.
+`tesserae domains status [--json]` prints the tree. **Status:** every
+`compile` derives the charter into `.tesserae/charter/charter.json`, from the
+same canonicalized graph the hierarchy sidecar is built from. A recompile that
+reorganises nothing declines to write, so the file stays byte-identical —
+`reorg_seq` counts reorgs, not compiles. A project whose research layer fits a
+single read is below the bound and gets no charter at all; there the command
+still reports "no charter yet" and exits 0, which is the honest answer.
 
 ## What's deliberately excluded
 

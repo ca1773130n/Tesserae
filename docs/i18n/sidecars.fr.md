@@ -83,7 +83,7 @@ perte de données, pas un délai.
 | `vault_snapshot.json` | `accumulated` | la base de référence à laquelle `vault_pull` se compare. La supprimer en pleine édition empêche la compilation suivante de distinguer votre modification de sa propre projection antérieure — tout le mécanisme de surcharge du vault |
 | `obsidian_vault` | `accumulated` | bidirectionnel et détenu par l'utilisateur : vos modifications y sont retirées vers le graphe, ce n'est donc pas une projection que l'on redessine |
 | `config.json` | `accumulated` | configuration du projet, y compris `obsidian.vault_path` — saisie utilisateur, jamais regénérée |
-| `charter` | `accumulated` | le charter du projet est rédigé, pas extrait |
+| `charter` | `derived` | chaque compilation le dérive de `graph.json`, mais aucune reconstruction ne le reproduit : les slugs sont frappés à partir des ancres que la reconstruction choisit, donc le supprimer refonde chaque domaine sous un nouveau nom, casse tout chemin d'attache épinglé et jette les pierres tombales qui seules disaient où étaient passés les anciens noms |
 | `agents` | `accumulated` | le `registry.json` par agent et le `purpose.md` écrit à la main |
 | `discovered_links.json` | `accumulated` | la couche d'association accumule des liens notés au fil des exécutions ; une seule ne la reconstruit pas |
 | `extraction-feedback.jsonl` | `accumulated` | corrections humaines recueillies lors de la superposition du vault et de review-apply |

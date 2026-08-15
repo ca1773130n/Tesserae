@@ -31,9 +31,7 @@ decisions that shape it:
   validity-ending job, and at 31 edges its loss from semantic is nil while
   its presence in the sparse temporal view is material.
 * Structural/code composition (``part_of``, ``contains``, ``calls``,
-  ``imports``, ...) is entity: relations among named concrete things — which
-  also keeps charter's synthetic ``part_of`` quotient edges out of the
-  conceptual walk.
+  ``imports``, ...) is entity: relations among named concrete things.
 * ``user_link`` stays traversable (semantic): its source comment says it is
   "used for graph reachability" — zero weight in every view is the one
   assignment that would break its documented function.

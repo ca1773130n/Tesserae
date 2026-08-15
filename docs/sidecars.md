@@ -79,7 +79,7 @@ No compile re-derives anything here. Deleting one is data loss, not a delay.
 | `vault_snapshot.json` | `accumulated` | the baseline `vault_pull` diffs against. Delete it mid-edit and the next compile cannot tell your edit from its own prior projection — the vault's whole override mechanism |
 | `obsidian_vault` | `accumulated` | bidirectional and user-owned: your edits here are pulled back into the graph, so it is not a projection that can be redrawn |
 | `config.json` | `accumulated` | project configuration, including `obsidian.vault_path` — user input, never regenerated |
-| `charter` | `accumulated` | the project charter is authored, not extracted |
+| `charter` | `derived` | every compile derives it from `graph.json`, yet no rebuild reproduces it: slugs are minted from whichever anchors a rebuild happens to pick, so deleting it re-founds every domain under a new name, breaks every pinned attach path, and discards the tombstones that were the only record of where the old names went |
 | `agents` | `accumulated` | per-agent `registry.json` and the hand-written `purpose.md` |
 | `discovered_links.json` | `accumulated` | the association overlay accumulates scored links across runs; one run does not reconstruct it |
 | `extraction-feedback.jsonl` | `accumulated` | human corrections captured during vault overlay and review-apply |

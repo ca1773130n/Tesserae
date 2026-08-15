@@ -80,7 +80,7 @@ LLM 호출 비용을 치러야 하며, 무엇이 그 무엇으로도 재구성�
 | `vault_snapshot.json` | `accumulated` | `vault_pull`이 비교 대상으로 삼는 기준선. 편집 중에 지우면 다음 컴파일이 사용자의 편집과 자신이 이전에 투영한 것을 구분하지 못합니다 — vault 재정의 메커니즘 전체가 여기에 달려 있습니다 |
 | `obsidian_vault` | `accumulated` | 양방향이며 사용자 소유입니다. 여기서의 편집이 그래프로 다시 끌려 들어오므로, 그냥 다시 그리면 되는 투영본이 아닙니다 |
 | `config.json` | `accumulated` | `obsidian.vault_path`를 포함한 프로젝트 설정 — 사용자 입력이며 재생성되지 않습니다 |
-| `charter` | `accumulated` | 프로젝트 charter는 추출된 것이 아니라 사람이 쓴 것입니다 |
+| `charter` | `derived` | 컴파일마다 `graph.json`에서 파생되지만 다시 빌드해도 같은 것이 나오지 않습니다. 슬러그는 재빌드가 그때그때 고른 앵커에서 만들어지므로, 지우면 모든 도메인이 새 이름으로 다시 창설되고 고정해 둔 attach 경로가 전부 끊기며, 옛 이름이 어디로 갔는지 알려주던 tombstone도 사라집니다 |
 | `agents` | `accumulated` | 에이전트별 `registry.json`과 손으로 쓴 `purpose.md` |
 | `discovered_links.json` | `accumulated` | 연관 오버레이는 여러 실행에 걸쳐 점수가 매겨진 링크를 누적합니다. 한 번의 실행으로는 복원되지 않습니다 |
 | `extraction-feedback.jsonl` | `accumulated` | vault 오버레이와 review-apply 과정에서 수집된 사람의 교정 |

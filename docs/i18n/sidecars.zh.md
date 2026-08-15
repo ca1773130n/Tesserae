@@ -71,7 +71,7 @@
 | `vault_snapshot.json` | `accumulated` | `vault_pull` 用来做差分的基线。在编辑途中删掉它，下一次编译就无法把你的编辑与它自己先前的投影区分开 —— 那正是 vault 覆盖机制的全部依据 |
 | `obsidian_vault` | `accumulated` | 双向且归用户所有：你在这里的编辑会被拉回图中，所以它不是一个可以随手重画的投影 |
 | `config.json` | `accumulated` | 项目配置，包含 `obsidian.vault_path` —— 属于用户输入，永不重新生成 |
-| `charter` | `accumulated` | 项目 charter 是写出来的，不是抽取出来的 |
+| `charter` | `derived` | 每次编译都会从 `graph.json` 派生它，但重建并不能还原它：slug 由重建当时选中的锚点铸成，删掉它就会让每个 domain 以新名字重新创设，弄断所有已固定的挂载路径，并丢掉唯一记录旧名去向的墓碑 |
 | `agents` | `accumulated` | 每个智能体的 `registry.json`，以及手写的 `purpose.md` |
 | `discovered_links.json` | `accumulated` | 关联叠加层跨多次运行累积带评分的链接；单次运行重构不出来 |
 | `extraction-feedback.jsonl` | `accumulated` | 在 vault 叠加与 review-apply 过程中收集的人工修正 |
