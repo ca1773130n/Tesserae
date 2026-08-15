@@ -312,13 +312,27 @@ node lands in exactly one domain: `intake_members` catches the dropped
 singletons and edge-isolated sections that detection would otherwise silently
 lose.
 
-`tesserae domains status [--json]` prints the tree. **Status:** every
-`compile` derives the charter into `.tesserae/charter/charter.json`, from the
-same canonicalized graph the hierarchy sidecar is built from. A recompile that
-reorganises nothing declines to write, so the file stays byte-identical —
-`reorg_seq` counts reorgs, not compiles. A project whose research layer fits a
-single read is below the bound and gets no charter at all; there the command
-still reports "no charter yet" and exits 0, which is the honest answer.
+Each domain also carries a **corpus clock**: `distilled_through` is the latest
+source-derived timestamp anywhere beneath it, taken from the same ladder
+`temporal._source_ts` uses — metadata keys, a leading date in a node's own
+name, then a dated directory segment of its `source_path` below a project root
+the graph itself declares. Every rung reads bytes already in `graph.json`, so
+no wall clock, no `git` and no filesystem mtime can reach the file. A domain no
+rung can date is not an error: it gets `distilled_through: null` and
+`quality: undated` (48 of 780 domains on this corpus), and every domain reports
+`undated_member_count` so a date resting on part of a domain cannot read as
+coverage of all of it (340 of 780 are dated over a strict subset).
+
+`tesserae domains status [--json]` prints the tree, each domain's date and the
+undated census. **Status:** every `compile` derives the charter into
+`.tesserae/charter/charter.json`, from the same canonicalized graph the
+hierarchy sidecar is built from. A recompile that reorganises nothing declines
+to write, so the file stays byte-identical — `reorg_seq` counts reorgs, not
+compiles. The one exception is the clock, which is a fact about content rather
+than structure: if it moved while the institution did not, the fresh dates are
+written at the *same* `reorg_seq`. A project whose research layer fits a single
+read is below the bound and gets no charter at all; there the command still
+reports "no charter yet" and exits 0, which is the honest answer.
 
 ## What's deliberately excluded
 
