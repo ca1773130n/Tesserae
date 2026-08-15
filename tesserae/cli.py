@@ -6672,6 +6672,83 @@ def _handle_graph_map(args: argparse.Namespace) -> int:
 
 
 
+def _build_charter_route_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae charter-route",
+        description=(
+            "Place one task in the chartered domain tree (the charter_route MCP "
+            "tool as a CLI verb; JSON out). One ranked pass over every live "
+            "domain, then a beam-1 walk from a division down. The route is "
+            "BEST-EFFORT and says so in route_quality — charter.json's bytes are "
+            "idempotent, this ranking is not, because the embedding lane varies "
+            "with the machine's backend. A domain's row carries its brief once "
+            "one has been written; no compile writes briefs yet, so today every "
+            "row is cold and warm_rows is 0. "
+            "A task that cannot be placed comes back routed:false naming no "
+            "domain at all, rather than a low-confidence guess. Requires "
+            ".tesserae/charter/charter.json from a `tesserae compile`."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae charter-route 'why does session import drop turns'\n"
+            "  tesserae charter-route 'rasterizer backward pass' --altitude division\n"
+        ),
+    )
+    parser.add_argument("task", help="The task or question to place, in natural language.")
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to CWD.")
+    parser.add_argument(
+        "--altitude",
+        default="auto",
+        choices=["auto", "division", "department", "team"],
+        help=(
+            "Cap on how deep the walk may go, on the ordered axis "
+            "division < department < team. 'auto' follows the evidence; a "
+            "named altitude stops at the first domain at that level or past "
+            "it, since a branch need not carry every label. "
+            "route_quality.altitude_reached reports where it actually stopped."
+        ),
+    )
+    parser.set_defaults(_handler="_handle_charter_route")
+    return parser
+
+
+def _route_charter_route(rest: List[str]) -> int:
+    args = _build_charter_route_parser().parse_args(rest)
+    return _resolve_handler("_handle_charter_route")(args)
+
+
+def _handle_charter_route(args: argparse.Namespace) -> int:
+    from .mcp_server import LLMWikiMCPServer
+
+    wiki = ProjectWiki.load(args.project)
+    if not wiki.paths.graph.exists():
+        print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
+        return 2
+    server = LLMWikiMCPServer(default_graph_path=wiki.paths.graph)
+    try:
+        # ValueError covers the actionable USER/STATE cases — an unreadable
+        # charter.json and an unknown altitude — and OSError an unreadable
+        # graph. Anything else is a programming error and SHOULD traceback
+        # rather than be disguised as a normal CLI failure.
+        result = server.call_tool(
+            "charter_route",
+            {
+                "graph_path": str(wiki.paths.graph),
+                "task": args.task,
+                "altitude": args.altitude,
+            },
+        )
+    except (ValueError, OSError) as exc:
+        print(f"error: charter_route failed: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, ensure_ascii=False))
+    # A refusal is a legitimate answer, not a failure: exiting non-zero would
+    # make "this task does not belong to any domain" look like a broken
+    # install to every script that checks a return code.
+    return 0
+
+
 def _build_verify_claim_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae verify-claim",
@@ -7001,6 +7078,8 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     # Descent (0.25): graph_map MCP tool exposed as a CLI verb for non-MCP callers
     "graph-map": _route_graph_map,
     "schema-drift": _route_schema_drift,
+    # charter_route MCP tool exposed as a CLI verb for non-MCP callers
+    "charter-route": _route_charter_route,
     # verify_claim MCP tool exposed as a CLI verb for non-MCP callers
     "verify-claim": _route_verify_claim,
     # layered agent KG (Phase 2): per-agent L1 distillation

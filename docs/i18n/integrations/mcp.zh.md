@@ -78,6 +78,7 @@ tesserae projects mcp-config
 | `verify_claim` | 针对图谱验证**一个**三元组——精确查找，不用 LLM，不做模糊匹配，不返回排序结果。返回 `{verdict, reason, triple, citation, provenance, advisory}`；`verdict` 为 `SUPPORTED`（边存在**且**其证据是文档中的逐字片段）、`PRESENT_UNEVIDENCED`，或一个拒绝。若手头只有散文，先 `search_nodes` 再 `verify_claim` |
 | `doctor_run` | 运行健康检查并以 JSON 返回报告（`findings`、`exit_code` 0/1/2）。**始终只读**——修复永远不会经由 MCP 执行；要修复请在 CLI 上用 `tesserae doctor --fix` |
 | `doctor_report` | `.tesserae/doctor-report.md` 的内容（上限 64 KB）；在运行 `tesserae doctor` 之前为空 |
+| `charter_route` | 一次调用把一个任务定位到已授权（chartered）的域树上 —— 当没有卡片能按名字选中时，用它代替翻阅 `graph_map` 的卡片。它给每个存活域（slug、锚点名，以及已缓存的 brief）打分，再以 beam-1 下降到子树证据最强的那个域，返回 `{routed, path, brief, parent, siblings, route_quality}`；域 slug 是能跨 ingest 存活的作用域，community id 不能。**尽力而为，并且它会明说**：`charter.json` 的字节是幂等的，这个排序不是 —— embedding 通道随机器的后端而变，语料也会随 brief 变热而变厚，所以 `route_quality` 会报告 `{backend, semantic, corpus_rows, warm_rows, evidenced_rows}`，且每张卡片都带 `evidence` —— `lexical`（词项命中，换后端仍成立）、`semantic`（仅嵌入相似度，换后端就不成立）或 `none`（只是路过）。定位不了的任务以 `routed: false` 返回，且**不**指名任何域：里面根本没有可供读出猜测的低置信候选。需要由 `tesserae compile` 写出的 `.tesserae/charter/charter.json` |
 | `lint_report` | 最近一次编译期的 lint 结果（上限 64 KB） |
 
 **检索的性能分析。** `search_nodes` 和 `compile_context` 接受
