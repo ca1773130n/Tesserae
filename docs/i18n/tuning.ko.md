@@ -67,10 +67,15 @@ Concurrency는 출력을 절대 변경하지 않습니다: work-list는 경로 �
 ### `TESSERAE_LLM_CACHE`
 
 **기본값 on.** CLI provider 응답의 content-addressed cache는
-`~/.tesserae/llm_cache` 아래에 있으며, (document, kind, guidance) 및 model과
-reasoning effort로 keyed합니다 — 따라서 model을 switching하면 이전 model의 답변을
-serving하는 대신 re-ask합니다. Parseable 응답만 stored되므로, 하나의 bad generation도
+`~/.tesserae/llm_cache` 아래에 있으며, 실제로 보낸 prompt의 digest 및 model과
+reasoning effort로 keyed됩니다 — 따라서 다른 질문은 re-ask되고, model을 switching하면 이전 model의 답변을
+serving하는 대신 re-ask됩니다. Parseable 응답만 stored되므로, 하나의 bad generation도
 permanent가 될 수 없습니다.
+
+예전 항목들은 설계상 도달할 수 없습니다: key는 이전에
+prompt의 digest가 아니라 calling stage에 의해 제공된 label이었으므로,
+관련 없는 질문들이 한 항목을 공유할 수 있었습니다. 이들은 마이그레이션되지 않습니다 — directory는
+안전하게 delete할 수 있으며, compile이 그것을 다시 채울 것입니다.
 
 ```sh
 export TESSERAE_LLM_CACHE=0   # 항상 re-ask

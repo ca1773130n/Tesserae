@@ -87,10 +87,17 @@ parallèle est identique octet-par-octet à une séquentielle.
 ### `TESSERAE_LLM_CACHE`
 
 **Activé par défaut.** Cache adressable par contenu des réponses du fournisseur
-CLI sous `~/.tesserae/llm_cache`, indexé par (document, type, guidage) plus le
-modèle et l'effort de raisonnement — donc changer de modèle re-demande au lieu
-de servir les réponses du modèle précédent. Seules les réponses parseables sont
+CLI sous `~/.tesserae/llm_cache`, reposant sur un résumé du message d'invite
+réellement envoyé, plus le modèle et l'effort de raisonnement — ainsi une
+question différente re-demande, et changer de modèle re-demande au lieu de
+servir les réponses du modèle précédent. Seules les réponses parseables sont
 stockées, donc une mauvaise génération ne peut pas devenir permanente.
+
+Les entrées plus anciennes sont inaccessibles par conception : la clé était
+auparavant une étiquette fournie par l'étape appelante plutôt qu'un résumé du
+message d'invite, ainsi des questions sans rapport pouvaient partager une entrée.
+Rien ne les migre — le répertoire peut être supprimé sans risque, et une
+compilation le remplira à nouveau.
 
 ```sh
 export TESSERAE_LLM_CACHE=0   # toujours re-demander

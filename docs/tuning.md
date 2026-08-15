@@ -80,10 +80,15 @@ sequential one.
 ### `TESSERAE_LLM_CACHE`
 
 **Default on.** Content-addressed cache of CLI provider responses under
-`~/.tesserae/llm_cache`, keyed on (document, kind, guidance) plus the model and
-reasoning effort — so switching models re-asks rather than serving the previous
-model's answers. Only parseable responses are stored, so one bad generation
-cannot become permanent.
+`~/.tesserae/llm_cache`, keyed on a digest of the prompt actually sent, plus the
+model and reasoning effort — so a different question re-asks, and switching
+models re-asks rather than serving the previous model's answers. Only parseable
+responses are stored, so one bad generation cannot become permanent.
+
+Older entries are unreachable by design: the key used to be a
+label supplied by the calling stage rather than a digest of the prompt, so
+unrelated questions could share one entry. Nothing migrates them — the directory
+is safe to delete, and a compile will refill it.
 
 ```sh
 export TESSERAE_LLM_CACHE=0   # always re-ask

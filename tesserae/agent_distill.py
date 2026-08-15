@@ -646,7 +646,12 @@ class LLMSummarizer:
                 system=system,
                 user=user,
                 schema_name=schema_name,
-                cache_key=f"agent-distill-v{PROMPT_VERSION}::{schema_name}",
+                # Namespace + prompt version. ``schema_name`` used to be
+                # appended here too, but it is already a cache coordinate on
+                # the client side, and appending it hid the real defect: every
+                # distilled document shared ONE entry per schema. The client
+                # now hashes the assembled prompt.
+                cache_key=f"agent-distill-v{PROMPT_VERSION}",
                 max_retries=self.max_retries,
             )
         except Exception as exc:  # noqa: BLE001 — protocol says never-raise; treat as transport

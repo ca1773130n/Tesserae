@@ -250,11 +250,14 @@ def propose_subtypes_for_cluster(
         system=_SYSTEM_PROMPT,
         user=_build_user_prompt(host_type, cluster),
         schema_name="schema-drift-subtypes-v1",
-        # The cluster hash MUST be in the cache key: llm_json digests only
-        # (cache_key, model, schema_name) — never the user prompt — so a
-        # host-only key serves cluster 1's answer to every other cluster of
-        # the same host, and _coerce_proposals then strips the foreign example
-        # ids, leaving proposals that look plausible and cite nothing.
+        # The cluster hash is no longer load-bearing: llm_json now digests the
+        # prompt itself, so two clusters cannot collide however the key is
+        # spelled. It stays because it was RIGHT — this caller was the only one
+        # that saw the old hazard ("a host-only key serves cluster 1's answer to
+        # every other cluster of the same host, and _coerce_proposals then
+        # strips the foreign example ids, leaving proposals that look plausible
+        # and cite nothing") and defended against it by hand. Ten callers that
+        # did not are what this fix is for. Now it reads as a namespace.
         cache_key=f"schema-drift:{host_type}:{key}",
     )
     if payload is None:

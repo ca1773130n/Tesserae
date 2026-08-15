@@ -214,12 +214,22 @@ class LLMJsonClient(Protocol):
         ...
 
 
-#: On-disk response cache for the CLI clients, keyed on the caller's
-#: ``cache_key``. The Anthropic client gets prompt caching from the SDK; the
-#: codex/claude CLI clients had none, so they accepted ``cache_key`` and
-#: ignored it — every recompile re-paid full price for byte-identical input.
-#: Global rather than per-project on purpose: the key is a content digest, so
-#: two projects holding the same document should share the answer.
+#: On-disk response cache for the CLI clients. The Anthropic client gets prompt
+#: caching from the SDK; the codex/claude CLI clients had none, so they accepted
+#: ``cache_key`` and ignored it — every recompile re-paid full price for
+#: byte-identical input.
+#: Global rather than per-project on purpose: the identity of an entry is a
+#: digest of the ASSEMBLED PROMPT, so two projects sending the same prompt
+#: should share the answer.
+#: That digest is taken here rather than trusted from the caller, and that is
+#: the whole point. The original contract asked every caller to pass a content
+#: digest as ``cache_key``; three of them passed a constant-ish label instead
+#: (a member COUNT, a schema name, a schema version), so unrelated prompts
+#: collided onto one file and were served each other's answers. A contract that
+#: depends on every future caller remembering is not a contract — so
+#: :func:`_cli_cache_path` now REQUIRES the prompt and hashes it itself, and
+#: ``cache_key`` degrades to the namespace/version label those callers were
+#: already treating it as.
 #: ponytail: no eviction. Entries are small JSON and keyed by content digest;
 #: add an LRU sweep if the directory ever actually gets big.
 _CLI_CACHE_DIR = Path.home() / ".tesserae" / "llm_cache"
@@ -229,37 +239,48 @@ def _cli_cache_enabled() -> bool:
     return (os.environ.get("TESSERAE_LLM_CACHE") or "").strip().lower() not in {"0", "false", "no", "off"}
 
 
-def _cli_cache_path(cache_key: str, *, model: str, extra: str = "") -> Path:
-    """Cache file for one (content, model, variant) triple.
+def _cli_cache_path(cache_key: str, *, model: str, prompt: str, extra: str = "") -> Path:
+    """Cache file for one (namespace, prompt, model, variant) quadruple.
 
-    The caller's ``cache_key`` covers the document, kind and guidance — but NOT
-    which model produced the answer. Fold the model and any per-client variant
-    (e.g. reasoning effort) in here, so switching models re-asks instead of
-    serving another model's output.
+    ``prompt`` is the exact text that would be sent to the CLI, and it is
+    keyword-REQUIRED on purpose: it is the one input guaranteed to distinguish
+    two different questions, so making it impossible to address this cache
+    without it is what makes a collision impossible rather than merely
+    discouraged.
+
+    ``cache_key`` is a namespace/version label (an empty or repeated one is now
+    harmless), ``model`` and ``extra`` cover which model and per-client variant
+    (e.g. reasoning effort) produced the answer, so switching models re-asks
+    instead of serving another model's output.
     """
-    digest = hashlib.sha256(f"{cache_key}\n{model}\n{extra}".encode("utf-8")).hexdigest()
-    return _CLI_CACHE_DIR / digest[:2] / f"{digest}.json"
+    digest = hashlib.sha256()
+    digest.update(f"{cache_key}\n{model}\n{extra}\n".encode("utf-8"))
+    digest.update(prompt.encode("utf-8"))
+    hexed = digest.hexdigest()
+    return _CLI_CACHE_DIR / hexed[:2] / f"{hexed}.json"
 
 
-def _cli_cache_get(cache_key: Optional[str], *, model: str, extra: str = "") -> Optional[str]:
+def _cli_cache_get(cache_key: Optional[str], *, model: str, prompt: str, extra: str = "") -> Optional[str]:
     """Cached raw response text, or None. Never raises — a bad cache must not
     break a compile, it just means paying for the call."""
     if not cache_key or not _cli_cache_enabled():
         return None
     try:
-        payload = json.loads(_cli_cache_path(cache_key, model=model, extra=extra).read_text(encoding="utf-8"))
+        payload = json.loads(
+            _cli_cache_path(cache_key, model=model, prompt=prompt, extra=extra).read_text(encoding="utf-8")
+        )
         raw = payload.get("raw")
         return raw if isinstance(raw, str) else None
     except (OSError, json.JSONDecodeError, ValueError):
         return None
 
 
-def _cli_cache_put(cache_key: Optional[str], raw: str, *, model: str, extra: str = "") -> None:
+def _cli_cache_put(cache_key: Optional[str], raw: str, *, model: str, prompt: str, extra: str = "") -> None:
     """Store a SUCCESSFUL response. Atomic tmp+replace with a pid/random suffix,
     matching the manifest/sidecar idiom, so concurrent extractions can't collide."""
     if not cache_key or not _cli_cache_enabled() or not raw:
         return
-    path = _cli_cache_path(cache_key, model=model, extra=extra)
+    path = _cli_cache_path(cache_key, model=model, prompt=prompt, extra=extra)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(f".tmp.{os.getpid()}.{secrets.token_hex(4)}")
@@ -269,7 +290,7 @@ def _cli_cache_put(cache_key: Optional[str], raw: str, *, model: str, extra: str
         pass  # a cache that can't be written is a slow compile, not a failed one
 
 
-def _cli_cache_drop(cache_key: Optional[str], *, model: str, extra: str = "") -> None:
+def _cli_cache_drop(cache_key: Optional[str], *, model: str, prompt: str, extra: str = "") -> None:
     """Forget an answer the CALLER rejected. Never raises.
 
     ``_cli_cache_put`` stores every PARSEABLE answer, but parseable is not the
@@ -282,7 +303,13 @@ def _cli_cache_drop(cache_key: Optional[str], *, model: str, extra: str = "") ->
     then fails identically forever — ``--retry-fallbacks`` can never recover
     it until the document's bytes change.
 
-    ponytail: ceiling — the drop is BY KEY, and the key is content-derived, so
+    ``prompt`` must be the SAME assembled prompt the ``_cli_cache_put`` used,
+    or this unlinks a path nothing ever wrote and the rejected answer survives
+    on disk — a silent no-op is the exact regression this cache exists to
+    prevent. That is why both sides go through one ``_stitch_json_prompt`` +
+    ``_cache_coords`` pair per client rather than re-deriving the bytes.
+
+    ponytail: ceiling — the drop is BY PATH, and the path is content-derived, so
     two byte-identical documents extracted concurrently share it: one worker
     can unlink the good answer another just stored. The cost is one cache miss
     (the next run re-asks and re-validates), never a wrong graph, so this stays
@@ -293,9 +320,26 @@ def _cli_cache_drop(cache_key: Optional[str], *, model: str, extra: str = "") ->
     if not cache_key or not _cli_cache_enabled():
         return
     try:
-        _cli_cache_path(cache_key, model=model, extra=extra).unlink()
+        _cli_cache_path(cache_key, model=model, prompt=prompt, extra=extra).unlink()
     except (OSError, ValueError):
         pass  # already gone, or unreadable — either way there is nothing to serve
+
+
+def _stitch_json_prompt(*, system: str, user: str, schema_name: str) -> str:
+    """The single prompt the CLI clients actually send for ``complete_json``.
+
+    Neither ``claude -p`` nor ``codex exec`` exposes a separate system slot, so
+    system + JSON-only contract + user are stitched into one string. Defined
+    ONCE, module level, because it is now also the cache identity: a
+    ``complete_json`` that stores an answer and a ``forget_cached_answer`` that
+    drops it must produce byte-identical text or the drop silently misses.
+    """
+    return (
+        f"{system.strip()}\n\n"
+        f"Respond with valid JSON only — no Markdown fences, no prose, "
+        f"no trailing commas. Schema name: {schema_name}.\n\n"
+        f"{user}"
+    )
 
 
 def _configured_default_model(for_providers: Sequence[str]) -> Optional[str]:
@@ -864,16 +908,9 @@ class ClaudeCLIJsonClient:
         # Clear first so a cache hit can't leave a stale note behind.
         _note_failure(None)
         # Stitch system + user into a single prompt for the CLI's -p flag.
-        # The CLI doesn't expose a separate system slot, so we prefix the
-        # JSON-only contract to the user message.
-        prompt = (
-            f"{system.strip()}\n\n"
-            f"Respond with valid JSON only — no Markdown fences, no prose, "
-            f"no trailing commas. Schema name: {schema_name}.\n\n"
-            f"{user}"
-        )
+        prompt = _stitch_json_prompt(system=system, user=user, schema_name=schema_name)
         model, extra = self._cache_coords(schema_name)
-        cached = _cli_cache_get(cache_key, model=model, extra=extra)
+        cached = _cli_cache_get(cache_key, model=model, prompt=prompt, extra=extra)
         if cached is not None:
             return parse_json_tolerant(cached)
         raw = self._run_prompt(
@@ -894,7 +931,7 @@ class ClaudeCLIJsonClient:
         if parsed is not None:
             # Only a parseable answer is worth keeping — caching a malformed
             # generation would make one bad roll permanent.
-            _cli_cache_put(cache_key, raw, model=model, extra=extra)
+            _cli_cache_put(cache_key, raw, model=model, prompt=prompt, extra=extra)
         return parsed
 
     def _cache_coords(self, schema_name: str) -> tuple:
@@ -902,13 +939,21 @@ class ClaudeCLIJsonClient:
         and a later drop can never disagree about which file they mean."""
         return (self.model or "claude-cli-default", schema_name)
 
-    def forget_cached_answer(self, cache_key: Optional[str], *, schema_name: str) -> None:
-        """Drop the cached answer for this key — the CALLER rejected it.
+    def forget_cached_answer(
+        self, cache_key: Optional[str], *, schema_name: str, system: str, user: str
+    ) -> None:
+        """Drop the cached answer for this call — the CALLER rejected it.
 
-        Parseable is not accepted; see :func:`_cli_cache_drop`.
+        Parseable is not accepted; see :func:`_cli_cache_drop`. ``system`` and
+        ``user`` are required (not optional-with-a-default) because the cache
+        entry is addressed by the assembled prompt: a caller that could omit
+        them would get a drop that unlinks nothing and reports success, which
+        is exactly the stale-answer failure this method exists to prevent. Pass
+        the SAME pair that was passed to :meth:`complete_json`.
         """
         model, extra = self._cache_coords(schema_name)
-        _cli_cache_drop(cache_key, model=model, extra=extra)
+        prompt = _stitch_json_prompt(system=system, user=user, schema_name=schema_name)
+        _cli_cache_drop(cache_key, model=model, prompt=prompt, extra=extra)
 
     def complete_text(
         self,
@@ -1296,14 +1341,9 @@ class CodexCLIJsonClient:
         _note_failure(None)
         # Same prompt stitching as the Claude CLI client: codex exec has no
         # separate system slot either, so prefix the JSON-only contract.
-        prompt = (
-            f"{system.strip()}\n\n"
-            f"Respond with valid JSON only — no Markdown fences, no prose, "
-            f"no trailing commas. Schema name: {schema_name}.\n\n"
-            f"{user}"
-        )
+        prompt = _stitch_json_prompt(system=system, user=user, schema_name=schema_name)
         model, extra = self._cache_coords(schema_name)
-        cached = _cli_cache_get(cache_key, model=model, extra=extra)
+        cached = _cli_cache_get(cache_key, model=model, prompt=prompt, extra=extra)
         if cached is not None:
             return parse_json_tolerant(cached)
         raw = self._run_prompt(
@@ -1327,7 +1367,7 @@ class CodexCLIJsonClient:
         if parsed is not None:
             # Only a parseable answer is worth keeping — caching a malformed
             # generation would make one bad roll permanent.
-            _cli_cache_put(cache_key, raw, model=model, extra=extra)
+            _cli_cache_put(cache_key, raw, model=model, prompt=prompt, extra=extra)
         return parsed
 
     def _cache_coords(self, schema_name: str) -> tuple:
@@ -1336,13 +1376,20 @@ class CodexCLIJsonClient:
         ``extra`` folds in reasoning effort, which is easy to forget twice."""
         return (self.model or "codex-cli-default", f"{schema_name}\n{self.reasoning_effort or ''}")
 
-    def forget_cached_answer(self, cache_key: Optional[str], *, schema_name: str) -> None:
-        """Drop the cached answer for this key — the CALLER rejected it.
+    def forget_cached_answer(
+        self, cache_key: Optional[str], *, schema_name: str, system: str, user: str
+    ) -> None:
+        """Drop the cached answer for this call — the CALLER rejected it.
 
-        Parseable is not accepted; see :func:`_cli_cache_drop`.
+        Parseable is not accepted; see :func:`_cli_cache_drop`. ``system`` and
+        ``user`` are required for the same reason as on
+        :meth:`ClaudeCLIJsonClient.forget_cached_answer`: the entry is
+        addressed by the assembled prompt, so a drop without it would silently
+        miss.
         """
         model, extra = self._cache_coords(schema_name)
-        _cli_cache_drop(cache_key, model=model, extra=extra)
+        prompt = _stitch_json_prompt(system=system, user=user, schema_name=schema_name)
+        _cli_cache_drop(cache_key, model=model, prompt=prompt, extra=extra)
 
     def complete_text(
         self,
@@ -1767,16 +1814,20 @@ class CompositeCLIClient:
                 return result
         return None
 
-    def forget_cached_answer(self, cache_key: Optional[str], *, schema_name: str) -> None:
+    def forget_cached_answer(
+        self, cache_key: Optional[str], *, schema_name: str, system: str, user: str
+    ) -> None:
         """Forward a caller's rejection to every sub-client.
 
-        We don't track which provider answered, and dropping a key that was
-        never cached is a no-op — so fan out rather than guess.
+        We don't track which provider answered, and dropping an entry that was
+        never cached is a no-op — so fan out rather than guess. ``system`` and
+        ``user`` ride along because each sub-client addresses its entry by the
+        assembled prompt.
         """
         for client in self.clients:
             forget = getattr(client, "forget_cached_answer", None)
             if callable(forget):
-                forget(cache_key, schema_name=schema_name)
+                forget(cache_key, schema_name=schema_name, system=system, user=user)
 
     def complete_text(self, **kwargs: Any) -> Optional[str]:
         for client in self.clients:

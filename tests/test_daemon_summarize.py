@@ -136,8 +136,18 @@ class RecordingSummaryClient:
         }
 
     def prompt_member_counts(self) -> list:
-        """Materialization order fingerprint: prompt sizes per LLM call."""
-        return [int(str(c["cache_key"]).rsplit("::", 1)[1]) for c in self.calls]
+        """Materialization order fingerprint: prompt sizes per LLM call.
+
+        Read off the PROMPT ("Community has N members."), not the ``cache_key``.
+        The key used to carry ``::{len(prompt_members)}``, which is exactly the
+        defect this fingerprint was reading through: every community with the
+        same member count addressed one cache entry and got served whichever
+        one landed first. The count now lives only where it was always real.
+        """
+        return [
+            int(re.search(r"Community has (\d+) members", c["user"]).group(1))
+            for c in self.calls
+        ]
 
 
 def _fixture_graph() -> ResearchGraph:

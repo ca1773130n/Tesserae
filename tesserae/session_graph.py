@@ -267,6 +267,10 @@ class SessionGraphExtractor:
                 self.json_client,
                 max_turns_per_chunk=max(size, len(chunk)),
                 overlap=0,
+                # Namespace + schema version, and nothing more — deliberately.
+                # ``extract_with_llm`` passes this same key for EVERY chunk in
+                # its loop, so it never identified a chunk; the client hashes
+                # the assembled per-chunk prompt, which does.
                 cache_key=f"sessions-v{CACHE_SCHEMA_VERSION}",
                 guidance=self.guidance,
                 stats=chunk_stats,

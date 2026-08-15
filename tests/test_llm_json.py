@@ -1773,6 +1773,97 @@ def test_cli_clients_honour_cache_key(tmp_path, monkeypatch):
     assert len(calls) == 5
 
 
+def test_one_cache_key_cannot_serve_another_prompts_answer(tmp_path, monkeypatch):
+    """Two DIFFERENT prompts sharing one ``cache_key`` must not collide.
+
+    The cache advertised "the key is a content digest", and enforced that
+    nowhere — it hashed only ``cache_key``/model/variant. Three callers passed
+    a label rather than a digest, so on a real machine:
+
+      * ``community-summary-v1::<member COUNT>`` — every community with the
+        same number of members addressed ONE entry (40 such files existed in
+        ``~/.tesserae/llm_cache``, covering counts 5..25 across two providers);
+      * ``agent-distill-v1::<schema>`` — every distilled document, one entry;
+      * ``sessions-v<N>`` — passed unchanged for every chunk in
+        ``extract_with_llm``'s loop, so chunk 2..N replayed chunk 1's findings.
+
+    The clients now hash the ASSEMBLED prompt themselves, so correctness no
+    longer depends on a caller remembering the convention.
+    """
+    import json as _json
+
+    import tesserae.llm_json as lj
+
+    monkeypatch.delenv("TESSERAE_LLM_CACHE", raising=False)
+
+    for label, cls, kwargs in (
+        ("codex", lj.CodexCLIJsonClient, {"codex_homes": ["/x"], "model": "m"}),
+        ("claude", lj.ClaudeCLIJsonClient, {"config_dirs": ["/x"], "model": "m"}),
+    ):
+        cache_dir = tmp_path / label
+        monkeypatch.setattr(lj, "_CLI_CACHE_DIR", cache_dir)
+        calls: list = []
+
+        def _fake_run(self, prompt, **kw):
+            calls.append(prompt)
+            # Answer keyed to the prompt, so a collision is directly visible in
+            # the returned payload rather than only in the call count.
+            return _json.dumps({"answer_for": prompt.strip().splitlines()[-1]})
+
+        monkeypatch.setattr(cls, "_run_prompt", _fake_run)
+        client = cls(**kwargs)
+        key = "community-summary-v1"  # the shape a namespace label really is
+
+        a = client.complete_json(system="s", user="alpha", schema_name="g", cache_key=key)
+        b = client.complete_json(system="s", user="beta", schema_name="g", cache_key=key)
+        assert a == {"answer_for": "alpha"}
+        # Before the fix this was alpha's answer: same key, so same file.
+        assert b == {"answer_for": "beta"}, f"{label}: served another prompt's answer"
+        assert len(calls) == 2, f"{label}: a different prompt must re-ask"
+
+        # The SYSTEM half counts too — it is part of what gets sent.
+        client.complete_json(system="other", user="alpha", schema_name="g", cache_key=key)
+        assert len(calls) == 3
+
+        # ...and the optimization this cache exists for still holds: a
+        # byte-identical prompt under the same key comes off disk, not the CLI.
+        again = client.complete_json(system="s", user="alpha", schema_name="g", cache_key=key)
+        assert again == a
+        assert len(calls) == 3, f"{label}: an identical prompt must still hit the cache"
+
+        # Three distinct prompts, three files — not one shared entry.
+        assert len(list(cache_dir.rglob("*.json"))) == 3
+
+
+def test_forget_cached_answer_still_deletes_the_entry_the_put_wrote(tmp_path, monkeypatch):
+    """Folding the prompt into the address must not break the drop.
+
+    ``LLMResearchExtractor`` calls ``forget_cached_answer`` to throw away a
+    generation that parsed but failed schema validation. A drop that no longer
+    resolves to the file the put wrote would raise nothing, log nothing, and
+    leave the rejected answer to be served forever — so assert the drop is
+    addressed by the prompt, both ways.
+    """
+    import tesserae.llm_json as lj
+
+    monkeypatch.setattr(lj, "_CLI_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.delenv("TESSERAE_LLM_CACHE", raising=False)
+    monkeypatch.setattr(
+        lj.CodexCLIJsonClient, "_run_prompt", lambda self, prompt, **kw: '{"ok": 1}'
+    )
+    client = lj.CodexCLIJsonClient(codex_homes=["/x"], model="m")
+    client.complete_json(system="s", user="alpha", schema_name="g", cache_key="ns")
+    assert len(list((tmp_path / "cache").rglob("*.json"))) == 1
+
+    # A drop for a DIFFERENT prompt under the same key must not touch it.
+    client.forget_cached_answer("ns", schema_name="g", system="s", user="beta")
+    assert len(list((tmp_path / "cache").rglob("*.json"))) == 1
+
+    # The matching drop must remove exactly that entry.
+    client.forget_cached_answer("ns", schema_name="g", system="s", user="alpha")
+    assert list((tmp_path / "cache").rglob("*.json")) == []
+
+
 def test_cli_cache_never_stores_unparseable_output(tmp_path, monkeypatch):
     """Caching a malformed generation would make one bad roll permanent."""
     import tesserae.llm_json as lj

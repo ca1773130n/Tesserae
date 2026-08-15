@@ -72,10 +72,16 @@ en paralelo es byte-idéntica a una secuencial.
 ### `TESSERAE_LLM_CACHE`
 
 **Por defecto activado.** Caché de contenido direccionable de respuestas del
-proveedor CLI bajo `~/.tesserae/llm_cache`, indexado por (documento, tipo, guía)
-más el modelo y esfuerzo de razonamiento — así que cambiar modelos re-pregunta
-en lugar de servir respuestas del modelo anterior. Solo se almacenan respuestas
-parseables, por lo que una generación deficiente no puede volverse permanente.
+proveedor CLI bajo `~/.tesserae/llm_cache`, indexado por un resumen del prompt
+realmente enviado, más el modelo y esfuerzo de razonamiento — así que una pregunta
+diferente re-pregunta, y cambiar modelos re-pregunta en lugar de servir respuestas
+del modelo anterior. Solo se almacenan respuestas parseables, por lo que una
+generación deficiente no puede volverse permanente.
+
+Las entradas antiguas son inalcanzables por diseño: la clave solía ser una etiqueta
+proporcionada por la etapa de llamada en lugar de un resumen del prompt, por lo
+que preguntas no relacionadas podían compartir una entrada. Nada las migra — se
+puede eliminar el directorio sin riesgo, y una compilación lo rellenará.
 
 ```sh
 export TESSERAE_LLM_CACHE=0   # siempre re-preguntar
