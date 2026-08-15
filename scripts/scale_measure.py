@@ -6,8 +6,13 @@ the numbers should reproduce, on the same machine, within noise.
 
 Usage::
 
-    uv run --python 3.11 python scripts/scale_measure.py 47132 100000 250000
+    uv run --python 3.11 python scripts/scale_measure.py 47132 100000 250000 --repeat 3
     uv run --python 3.11 python scripts/scale_measure.py 250000 --ceiling-gb 5.5
+
+``--repeat`` is not optional politeness. Before #160 the embedding lane spent
+~900 ms per query in Python arithmetic and a cold sidecar read was noise beside
+it; after, the lane is fast enough that OS page-cache state is the largest term
+in its variance, and one sample per size can land 3x off its own median.
 
 Each size runs in its own subprocess. That is not tidiness — peak RSS is a
 process high-water mark, so measuring several sizes in one process reports the
@@ -90,14 +95,28 @@ class RssSampler:
     phase measured here; a phase that ran faster than that would report its
     entry RSS, so the runner records phase duration alongside and any phase
     under ~50 ms should be read as "peak not resolved".
+
+    The same thread records the LOWEST system-wide available memory seen during
+    the phase, because peak RSS alone cannot tell a slow phase from a starved
+    one. On a contended host a phase does not merely take longer, it peaks
+    LOWER — the OS refuses it the resident pages it asked for — so a run that
+    reports more seconds at less peak RSS than a previous sweep was starved
+    rather than slowed, and its timings describe the swap device. That
+    confusion cost most of a day on 2026-08-15 (see the re-measurement section
+    of ``docs/superpowers/specs/2026-08-14-scale-measurement.md``): eight of
+    sixteen runs had to be discarded, and identifying them at all needed a
+    prior sweep to compare against. This field makes a single run self-
+    diagnosing.
     """
 
     def __init__(self, interval: float = 0.005) -> None:
         import psutil
 
+        self._psutil = psutil
         self._proc = psutil.Process(os.getpid())
         self._interval = interval
         self._peak = 0
+        self._avail_min = 0
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -105,14 +124,18 @@ class RssSampler:
         while not self._stop.is_set():
             try:
                 rss = self._proc.memory_info().rss
+                avail = self._psutil.virtual_memory().available
             except Exception:
                 return
             if rss > self._peak:
                 self._peak = rss
+            if avail < self._avail_min:
+                self._avail_min = avail
             self._stop.wait(self._interval)
 
     def start(self) -> "RssSampler":
         self._peak = self._proc.memory_info().rss
+        self._avail_min = self._psutil.virtual_memory().available
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -123,6 +146,10 @@ class RssSampler:
         if self._thread is not None:
             self._thread.join(timeout=2.0)
         return self._peak
+
+    @property
+    def avail_min(self) -> int:
+        return self._avail_min
 
 
 class CeilingReached(Exception):
@@ -173,11 +200,18 @@ class PhaseRecorder:
                 "seconds": round(elapsed, 4),
                 "peak_rss_mb": round(peak / 1e6, 1),
                 "delta_rss_mb": round((peak - baseline) / 1e6, 1),
+                # Lowest system-wide available memory during the phase. A phase
+                # that finishes with this near zero was competing for pages and
+                # its duration is not a measurement of the code.
+                "avail_min_mb": round(sampler.avail_min / 1e6, 1),
                 "note": note,
                 "error": failure,
             }
         )
-        status = failure or f"{elapsed:8.3f}s  peak {peak / 1e6:8.1f} MB"
+        status = failure or (
+            f"{elapsed:8.3f}s  peak {peak / 1e6:8.1f} MB"
+            f"  free>= {sampler.avail_min / 1e9:4.1f} GB"
+        )
         print(f"  {name:<26} {status} {note}", flush=True)
         return result
 
@@ -343,6 +377,116 @@ def available_bytes() -> int:
     return int(psutil.virtual_memory().available)
 
 
+def summarize(results: List[Dict[str, object]]) -> Dict[tuple, Dict[str, object]]:
+    """Median seconds and peak RSS per (phase, size) across repeated runs.
+
+    The median, not the mean, because the distribution this smooths is
+    one-sided: a run whose vector sidecar was evicted from the OS page cache
+    pays a cold read that a run with a warm cache does not, and nothing makes a
+    run faster than its warm case. On the 2026-08-15 sweep one 100,000-node
+    ``hybrid_search_warm`` sample came in at 3.31 s against 0.99 s and 1.00 s
+    for its siblings — a mean would have carried a third of that outlier into
+    the reported number and put the embedding lane's regression story exactly
+    backwards.
+
+    Repeats matter now in a way they did not before #160: when the lane spent
+    877 ms in Python arithmetic, a few hundred milliseconds of cold-cache IO
+    was noise around a large signal. At 172 ms it is the signal.
+    """
+    buckets: Dict[tuple, Dict[str, List[float]]] = {}
+    for row in results:
+        n_nodes = int(row["n_nodes"])  # type: ignore[call-overload]
+        for phase in row.get("phases", []):  # type: ignore[union-attr]
+            if phase.get("error"):
+                # A phase that raised has no duration worth a median; it is
+                # reported as a failure elsewhere rather than averaged in.
+                continue
+            key = (str(phase["phase"]), n_nodes)
+            slot = buckets.setdefault(key, {"seconds": [], "peak_rss_mb": []})
+            slot["seconds"].append(float(phase["seconds"]))
+            slot["peak_rss_mb"].append(float(phase["peak_rss_mb"]))
+    out: Dict[tuple, Dict[str, object]] = {}
+    for key, slot in buckets.items():
+        out[key] = {
+            "seconds": _median(slot["seconds"]),
+            "peak_rss_mb": _median(slot["peak_rss_mb"]),
+            "seconds_min": min(slot["seconds"]),
+            "seconds_max": max(slot["seconds"]),
+            "runs": len(slot["seconds"]),
+        }
+    return out
+
+
+def _median(values: List[float]) -> float:
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2.0
+
+
+#: System-wide available memory, in MB, below which a phase's duration stops
+#: describing the code and starts describing the swap device. Not tuned — it is
+#: the point at which the 2026-08-15 sweep's phases began reporting MORE time at
+#: LESS peak RSS, which is the starvation signature.
+STARVATION_FLOOR_MB = 1500.0
+
+
+def starved(results: List[Dict[str, object]], floor_mb: float = STARVATION_FLOOR_MB):
+    """Phases that ran while the machine had less than ``floor_mb`` free.
+
+    Reported rather than dropped, because whether a starved phase invalidates a
+    conclusion depends on the conclusion: ``json_dumps`` streams a string and
+    reproduces to 1% under pressure, while the embedding lane's scattered
+    sidecar reads inflate 8x. The runner cannot know which the reader cares
+    about, so it names them and lets the reader decide.
+
+    Phases with no ``avail_min_mb`` predate the field and are skipped rather
+    than treated as starved — an older result file is not evidence of pressure.
+    """
+    out = []
+    for row in results:
+        for phase in row.get("phases", []):  # type: ignore[union-attr]
+            avail = phase.get("avail_min_mb")
+            if avail is None:
+                continue
+            if float(avail) < floor_mb:
+                out.append((str(phase["phase"]), int(row["n_nodes"]), float(avail)))  # type: ignore[call-overload]
+    return out
+
+
+def print_summary(results: List[Dict[str, object]]) -> None:
+    warnings = starved(results)
+    if warnings:
+        print(
+            f"\n!! {len(warnings)} phase(s) ran with under "
+            f"{STARVATION_FLOOR_MB / 1000:.1f} GB free. A phase that reports MORE time at "
+            "LESS peak RSS than a previous sweep was starved, not slowed:",
+            flush=True,
+        )
+        for phase, n_nodes, avail in warnings[:12]:
+            print(f"   {phase:<24} n={n_nodes:>7,}  free fell to {avail / 1000:.2f} GB", flush=True)
+    summary = summarize(results)
+    sizes = sorted({key[1] for key in summary})
+    phases: List[str] = []
+    for row in results:
+        for phase in row.get("phases", []):  # type: ignore[union-attr]
+            if phase["phase"] not in phases:
+                phases.append(str(phase["phase"]))
+    print("\n=== median across repeats ===", flush=True)
+    header = "phase".ljust(24) + "".join(f"{n:>16,}" for n in sizes)
+    print(header, flush=True)
+    for phase in phases:
+        cells = []
+        for n in sizes:
+            cell = summary.get((phase, n))
+            cells.append(
+                f"{cell['seconds']:>9.3f}s{cell['peak_rss_mb']:>6.0f}" if cell else f"{'-':>16}"
+            )
+        print(phase.ljust(24) + "".join(cells), flush=True)
+    print("(seconds, then peak RSS in MB)", flush=True)
+
+
 def project_peak(results: List[Dict[str, object]], n_nodes: int) -> Optional[float]:
     """Least-squares linear projection of peak RSS onto ``n_nodes``.
 
@@ -389,6 +533,18 @@ def main() -> int:
             "rather than removing the guard."
         ),
     )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help=(
+            "Runs per size; the summary reports the median. One sample per size "
+            "was adequate while the embedding lane spent ~900 ms in Python "
+            "arithmetic, because cold-page-cache IO was noise beside it. Since "
+            "#160 vectorised the lane the IO IS the measurement, and a single "
+            "sample can land 3x off (observed at 100,000 nodes)."
+        ),
+    )
     parser.add_argument("--child", type=int, default=0, help=argparse.SUPPRESS)
     parser.add_argument("--child-out", default="", help=argparse.SUPPRESS)
     parser.add_argument("--workdir", default="", help=argparse.SUPPRESS)
@@ -403,7 +559,8 @@ def main() -> int:
     if out.exists():
         results = json.loads(out.read_text())
 
-    for n in sorted(args.sizes):
+    plan = [n for n in sorted(args.sizes) for _ in range(max(1, args.repeat))]
+    for n in plan:
         avail = available_bytes()
         projected = project_peak(results, n)
         print(f"\n=== {n:,} nodes — {avail / 1e9:.1f} GB available ===", flush=True)
@@ -456,6 +613,8 @@ def main() -> int:
             # complete is already recorded.
             print("    stopping sweep: the ceiling was reached at this size", flush=True)
             break
+    if results:
+        print_summary(results)
     return 0
 
 
