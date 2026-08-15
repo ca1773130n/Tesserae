@@ -82,11 +82,17 @@ def test_lint_suggested_fixes_never_name_an_unimplemented_env_flag() -> None:
     readers = "\n".join(
         path.read_text(encoding="utf-8") for path in sorted(_PKG.rglob("*.py"))
     )
+    # ``_env_truthy`` is the package's own env reader (project.py) and most
+    # compile-pass flags are read through it and never through ``os.environ``
+    # directly. Without it here the ratchet fails a remediation string that
+    # names a flag which IS implemented — a false alarm that pressures the next
+    # author to delete accurate guidance instead of fixing this regex.
     unread = sorted(
         flag
         for flag in advertised
         if not re.search(
-            rf"(?:environ(?:\.get)?\(|getenv\()\s*[\"']{flag}[\"']", readers
+            rf"(?:environ(?:\.get)?\(|getenv\(|_env_truthy\()\s*[\"']{flag}[\"']",
+            readers,
         )
     )
     assert not unread, (

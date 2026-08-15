@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from tesserae.charter import materialize_domain_brief, read_domain_brief
 from tesserae.cli import main as cli_main
 from tesserae.lint import (
     LintFinding,
@@ -26,6 +27,7 @@ from tesserae.lint import (
     _sample_claims,
 )
 from tesserae.project import ProjectWiki
+from tesserae.research_graph import ResearchNode, ResearchNodeType
 
 
 # --------------------------------------------------------------------------- helpers
@@ -1652,3 +1654,521 @@ def test_a_hand_edited_candidate_row_cannot_take_the_lint_run_down(tmp_path):
     assert len(findings) == 1
     assert "1 candidate merge pair(s)" in findings[0].message
     assert not report.has_errors()
+
+
+# --- CHARTER_PARTITION / CHARTER_FALLBACK: the two charter lints (CH step 7) --
+
+
+def _charter_domain(**overrides) -> dict:
+    entry = {
+        "tier": 1,
+        "own_altitude": "division",
+        "parent_slug": None,
+        "child_slugs": [],
+        "anchor_id": "Concept:a:1",
+        "direct_member_ids": [],
+        "member_count": 0,
+        "reorg_seq": 0,
+        "status": "live",
+        "transition": "founded",
+        "unsplittable": False,
+    }
+    entry.update(overrides)
+    return entry
+
+
+def _write_charter_file(project_root: Path, payload: object) -> Path:
+    path = project_root / ".tesserae" / "charter" / "charter.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        payload if isinstance(payload, str) else json.dumps(payload, indent=2),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _charter_project(tmp_path: Path, domains: dict, member_index: dict) -> Path:
+    """A scaffold whose graph.json carries exactly the indexed member ids."""
+    graph = {
+        "nodes": [_node(mid, "Concept", mid) for mid in sorted(member_index)],
+        "edges": [],
+    }
+    project = _scaffold(tmp_path, graph=graph)
+    _write_charter_file(
+        project,
+        {"version": 1, "reorg_seq": 0, "domains": domains, "member_index": member_index},
+    )
+    return project
+
+
+class _BriefStubClient:
+    """LLMJsonClient stub. Makes no network call and reaches no provider."""
+
+    def complete_json(self, **kwargs) -> dict:
+        return {
+            "title": "Stub domain",
+            "description": "A description of the domain, long enough to validate.",
+            "tags": ["alpha", "beta", "gamma", "delta", "epsilon"],
+        }
+
+
+def _warm_brief(project_root: Path, charter: dict, slug: str) -> Path:
+    """Plant a warm brief where the WRITER would put it, never where we guess.
+
+    These fixtures used to write ``community_summaries/1/CommunitySummary_
+    <slug>.json`` by hand and passed while the probe was structurally dead:
+    both halves agreed on a filename nothing in the package produces. Asking
+    ``brief_cache_path`` is what makes them able to fail.
+    """
+    from tesserae.charter import brief_cache_path
+
+    path = brief_cache_path(
+        charter, slug, cache_dir=project_root / ".tesserae" / "community_summaries"
+    )
+    assert path is not None, f"{slug!r} must be a slug the writer would accept"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}", encoding="utf-8")
+    return path
+
+
+def test_no_charter_is_silence_not_a_finding(tmp_path):
+    """A project under the founding bound never gets one; a row for that is noise."""
+    project = _scaffold(tmp_path)
+
+    report = WikiLinter(project).run()
+
+    assert not [f for f in report.findings if f.code.startswith("CHARTER_")]
+    assert not [f for f in report.findings if f.code == "LINT_PROBE_FAILED"]
+
+
+def test_a_healthy_charter_reports_no_partition_finding(tmp_path):
+    project = _charter_project(
+        tmp_path,
+        {
+            "alpha": _charter_domain(
+                direct_member_ids=["n1"], member_count=3, child_slugs=["beta"]
+            ),
+            "beta": _charter_domain(
+                tier=2, parent_slug="alpha", direct_member_ids=["n2", "n3"], member_count=2
+            ),
+        },
+        {"n1": "alpha", "n2": "beta", "n3": "beta"},
+    )
+
+    report = WikiLinter(project).run()
+
+    assert not [f for f in report.findings if f.code == "CHARTER_PARTITION"]
+    assert not report.has_errors()
+
+
+def test_a_member_id_absent_from_graph_json_is_an_error(tmp_path):
+    """The ordering window: _verify_partition checks the in-memory graph, not the file.
+
+    ``build_charter`` runs at project.py:1573 and three later passes rebind
+    ``graph`` before graph.json is written, so a retyped node can be named by
+    member_index and absent from the file. No fixture inside build_charter can
+    produce that, which is why it is a lint rather than a second runtime check.
+    """
+    project = _charter_project(
+        tmp_path,
+        {"alpha": _charter_domain(direct_member_ids=["n1"], member_count=1)},
+        {"n1": "alpha"},
+    )
+    _write_charter_file(
+        project,
+        {
+            "version": 1,
+            "reorg_seq": 0,
+            "domains": {
+                "alpha": _charter_domain(direct_member_ids=["n1", "ghost"], member_count=2)
+            },
+            "member_index": {"n1": "alpha", "ghost": "alpha"},
+        },
+    )
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [
+        f
+        for f in report.findings
+        if f.code == "CHARTER_PARTITION" and "do not resolve" in f.message
+    ]
+    assert finding.severity == "error"
+    assert "ghost" in finding.message
+    assert report.has_errors()
+
+
+def test_member_index_disagreeing_with_the_direct_blocks_is_an_error(tmp_path):
+    """succeed() remaps domains and member_index in independent passes.
+
+    Its own docstring records the review finding where that let member_index
+    keep pointing members at a slug that no longer held them, and the merged
+    charter is never re-verified — build_charter checks the FRESH one.
+    """
+    project = _charter_project(
+        tmp_path,
+        {
+            "alpha": _charter_domain(direct_member_ids=["n1"], member_count=1),
+            "beta": _charter_domain(direct_member_ids=["n2"], member_count=1),
+        },
+        {"n1": "alpha", "n2": "alpha"},
+    )
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [
+        f
+        for f in report.findings
+        if f.code == "CHARTER_PARTITION" and "does not hold them" in f.message
+    ]
+    assert finding.severity == "error"
+    assert finding.node_id == "n2"
+
+
+def test_a_member_held_by_two_live_domains_is_an_error(tmp_path):
+    project = _charter_project(
+        tmp_path,
+        {
+            "alpha": _charter_domain(direct_member_ids=["n1"], member_count=1),
+            "beta": _charter_domain(direct_member_ids=["n1"], member_count=1),
+        },
+        {"n1": "beta"},
+    )
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [
+        f
+        for f in report.findings
+        if f.code == "CHARTER_PARTITION" and "more than one live domain" in f.message
+    ]
+    assert finding.severity == "error"
+    assert finding.node_id == "n1"
+
+
+def test_a_tombstone_reusing_live_member_ids_is_not_reported(tmp_path):
+    """A tombstone keeps the direct block it had when it was last live.
+
+    Those members are held by live domains now, so counting retired domains
+    would report the whole institution as duplicated on every healthy charter.
+    """
+    project = _charter_project(
+        tmp_path,
+        {
+            "alpha": _charter_domain(direct_member_ids=["n1", "n2"], member_count=2),
+            "old-alpha": _charter_domain(
+                status="retired",
+                transition="retired",
+                direct_member_ids=["n1", "n2"],
+                member_count=2,
+                superseded_by=None,
+            ),
+        },
+        {"n1": "alpha", "n2": "alpha"},
+    )
+
+    report = WikiLinter(project).run()
+
+    assert not [f for f in report.findings if f.code == "CHARTER_PARTITION"]
+
+
+def test_a_child_slug_naming_no_live_domain_is_an_error(tmp_path):
+    """succeed preserves an unmapped child verbatim rather than raising."""
+    project = _charter_project(
+        tmp_path,
+        {
+            "alpha": _charter_domain(
+                direct_member_ids=["n1"], member_count=1, child_slugs=["vanished"]
+            )
+        },
+        {"n1": "alpha"},
+    )
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [
+        f
+        for f in report.findings
+        if f.code == "CHARTER_PARTITION" and "child_slugs" in f.message
+    ]
+    assert finding.severity == "error"
+    assert "alpha → vanished" in finding.message
+    # The dangling child is excluded from the arithmetic: one cause, one finding.
+    assert not [f for f in report.findings if "member_count" in f.message]
+
+
+def test_a_domain_whose_counts_do_not_cover_its_tree_is_an_error(tmp_path):
+    """union(child members) ∪ direct == own members, in the form the record has."""
+    project = _charter_project(
+        tmp_path,
+        {
+            "alpha": _charter_domain(
+                direct_member_ids=["n1"], member_count=9, child_slugs=["beta"]
+            ),
+            "beta": _charter_domain(
+                tier=2, parent_slug="alpha", direct_member_ids=["n2"], member_count=1
+            ),
+        },
+        {"n1": "alpha", "n2": "beta"},
+    )
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [
+        f
+        for f in report.findings
+        if f.code == "CHARTER_PARTITION" and "member_count" in f.message
+    ]
+    assert finding.severity == "error"
+    assert "alpha" in finding.message
+
+
+def test_an_unreadable_charter_is_a_probe_failure_not_a_clean_report(tmp_path):
+    """"The partition is intact" and "the charter is truncated" must not be one report."""
+    project = _scaffold(tmp_path)
+    _write_charter_file(project, "{ this is not json")
+
+    report = WikiLinter(project).run()
+
+    failures = [f for f in report.findings if f.code == "LINT_PROBE_FAILED"]
+    assert {f.severity for f in failures} == {"info"}
+    assert any("CHARTER_PARTITION did not run" in f.message for f in failures)
+    assert any("CHARTER_FALLBACK did not run" in f.message for f in failures)
+    assert not [f for f in report.findings if f.code.startswith("CHARTER_")]
+
+
+def test_a_hand_merged_charter_shape_cannot_take_the_lint_run_down(tmp_path):
+    """charter.json is a file a bad hand-merge can leave in any state."""
+    project = _scaffold(tmp_path)
+    _write_charter_file(project, {"version": 1, "domains": ["not", "a", "map"]})
+
+    report = WikiLinter(project).run()
+
+    assert any(
+        f.code == "LINT_PROBE_FAILED" and "CHARTER_PARTITION did not run" in f.message
+        for f in report.findings
+    )
+
+
+def test_a_charter_with_an_unreadable_graph_says_so_rather_than_reporting_zero(tmp_path):
+    """An empty nodes_by_id would make every member id read as unresolved.
+
+    ``_load_graph`` returns an empty graph for a corrupt graph.json, and a
+    charter cannot exist for a genuinely empty graph — so this is the
+    unreadable case and thousands of errors would be a lie about it.
+    """
+    project = _charter_project(
+        tmp_path,
+        {"alpha": _charter_domain(direct_member_ids=["n1"], member_count=1)},
+        {"n1": "alpha"},
+    )
+    (project / ".tesserae" / "graph.json").write_text("{ broken", encoding="utf-8")
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [
+        f
+        for f in report.findings
+        if f.code == "LINT_PROBE_FAILED" and "CHARTER_PARTITION did not run" in f.message
+    ]
+    assert "not intact" in finding.message
+    assert not [f for f in report.findings if f.code == "CHARTER_PARTITION"]
+
+
+def test_charter_fallback_is_silent_until_something_has_been_materialized(tmp_path):
+    """"0 of N warm" is true of every project that never ran the pass."""
+    project = _charter_project(
+        tmp_path,
+        {
+            "alpha": _charter_domain(direct_member_ids=["n1"], member_count=1),
+            "beta": _charter_domain(direct_member_ids=["n2"], member_count=1),
+        },
+        {"n1": "alpha", "n2": "beta"},
+    )
+
+    report = WikiLinter(project).run()
+
+    assert not [f for f in report.findings if f.code == "CHARTER_FALLBACK"]
+
+
+def test_charter_fallback_counts_the_cold_domains_once_one_is_warm(tmp_path):
+    """CH-06: an LLM outage freezes a slice with nothing to retry it."""
+    domains = {
+        "alpha": _charter_domain(direct_member_ids=["n1"], member_count=1),
+        "beta": _charter_domain(direct_member_ids=["n2"], member_count=1),
+        "gamma": _charter_domain(direct_member_ids=["n3"], member_count=1),
+    }
+    project = _charter_project(
+        tmp_path, domains, {"n1": "alpha", "n2": "beta", "n3": "gamma"}
+    )
+    _warm_brief(project, {"domains": domains}, "alpha")
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [f for f in report.findings if f.code == "CHARTER_FALLBACK"]
+    assert finding.severity == "info"
+    assert "2 of 3 live charter domain(s)" in finding.message
+    assert "beta, gamma" in finding.message
+    # A cold cache is the normal state of a lazy cache; it must never gate a
+    # build, and `compile --strict` maps warning to exit 1.
+    assert not [f for f in report.findings if f.code.startswith("CHARTER_") and f.severity != "info"]
+
+
+def test_charter_fallback_is_silent_when_every_domain_is_warm(tmp_path):
+    """"0 of N are cold" is a row saying nothing is wrong."""
+    domains = {"alpha": _charter_domain(direct_member_ids=["n1"], member_count=1)}
+    project = _charter_project(tmp_path, domains, {"n1": "alpha"})
+    _warm_brief(project, {"domains": domains}, "alpha")
+
+    report = WikiLinter(project).run()
+
+    assert not [f for f in report.findings if f.code == "CHARTER_FALLBACK"]
+
+
+def test_charter_fallback_reads_the_domains_own_tier_and_not_a_stray_level(tmp_path):
+    """A brief at the wrong level is residue, and a reader will never open it.
+
+    Replaces a test that asserted the opposite — "the same member set read one
+    tier up is a legitimate warm entry", scanning every ``<level>/`` directory
+    for a summary. That is true of ``graph_map`` scopes, whose level is
+    whatever the caller resolved at; it is false of a charter brief, whose
+    level is ``_brief_level`` — the domain's own tier and nothing else. A copy
+    at another level is what ``_brief_level``'s docstring calls intended
+    residue after a tier move, and counting it warm would tell an operator a
+    domain has prose while every reader of it gets a structural card.
+    """
+    domains = {
+        "alpha": _charter_domain(direct_member_ids=["n1"], member_count=1),
+        "beta": _charter_domain(
+            tier=2, parent_slug=None, direct_member_ids=["n2"], member_count=1
+        ),
+    }
+    project = _charter_project(tmp_path, domains, {"n1": "alpha", "n2": "beta"})
+    # alpha is warm at its own tier (1); beta's only brief sits at tier 3, the
+    # altitude it was promoted away from.
+    _warm_brief(project, {"domains": domains}, "alpha")
+    _warm_brief(project, {"domains": {"beta": _charter_domain(tier=3)}}, "beta")
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [f for f in report.findings if f.code == "CHARTER_FALLBACK"]
+    assert "1 of 2 live charter domain(s)" in finding.message
+    assert "card: beta." in finding.message
+
+
+def test_charter_fallback_counts_a_slug_the_writer_would_refuse_as_cold(tmp_path):
+    """A slug that cannot be a filename can never be warm, and must not crash.
+
+    ``charter.json`` is a file a bad hand-merge can mangle, and the probe stats
+    a path derived from a slug. ``brief_cache_path`` applies the same
+    ``_brief_slug_ok`` gate both halves of the writer/reader pair take, so a
+    ``..``-bearing slug yields no path to stat rather than one outside the
+    cache dir — and reads as cold, which is what it is: the writer would refuse
+    it too.
+    """
+    domains = {
+        "alpha": _charter_domain(direct_member_ids=["n1"], member_count=1),
+        "../escape": _charter_domain(direct_member_ids=["n2"], member_count=1),
+    }
+    project = _charter_project(tmp_path, domains, {"n1": "alpha", "n2": "../escape"})
+    _warm_brief(project, {"domains": domains}, "alpha")
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [f for f in report.findings if f.code == "CHARTER_FALLBACK"]
+    assert "1 of 2 live charter domain(s)" in finding.message
+    assert "card: ../escape." in finding.message
+
+
+def test_charter_fallback_sees_a_brief_written_by_the_real_writer(tmp_path):
+    """The probe against ``materialize_domain_brief``, not against a fixture.
+
+    The regression this exists for: the probe keyed warmth on
+    ``CommunitySummary_<slug>.json``, a filename NO writer in the package
+    produces — ``brief_cid`` mints ``CharterDomain:<slug>`` precisely to stay
+    out of that namespace (``prune_stale_summary_caches`` deletes it). Every
+    live domain therefore read as cold, ``len(cold) < len(live)`` was never
+    true, and the frozen branch could not be reached. The hand-built fixtures
+    above missed it because they wrote the same wrong name the probe read.
+
+    So this one warms a domain through the real writer and asserts the probe
+    names exactly the other. The LLM client is a stub: no network, no compile.
+    """
+    domains = {
+        "alpha": _charter_domain(direct_member_ids=["n1"], member_count=1),
+        "beta": _charter_domain(direct_member_ids=["n2"], member_count=1),
+    }
+    project = _charter_project(tmp_path, domains, {"n1": "alpha", "n2": "beta"})
+    charter = {"domains": domains}
+    by_id = {
+        nid: ResearchNode(id=nid, name=nid, type=ResearchNodeType.CONCEPT)
+        for nid in ("n1", "n2")
+    }
+    cache_dir = project / ".tesserae" / "community_summaries"
+
+    written = materialize_domain_brief(
+        charter,
+        "alpha",
+        by_id,
+        {},
+        cache_dir=cache_dir,
+        json_client=_BriefStubClient(),
+    )
+    assert written is not None, "the stub client must produce a cacheable brief"
+    assert read_domain_brief(
+        charter, "alpha", by_id, {}, cache_dir=cache_dir
+    ), "the writer's own reader must find what it just wrote"
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [f for f in report.findings if f.code == "CHARTER_FALLBACK"]
+    assert finding.severity == "info"
+    assert "1 of 2 live charter domain(s)" in finding.message
+    assert "card: beta." in finding.message
+
+    # ...and silent once the writer has warmed the rest.
+    assert materialize_domain_brief(
+        charter, "beta", by_id, {}, cache_dir=cache_dir, json_client=_BriefStubClient()
+    )
+    assert not [
+        f for f in WikiLinter(project).run().findings if f.code == "CHARTER_FALLBACK"
+    ]
+
+
+def test_charter_fallback_reports_undated_domains_with_no_summaries_at_all(tmp_path):
+    """The undated count is a signal in its own right, not a rider on the cache."""
+    project = _charter_project(
+        tmp_path,
+        {
+            "alpha": _charter_domain(
+                direct_member_ids=["n1"], member_count=1, quality="undated"
+            ),
+            "beta": _charter_domain(direct_member_ids=["n2"], member_count=1),
+        },
+        {"n1": "alpha", "n2": "beta"},
+    )
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [f for f in report.findings if f.code == "CHARTER_FALLBACK"]
+    assert finding.severity == "info"
+    assert "1 domain(s) are undated" in finding.message
+    assert "alpha" in finding.message
+
+
+def test_charter_findings_are_byte_stable_across_runs(tmp_path):
+    """lint-report.json is diffed by CI, so the same input must give the same bytes."""
+    project = _charter_project(
+        tmp_path,
+        {
+            "alpha": _charter_domain(direct_member_ids=["n1"], member_count=1),
+            "beta": _charter_domain(direct_member_ids=["n2"], member_count=1),
+        },
+        {"n1": "alpha", "n2": "alpha"},
+    )
+
+    first = WikiLinter(project).run()
+    second = WikiLinter(project).run()
+
+    assert first.to_json() == second.to_json()
+    assert first.by_code.get("CHARTER_PARTITION") == 1
