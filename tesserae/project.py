@@ -2541,7 +2541,26 @@ class ProjectWiki:
         markdowns reachable without forcing every project to remember to add
         ``data`` to their sources list. Pass ``exclude_data=True`` to opt out
         (e.g. for projects that store unrelated binaries under ``data/``).
+
+        A compile NARRATES ITSELF unless the caller says otherwise. ``progress``
+        left at ``None`` gets :class:`LoggingCompileProgress`, not silence —
+        because silence is what every non-CLI entry point used to get, and a
+        compile that prints nothing for hours is indistinguishable from a hung
+        one. That ambiguity cost a real 3h35m run: it was killed on the
+        assumption it had stalled, when it was 60% through a forced full
+        re-extract and behaving correctly.
+
+        ``tesserae compile`` still passes its own reporter (rich on a terminal,
+        logging otherwise). The callers that passed nothing — ``refresh``,
+        ``watch``, the MCP compile, the ingest orchestrator and the engine
+        daemon — are exactly the detached, long-running ones nobody can watch,
+        and they are the reason this default is noisy rather than quiet. Pass
+        :class:`NullCompileProgress` explicitly for genuine silence.
         """
+        if progress is None:
+            from .compile_progress import LoggingCompileProgress
+
+            progress = LoggingCompileProgress()
         cfg = self.config()
         # Per-compile producer provenance accumulator (Codex #6). Each of the 5
         # non-extraction producers records the node ids + edges it minted THIS
