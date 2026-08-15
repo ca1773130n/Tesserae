@@ -25,12 +25,21 @@ behind them:
    — nothing here can infer that a report "describing absorbed ideas" was the
    competitive report — so it is pinned as a literal below instead.
 
-The premise all three claims violated is still true, and
-`_repo_reports_a_retrieval_metric` below re-checks it on every run rather than
-trusting this docstring: nothing in the first-party tree computes a retrieval
-metric, so no first-party doc can honestly report a comparative result. These
-are text assertions, not behaviour tests — the defect was a false claim in
-prose, and prose is the only place it can regress.
+The premise has since moved, and `_repo_reports_a_retrieval_metric` below
+re-checks it on every run rather than trusting this docstring. A first-party
+answer-quality score now exists — ``evals/qa/scorer.py`` computes exact match
+and token F1 — so the sentence "nothing here measures anything" is no longer
+the reason the ban holds. The reason it holds now is narrower and is the
+harness's own: the scorer has been **run against no competitor**, no report is
+committed, and its ``fairness_blockers()`` gate refuses to publish a comparison
+until the systems' model, embedding backend, corpus, question set and answer
+shape all match — which for the two systems it ships they do not.
+
+So a doc still may not report a comparative result, and the day one legitimately
+can, `test_no_first_party_doc_claims_a_measured_comparison` gets relaxed to
+permit claims that **cite that benchmark and its numbers** — not reopened to
+unmeasured ones. These are text assertions, not behaviour tests: the defect was
+a false claim in prose, and prose is the only place it can regress.
 """
 
 from __future__ import annotations
@@ -52,16 +61,15 @@ LANGS = ("ko", "zh", "ja", "ru", "es", "fr", "de")
 #: ``tests/test_docs_install_and_detach_claims.py``.
 DATED_RECORD_DIRS = {"release-notes", "handoffs", "superpowers", "launch"}
 
-#: Retrieval-quality metrics. The presence of ANY of these in the first-party
-#: tree would mean some measurement path exists and the ban below needs
-#: revisiting — which is exactly what `test_repository_still_produces_no_retrieval_metric`
-#: is for. Written as fragments joined at import so this module does not match
-#: itself when it scans ``tests/``.
+#: Retrieval-quality metrics. Written as fragments joined at import so this
+#: module does not match itself when it scans ``tests/``.
 _METRIC_TOKENS = ("nd" + "cg", "m" + "rr", "recall@", "precision@", "hits@",
                   "mean reciprocal")
 
-#: ``token_f1`` / "token F1" is the QA scorer's headline number. It appears
-#: nowhere in the tree today, which is what makes it a usable tripwire.
+#: ``token_f1`` / "token F1" is the QA scorer's headline number, and it is what
+#: `test_a_measurement_exists_and_the_ban_still_holds_anyway` now finds in
+#: ``evals/qa/scorer.py``. It was written here before that scorer existed, as a
+#: tripwire, so the arrival of a real measurement could not pass unnoticed.
 #:
 #: Bare precision/recall/F1 is deliberately NOT a token here, and the
 #: distinction is the whole reason this check is narrow: ``evals/federation/
@@ -380,23 +388,41 @@ def _repo_reports_a_retrieval_metric() -> bool:
     )
 
 
-def test_repository_still_produces_no_retrieval_metric() -> None:
-    """The premise every assertion below rests on.
+def test_a_measurement_exists_and_the_ban_still_holds_anyway() -> None:
+    """The premise every assertion below rests on, re-decided.
 
-    What it is waiting for, concretely: a first-party answer-quality score —
-    ``evals/metrics.py`` and ``evals/qa/`` are already in `_first_party_python`
-    by name, and the QA scorer's ``token_f1`` is already in `_METRIC`. Neither
-    path is on disk yet. When that work lands, this test fails on the same run
-    that merges it.
+    This test used to assert the opposite — that no first-party module computed
+    a retrieval metric — as a tripwire set to fire on the run that merged one.
+    It fired: ``evals/qa/scorer.py`` computes exact match and token F1, and
+    ``evals/metrics.py`` and ``evals/qa/`` were listed in `_first_party_python`
+    ahead of time for exactly this moment.
 
-    If it fails, someone added a real measurement — good. Then the ban in
-    `test_no_first_party_doc_claims_a_measured_comparison` should be relaxed
-    *deliberately*, to permit claims that cite that benchmark and its numbers,
-    rather than reopening the door to unmeasured ones.
+    Its instruction was to relax the ban *deliberately* rather than delete the
+    guard, so: **not yet, and here is why.** A metric that exists is not a
+    result. The scorer has been run against no competitor, no report is
+    committed (``evals/qa/README.md`` ships a ``--score`` command instead of
+    one), and its own ``fairness_blockers()`` gate refuses to publish a
+    comparison whose systems disagree on model, embedding backend, corpus,
+    question set or answer shape — which the two systems it ships do, on the
+    last of those, by construction.
+
+    So the ban in `test_no_first_party_doc_claims_a_measured_comparison` stands
+    unchanged. What changes is what would lift it: a doc may report a
+    comparison once it can **cite that benchmark's numbers from a run that
+    cleared the gate**, and this test is where that decision gets recorded.
     """
-    assert not _repo_reports_a_retrieval_metric(), (
-        "a retrieval metric now exists in the first-party tree — revisit the "
-        "comparative-claim ban in this module instead of deleting it"
+    assert _repo_reports_a_retrieval_metric(), (
+        "the QA scorer's token F1 has disappeared from the first-party tree — "
+        "if the measurement was removed, this module's premise reverts and its "
+        "docstring is now wrong"
+    )
+    # The narrower reason the ban survives the measurement: the harness itself
+    # will not publish a comparison, and has not been asked to produce one.
+    report = ROOT / "evals" / "qa" / "report.md"
+    assert not report.exists(), (
+        f"{report.relative_to(ROOT)} exists — a committed comparative table is "
+        "exactly what this module bans in prose; keep generated reports outside "
+        "the repo (run_qa_eval.py's --out defaults there)"
     )
 
 

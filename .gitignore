@@ -13,8 +13,18 @@ output/
 # because `evals/*` still matches them.
 evals/*
 !evals/__init__.py
+!evals/metrics.py
 !evals/federation/
 !evals/growth/
+!evals/qa/
+
+# Un-ignoring evals/qa/ re-exposes anything a run drops in it. The QA runner
+# defaults --out to ~/.blackhole/ instead, so this only catches the operator who
+# passes the in-repo path explicitly — but a comparative table naming a
+# competitor is exactly the file that must never arrive via `git add -A`, and
+# #178's _first_party_docs() does not scan evals/, so nothing else would see it.
+evals/qa/report*.md
+evals/qa/answers/
 
 # But: the demo corpus under examples/ IS checked in.
 !examples/demo-corpus/data/

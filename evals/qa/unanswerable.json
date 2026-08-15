@@ -1,0 +1,86 @@
+[
+  {
+    "question": "According to the corpus, what is the total land area of Bhutan in square kilometres?",
+    "answer": null,
+    "level": "unanswerable-absent",
+    "absent_tokens": ["bhutan"],
+    "why": "real entity, zero mentions in the 240-document corpus"
+  },
+  {
+    "question": "Which of the people described in the corpus was born in Reykjavik?",
+    "answer": null,
+    "level": "unanswerable-absent",
+    "absent_tokens": ["reykjavik"],
+    "why": "real place, zero mentions in the corpus"
+  },
+  {
+    "question": "What year did the Chernobyl reactor accident occur, according to the documents provided?",
+    "answer": null,
+    "level": "unanswerable-absent",
+    "absent_tokens": ["chernobyl"],
+    "why": "famous event a base model knows from memory; the corpus never mentions it"
+  },
+  {
+    "question": "Which document in the corpus describes the CRISPR gene-editing technique?",
+    "answer": null,
+    "level": "unanswerable-absent",
+    "absent_tokens": ["crispr"],
+    "why": "real technique, zero mentions in the corpus"
+  },
+  {
+    "question": "How deep is the Mariana Trench according to the corpus?",
+    "answer": null,
+    "level": "unanswerable-absent",
+    "absent_tokens": ["mariana trench"],
+    "why": "real place a base model knows; absent from the corpus"
+  },
+  {
+    "question": "Which spacecraft described in the corpus left the heliosphere in 2018?",
+    "answer": null,
+    "level": "unanswerable-absent",
+    "absent_tokens": ["voyager 2", "heliosphere"],
+    "why": "real event, zero mentions in the corpus"
+  },
+  {
+    "question": "In which year was the Zorvath Institute of Applied Cartography founded?",
+    "answer": null,
+    "level": "unanswerable-fictitious",
+    "absent_tokens": ["zorvath"],
+    "why": "invented institution; there is no correct answer anywhere, not just here"
+  },
+  {
+    "question": "Who directed the 1974 film 'Ashes of Pellingbourne'?",
+    "answer": null,
+    "level": "unanswerable-fictitious",
+    "absent_tokens": ["pellingbourne"],
+    "why": "invented film"
+  },
+  {
+    "question": "What is the population of the town of Quibberdown, Vermont?",
+    "answer": null,
+    "level": "unanswerable-fictitious",
+    "absent_tokens": ["quibberdown"],
+    "why": "invented town"
+  },
+  {
+    "question": "Which award did the physicist Marren Solvig receive in 1991?",
+    "answer": null,
+    "level": "unanswerable-fictitious",
+    "absent_tokens": ["solvig"],
+    "why": "invented person"
+  },
+  {
+    "question": "What is the wingspan of the Halberd XR-9 reconnaissance aircraft?",
+    "answer": null,
+    "level": "unanswerable-fictitious",
+    "absent_tokens": ["halberd xr-9"],
+    "why": "invented aircraft"
+  },
+  {
+    "question": "In what year did the Treaty of Vansmoor come into force?",
+    "answer": null,
+    "level": "unanswerable-fictitious",
+    "absent_tokens": ["vansmoor"],
+    "why": "invented treaty"
+  }
+]
