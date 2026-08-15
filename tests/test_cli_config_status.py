@@ -68,6 +68,35 @@ def test_status_no_ping_skips_live_call(_stub_resolution, monkeypatch, capsys):
     assert called["built"] is False
 
 
+def test_status_probe_is_never_cached(_stub_resolution, monkeypatch, capsys):
+    """The probe must pass cache_key=None, so every `status` really asks.
+
+    Its prompt is a constant, so a cached answer would be addressed identically
+    on every run forever. That turns the one command whose job is "is the
+    backend answering RIGHT NOW" into a recording of the last time it was: one
+    good probe, then a rate limit or an expired login, and `status` still prints
+    OK while extraction quietly returns zero findings — the exact outcome the
+    FAILED message warns about. Every other caller wants the cache; this is the
+    one place a hit is a wrong answer rather than a cheap one.
+    """
+    seen = {}
+
+    class _RecordingClient:
+        def complete_json(self, **kwargs):
+            seen.update(kwargs)
+            return {"ok": True}
+
+    monkeypatch.setattr(lj, "build_default_json_client", lambda **kw: _RecordingClient())
+    rc = _handle_config_status(SimpleNamespace(project=None, ping=True))
+
+    assert rc == 0
+    assert "cache_key" in seen, "probe stopped passing cache_key explicitly"
+    assert seen["cache_key"] is None, (
+        f"liveness probe passed cache_key={seen['cache_key']!r}; a constant key "
+        "makes one good probe report OK forever"
+    )
+
+
 def test_status_anthropic_branch_masks_api_key(monkeypatch, capsys):
     """anthropic/custom get their own branch: model + base_url + a MASKED
     api_key ('set'/'unset') — the key value itself must never print."""

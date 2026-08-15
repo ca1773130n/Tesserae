@@ -4489,7 +4489,16 @@ def _handle_config_status(args: argparse.Namespace) -> int:
             system="You are a Tesserae liveness probe. Return JSON only.",
             user='Return {"ok": true} exactly.',
             schema_name="probe",
-            cache_key="config-status-probe",
+            # NEVER cached. Every other caller wants the cache; this one is the
+            # exception that proves what the cache is for. A liveness probe asks
+            # "is the backend answering RIGHT NOW", and a cached answer to that
+            # question is not a cheap yes, it is a wrong yes: the prompt is a
+            # constant, so one good probe would report OK forever — through a
+            # rate limit, an expired login, a dead backend — and the user would
+            # go on to the silent zero-findings compile this probe exists to
+            # warn about. Both _cli_cache_get and _cli_cache_put short-circuit
+            # on a falsy key, so None means the CLI call above really is spawned.
+            cache_key=None,
         )
     except Exception as exc:  # noqa: BLE001 — surface the backend's own error
         print(f"  liveness   : ✗ FAILED — {type(exc).__name__}: {str(exc)[:200]}")
