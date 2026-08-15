@@ -8,7 +8,10 @@ communities and drops large communities to Jaccard 0.39-0.60. Anything keyed
 on community membership therefore takes a near-total cache miss per ingest,
 and this corpus ingests daily.
 
-See docs/superpowers/specs/2026-08-08-charter-expertise-org-design.md.
+See docs/superpowers/specs/2026-08-08-charter-expertise-org-design.md, and
+docs/superpowers/specs/2026-08-14-charter-rescope-roadmap.md, which retires the
+half of that spec nothing here implements — read the second before building
+anything the first asks for.
 """
 
 from __future__ import annotations
@@ -27,23 +30,21 @@ from .hierarchy import undirected_degrees
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 
 # ---------------------------------------------------------------------------
-# CH-04, decided in advance of the code that will enforce it (roadmap step 6)
+# CH-04 was not written, and will not be
 # ---------------------------------------------------------------------------
-# CH-04 — "a note that names nothing cannot rise" — IS NOT IMPLEMENTED. There is
-# no specificity check, no note-rising machinery and no ``render_brief`` in this
-# module or anywhere else; only CH-01 is asserted. The charter-structure plan
-# says so itself. What follows is therefore a DESIGN COMMITMENT about unwritten
-# code, recorded here because the causal layer (``tesserae.session_recovery``)
-# is the first producer whose nodes CH-04 would have judged, and because the
-# choice was made against measurement rather than taste.
+# CH-04 — "a note that names nothing cannot rise" — has no code here or
+# anywhere else: no specificity check, no note-rising machinery and no
+# ``render_brief``. Of the six CH lints only CH-01 is asserted. The 2026-08-14
+# re-scope retires CH-02 through CH-05 rather than carry them: all four lint
+# note-rising machinery that was never built, and with no note rising none of
+# them has a subject. See
+# docs/superpowers/specs/2026-08-14-charter-rescope-roadmap.md.
 #
-# The question step 6 had to settle: when CH-04 exists, are procedural and
-# causal notes EXEMPT from it, or must they name a tool and a file as tokens
-# that resolve to L0 node names?
-#
-# NEITHER. Both options are wrong, and the second is the worse of the two
-# because it looks stricter while blocking everything. Measured on the live
-# 47,132-node graph:
+# This block once recorded a decision about how CH-04 would treat procedural
+# and causal notes. The decision is gone with its subject; the measurement
+# behind it is kept, because it is a fact about this graph rather than about
+# the lint, and it is what to re-read before anyone matches note tokens
+# against member names again. Measured on the live 47,132-node graph:
 #
 #   * File paths do not resolve. There are ZERO code-layer nodes of any kind
 #     (the code layer is opt-in and off), and only 19 nodes graph-wide have a
@@ -60,24 +61,14 @@ from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchN
 #     producer Event is named ``Event {turn_id}: {actor} · {action}``, which is
 #     turn-scoped and so can never appear in a general note either.
 #
-# So requiring tool+file as name-resolvable tokens would silently stop every
-# procedural and causal note from rising — a worse exemption than the exemption,
-# and a silent one.
-#
-# THE DECISION: keep CH-04's rule exactly as specified — a note that names
-# nothing cannot rise — and widen what a token is allowed to resolve AGAINST for
-# procedural and causal nodes, from member NAMES alone to
-#
-#     {names of L0 members}
-#   ∪ {metadata["tool"] of L0 Event members}          (session_event.py)
-#   ∪ {file paths in L0 member metadata}
-#
-# This preserves the argument CH-04 rests on — a recovery note that names
-# ``exec_command`` and an operand is executable, while "we improved reliability
-# at scale" still names nothing and still cannot rise — and it is satisfiable
-# today, because ``metadata["tool"]`` is already stamped on every tool Event by
-# the session producer and ``metadata["anchor"]`` on every ``recovers`` edge.
-# Widen the resolvable set, not the rule.
+# The consequence, which is the part worth carrying: a rule that required a
+# tool and a file to resolve as L0 member NAMES would have blocked every
+# procedural and causal note silently, while looking stricter than an outright
+# exemption. Names alone are not a usable token space on this corpus. Where the
+# resolvable tokens actually live is ``metadata["tool"]`` on L0 Event members
+# (stamped by the session producer, session_event.py) and the file paths in
+# member metadata — so anything of this shape must widen what a token resolves
+# against before it can be honest about what it rejects.
 
 #: Split threshold, in rendered member-block characters. A LITERAL, not
 #: ``CHUNK_CHAR_BUDGET // 2``: deriving it would let an env override of
@@ -743,13 +734,16 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
         domains[_INTAKE_SLUG] = {
             "tier": 1,
             # Deliberately NOT routed through _altitude_for, which would
-            # return "division" for tier 1. Altitude is a render parameter,
-            # not a synonym for depth: it sets carry_quota and support_floor
-            # (spec section "Altitude controls exactly two knobs"), and a
-            # division's quota of 18 carried notes would TRUNCATE a domain
-            # whose brief is honestly a census of everything structure could
-            # not route. "team" is the unbounded-carry altitude, which is the
-            # only one that can render intake truthfully.
+            # return "division" for tier 1. Altitude is a render label, not a
+            # synonym for depth: in the design it selected a carry_quota and a
+            # support_floor, and a division's quota of 18 carried notes would
+            # TRUNCATE a domain whose brief is honestly a census of everything
+            # structure could not route. "team" was the unbounded-carry
+            # altitude, the only one that could render intake truthfully. That
+            # quota/floor table was retired unbuilt (see the 2026-08-14
+            # re-scope named in the module docstring), so the label now only
+            # labels — but it still says the true thing about intake, which is
+            # why it stays "team" rather than becoming its tier's name.
             "own_altitude": "team",
             "parent_slug": None,
             "child_slugs": [],
