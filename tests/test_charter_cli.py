@@ -171,3 +171,60 @@ def test_domains_status_reports_a_corrupt_charter_as_an_error(tmp_path: Path, ca
     assert rc == 1
     assert "no charter yet" not in (captured.out + captured.err).lower()
     assert str(path) in (captured.out + captured.err)
+
+
+def test_domains_status_prints_the_clock_and_what_it_does_not_cover(
+    tmp_path: Path, capsys
+):
+    """A bare date on a domain dated by a fraction of its members reads as
+    coverage it does not have — 340 of 780 domains on the live corpus are
+    dated over a strict subset. The undated share is printed for the same
+    reason ``facts_as_of`` returns ``undated_included``.
+    """
+    import dataclasses
+
+    from tesserae.cli import main
+
+    graph = _graph()
+    graph = ResearchGraph(
+        nodes=[
+            dataclasses.replace(node, metadata={"first_seen_at": "2026-05-01"})
+            if node.id == "Concept:a0"
+            else node
+            for node in graph.nodes
+        ],
+        edges=graph.edges,
+    )
+    (tmp_path / ".tesserae").mkdir(parents=True)
+    charter = build_charter(graph)
+    write_charter(tmp_path, charter)
+
+    rc = main(["domains", "status", "--project", str(tmp_path)])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "through 2026-05-01" in out
+    assert "undated)" in out, "the fraction the date does not cover must be visible"
+    undated = sum(1 for e in charter["domains"].values() if e["quality"] == "undated")
+    assert f"undated={undated}" in out, "the census belongs in the footer"
+
+
+def test_domains_status_renders_a_charter_written_before_the_clock_existed(
+    tmp_path: Path, capsys
+):
+    """The renderer must not invent a date for a charter that carries none —
+    charter.json predates these keys on every project chartered earlier."""
+    from tesserae.cli import main
+
+    (tmp_path / ".tesserae").mkdir(parents=True)
+    charter = build_charter(_graph())
+    for entry in charter["domains"].values():
+        for key in ("distilled_through", "quality", "undated_member_count"):
+            entry.pop(key)
+    write_charter(tmp_path, charter)
+
+    rc = main(["domains", "status", "--project", str(tmp_path)])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "through" not in out and "undated=0" in out

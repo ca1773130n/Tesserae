@@ -1344,3 +1344,243 @@ def test_repeated_no_op_reorgs_never_advance_past_the_first():
     on_disk = build_charter(graph)
     for _ in range(4):
         assert is_noop_reorg(on_disk, succeed(on_disk, build_charter(graph)))
+
+
+# ---------------------------------------------------------------------------
+# the corpus clock
+# ---------------------------------------------------------------------------
+from tesserae.charter import _CLOCK_KEYS, _domain_clock, refresh_clocks
+
+
+def _stamped(nid: str, stamp: str | None = None, **fields) -> ResearchNode:
+    """A concept node carrying at most one rung of the ``_source_ts`` ladder."""
+    return ResearchNode(
+        id=nid,
+        name=fields.pop("name", nid),
+        type=ResearchNodeType.CONCEPT,
+        metadata={"first_seen_at": stamp} if stamp else {},
+        **fields,
+    )
+
+
+def _with_stamps(graph: ResearchGraph, stamps: dict[str, str]) -> ResearchGraph:
+    """A copy of ``graph`` with ``first_seen_at`` stamped on the named nodes.
+
+    ``dataclasses.replace`` rather than assignment: ResearchNode is frozen.
+    """
+    import dataclasses
+
+    return ResearchGraph(
+        nodes=[
+            dataclasses.replace(
+                node, metadata={**(node.metadata or {}), "first_seen_at": stamps[node.id]}
+            )
+            if node.id in stamps
+            else node
+            for node in graph.nodes
+        ],
+        edges=list(graph.edges),
+    )
+
+
+def _subtree_members(charter: dict, slug: str) -> list[str]:
+    entry = charter["domains"][slug]
+    members = list(entry["direct_member_ids"])
+    for child in entry["child_slugs"]:
+        members.extend(_subtree_members(charter, child))
+    return members
+
+
+def test_the_clock_is_the_latest_stamp_and_counts_what_it_could_not_date():
+    clock, undated = _domain_clock(
+        [
+            _stamped("Concept:m1", "2026-04-06T11:02:31Z"),
+            _stamped("Concept:m2", "2026-04-09"),
+            _stamped("Concept:m3"),
+        ]
+    )
+    assert clock == "2026-04-09", "the latest stamp, returned verbatim"
+    assert undated == 1, (
+        "a max taken over a strict subset must say so — the same reason "
+        "facts_as_of returns undated_included"
+    )
+
+
+def test_the_clock_orders_by_instant_not_by_string():
+    """Sources spell timestamps differently, and lexical order is not time
+    order across offsets: 11:02+09:00 is 02:02Z, i.e. EARLIER than 05:00Z
+    while sorting later as a string. Asserting the guarantee ``_latest_ts``
+    makes rather than what one corpus's spellings happen to do."""
+    clock, undated = _domain_clock(
+        [
+            _stamped("Concept:m1", "2026-04-06T11:02:31+09:00"),
+            _stamped("Concept:m2", "2026-04-06T05:00:00Z"),
+        ]
+    )
+    assert clock == "2026-04-06T05:00:00Z"
+    assert undated == 0
+
+
+def test_the_clock_walks_the_whole_ladder_and_the_path_rung_needs_a_root():
+    """``metadata['first_seen_at']`` alone covers 2.6% of the live graph, which
+    is why the spec's literal ``max(first_seen_at)`` would have raised on 738
+    of 778 domains. The name and path rungs are what lift it to 81.5%.
+
+    The path rung is gated on a declared project root: an absolute path under
+    no root is a path this project's ingest did not lay out, and reading a date
+    off it would let the dated worktree directory a compile happens to run from
+    date the whole corpus — a wall clock one indirection removed.
+    """
+    named = _stamped("Concept:named", name="2026-05-01 daily digest")
+    pathed = _stamped("Concept:pathed", source_path="/repo/data/2026-05-03/paper.md")
+
+    assert _domain_clock([named]) == ("2026-05-01", 0)
+    assert _domain_clock([pathed], roots=("/repo",)) == ("2026-05-03", 0)
+    assert _domain_clock([pathed]) == (None, 1), (
+        "no declared root must disable the path rung, not fall back to the "
+        "absolute string"
+    )
+
+
+def test_a_domain_nothing_dates_degrades_instead_of_raising():
+    """The spec hard-failed here. Measured, that denies 48 of 780 domains a
+    date permanently — frozen not because they changed but because nothing
+    dated them."""
+    assert _domain_clock([_stamped("Concept:x"), _stamped("Concept:y")]) == (None, 2)
+
+
+def test_a_router_is_dated_by_its_own_direct_block_as_well_as_its_children():
+    """The spec's router rule is ``max(children.distilled_through)`` alone.
+    Children partition everything below a router EXCEPT its direct block, so
+    that rule dates a router earlier than content the router itself holds."""
+    assert _domain_clock(
+        [_stamped("Concept:own", "2026-06-02")], ["2026-01-01", None]
+    ) == ("2026-06-02", 0)
+    assert _domain_clock([], [None, "2026-01-01"]) == ("2026-01-01", 0), (
+        "an undated child must absorb, not poison its parent's clock"
+    )
+    assert _domain_clock([], [None, None]) == (None, 0)
+
+
+def test_every_domain_is_dated_by_the_latest_stamp_anywhere_beneath_it():
+    stamps = {
+        "Concept:hub-a": "2026-03-04",
+        "Concept:mass-b": "2026-01-01",
+        "Concept:t4": "2026-02-02",
+    }
+    charter = build_charter(_with_stamps(_hub_pair_starved_of_anchors(), stamps))
+
+    routers = [s for s, e in charter["domains"].items() if e["child_slugs"]]
+    assert routers, "fixture must produce a domain with children to date"
+
+    for slug, entry in charter["domains"].items():
+        members = _subtree_members(charter, slug)
+        assert len(members) == entry["member_count"]
+        dated = sorted(stamps[m] for m in members if m in stamps)
+        assert entry["distilled_through"] == (dated[-1] if dated else None)
+        assert entry["undated_member_count"] == len(members) - len(dated)
+        assert entry["quality"] == ("dated" if dated else "undated")
+
+    # hub-a is held DIRECTLY by concept-hub-b (it folded there, having been an
+    # ancestor's anchor) and carries the latest stamp in the whole fixture, so
+    # a router dated only by its children would report 2026-01-01 here.
+    router = charter["domains"]["concept-hub-b"]
+    assert "Concept:hub-a" in router["direct_member_ids"]
+    assert router["distilled_through"] == "2026-03-04"
+    assert max(
+        charter["domains"][c]["distilled_through"] or "" for c in router["child_slugs"]
+    ) < "2026-03-04"
+
+
+def test_a_corpus_nothing_dates_still_produces_a_whole_charter():
+    charter = build_charter(_two_fat_triangles_plus_orphan())
+    assert charter["domains"], "no clock is not a reason to refuse an institution"
+    for entry in charter["domains"].values():
+        assert entry["distilled_through"] is None
+        assert entry["quality"] == "undated"
+        assert entry["undated_member_count"] == entry["member_count"]
+
+
+def test_the_clock_is_never_invented_and_never_a_wall_clock():
+    """Both rungs read bytes already in the graph, so the only values a charter
+    can carry are values the graph carries. A ``datetime.now()`` fallback is
+    the byte-idempotence leak class this repo has taken four times."""
+    from datetime import date, timezone
+
+    stamps = {"Concept:hub-a": "2026-03-04", "Concept:t4": "2026-02-02"}
+    charter = build_charter(_with_stamps(_hub_pair_starved_of_anchors(), stamps))
+
+    written = {e["distilled_through"] for e in charter["domains"].values()} - {None}
+    assert written <= set(stamps.values()), (
+        f"{written - set(stamps.values())} appears in no node of the graph"
+    )
+    today = date.today().isoformat()
+    assert not any(v.startswith(today) for v in written), "a wall clock reached the charter"
+
+    again = build_charter(_with_stamps(_hub_pair_starved_of_anchors(), stamps))
+    assert again == charter, "two builds any wall-time apart must agree"
+
+
+def test_a_clock_that_moved_without_the_institution_is_not_a_reorg():
+    """reorg_seq counts reorganisations. A re-extraction that stamps a member
+    with a later date while moving nobody between domains is a corpus that
+    moved, not an institution that did."""
+    prior = build_charter(
+        _with_stamps(_hub_pair_starved_of_anchors(), {"Concept:hub-a": "2026-01-01"})
+    )
+    fresh = build_charter(
+        _with_stamps(_hub_pair_starved_of_anchors(), {"Concept:hub-a": "2026-09-09"})
+    )
+    assert prior["domains"]["concept-hub-a"]["distilled_through"] == "2026-01-01"
+    assert fresh["domains"]["concept-hub-a"]["distilled_through"] == "2026-09-09"
+
+    assert is_noop_reorg(prior, succeed(prior, fresh))
+
+
+def test_a_no_op_reorg_still_carries_the_clock_forward():
+    """The counterpart to the exclusion above: excluded from identity AND
+    never written is a clock that goes stale forever."""
+    prior = build_charter(
+        _with_stamps(_hub_pair_starved_of_anchors(), {"Concept:hub-a": "2026-01-01"})
+    )
+    fresh = build_charter(
+        _with_stamps(_hub_pair_starved_of_anchors(), {"Concept:hub-a": "2026-09-09"})
+    )
+    carried = refresh_clocks(prior, succeed(prior, fresh))
+
+    assert carried["reorg_seq"] == prior["reorg_seq"], "a clock is not a reorg"
+    assert carried["domains"]["concept-hub-a"]["distilled_through"] == "2026-09-09"
+    for slug, entry in carried["domains"].items():
+        assert entry["transition"] == prior["domains"][slug]["transition"]
+        assert {k: v for k, v in entry.items() if k not in _CLOCK_KEYS} == {
+            k: v for k, v in prior["domains"][slug].items() if k not in _CLOCK_KEYS
+        }, f"{slug}: refresh_clocks touched something that is not the clock"
+
+    unchanged = build_charter(
+        _with_stamps(_hub_pair_starved_of_anchors(), {"Concept:hub-a": "2026-01-01"})
+    )
+    assert refresh_clocks(prior, succeed(prior, unchanged)) == prior, (
+        "an unchanged corpus must produce the bytes already on disk, so the "
+        "compile writes nothing"
+    )
+
+
+def test_a_charter_written_before_the_clock_existed_gains_one_without_a_reorg():
+    """The migration case, and the one that decides whether this feature is
+    reachable at all: every project chartered before the clock has a
+    charter.json with no clock keys, and its next compile reorganises nothing.
+    If that compile declined to write, those projects would report themselves
+    undated forever."""
+    graph = _with_stamps(_hub_pair_starved_of_anchors(), {"Concept:hub-a": "2026-01-01"})
+    prior = build_charter(graph)
+    for entry in prior["domains"].values():
+        for key in _CLOCK_KEYS:
+            entry.pop(key)
+
+    merged = succeed(prior, build_charter(graph))
+    assert is_noop_reorg(prior, merged), "gaining a clock is not a reorganisation"
+
+    carried = refresh_clocks(prior, merged)
+    assert carried != prior, "the clock must reach disk on this compile"
+    assert carried["reorg_seq"] == prior["reorg_seq"]
+    assert all("distilled_through" in e for e in carried["domains"].values())

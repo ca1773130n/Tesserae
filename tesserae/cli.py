@@ -5566,6 +5566,27 @@ def _route_agents(rest: List[str]) -> int:
 
 
 # ----- domains (CHARTER: divisions/departments/teams over the graph) --------
+def _clock_suffix(entry: dict) -> str:
+    """How far a domain is dated, and how much of it the date does not cover.
+
+    The undated fraction is printed rather than hidden because the clock is a
+    max over whatever members carried a source-derived timestamp: on the live
+    corpus 340 of 780 domains are dated over a strict subset, so a bare date
+    would read as coverage the domain does not have. Same posture as
+    ``facts_as_of``'s ``undated_included`` counter.
+
+    A charter written before the clock existed carries none of these keys, and
+    gets no suffix rather than an invented one.
+    """
+    if entry.get("quality") == "undated":
+        return "  undated"
+    clock = entry.get("distilled_through")
+    if not clock:
+        return ""
+    undated = entry.get("undated_member_count") or 0
+    return f"  through {clock}" + (f" ({undated} undated)" if undated else "")
+
+
 def _handle_domains_status(args: argparse.Namespace) -> int:
     from .charter import CharterUnreadable, read_charter
 
@@ -5625,7 +5646,7 @@ def _handle_domains_status(args: argparse.Namespace) -> int:
         flag = "  [unsplittable]" if entry.get("unsplittable") else ""
         print(
             f"{'  ' * depth}{slug}  ({entry['own_altitude']}, "
-            f"{entry['member_count']} members){flag}"
+            f"{entry['member_count']} members){flag}{_clock_suffix(entry)}"
         )
         seen_on_path = seen_on_path | {slug}
         for child in entry["child_slugs"]:
@@ -5646,7 +5667,11 @@ def _handle_domains_status(args: argparse.Namespace) -> int:
     for slug in roots:
         _render(slug, 0, frozenset())
     retired = sum(1 for e in domains.values() if e["status"] == "retired")
-    print(f"\nreorg_seq={charter['reorg_seq']}  live={len(roots)} root(s)  retired={retired}")
+    undated = sum(1 for e in domains.values() if e.get("quality") == "undated")
+    print(
+        f"\nreorg_seq={charter['reorg_seq']}  live={len(roots)} root(s)  "
+        f"retired={retired}  undated={undated}"
+    )
     return 0
 
 

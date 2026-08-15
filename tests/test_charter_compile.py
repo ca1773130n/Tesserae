@@ -284,3 +284,85 @@ def test_charter_json_carries_no_timestamp(tmp_path: Path) -> None:
     assert "generated_at" not in payload and "timestamp" not in payload
     for entry in payload["domains"].values():
         assert not [k for k in entry if k.endswith("_at") or k.endswith("_time")]
+
+
+# ---------------------------------------------------------------------------
+# the corpus clock
+# ---------------------------------------------------------------------------
+
+
+def _dated_clique_graph(stamp: str) -> ResearchGraph:
+    """``_chartered_graph`` with one member carrying ``first_seen_at``.
+
+    Same nodes, same edges, same membership — only the date moves, which is
+    the case the compile has to tell apart from a reorganisation.
+    """
+    import dataclasses
+
+    graph = _chartered_graph()
+    return ResearchGraph(
+        nodes=[
+            dataclasses.replace(node, metadata={"first_seen_at": stamp})
+            if node.id == "Concept:a0"
+            else node
+            for node in graph.nodes
+        ],
+        edges=graph.edges,
+    )
+
+
+def test_a_compile_dates_every_domain_from_the_graphs_own_stamps(tmp_path: Path) -> None:
+    wiki = _wiki(tmp_path)
+    wiki._write_charter_sidecar(_dated_clique_graph("2026-05-01"))
+
+    charter = read_charter(wiki.project_root)
+    holder = charter["member_index"]["Concept:a0"]
+    assert charter["domains"][holder]["distilled_through"] == "2026-05-01"
+    assert charter["domains"][holder]["quality"] == "dated"
+    for slug, entry in charter["domains"].items():
+        assert ("distilled_through" in entry) and ("undated_member_count" in entry)
+        assert (entry["quality"] == "undated") == (entry["distilled_through"] is None)
+        assert (entry["undated_member_count"] == entry["member_count"]) == (
+            entry["quality"] == "undated"
+        ), f"{slug}: an undated domain is exactly one whose every member is undated"
+
+
+def test_a_later_stamp_refreshes_the_clock_without_advancing_the_reorg(
+    tmp_path: Path,
+) -> None:
+    """A re-extraction can move a member's date without moving a single member
+    between domains. That must reach disk — a clock excluded from the reorg
+    comparison and never written is a clock that is stale forever — and must
+    NOT bump reorg_seq, which counts reorganisations, not compiles.
+    """
+    from tesserae.charter import _CLOCK_KEYS
+
+    wiki = _wiki(tmp_path)
+    wiki._write_charter_sidecar(_dated_clique_graph("2026-05-01"))
+    before = read_charter(wiki.project_root)
+
+    assert wiki._write_charter_sidecar(_dated_clique_graph("2026-09-09")) is not None
+    after = read_charter(wiki.project_root)
+
+    assert after["reorg_seq"] == before["reorg_seq"]
+    assert after["member_index"] == before["member_index"]
+    holder = after["member_index"]["Concept:a0"]
+    assert before["domains"][holder]["distilled_through"] == "2026-05-01"
+    assert after["domains"][holder]["distilled_through"] == "2026-09-09"
+    for slug, entry in after["domains"].items():
+        assert {k: v for k, v in entry.items() if k not in _CLOCK_KEYS} == {
+            k: v for k, v in before["domains"][slug].items() if k not in _CLOCK_KEYS
+        }, f"{slug}: only the clock may move when nothing reorganised"
+
+
+def test_a_recompile_with_the_same_stamps_still_writes_nothing(tmp_path: Path) -> None:
+    """The refresh above must not become a per-compile rewrite of the one file
+    everything else is keyed on."""
+    graph = _dated_clique_graph("2026-05-01")
+    wiki = _wiki(tmp_path)
+    wiki._write_charter_sidecar(graph)
+    first = charter_path(wiki.project_root).read_bytes()
+
+    for _ in range(3):
+        assert wiki._write_charter_sidecar(_dated_clique_graph("2026-05-01")) is None
+        assert charter_path(wiki.project_root).read_bytes() == first

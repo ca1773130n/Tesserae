@@ -2169,6 +2169,7 @@ class ProjectWiki:
             build_charter,
             is_noop_reorg,
             read_charter,
+            refresh_clocks,
             succeed,
             write_charter,
             worth_chartering,
@@ -2216,12 +2217,32 @@ class ProjectWiki:
 
         merged = succeed(prior, fresh)
         if is_noop_reorg(prior, merged):
-            # Nothing reorganised, so nothing is written and charter.json stays
-            # byte-identical. Without this every compile would bump reorg_seq
-            # and re-stamp all 780 domains ``stable``, making the one file the
-            # rest of the system keys on the only output that churns on an
-            # unchanged corpus. See ``is_noop_reorg``.
-            return None
+            # Nothing reorganised, so the structure, the seq and the
+            # transitions on disk stay exactly as they are. Without this every
+            # compile would bump reorg_seq and re-stamp all 780 domains
+            # ``stable``, making the one file the rest of the system keys on
+            # the only output that churns on an unchanged corpus. See
+            # ``is_noop_reorg``.
+            #
+            # The corpus clock is the one thing that still moves here, because
+            # it is a fact about content rather than structure and is excluded
+            # from that comparison for exactly that reason. Carrying it onto
+            # the prior charter writes the fresh dates at the SAME reorg_seq;
+            # an unchanged corpus produces a value equal to what is on disk and
+            # nothing is written, so byte-idempotence is preserved.
+            carried = refresh_clocks(prior, merged)
+            if carried == prior:
+                return None
+            undated = sum(
+                1 for e in carried["domains"].values() if e.get("quality") == "undated"
+            )
+            print(
+                f"[tesserae] charter: corpus clock refreshed at reorg "
+                f"{carried['reorg_seq']} (no reorganisation); {undated} of "
+                f"{len(carried['domains'])} domain(s) undated.",
+                flush=True,
+            )
+            return write_charter(self.project_root, carried)
         retired = sum(
             1 for e in merged["domains"].values() if e.get("status") == "retired"
         )

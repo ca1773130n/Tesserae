@@ -28,6 +28,7 @@ from .agent_distill import ARTIFACT_CHAR_BUDGET, _render_member_block
 from .community_summaries import detect_communities
 from .hierarchy import undirected_degrees
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
+from .temporal import _latest_ts, _source_ts, graph_project_roots
 
 # ---------------------------------------------------------------------------
 # CH-04 was not written, and will not be
@@ -578,6 +579,78 @@ def worth_chartering(graph: ResearchGraph) -> bool:
     return mass(graph.nodes) >= ARTIFACT_CHAR_BUDGET
 
 
+#: The three keys a domain's corpus clock owns. Grouped because two consumers
+#: need exactly this set and for opposite reasons: ``is_noop_reorg`` must
+#: EXCLUDE them from the institution's identity, and ``refresh_clocks`` must be
+#: the only thing that carries them across a reorg that changed nothing else.
+_CLOCK_KEYS = frozenset({"distilled_through", "quality", "undated_member_count"})
+
+
+def _domain_clock(
+    direct_members: Sequence[ResearchNode],
+    child_clocks: Sequence[Optional[str]] = (),
+    *,
+    roots: Sequence[str] = (),
+) -> tuple[Optional[str], int]:
+    """How far through the corpus a domain is dated, and what it could not date.
+
+    Returns ``(distilled_through, undated_direct_members)``: the latest
+    source-derived timestamp covering this domain, and how many of its OWN
+    direct members yielded none. The caller adds its children's counts, so the
+    number stored on a record covers the whole subtree — the same population
+    ``member_count`` counts, which is what makes the two comparable.
+
+    **Not ``max(metadata['first_seen_at'])``, which is what the design spec
+    asked for.** That key is present on 1,213 of 47,132 nodes — 2.6% — so the
+    literal rule hard-fails on 738 of 778 domains. ``_source_ts``
+    (temporal.py:267) reads the same key FIRST and then falls to a leading date
+    in the node's own name and a dated directory segment of its ``source_path``
+    relative to a root the graph itself declares; that ladder covers 81.5% of
+    nodes and leaves 48 of 780 domains with nothing (measured this session on
+    the live graph). ``temporal.py:176`` already names this function as the
+    caller it expects.
+
+    **It degrades instead of raising, and that is the whole point.** The spec's
+    hard fail would deny a brief permanently to a domain frozen not because it
+    changed but because nothing dated it. ``None`` + ``quality: undated``
+    keeps the never-blocking posture the summary pipeline already has, and
+    keeps a null countable (see the fallback census lint).
+
+    **No wall clock reaches this, by construction.** Every rung reads bytes
+    already inside graph.json — no ``datetime.now()``, no filesystem mtime, no
+    git — so two runs any wall-time apart produce identical bytes. That is why
+    the spec's ``as_of`` override parameter is deliberately absent here rather
+    than carried unused: ``_corpus_clock`` accepts one to unblock a corpus with
+    no timestamps at all (agent_distill.py:1014), the degrade path above
+    removes that need, and an operator-supplied ``--as-of $(date -u +%F)``
+    threaded into a compile is exactly how a wall clock reaches a declared
+    determinism input.
+
+    **The undated count comes back with the clock for the same reason
+    ``facts_as_of`` returns ``undated_included``** (temporal.py:685): a max
+    taken over a strict subset of members must not read as a date for all of
+    them. It is not a rare case — 340 of 780 domains are dated over a subset,
+    and intake's clock rests on 5,020 of its 7,581 members.
+
+    ``roots`` comes from :func:`graph_project_roots`; empty disables the path
+    rung, which is a refusal to guess rather than a fallback (see
+    ``_source_ts``).
+
+    A router folds in its own DIRECT block as well as its children's clocks,
+    where the spec's recursion is ``max(children.distilled_through)`` alone.
+    Children partition everything below a router except that block, so ignoring
+    it dates a domain earlier than content the domain itself holds — and the two
+    rules agree exactly wherever the block is empty.
+    """
+    stamps = [_source_ts(node, roots) for node in direct_members]
+    undated = sum(1 for stamp in stamps if not stamp)
+    # _latest_ts takes the max by PARSED instant while returning the raw string
+    # verbatim, so mixed source spellings ("2026-04-06" against
+    # "2026-04-06T11:02:31Z") order by time rather than lexically, and nothing
+    # here normalises a source format.
+    return _latest_ts([*stamps, *child_clocks]), undated
+
+
 def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> dict:
     """Derive the full institution from the research graph.
 
@@ -593,6 +666,14 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
     )
     keep = {n.id for n in scoped.nodes}
     scoped.edges = [e for e in scoped.edges if e.source in keep and e.target in keep]
+
+    # Roots come from the graph as HANDED IN, not from ``scoped``. Session
+    # nodes are not synthesis types today so the two agree exactly; tying the
+    # root declaration to the synthesis filter would mean a later addition to
+    # ``_SYNTHESIS_TYPES`` silently disables ``_source_ts``'s path rung, and
+    # ladder coverage collapses from 81.9% to 7.6% (temporal.py:129) with
+    # nothing failing to say so.
+    roots = graph_project_roots(graph)
 
     clusters, _dropped = sections(scoped)
     groups = divisions(scoped, clusters)
@@ -683,9 +764,23 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
                     direct.extend(child_members)
                     continue
                 child_slugs.append(_emit(list(child_members), child_anchor, tier + 1, slug))
+        # After the fold above, not before: an anchorless child's members land
+        # in ``direct``, and a clock taken before that would leave them out of
+        # both this domain's block and any child's.
+        clock, undated = _domain_clock(
+            [by_id[mid] for mid in direct],
+            [domains[child]["distilled_through"] for child in child_slugs],
+            roots=roots,
+        )
+        undated += sum(domains[child]["undated_member_count"] for child in child_slugs)
         domains[slug] = {
             "tier": tier,
             "own_altitude": _altitude_for(tier, len(members)),
+            "distilled_through": clock,
+            # ``quality`` describes the CLOCK and nothing else — it is not the
+            # structural/llm quality flag a community summary carries.
+            "quality": "undated" if clock is None else "dated",
+            "undated_member_count": undated,
             "parent_slug": parent,
             "child_slugs": sorted(child_slugs),
             "anchor_id": anchor_id,
@@ -731,6 +826,12 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
                 "reservation in build_charter must run before any domain slug "
                 "is minted"
             )
+        # Intake has no children, so its clock is its direct block and nothing
+        # else — and it is the domain most likely to be undated, being the
+        # census of everything structure could not route.
+        intake_clock, intake_undated = _domain_clock(
+            [by_id[mid] for mid in sorted(intake)], roots=roots
+        )
         domains[_INTAKE_SLUG] = {
             "tier": 1,
             # Deliberately NOT routed through _altitude_for, which would
@@ -745,6 +846,9 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
             # labels — but it still says the true thing about intake, which is
             # why it stays "team" rather than becoming its tier's name.
             "own_altitude": "team",
+            "distilled_through": intake_clock,
+            "quality": "undated" if intake_clock is None else "dated",
+            "undated_member_count": intake_undated,
             "parent_slug": None,
             "child_slugs": [],
             "anchor_id": "",
@@ -1053,6 +1157,15 @@ def is_noop_reorg(prior: dict, merged: dict) -> bool:
     that last MOVED it, which is the same rule ``succeed`` already applies to
     tombstones ("a frozen snapshot of the domain as it last was live, not a
     record this reorg touched") — now applied to live domains too.
+
+    :data:`_CLOCK_KEYS` is excluded for the same reason, arriving from the
+    other direction: a corpus clock is a fact about content, not about
+    structure. A re-extraction that stamps a member with a later
+    ``updated_at`` without moving a single member between domains would
+    otherwise register as a reorganisation, which is the redefinition of
+    ``reorg_seq`` described above with a different trigger. The clock still
+    reaches disk on such a compile — see :func:`refresh_clocks`, which is what
+    keeps "not a reorg" from also meaning "stale forever".
     """
 
     def identity(charter: dict) -> str:
@@ -1064,7 +1177,7 @@ def is_noop_reorg(prior: dict, merged: dict) -> bool:
                     slug: {
                         key: value
                         for key, value in entry.items()
-                        if key not in _REORG_BOOKKEEPING
+                        if key not in _REORG_BOOKKEEPING and key not in _CLOCK_KEYS
                     }
                     for slug, entry in charter.get("domains", {}).items()
                 },
@@ -1074,6 +1187,48 @@ def is_noop_reorg(prior: dict, merged: dict) -> bool:
         )
 
     return identity(prior) == identity(merged)
+
+
+def refresh_clocks(prior: dict, merged: dict) -> dict:
+    """``prior`` verbatim, with each domain's corpus clock taken from ``merged``.
+
+    The counterpart to the exclusion in :func:`is_noop_reorg`. Excluding the
+    clock from the institution's identity is what stops a corpus that merely
+    moved from bumping ``reorg_seq``; without this function it would also stop
+    the clock from ever being written, because a no-op reorg writes nothing —
+    so the very first compile after a charter gains a clock would decline to
+    record one, and every project chartered before it would report the
+    institution as undated forever.
+
+    So the structure, the seq and the transitions come from ``prior`` and only
+    the three clock keys come from ``merged``. Meaningful only when
+    ``is_noop_reorg`` is true, which is what guarantees the two agree on which
+    slugs exist; a slug ``merged`` does not define keeps whatever ``prior``
+    holds, which is the right answer for a tombstone — a frozen snapshot must
+    not acquire a fresh date for a subject nothing is ingesting any more.
+
+    Returns a value equal to ``prior`` when nothing moved, so the caller can
+    decline to write and charter.json stays byte-identical on a genuinely
+    unchanged corpus.
+    """
+    domains: dict[str, dict] = {}
+    for slug, entry in prior.get("domains", {}).items():
+        fresh = merged.get("domains", {}).get(slug)
+        if fresh is None:
+            domains[slug] = entry
+            continue
+        carried = dict(entry)
+        # Sorted so key insertion order cannot vary with PYTHONHASHSEED. The
+        # bytes on disk are sorted anyway, but an in-memory dict that differs
+        # only by order between runs is the kind of input a later equality or
+        # digest check reads as a change.
+        for key in sorted(_CLOCK_KEYS):
+            if key in fresh:
+                carried[key] = fresh[key]
+            else:
+                carried.pop(key, None)
+        domains[slug] = carried
+    return {**prior, "domains": domains}
 
 
 def _altitude_for(tier: int, member_count: int) -> str:
