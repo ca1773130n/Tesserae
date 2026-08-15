@@ -23,7 +23,7 @@ adds the CLI command. A ``run_pipeline=`` injection seam keeps tests determinist
 from __future__ import annotations
 
 import asyncio
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 import json
 import logging
 import os
@@ -209,6 +209,24 @@ class Daemon:
         self._compile_gate = (
             compile_gate if compile_gate is not None else threading.Semaphore(1)
         )
+        # "A pipeline run is waiting for the compile gate." Set by
+        # :meth:`_gate_for_pipeline` immediately before it blocks on the gate and
+        # cleared by that SAME context manager the moment the gate is in hand —
+        # so the flag's whole lifetime is one gate acquisition, and every set is
+        # paired with a clear in a ``finally``. It CANNOT latch: nothing else
+        # writes it, and a set that is never followed by an acquisition is not
+        # reachable (the acquisition is the next statement).
+        #
+        # The pre-warm loops (:meth:`_summarize_once`, :meth:`_brief_once`) read
+        # it at the top of each iteration and abandon their remaining budget when
+        # it is set. That is the ONLY thing it does. It never releases the gate
+        # mid-pass — a tick must read one consistent ``graph.json``, so yielding
+        # the gate between calls would let a compile rewrite the graph underneath
+        # and leave early briefs describing a different graph than late ones.
+        # Abandoning finishes the pass early instead, which costs nothing:
+        # warming is idempotent, and a domain that was never tried is simply
+        # still cold on the next tick.
+        self._pipeline_pending = threading.Event()
         self._monotonic = monotonic if monotonic is not None else time.monotonic
         self._distill_override = distill
         self._associate_override = associate
@@ -517,8 +535,7 @@ class Daemon:
                 len(paths),
             )
             return True
-        gate = self._compile_gate if self._compile_gate is not None else nullcontext()
-        with gate:
+        with self._gate_for_pipeline():
             # Visibility: without this line a long compile looks like a hang —
             # the only other logs are step results AFTER it finishes.
             logger.info(
@@ -570,6 +587,41 @@ class Daemon:
             self._defer_until = 0.0
             self._defer_delay = 0.0
             return True
+
+    @contextmanager
+    def _gate_for_pipeline(self):
+        """Take the compile gate for a pipeline run, asking a tick to stand down.
+
+        Identical to ``with self._compile_gate:`` except that it raises
+        :attr:`_pipeline_pending` for exactly as long as this call is BLOCKED on
+        the gate. A consolidation tick holding the gate can spend up to
+        ``summarize_budget + brief_budget`` sequential LLM calls (33 at the
+        defaults); with a CLI provider that is minutes, and a file save arriving
+        mid-tick used to wait out every remaining call. The pre-warm loops read
+        the flag at the top of each iteration and abandon their remaining budget,
+        so the wait is now bounded by the ONE call already in flight.
+
+        WHO CLEARS IT, and when — the whole anti-latch argument:
+
+        * The flag is cleared as the first statement INSIDE the gate, before any
+          pipeline work. From the instant this run owns the gate, the next tick
+          must see a clear flag, otherwise it would abandon spuriously on every
+          pass that follows a compile.
+        * The ``finally`` clears it again, so the acquisition raising (or the
+          ``nullcontext`` branch changing shape later) still cannot leave it set.
+
+        A stuck flag would permanently disable both pre-warm ops, which is worse
+        than the latency it fixes — hence set and clear in one place, one scope,
+        with no other writer anywhere in the class.
+        """
+        gate = self._compile_gate if self._compile_gate is not None else nullcontext()
+        self._pipeline_pending.set()
+        try:
+            with gate:
+                self._pipeline_pending.clear()
+                yield
+        finally:
+            self._pipeline_pending.clear()
 
     def _defer(self, exc: BaseException) -> None:
         """Push the next compile attempt out by an exponentially growing wait.
@@ -937,7 +989,16 @@ class Daemon:
            ``complete_json`` call. Honest no-op without a charter on disk or
            an LLM client.
 
-        Runs under the compile gate (held by the caller).
+        Runs under the compile gate (held by the caller) — for the WHOLE pass,
+        deliberately. Every op above reads the one ``graph.json`` loaded here, so
+        releasing the gate between LLM calls would let a compile rewrite the
+        graph mid-pass and leave early briefs describing a different graph than
+        late ones. What the tick does instead, when a file save arrives and a
+        pipeline run starts waiting on the gate, is ABANDON: ops 3 and 4 check
+        :attr:`_pipeline_pending` at the top of each iteration and stop spending,
+        so the pipeline waits out at most the one LLM call already in flight
+        rather than all ``summarize_budget + brief_budget`` of them. The
+        abandoned work is not lost — it is simply still cold on the next tick.
         """
         graph_path = self.project_root / ".tesserae" / "graph.json"
         if not graph_path.is_file():
@@ -1017,6 +1078,15 @@ class Daemon:
         knowledge: nothing here touches ``graph.json``. Honest no-op without a
         hierarchy sidecar or an LLM client; never raises — every outcome is a
         summary dict for the tick log.
+
+        ABANDONMENT. The budget is a ceiling, not a quota. At the top of each
+        iteration the loop reads :attr:`_pipeline_pending` and stops if a
+        pipeline run is blocked on the compile gate this pass holds, reporting
+        ``abandoned`` and ``unspent`` in the summary dict. Stopping is lossless:
+        warming is idempotent, a scope not reached is still cold next tick at
+        the same rank, and this loop writes no state that the ranking reads. The
+        gate is NOT released mid-pass — every scope this tick warms is described
+        against the one ``graph.json`` it loaded.
         """
         budget = max(0, int(self._summarize_budget))
         if budget == 0:
@@ -1068,8 +1138,20 @@ class Daemon:
         failed: List[str] = []
         warm = 0
         attempted = 0
+        abandoned = False
         for cid, (level, members) in ranked:
             if attempted >= budget:
+                break
+            if self._pipeline_pending.is_set():
+                # A pipeline run is blocked on the compile gate this pass holds.
+                # Abandon the rest of the budget: the user's edit outranks
+                # speculative warming, and nothing is lost by stopping — every
+                # scope warmed so far is on disk, and every scope not reached is
+                # simply still cold next tick, at the same rank (the ranking
+                # reads access counts and the hierarchy, never anything this
+                # loop writes). Checked HERE, at the top of an iteration, so a
+                # call already in flight always finishes.
+                abandoned = True
                 break
             if len(members) < 2:
                 continue  # a singleton "community" card is just the node
@@ -1099,13 +1181,20 @@ class Daemon:
                 summarized.append(cid)
             else:
                 failed.append(cid)
-        return {
+        result = {
             "summarized": summarized,
             "failed": failed,
             "warm": warm,
             "attempted": attempted,
             "budget": budget,
         }
+        if abandoned:
+            # Say so in the tick log. A silent early return is indistinguishable
+            # from "there was nothing to warm", which is the one reading that
+            # would stop anyone noticing this op had been throttled all week.
+            result["abandoned"] = "pipeline pending"
+            result["unspent"] = budget - attempted
+        return result
 
     def _brief_once(self, graph) -> dict:
         """Pre-warm charter domain briefs by demand (BRIEF, the 4th op).
@@ -1221,6 +1310,20 @@ class Daemon:
         a domain that is cold only because a provider was down still recovers
         on its own.
 
+        ABANDONMENT, and why it does not disturb any of the above. At the top of
+        each iteration the loop reads :attr:`_pipeline_pending` and stops if a
+        pipeline run is blocked on the compile gate this pass holds, reporting
+        ``abandoned`` and ``unspent``. The check sits ABOVE both the warm read
+        and the writer, so an abandoned domain takes no strike and gains no
+        ``retry_at`` — it did not fail, it was never tried, and back-off is for
+        domains that burned a call. The tick COUNTER still advances, so an
+        outstanding back-off decays by one tick; that is deliberate and costs at
+        most one extra call per domain, the same trade the restart-retries-all
+        note above already accepts. Because an abandonment writes nothing the
+        ranking reads, the next tick picks the same domains in the same
+        sequence it would have picked anyway — the order never depends on when
+        an abandon happened.
+
         Briefs are caches, not knowledge — nothing here touches
         ``graph.json``. Never raises: no charter, an unreadable one, no LLM
         client, a cyclic child tree, a domain with no members present, a
@@ -1326,8 +1429,21 @@ class Daemon:
         failed: List[str] = []
         warm = 0
         attempted = 0
+        abandoned = False
         for _key, slug in candidates:
             if attempted >= budget:
+                break
+            if self._pipeline_pending.is_set():
+                # Same contract as _summarize_once. Note WHERE this sits: above
+                # both the warm read and the writer, so an abandoned domain
+                # takes NO strike and gets NO retry_at entry. It did not fail,
+                # it was never tried — charging it back-off would push a
+                # perfectly warmable domain down the queue for 2**strikes ticks
+                # because an unrelated file was saved. Nothing else in this loop
+                # has run for this slug either, so the abandonment writes no
+                # state at all and the next tick's ranking is byte-identical to
+                # the one this tick would have produced.
+                abandoned = True
                 break
             warm_brief = read_domain_brief(
                 charter, slug, by_id, degrees, cache_dir=cache_dir
@@ -1358,7 +1474,7 @@ class Daemon:
                 self._brief_retry_at[slug] = tick + min(
                     2**strikes, _BRIEF_MAX_BACKOFF_TICKS
                 )
-        return {
+        result = {
             "briefed": briefed,
             "failed": failed,
             "unwalkable": broken,
@@ -1371,6 +1487,10 @@ class Daemon:
             "live": len(live),
             "tick": tick,
         }
+        if abandoned:
+            result["abandoned"] = "pipeline pending"
+            result["unspent"] = budget - attempted
+        return result
 
     def _resolve_summary_client(self) -> Optional[object]:
         """LLM JSON client for the SUMMARIZE op, or ``None`` for an honest no-op.
