@@ -1,22 +1,24 @@
 # Translation glossary
 
 **This file is written in English and is not mirrored into the seven languages.**
-It is an instruction *to* whoever translates `docs/` — a human or an agent — not a
+It is an instruction *to* whoever translates `docs/`, human or agent, not a
 document for readers of the localized docs. Deliberately excluded from the
 mirroring rule by living under `docs/i18n/`, which
 `tests/test_docs_i18n.py::test_all_docs_have_localized_counterparts_except_superpowers`
 skips.
 
-Every rendering below was read out of the mirrors that exist today, with the file
-and line that carries it. Nothing here was invented. Where the corpus contradicts
-itself, the entry says so and names the file to fix — those are the terms that
-have been mistranslated more than once, which is why they are here at all.
+Every rendering below was read out of the mirrors that exist today; nothing here
+was invented, and a blank cell means the corpus has no answer yet rather than
+that one was guessed. Where the corpus contradicts itself, the entry says so and
+names the file and line to fix — those are the terms that have been
+mistranslated more than once, which is why they are on this page at all.
 
 Its companion is mechanical: the parity ratchet in `tests/test_docs_i18n.py`
 compares code spans, bullet and heading counts, table rows and columns, fenced
 blocks, and bold spans between each English doc and each mirror. That check finds
-*dropped* content. It is blind to everything on this page — a term rendered as its
-opposite has a perfect structural signature. The two halves do not overlap.
+*dropped* content. It is blind to everything on this page, because a term
+rendered as its opposite has a perfect structural signature. The two halves do
+not overlap.
 
 ---
 
@@ -39,7 +41,7 @@ These are the ones the passes kept breaking, in the order they cost the most.
    because they read better joined loses one of them.
 5. **Keep bold spans.** `**...**` marks the sentence's claim. A mirror that drops
    the bold has quietly de-emphasised the thing the paragraph exists to say.
-6. **Numerals stay numerals.** `8`, `0`, `96`, `26-week` — never spelled out,
+6. **Numerals stay numerals.** `8`, `0`, `96`, `26-week`. Never spelled out,
    never localized into another numeral system, never rounded.
 7. **Headings keep their level.** `###` stays `###`; the anchor is a link target.
 8. **A term that is house style in English stays in English.** If a mirror already
@@ -50,8 +52,10 @@ These are the ones the passes kept breaking, in the order they cost the most.
 
 ## Terms
 
-Blank means the term does not occur in that language's mirrors yet; pick from the
-rule in the notes, do not improvise a new one.
+"keep `x`" means the mirrors leave the English word standing and you should too.
+*see note* means the corpus has no usable answer: either the term has not
+appeared in that language yet, or what is there is the defect. Read the note
+below before choosing; do not improvise a new rendering into one file.
 
 | term | de | es | fr | ja | ko | ru | zh |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -76,8 +80,8 @@ rule in the notes, do not improvise a new one.
 
 ## Banned renderings, and why
 
-Each of these shipped. Several are still in the tree — the file and line is there
-so the next pass can fix it rather than rediscover it.
+Each of these shipped. Several are still in the tree, so the file and line is
+recorded and the next pass can fix it rather than rediscover it.
 
 | term | lang | never | because |
 | --- | --- | --- | --- |
@@ -108,7 +112,7 @@ so the next pass can fix it rather than rediscover it.
 **brief — de.** No house rendering exists. See the banned table above.
 
 **brief — es.** `engine-consolidation.es.md` uses `Breve` as a bare noun in the
-section heading and cost table, and `resúmenes` in the body — but `resumen` is
+section heading and cost table, and `resúmenes` in the body. But `resumen` is
 already Spanish for *summary*, which is a different artifact in the same
 paragraph. Two artifacts, one word. Settle this before the next pass.
 
