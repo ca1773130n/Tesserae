@@ -64,6 +64,43 @@ def raise_fd_limit(target: int = 8192) -> int:
         return -1
 
 
+#: Ceiling on the BRIEF op's per-domain retry backoff, in consolidation ticks.
+#: A domain that keeps failing doubles its wait (2, 4, 8 … ticks) up to this
+#: cap. At the default ``consolidate_idle_seconds=300`` a tick is ~5 minutes,
+#: so 64 ticks is a retry roughly every 5 hours: often enough that a domain
+#: cold only because the provider was down recovers on its own, rare enough
+#: that a permanently un-warmable one costs a handful of calls a day instead
+#: of the 96/hour an un-backed-off retry at rank 1 would cost.
+_BRIEF_MAX_BACKOFF_TICKS = 64
+
+
+def _is_census_domain(entry: dict) -> bool:
+    """Is this charter record the intake census rather than a subject?
+
+    ``build_charter`` labels every tier-1 domain ``own_altitude: "division"``
+    via ``_altitude_for``, with exactly ONE deliberate exception: the intake
+    domain, which is written ``tier: 1`` / ``own_altitude: "team"`` and an
+    empty anchor because it is "a census of everything structure could not
+    route" (charter.py:1015-1041). So this pair is not a heuristic — it is the
+    writer's own recorded statement that the domain has no subject.
+
+    Such a domain must never be briefed. Measured at 7,581 members, a brief
+    would be written from the 25 the prompt can hold — 0.33% of it — and then
+    served at ``quality: "llm"``, which reads as an authoritative description
+    of the whole bucket. The re-scope roadmap ruled on this directly: "Do not
+    promise a census brief that cannot be rendered"
+    (docs/superpowers/specs/2026-08-14-charter-rescope-roadmap.md:155). The
+    structural card it keeps — a count plus top members by degree, with the
+    count visible and rising — is the honest artifact, and the count is the
+    standing extraction-quality lint intake exists to be.
+    """
+    return (
+        int(entry.get("tier") or 1) == 1
+        and str(entry.get("own_altitude") or "") == "team"
+        and not str(entry.get("anchor_id") or "")
+    )
+
+
 @dataclass
 class TriggerEvent:
     """A single trigger to (eventually) drive one pipeline run.
@@ -115,6 +152,7 @@ class Daemon:
         consolidate_max_interval_seconds: float = 21600.0,
         consolidate_check_interval: float = 30.0,
         summarize_budget: int = 25,
+        brief_budget: int = 8,
         install_signal_handlers: bool = True,
         compile_gate: Optional[threading.Semaphore] = None,
         run_pipeline: Optional[Callable[[List[Path]], None]] = None,
@@ -150,6 +188,18 @@ class Daemon:
         self._consolidate_max_interval_seconds = consolidate_max_interval_seconds
         self._consolidate_check_interval = consolidate_check_interval
         self._summarize_budget = summarize_budget
+        self._brief_budget = brief_budget
+        # BRIEF back-off state. Consecutive failures per slug and the tick each
+        # one becomes eligible again, so a domain that cannot be warmed stops
+        # holding the budget slot a warmable one could use. In memory ONLY and
+        # never persisted, for the same reason ``_last_activity`` is not:
+        # mutable/wall-clock state inside an artifact is this repo's
+        # byte-idempotence blind spot. A restart simply retries everything,
+        # which is the right default for state whose worst case is one extra
+        # LLM call per domain.
+        self._brief_tick = 0
+        self._brief_failures: Dict[str, int] = {}
+        self._brief_retry_at: Dict[str, int] = {}
         self._install_signal_handlers = install_signal_handlers
         # Default the compile gate to a private mutex so the consolidation
         # thread NEVER overlaps a compile even in single-daemon mode. Without
@@ -855,7 +905,7 @@ class Daemon:
     def _consolidate_once(self) -> None:
         """Load the compiled graph and run one agent-memory consolidation pass.
 
-        Three operations, in order, on the SAME loaded graph:
+        Four operations, in order, on the SAME loaded graph:
 
         1. DISTILL (compress/forget) — mirrors ``cli.py``'s ``step_agent_distill``
            refresh path: load ``.tesserae/graph.json`` (skip if absent) and call
@@ -876,6 +926,16 @@ class Daemon:
            ``node_memory`` access bumps from ``graph_map``), so a later descent
            finds a warm cache instead of paying a synchronous LLM call. Honest
            no-op without a hierarchy sidecar or an LLM client.
+        4. BRIEF (pre-warm the charter) — the same shape as SUMMARIZE, one axis
+           over: :meth:`_brief_once` spends its OWN per-tick budget
+           (``brief_budget``) warming domain briefs for the charter's live
+           domains through :func:`~tesserae.charter.materialize_domain_brief`.
+           It is the only caller of that writer, and it lives HERE rather than
+           in compile or on a read for two reasons: compile would put an LLM
+           call per domain on every compile, and a lazy read would break the
+           pinned invariant that reading a domain card costs the map no
+           ``complete_json`` call. Honest no-op without a charter on disk or
+           an LLM client.
 
         Runs under the compile gate (held by the caller).
         """
@@ -922,6 +982,17 @@ class Daemon:
             logger.info("summarize for %s: %s", self.project_root.name, warm)
         except Exception as exc:  # noqa: BLE001 - summarize never kills the tick
             logger.error("summarize raised (daemon survives): %s", exc)
+
+        # Brief runs LAST, on the same graph, under the same gate, and spends
+        # its OWN budget — sharing summarize's would let a busy dendrogram
+        # starve the charter (or the reverse), and the two populations differ
+        # by orders of magnitude. _brief_once already degrades every failure
+        # mode to a summary dict; the wrap covers injected stubs anyway.
+        try:
+            briefed = self._brief_once(graph)
+            logger.info("brief for %s: %s", self.project_root.name, briefed)
+        except Exception as exc:  # noqa: BLE001 - brief never kills the tick
+            logger.error("brief raised (daemon survives): %s", exc)
 
     def _summarize_once(self, graph) -> dict:
         """Pre-warm community-summary caches by demand (SUMMARIZE, Descent §6.4).
@@ -1034,6 +1105,271 @@ class Daemon:
             "warm": warm,
             "attempted": attempted,
             "budget": budget,
+        }
+
+    def _brief_once(self, graph) -> dict:
+        """Pre-warm charter domain briefs by demand (BRIEF, the 4th op).
+
+        ``_summarize_once`` one axis over: the candidates are the charter's
+        LIVE domains rather than the dendrogram's communities, and each cold
+        one is warmed through :func:`~tesserae.charter.materialize_domain_brief`
+        — the writer paired with the three readers that consume a brief
+        (``mcp_server._domain_card``, ``charter_route``, lint's
+        ``CHARTER_FALLBACK``). Until this op existed that writer had no caller
+        outside tests, so all three read an empty set forever: every domain
+        card rendered ``quality: "structural"``, ``warm_rows`` was always 0,
+        and the lint reported every live domain cold.
+
+        WHY THE DAEMON. A brief costs one ``complete_json`` call. Minting them
+        in compile would put one LLM call per live domain on EVERY compile —
+        the compile path is the one place this project keeps deterministic and
+        cheap. Minting them lazily on read would break the invariant
+        ``test_reading_a_brief_costs_the_map_no_llm_call`` pins: a
+        ``graph_map`` visit never calls an LLM for a domain card. The idle
+        sleep cycle is the only place left that can spend a call nobody is
+        waiting on.
+
+        BUDGET. ``brief_budget`` (default 8; ``0`` disables the op) is
+        deliberately separate from ``summarize_budget`` so neither op can
+        starve the other, and deliberately smaller. One brief is one
+        ``complete_json`` call over at most 25 prompt members — the same unit
+        cost as one community summary — but the populations are not
+        comparable, and neither is the shape of the demand. The figures this
+        project's own code records for itself are a dendrogram root of 1,852
+        communities (``_mcp_graph_map``) against a charter of 780 live domains
+        (``lint._check_charter_fallback``) of which SEVEN are the live
+        DIVISIONS ``graph_map()`` serves as its root card set. Those seven are
+        the cards every agent meets first, so 8 warms the whole entry point in
+        the first idle tick and then costs nothing forever, because a
+        digest-valid brief is free; the remaining tiers warm at 8 per tick
+        behind it. A larger default would front-load spend on domains no agent
+        has reached yet, and a cold brief degrades to a card that still names
+        the domain's size and top members — so warming one late is cheap,
+        which is what makes a small budget the right trade.
+
+        RATE, stated because this op is on by default and spends money: at
+        most ``brief_budget`` calls per tick, and a tick fires at most once
+        per ``consolidate_idle_seconds``. At the defaults that is 8 calls per
+        5-minute tick, so a ceiling of 96/hour — and only while domains are
+        cold. Once the charter is warm the steady state is ZERO, because a
+        digest-valid brief costs no call and no slot.
+
+        ORDER — and this is BREADTH-FIRST, not a demand rank; calling it one
+        would misdescribe what it does. The key is ``(not a live division,
+        -demand, -members present, -Σ degree, tier ascending, slug)``:
+
+        * The first component is membership of ``charter.live_divisions`` —
+          the exact set ``graph_map()`` serves as its root card set. NOT
+          ``tier == 1``: a division is a domain with no LIVE parent, which is
+          "on purpose" and differs for an orphan whose parent was retired
+          without it (charter.py:637). Ranking on a different set than
+          ``graph_map`` serves would make the default budget's own
+          justification — "one tick warms the root" — untrue.
+        * DEMAND is Σ ``node_memory.access_count`` over the domain's members,
+          and unlike ``_summarize_once`` there is NO scope row to add to it.
+          ``graph_map`` deliberately does not bump ``domain:<slug>``
+          (``mcp_server._bump_card_access`` skips ``kind="domain"`` cards, on
+          the stated ground that a domain row is "a key nothing on any read
+          path looks up"); the node cards INSIDE a domain, which are real
+          graph ids, are bumped instead. Reading a row nothing writes would
+          make this ranking silently uniform.
+        * But demand cannot order an ancestor against its own descendant.
+          Members are ``domain_member_ids`` — the whole SUBTREE — so a
+          parent's member set CONTAINS every child's, and therefore
+          ``demand(parent) >= demand(child)``, ``present(parent) >=
+          present(child)`` and ``degree(parent) >= degree(child)``, with the
+          tier tiebreak resolving any remaining equality towards the parent.
+          **No domain is ever warmed before its ancestors.** Demand orders
+          only domains neither of which contains the other.
+
+        That is intended rather than an artifact. Agents descend from the
+        root, so the coarse card is the one read first and the one worth
+        having prose for, and a hot subtree lifts its whole spine. The
+        alternative — demand over DIRECT members only — would let a hot leaf
+        be briefed while every division an agent passes through to reach it
+        stayed structural, which is the wrong end to start from.
+
+        Whichever way it runs, the order is TOTAL — slug is unique per
+        charter — so two ticks over identical state pick the same domains in
+        the same sequence.
+
+        WHAT NEVER COSTS A BUDGET SLOT. A slot is meant to BE an LLM call, and
+        the rank is stable, so a slot spent on something that cannot warm is
+        spent again every tick forever:
+
+        * Tombstones (``status != "live"``) — a retired domain holds no
+          members and is offered nowhere.
+        * The intake CENSUS domain — see :func:`_is_census_domain`.
+        * A slug ``brief_cache_path`` refuses: the writer returns ``None``
+          having made no call at all, so charging it spends the tick on
+          nothing.
+        * A domain with no members left in the graph — same reason.
+        * A warm, digest-valid brief. That is what the cache is for.
+
+        BACK-OFF, which is what stops head-of-line starvation. A failure that
+        DOES cost a call — most importantly a citation rejection, which
+        ``summarize_community`` neither caches nor retracts from the client's
+        own prompt cache, unlike ``llm_extractor``'s ``forget_cached_answer``
+        — would otherwise recur at the same rank on every tick; and because
+        the loop stops at ``attempted >= budget``, every candidate below it
+        would never be reached at all. That is permanent zero progress at 12
+        ticks an hour. So a failed domain takes a strike and is held off for
+        ``2**strikes`` ticks (capped at ``_BRIEF_MAX_BACKOFF_TICKS``), freeing
+        its slot on the very NEXT tick; a success or a warm read clears the
+        strikes. The pass therefore makes progress even when the first N
+        candidates are permanently un-warmable and the budget is below N, and
+        a domain that is cold only because a provider was down still recovers
+        on its own.
+
+        Briefs are caches, not knowledge — nothing here touches
+        ``graph.json``. Never raises: no charter, an unreadable one, no LLM
+        client, a cyclic child tree, a domain with no members present, a
+        client that raises and a writer that returned ``None`` are each an
+        outcome in the returned summary dict.
+        """
+        budget = max(0, int(self._brief_budget))
+        if budget == 0:
+            return {"briefed": [], "skipped": "budget=0"}
+        try:
+            from ..charter import CharterUnreadable, read_charter
+
+            charter = read_charter(self.project_root)
+        except CharterUnreadable as exc:
+            return {"briefed": [], "skipped": f"unreadable charter: {exc}"}
+        except Exception as exc:  # noqa: BLE001 - a brief is never load-bearing
+            return {"briefed": [], "skipped": f"charter read failed: {exc}"}
+        if charter is None:
+            return {"briefed": [], "skipped": "no charter"}
+        domains = charter.get("domains")
+        if not isinstance(domains, dict):
+            return {"briefed": [], "skipped": "charter has no domains"}
+        live = sorted(
+            str(slug)
+            for slug, entry in domains.items()
+            if isinstance(entry, dict) and entry.get("status") == "live"
+        )
+        if not live:
+            return {"briefed": [], "skipped": "no live domains"}
+        client = self._resolve_summary_client()
+        if client is None:
+            return {"briefed": [], "skipped": "no LLM client"}
+
+        from ..charter import (
+            _brief_level,
+            brief_cache_path,
+            domain_member_ids,
+            live_divisions,
+            materialize_domain_brief,
+            read_domain_brief,
+        )
+        from ..hierarchy import undirected_degrees
+
+        tick = self._brief_tick = self._brief_tick + 1
+        access = self._read_access_counts()
+        by_id = {n.id: n for n in graph.nodes}
+        degrees = undirected_degrees(graph)
+        cache_dir = self.project_root / ".tesserae" / "community_summaries"
+        try:
+            divisions = set(live_divisions(charter))
+        except Exception as exc:  # noqa: BLE001 - a mangled tree is data
+            logger.debug("brief: live_divisions failed: %s", exc)
+            divisions = set()
+
+        candidates: List[Tuple[Tuple[int, int, int, int, int, str], str]] = []
+        broken: List[str] = []
+        census: List[str] = []
+        unwritable: List[str] = []
+        deferred: List[str] = []
+        for slug in live:
+            entry = domains.get(slug) or {}
+            if _is_census_domain(entry):
+                census.append(slug)
+                continue
+            if self._brief_retry_at.get(slug, 0) > tick:
+                deferred.append(slug)
+                continue
+            try:
+                member_ids = domain_member_ids(charter, slug)
+                tier = _brief_level(charter, slug)
+                writable = brief_cache_path(charter, slug, cache_dir=cache_dir)
+            except Exception as exc:  # noqa: BLE001 - a mangled tree is data
+                logger.debug("brief: %s is not walkable: %s", slug, exc)
+                broken.append(slug)
+                continue
+            if writable is None:
+                # ``_brief_slug_ok`` refuses this slug, so the writer returns
+                # None having made NO LLM call. Charging it a budget slot would
+                # spend the tick on nothing, every tick, forever.
+                unwritable.append(slug)
+                continue
+            present = [mid for mid in member_ids if mid in by_id]
+            if not present:
+                continue  # the writer would return None without an LLM call
+            demand = sum(access.get(mid, 0) for mid in member_ids)
+            weight = sum(degrees.get(mid, 0) for mid in present)
+            candidates.append(
+                (
+                    (
+                        0 if slug in divisions else 1,
+                        -demand,
+                        -len(present),
+                        -weight,
+                        tier,
+                        slug,
+                    ),
+                    slug,
+                )
+            )
+        candidates.sort(key=lambda item: item[0])
+
+        briefed: List[str] = []
+        failed: List[str] = []
+        warm = 0
+        attempted = 0
+        for _key, slug in candidates:
+            if attempted >= budget:
+                break
+            warm_brief = read_domain_brief(
+                charter, slug, by_id, degrees, cache_dir=cache_dir
+            )
+            if warm_brief is not None:
+                warm += 1  # digest-valid cache — free, costs no budget
+                self._brief_failures.pop(slug, None)
+                self._brief_retry_at.pop(slug, None)
+                continue
+            # Past the pre-checks every remaining path through the writer
+            # reaches the LLM, so from here a budget slot IS a call.
+            attempted += 1
+            if materialize_domain_brief(
+                charter,
+                slug,
+                by_id,
+                degrees,
+                cache_dir=cache_dir,
+                json_client=client,
+            ) is not None:
+                briefed.append(slug)
+                self._brief_failures.pop(slug, None)
+                self._brief_retry_at.pop(slug, None)
+            else:
+                failed.append(slug)
+                strikes = self._brief_failures.get(slug, 0) + 1
+                self._brief_failures[slug] = strikes
+                self._brief_retry_at[slug] = tick + min(
+                    2**strikes, _BRIEF_MAX_BACKOFF_TICKS
+                )
+        return {
+            "briefed": briefed,
+            "failed": failed,
+            "unwalkable": broken,
+            "unwritable": unwritable,
+            "census": census,
+            "deferred": deferred,
+            "warm": warm,
+            "attempted": attempted,
+            "budget": budget,
+            "live": len(live),
+            "tick": tick,
         }
 
     def _resolve_summary_client(self) -> Optional[object]:
