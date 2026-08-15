@@ -549,6 +549,20 @@ def read_charter(project_root: Path | str) -> Optional[dict]:
     with an AttributeError rather than degrading to the community root. The
     shape belongs here because this is the one place that turns bytes into the
     dict the rest of the module's type signatures promise.
+
+    ``domains`` gets the same treatment one level down, and for the same
+    reason. A truthy non-mapping there — ``"domains": []`` past the first
+    element, ``"domains": "alpha"`` — survives the top-level check and then
+    raises AttributeError out of ``live_divisions``, which is called
+    unguarded by ``graph_map()``'s root, by ``compile_context``, and by the
+    agent harness's ``## Divisions`` block. Rejecting it here converts all
+    three from a traceback into the degradation each of them already
+    implements for :class:`CharterUnreadable`, and does it once instead of
+    three times. An ABSENT ``domains`` key is still fine: readers treat it as
+    an empty institution, which is what a charter that has founded nothing
+    is. Per-record shape is deliberately NOT checked — ``_is_live`` already
+    skips a record that is not a mapping, so a single mangled domain costs
+    that domain rather than the whole file.
     """
     path = charter_path(project_root)
     if not path.is_file():
@@ -577,6 +591,13 @@ def read_charter(project_root: Path | str) -> Optional[dict]:
             f"charter at {path} is valid JSON but not an object: it parsed as "
             f"{type(parsed).__name__}, and a charter is a mapping with "
             f"'domains'. {repair}"
+        )
+    domains = parsed.get("domains")
+    if domains is not None and not isinstance(domains, dict):
+        raise CharterUnreadable(
+            f"charter at {path} is an object, but its 'domains' parsed as "
+            f"{type(domains).__name__} rather than a mapping of slug -> "
+            f"record, so no domain in it can be read. {repair}"
         )
     return parsed
 
