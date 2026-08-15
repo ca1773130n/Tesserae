@@ -34,6 +34,7 @@ from tesserae.research_graph import ResearchEdge, ResearchGraph, ResearchNode, R
 from tesserae.retrieval.hybrid import active_embedding_backend
 from tesserae.retrieval.ppr import personalized_pagerank
 
+from ..metrics import prf1
 from .fixture import CONCEPTS, gold_cross_project_pairs
 
 _THRESHOLDS = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70]
@@ -71,14 +72,10 @@ def compute_threshold_rows(backend=None) -> List[dict]:
         links = {
             frozenset((e.source, e.target)) for e in fed.edges if e.type == "shares_concept_with"
         }
-        tp = len(links & gold)
-        fp = len(links - gold)
-        fn = len(gold - links)
-        precision = tp / (tp + fp) if (tp + fp) else 0.0
-        recall = tp / (tp + fn) if (tp + fn) else 0.0
-        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
-        rows.append({"threshold": threshold, "tp": tp, "fp": fp, "fn": fn,
-                     "precision": precision, "recall": recall, "f1": f1})
+        # Same arithmetic the QA scorer runs over answer tokens — see
+        # evals/metrics.py for why there is only one copy of it.
+        rows.append({"threshold": threshold,
+                     **prf1(len(links & gold), len(links - gold), len(gold - links))})
     return rows
 
 

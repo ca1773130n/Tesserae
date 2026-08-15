@@ -13,8 +13,10 @@ output/
 # because `evals/*` still matches them.
 evals/*
 !evals/__init__.py
+!evals/metrics.py
 !evals/federation/
 !evals/growth/
+!evals/qa/
 
 # But: the demo corpus under examples/ IS checked in.
 !examples/demo-corpus/data/
