@@ -8,8 +8,8 @@ mirroring rule by living under `docs/i18n/`, which
 skips.
 
 Every rendering below was read out of the mirrors that exist today; nothing here
-was invented, and a blank cell means the corpus has no answer yet rather than
-that one was guessed. Where the corpus contradicts itself, the entry says so and
+was invented, and a *see note* cell means the corpus has no answer yet rather
+than that one was guessed. Where the corpus contradicts itself, the entry says so and
 names the file and line to fix — those are the terms that have been
 mistranslated more than once, which is why they are on this page at all.
 
