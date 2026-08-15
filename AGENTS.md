@@ -139,6 +139,20 @@ collection on ~39 of their modules.
 `codex_cli` LLM adapters, smoke tests, `.env` files) that exists in **no** git
 repository. It is not recoverable if removed. Never clean it.
 
+## Translating docs
+
+Every doc under `docs/` is mirrored into seven languages under `docs/i18n/`.
+Before touching a mirror, read **[docs/i18n/GLOSSARY.md](docs/i18n/GLOSSARY.md)** —
+the house rendering of the terms that have been mistranslated more than once,
+plus the rules a pass has to hold (never translate inside backticks, keep table
+rows and columns, keep bullet and bold counts, numerals stay numerals).
+
+`tests/test_docs_i18n.py` enforces the mechanical half as a ratchet against
+`tests/fixtures/docs_i18n_parity_baseline.json`: a mirror may not drop an
+identifier or a structural element the English has, beyond what the baseline
+already records. It cannot see a wrong translation — only a missing one. That is
+what the glossary is for.
+
 <!-- tesserae:pointer:begin -->
 ## Tesserae
 
