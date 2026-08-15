@@ -597,8 +597,9 @@ def compile_context(
         if project_root is None:
             raise ValueError(
                 "compile_context: scope= and strategy='hierarchical' resolve "
-                "community members from the .tesserae/hierarchy.json sidecar "
-                "— pass project_root (then `tesserae compile` writes it)."
+                "members from the .tesserae/hierarchy.json sidecar (community "
+                "scopes) or .tesserae/charter/charter.json ('domain:<slug>') "
+                "— pass project_root (then `tesserae compile` writes them)."
             )
         from .hierarchy import load_hierarchy  # local: hierarchy imports us
 
@@ -614,15 +615,50 @@ def compile_context(
 
     restrict: Optional[Set[str]] = None
     if scope is not None:
-        found_scope = hierarchy.find_scope(scope)
-        if found_scope is None:
-            raise ValueError(
-                f"compile_context: unknown scope {scope!r} — valid scopes are "
-                f"community ids from the hierarchy sidecar (a graph_map "
-                f"card's scope_id, e.g. 'CommunitySummary:<hash>'); start "
-                f"from graph_map() and descend."
-            )
-        restrict = set(found_scope[1])
+        # ``domain:<slug>`` resolves through the charter rather than the
+        # dendrogram, and costs nothing downstream: ``restrict`` is already an
+        # arbitrary id set, so a domain is its own direct members plus its live
+        # subtree's and every path below here is untouched. Both scope
+        # grammars have to be named in the error or this becomes the fourth
+        # place in the tree that says something false about the charter.
+        from .charter import (  # local: charter imports agent_distill, which imports us
+            domain_members,
+            live_divisions,
+            read_charter,
+            split_domain_scope,
+        )
+
+        domain_slug = split_domain_scope(scope)
+        if domain_slug is not None:
+            charter = read_charter(Path(project_root))
+            if charter is None:
+                raise ValueError(
+                    f"compile_context: unknown scope {scope!r} — this project "
+                    f"has no charter. One is derived by `tesserae compile`, "
+                    f"and only once the research layer is too big to be one "
+                    f"read; pass a community id instead."
+                )
+            record = (charter.get("domains") or {}).get(domain_slug)
+            if not isinstance(record, dict) or record.get("status") != "live":
+                raise ValueError(
+                    f"compile_context: unknown scope {scope!r} — this project "
+                    f"has no live charter domain {domain_slug!r}. Its live "
+                    f"divisions are: "
+                    f"{', '.join(live_divisions(charter)[:10]) or '(none)'}; "
+                    f"start from graph_map() and descend."
+                )
+            restrict = set(domain_members(charter, domain_slug))
+        else:
+            found_scope = hierarchy.find_scope(scope)
+            if found_scope is None:
+                raise ValueError(
+                    f"compile_context: unknown scope {scope!r} — valid scopes are "
+                    f"community ids from the hierarchy sidecar (a graph_map "
+                    f"card's scope_id, e.g. 'CommunitySummary:<hash>') or "
+                    f"'domain:<slug>' for a chartered domain; start "
+                    f"from graph_map() and descend."
+                )
+            restrict = set(found_scope[1])
 
     if strategy == "hierarchical" and query and query.strip():
         layer = _summary_layer_nodes(graph, hierarchy, Path(project_root))

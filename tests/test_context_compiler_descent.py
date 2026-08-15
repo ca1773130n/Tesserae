@@ -330,3 +330,128 @@ def test_tame_hubs_flag_smoke(tmp_path: Path) -> None:
         seeds=["Concept:a1"], backend=_backend(), tame_hubs=True,
     )
     assert no_sidecar.ranked_nodes
+
+
+# -- scope='domain:<slug>': the same restriction, resolved by the charter ----
+#
+# Re-scope step 2. ``restrict`` already takes an arbitrary id set, so a domain
+# is its direct members plus its live subtree's and nothing downstream moves.
+# The fixture splits community A across two domains so the two grammars cannot
+# be confused for one another: ``alpha`` holds a1 directly and its child
+# ``alpha-core`` holds a2 and a3.
+
+
+def _write_charter(root: Path) -> Path:
+    def _row(**over):
+        row = {
+            "tier": 1, "own_altitude": "division", "parent_slug": None,
+            "child_slugs": [], "anchor_id": "", "direct_member_ids": [],
+            "member_count": 0, "reorg_seq": 0, "status": "live",
+            "transition": "founded", "unsplittable": False,
+        }
+        row.update(over)
+        return row
+
+    payload = {
+        "version": 1,
+        "reorg_seq": 0,
+        "domains": {
+            "alpha": _row(
+                anchor_id="Concept:a1", child_slugs=["alpha-core"],
+                direct_member_ids=["Concept:a1"], member_count=3,
+            ),
+            "alpha-core": _row(
+                tier=2, own_altitude="department", parent_slug="alpha",
+                anchor_id="Concept:a2",
+                direct_member_ids=["Concept:a2", "Concept:a3"], member_count=2,
+            ),
+            "beta": _row(
+                anchor_id="Concept:b1", direct_member_ids=list(B_MEMBERS),
+                member_count=3,
+            ),
+            "gone": _row(status="retired", transition="retired"),
+        },
+        "member_index": {
+            "Concept:a1": "alpha", "Concept:a2": "alpha-core",
+            "Concept:a3": "alpha-core",
+            **{mid: "beta" for mid in B_MEMBERS},
+        },
+    }
+    charter_dir = root / ".tesserae" / "charter"
+    charter_dir.mkdir(parents=True, exist_ok=True)
+    path = charter_dir / "charter.json"
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return path
+
+
+def test_domain_scope_restricts_to_the_domain_subtree(tmp_path: Path) -> None:
+    root = _write_project(tmp_path)
+    _write_charter(root)
+    scoped = compile_context(
+        _fixture_graph(), project_root=str(root), seeds=["Concept:a1"], depth=2,
+        backend=_backend(), scope="domain:alpha",
+    )
+    assert scoped.ranked_nodes
+    # The a1—b1 bridge is severed by the domain exactly as by the community.
+    assert set(scoped.ranked_nodes) <= set(A_MEMBERS)
+
+
+def test_domain_scope_excludes_members_held_by_a_sibling_domain(tmp_path: Path) -> None:
+    """A domain is not its community: alpha-core holds a2/a3, alpha does not."""
+    root = _write_project(tmp_path)
+    _write_charter(root)
+    bundle = compile_context(
+        _fixture_graph(), project_root=str(root),
+        seeds=["Concept:a1", "Concept:a2"], backend=_backend(),
+        scope="domain:alpha-core",
+    )
+    assert bundle.seeds_used == ["Concept:a2"]
+    assert set(bundle.selected_nodes) <= {"Concept:a2", "Concept:a3"}
+
+
+def test_domain_scope_without_a_charter_fails_loud(tmp_path: Path) -> None:
+    """"No charter" and "no such domain" are different repairs, so they must
+    not share one message."""
+    root = _write_project(tmp_path)
+    with pytest.raises(ValueError, match="has no charter"):
+        compile_context(
+            _fixture_graph(), project_root=str(root), seeds=["Concept:a1"],
+            backend=_backend(), scope="domain:alpha",
+        )
+
+
+def test_retired_domain_scope_fails_loud(tmp_path: Path) -> None:
+    root = _write_project(tmp_path)
+    _write_charter(root)
+    with pytest.raises(ValueError, match="no live charter domain"):
+        compile_context(
+            _fixture_graph(), project_root=str(root), seeds=["Concept:a1"],
+            backend=_backend(), scope="domain:gone",
+        )
+
+
+def test_unknown_community_scope_error_names_the_domain_grammar(tmp_path: Path) -> None:
+    """Both grammars in the message, or this becomes another false statement."""
+    root = _write_project(tmp_path)
+    with pytest.raises(ValueError, match="domain:<slug>"):
+        compile_context(
+            _fixture_graph(), project_root=str(root), seeds=["Concept:a1"],
+            backend=_backend(), scope="CommunitySummary:deadbeefdeadbeef",
+        )
+
+
+def test_a_charter_on_disk_does_not_move_the_default_path(tmp_path: Path) -> None:
+    """scope=None must stay byte-identical whether or not a charter exists."""
+    root = _write_project(tmp_path)
+    before = compile_context(
+        _fixture_graph(), project_root=str(root), query="alpha telemetry",
+        depth=2, backend=_backend(),
+    )
+    _write_charter(root)
+    after = compile_context(
+        _fixture_graph(), project_root=str(root), query="alpha telemetry",
+        depth=2, backend=_backend(),
+    )
+    assert after.body == before.body
