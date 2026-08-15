@@ -99,6 +99,8 @@ The cost avoided is the reason to state this as its own step. The spec's alterna
 
 **Change:** A `## Divisions` block between `## Graph summary` (:253) and `## Representative nodes` (:258), one line per live tier-1 domain — slug, member count, anchor name — read from `charter.json`. No charter means no block, which is the below-the-bound case (spec:200-204) and must stay byte-identical to today's output.
 
+*Correction, as implemented:* not "tier-1", and not in size order. Step 2 shipped first and defined the root as `charter.live_divisions` — a live domain with **no live parent**, in slug order — so the block calls that function rather than re-deriving the set here. The two entry points an agent reads would otherwise disagree on exactly the axis this milestone exists to fix: keying on `tier` hid an orphan that `graph_map()` listed, and size order opened the file with `intake` (7,581 members, `anchor_id: ""`), a line carrying no name. The count is `domain_members`' live-subtree walk, matching the `size` step 2's domain card reports; it stays on the line as information rather than as the sort key.
+
 Do NOT build `domains attach` here. The spec asserts (spec:245-248) that "the agent's config already contains `.tesserae/agent_harness/domains/<slug>/TESSERAE.md`" and names no mechanism by which that path enters a config. Per-domain harness directories are a separate decision about what an operator pins and whether a pin survives a reorg, and they must not arrive through the back door of a block whose entire value is that it needs no new files.
 
 **Composes with:** Step 5 — an agent that reads the division list and still cannot choose is exactly the case `charter_route` exists for.

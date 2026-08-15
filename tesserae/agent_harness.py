@@ -9,13 +9,16 @@ Kiro, Cursor, and OpenCode can all consume it without bespoke runtime plugins.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 from .agent_identity import ORG_ROOT, AgentRegistry, sanitize_agent_key
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_AGENT_HARNESSES = ["claude-code", "codex", "gemini", "kiro", "cursor", "opencode"]
 
@@ -55,7 +58,13 @@ class AgentHarnessAdapter:
         # falls back to ``node.description`` when this isn't a real project root).
         project_root = root.parent if topic else None
         summary = render_harness_context(
-            self.project_name, graph, mcp_command, args, topic=topic, project_root=project_root
+            self.project_name,
+            graph,
+            mcp_command,
+            args,
+            topic=topic,
+            project_root=project_root,
+            charter=_read_charter_for_harness(root),
         )
         manifest = {
             "project_name": self.project_name,
@@ -207,6 +216,7 @@ def render_harness_context(
     mcp_args: Sequence[str],
     topic: Optional[str] = None,
     project_root: Optional[Path] = None,
+    charter: Optional[dict] = None,
 ) -> str:
     if topic:
         from .context_compiler import compile_context
@@ -255,6 +265,7 @@ def render_harness_context(
         f"- Nodes: {len(graph.nodes)}",
         f"- Edges: {len(graph.edges)}",
         "",
+        *_division_block(_division_rows(charter, graph)),
         "## Representative nodes",
         "",
     ]
@@ -279,6 +290,128 @@ def render_harness_context(
 
 def node_sort_key(node: ResearchNode) -> tuple:
     return (node.type.value, node.name.lower())
+
+
+def _read_charter_for_harness(output_dir: Path) -> Optional[dict]:
+    """The project's charter, or ``None`` when there is none to render.
+
+    Located from ``output_dir`` through :func:`_project_root_from_output`
+    rather than from the ``project_root`` the topic path computes: that one is
+    ``output_dir.parent`` (the ``.tesserae`` dir, not the project root), so
+    reusing it would look for ``.tesserae/.tesserae/charter/charter.json``,
+    find nothing, and silently render no ``## Divisions`` block on every real
+    project — a no-op that no test on an ad-hoc export path could catch.
+
+    Degrades to ``None`` on :class:`~tesserae.charter.CharterUnreadable`
+    instead of propagating it. The compile pass that derives charter.json has
+    already reported the damaged file loudly
+    (:meth:`ProjectManager._write_charter_sidecar`); failing here on top of
+    that would take out every agent's entry file over one decorative block.
+
+    That one exception class is the whole guard, and it is enough because
+    ``read_charter`` validates the two shapes a downstream reader cannot
+    survive — a top-level parse that is not an object, and a ``domains`` that
+    is not a mapping — and raises this class for both. Everything below that
+    (a domain record that is not a mapping, a null ``tier``, a
+    ``member_count`` that is a string) is absorbed by the charter readers
+    themselves, so a second try/except here would catch nothing that can
+    still be raised. The charter module is imported lazily because it pulls
+    in ``agent_distill``/``community_summaries``, and this module is
+    deliberately the light one every harness target loads.
+    """
+    project_root = _project_root_from_output(output_dir)
+    if project_root is None:
+        return None
+    from .charter import CharterUnreadable, read_charter
+
+    try:
+        return read_charter(project_root)
+    except CharterUnreadable as exc:
+        logger.warning("agent harness: no ## Divisions block — %s", exc)
+        return None
+
+
+def _division_rows(
+    charter: Optional[dict], graph: ResearchGraph
+) -> List[Tuple[str, int, str]]:
+    """This project's live divisions as ``(slug, member_count, anchor_name)``.
+
+    Which slugs, in what order, and how many members each holds are all
+    :mod:`tesserae.charter`'s to decide, not this module's, because
+    ``graph_map()``'s root is built from those same three calls. Those are the
+    two entry points an agent reads, and a block whose premise is that a root
+    must be a directory of names cannot ship disagreeing with the other one
+    about which names it lists. Deriving them here a second time is how the
+    two drift; each re-derivation below was a real disagreement:
+
+    * Membership was ``tier == 1``. :func:`~tesserae.charter.live_divisions`
+      keys on "no LIVE parent" instead, and the difference shows on an
+      orphan — a live domain whose parent was retired without it. Tier is a
+      label, ``parent_slug`` is the tree, so keying on the label hid a domain
+      that was still holding members from every descent path there is, while
+      ``graph_map()`` listed it and CH-01 reported the partition complete.
+    * Order was ``(-member_count, slug)``. Size order is the dendrogram
+      root's rule and the one the charter entry point exists to replace: on
+      this project it opens the first file every agent reads with ``intake``,
+      7,581 members and no name at all (charter.py mints it with
+      ``anchor_id: ""``). Slug order makes the block a directory. The count
+      stays on the line as information; it is simply not what sorts it.
+    * The count was the record's stored ``member_count``.
+      :func:`~tesserae.charter.domain_members` is the live-subtree walk
+      ``graph_map`` measures its domain card's ``size`` with, and the two
+      differ wherever a retired child still carries the frozen member
+      snapshot it had when it was last live.
+
+    Tombstones are excluded by ``live_divisions`` — a retired domain stays in
+    the file so a pinned attach path can be told what happened to it, but it
+    is not a place an agent can go.
+    """
+    if not charter:
+        return []
+    from .charter import domain_members, live_divisions
+
+    domains = charter.get("domains") or {}
+    by_id = {n.id: n for n in graph.nodes}
+    rows: List[Tuple[str, int, str]] = []
+    for slug in live_divisions(charter):
+        record = domains.get(slug) or {}
+        anchor = by_id.get(str(record.get("anchor_id") or ""))
+        # An anchor id naming no node in THIS graph is expected rather than a
+        # bug: ``intake`` has no anchor at all, and the charter is derived
+        # before three passes rebind the graph, so a member named in it can be
+        # absent from the graph.json this file renders from — the ordering
+        # window ``_write_hierarchy_sidecar`` documents. The slug and the count
+        # are still true, so drop the name, never the division. ``graph_map``'s
+        # domain card degrades identically, to the slug as its own title.
+        rows.append(
+            (slug, len(domain_members(charter, slug)), anchor.name if anchor else "")
+        )
+    return rows
+
+
+def _division_block(rows: Sequence[Tuple[str, int, str]]) -> List[str]:
+    """The ``## Divisions`` section, or nothing at all.
+
+    No charter means no block. That is the below-the-bound case — a corpus
+    small enough to be one read is never chartered — and TESSERAE.md must stay
+    byte-identical to its pre-charter output there, because every harness
+    target file is derived from this string.
+    """
+    if not rows:
+        return []
+    block = [
+        "## Divisions",
+        "",
+        "Top-level domains of this project's charter (`.tesserae/charter/charter.json`). A slug is a stable name: it survives re-ingest, unlike a community id, which is a hash over its own members.",
+        "",
+    ]
+    for slug, count, anchor_name in rows:
+        line = f"- `{slug}` — {count} member{'' if count == 1 else 's'}"
+        if anchor_name:
+            line += f" — {anchor_name}"
+        block.append(line)
+    block.append("")
+    return block
 
 
 def write_text(path: Path, content: str) -> Path:

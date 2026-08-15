@@ -560,6 +560,42 @@ def test_read_charter_refuses_valid_json_that_is_not_an_object(tmp_path: Path, b
     assert str(path) in str(excinfo.value)
 
 
+@pytest.mark.parametrize("body", ['{"domains": ["alpha"]}', '{"domains": "alpha"}'])
+def test_read_charter_refuses_a_domains_that_is_not_a_mapping(tmp_path: Path, body: str):
+    """The same damage one level down, and the top-level check does not catch it.
+
+    A truthy non-mapping ``domains`` passes ``isinstance(parsed, dict)`` and
+    then raises AttributeError out of ``live_divisions`` — called unguarded by
+    ``graph_map()``'s root, by ``compile_context``, and by the agent harness's
+    ``## Divisions`` block. Each of those already degrades on
+    ``CharterUnreadable``, so naming the damage here is what turns three
+    tracebacks into three degradations.
+    """
+    from tesserae.charter import CharterUnreadable
+
+    path = charter_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+
+    with pytest.raises(CharterUnreadable) as excinfo:
+        read_charter(tmp_path)
+    assert "domains" in str(excinfo.value) and str(path) in str(excinfo.value)
+
+
+def test_read_charter_accepts_a_charter_with_no_domains_key(tmp_path: Path):
+    """ABSENT is not MALFORMED: an institution that founded nothing is empty,
+    not unreadable, and every reader already spells that ``or {}``."""
+    from tesserae.charter import live_divisions
+
+    path = charter_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"version": 1, "reorg_seq": 0}', encoding="utf-8")
+
+    charter = read_charter(tmp_path)
+    assert charter == {"version": 1, "reorg_seq": 0}
+    assert live_divisions(charter) == []
+
+
 def _dense_fat_clique_bridged_to_peripheral() -> ResearchGraph:
     """An 8-node clique of fat nodes bridged by a single edge to a small
     peripheral triangle.
