@@ -1617,12 +1617,6 @@
     "bold": 1
    }
   },
-  "docs/i18n/release-notes/v0.21.0.zh.md": {
-   "structure": {
-    "escaped_backticks": 6,
-    "fences": -1
-   }
-  },
   "docs/i18n/release-notes/v0.22.0.ja.md": {
    "untranslated_words": [
     "absorbed",
@@ -1739,8 +1733,7 @@
     "timeout × configured profiles"
    ],
    "structure": {
-    "bold": 1,
-    "escaped_backticks": 58
+    "bold": 1
    }
   },
   "docs/i18n/release-notes/v0.25.1.fr.md": {
@@ -1748,9 +1741,7 @@
     "timeout × configured profiles"
    ],
    "structure": {
-    "bold": 1,
-    "escaped_backticks": 64,
-    "fences": -1
+    "bold": 1
    }
   },
   "docs/i18n/release-notes/v0.25.1.ja.md": {
@@ -2529,7 +2520,6 @@
    "structure": {
     "bold": -3,
     "bullets": 5,
-    "escaped_backticks": 38,
     "fences": -1
    }
   },
@@ -2546,7 +2536,6 @@
    ],
    "structure": {
     "bold": -3,
-    "escaped_backticks": 38,
     "fences": -1
    }
   },
@@ -2564,7 +2553,6 @@
    "structure": {
     "bold": -4,
     "bullets": 5,
-    "escaped_backticks": 38,
     "fences": -1
    }
   },
@@ -2581,7 +2569,6 @@
    ],
    "structure": {
     "bold": -2,
-    "escaped_backticks": 38,
     "fences": -1
    }
   },
@@ -2598,7 +2585,6 @@
    ],
    "structure": {
     "bold": -2,
-    "escaped_backticks": 38,
     "fences": -1
    },
    "untranslated_words": [
@@ -2700,7 +2686,6 @@
    ],
    "structure": {
     "bold": -3,
-    "escaped_backticks": 34,
     "fences": -1
    }
   },
@@ -2717,7 +2702,6 @@
    ],
    "structure": {
     "bold": -3,
-    "escaped_backticks": 38,
     "fences": -1
    }
   }

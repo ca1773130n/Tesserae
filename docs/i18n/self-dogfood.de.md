@@ -5,7 +5,7 @@
 <!-- translations:end -->
 Dieses Projekt kann sich selbst indexieren. Der Self-Dogfood-Flow beweist, dass Tesserae installiert, im eigenen Repository eingerichtet werden, seine eigenen Docs/Quellen/Tests/Skripte ingesten, optional RAG-Anything refreshen, Graph-Artefakte kompilieren und das statische Web-Frontend bauen kann.
 
-Derselbe Flow dient zugleich als multimodaler Smoke-Test. Mit installiertem RAG-Anything (`tesserae setup --install raganything`) und aktiviert in `.tesserae/config.json` (`memory_backends.raganything.enabled: true`) richtet der Dogfood-Compile RAG-Anything auf Tesseraes eigenes `docs/`-Markdown plus die Bilder unter `docs/assets/` und dem projektweiten `assets/`. Das validiert die multimodale Pipeline gegen einen realen, projekteigenen Nicht-Code-Korpus — inklusive Screenshots und Diagrammen, die die text-first Source-Loader überspringen — ohne ein separates Fixture-Set zu erfinden.
+Derselbe Flow dient zugleich als multimodaler Smoke-Test. Mit installiertem RAG-Anything (`tesserae setup --install raganything`) und aktiviert in `.tesserae/config.json` (`memory_backends.raganything.enabled: true`) richtet der Dogfood-Compile RAG-Anything auf Tesseraes eigenes `docs/`-Markdown plus die Bilder unter `docs/assets/` und dem projektweiten `assets/`. Das validiert die multimodale Pipeline gegen einen realen, projekteigenen Nicht-Code-Korpus — inklusive Screenshots und Graphen, die die text-first Source-Loader überspringen — ohne ein separates Fixture-Set zu erfinden.
 
 Er exerziert außerdem die Selbstverbesserungsschleife. Jeder Compile leitet den mutierbaren
 Memory-Zustand neu ab — `decay_score`, `access_count`, `confidence` und das
