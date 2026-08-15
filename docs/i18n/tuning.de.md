@@ -83,10 +83,17 @@ Ausführung byte-identisch mit einer sequenziellen.
 ### `TESSERAE_LLM_CACHE`
 
 **Standard ein.** Inhaltsadressierter Cache von CLI-Provider-Antworten unter
-`~/.tesserae/llm_cache`, indiziert nach (Dokument, Art, Leitfaden) sowie Modell
-und Reasoning Effort — daher fragt das Wechseln von Modellen erneut ab, anstatt
-frühere Modell-Antworten zu servieren. Nur parsierbare Antworten werden gespeichert,
-daher kann eine schlechte Generierung nicht dauerhaft werden.
+`~/.tesserae/llm_cache`, indiziert nach einem Digest des tatsächlich gesendeten Prompts
+sowie dem Modell und dem Reasoning Effort — daher fragt eine andere Frage erneut ab, und
+das Wechseln von Modellen fragt erneut ab, anstatt frühere Modell-Antworten auszuliefern.
+Nur parsierbare Antworten werden gespeichert, daher kann eine schlechte Generierung nicht
+dauerhaft werden.
+
+Ältere Einträge sind absichtlich unerreichbar: Der Schlüssel war früher ein
+von der aufrufenden Stufe bereitgestelltes Label, anstatt eines Digests des Prompts,
+sodass voneinander unabhängige Fragen einen Eintrag teilen konnten. Sie werden nicht
+migriert — das Verzeichnis kann gefahrlos gelöscht werden, und eine Kompilierung wird
+es wieder füllen.
 
 ```sh
 export TESSERAE_LLM_CACHE=0   # immer erneut fragen
