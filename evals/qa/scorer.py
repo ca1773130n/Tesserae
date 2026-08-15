@@ -13,7 +13,23 @@ What it computes, per system and per stratum:
   it does in the federation eval;
 * **refusal and hallucination rates on unanswerable questions** — a question
   with no answer in the corpus should draw a refusal; a fluent wrong answer to
-  it is the failure mode neither of the two rates above can see.
+  it is the failure mode neither of the two rates above can see;
+* **gold coverage** — the share of the gold answer's tokens that appear
+  anywhere in the prediction. Unlike the two above it does not care what SHAPE
+  the answer came in, which makes it the only number here that says anything
+  at all across a prose system and a span system. It is a diagnostic and never
+  a ranking: it rewards verbosity, because a longer answer contains a given
+  span more often by chance. See :func:`summarize`.
+
+**Exact match and token F1 compare answer FORMATTING as much as answer
+correctness.** Both are computed over the whole predicted string, so a system
+whose prompt asks for 60-220 words of cited prose and a system whose prompt
+asks for the shortest exact span score wildly differently on the *same correct
+fact* — measured, not hypothesised: for gold "Scotland", a correct cited
+paragraph scores EM 0.000 / F1 0.063 against the bare span's 1.000 / 1.000.
+That is why ``answer_shape`` is one of the :data:`FAIRNESS_KEYS`: a comparison
+across mismatched shapes is not a weak result, it is a different measurement
+wearing a result's clothes, and the gate blocks it.
 
 Deliberate properties:
 
@@ -59,10 +75,10 @@ UNANSWERABLE = None
 #: hedged answer that still answers ("I do not know for certain, but Scotland")
 #: is counted as a refusal. Exact match and token F1 are computed independently
 #: and are unaffected — only ``refusal_rate`` over-counts, and only for systems
-#: that hedge. The short-answer instruction every system is asked under
-#: (:data:`evals.qa.null_model.NULL_SYSTEM_PROMPT`) is what keeps that rare;
-#: if a system under test hedges routinely, read its refusal rate as an upper
-#: bound and say so in the report.
+#: that hedge. A short-answer instruction such as
+#: :data:`evals.qa.null_model.NULL_SYSTEM_PROMPT` keeps that rare; a system
+#: answering in prose has more room to hedge, so read its refusal rate as an
+#: upper bound and say so in the report.
 REFUSAL_MARKERS: Tuple[str, ...] = (
     "i dont know",
     "i do not know",
@@ -165,9 +181,14 @@ def exact_match(predicted: Optional[str], gold: Optional[str]) -> bool:
 def token_f1(predicted: Optional[str], gold: Optional[str]) -> Dict[str, float]:
     """Precision/recall/F1 over the answer token multisets, via :func:`prf1`.
 
-    Multiset, not set: an answer that repeats a gold token twice gets credit
-    once and pays a false positive for the repeat, which is what stops "the the
-    the the" from scoring well against "the".
+    Multiset, not set: an answer that repeats a gold token gets credit once and
+    pays a false positive for each repeat. What that buys is a bound on
+    *padding with content words the gold answer contains* — "york york york"
+    against gold "york" scores F1 0.5, where set semantics would score it a
+    perfect 1.0. It buys nothing against articles and punctuation, which
+    :func:`normalize_answer` has already deleted from both sides by the time
+    this runs: "the the the the" and "the" both normalize to ``""`` and are
+    scored as two empty answers that agree.
 
     Both sides empty is the one case :func:`prf1` cannot decide (0/0/0 would
     score 0.0) and it is decided here: two empty answers agree, so F1 is 1.0.
@@ -278,6 +299,23 @@ def summarize(scored_rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     counterweight to ``hallucination_rate``. Both are always present in the
     output even when the corresponding stratum is empty, so a report template
     cannot silently omit the inconvenient one.
+
+    ``gold_coverage`` is the mean per-question *recall* of gold tokens: did the
+    gold answer's words turn up in the prediction at all, wherever they were and
+    whatever else surrounded them. It is the only number in this block that
+    survives an answer-shape mismatch, so it is what tells a reader whether a
+    prose system and a span system diverged on the FACT or only on the FORM.
+    It is deliberately not a ranking metric — it rises with answer length, and
+    a system that emits the whole corpus scores 1.0 — which is why
+    :func:`rank_systems` still defaults to ``f1_macro`` and the report labels
+    this column a diagnostic.
+
+    Every rate here is a mean over a stratum that may be **empty**, and
+    :func:`_mean` returns ``0.0`` for an empty stratum because a summary block
+    must have a float in every slot. ``0.0`` from a zero denominator is not a
+    measurement, so ``n_answerable`` and ``n_unanswerable`` are emitted
+    alongside and a caller MUST print the denominator next to the rate or print
+    ``n/a`` instead — see ``run_qa_eval._rate``.
     """
     answerable = [r for r in scored_rows if r["answerable"]]
     unanswerable = [r for r in scored_rows if not r["answerable"]]
@@ -295,6 +333,7 @@ def summarize(scored_rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
         "f1_micro": micro["f1"],
         "precision_micro": micro["precision"],
         "recall_micro": micro["recall"],
+        "gold_coverage": _mean([float(r["recall"]) for r in answerable]),
         "refusal_rate": _mean([1.0 if r["refused"] else 0.0 for r in answerable]),
         "hallucination_rate": _mean([1.0 if r["hallucinated"] else 0.0 for r in unanswerable]),
         "unanswerable_refusal_rate": _mean([1.0 if r["refused"] else 0.0 for r in unanswerable]),
@@ -311,9 +350,10 @@ def score_system(
     """Score every row of one system's answers, overall and per stratum.
 
     ``meta`` is carried through untouched and is where the fairness declarations
-    live (``llm_model``, ``embedding_model``, ``embedding_dim``, ``corpus``).
-    See :func:`fairness_blockers` — a number without that block is not
-    publishable, so the shape that produces the number carries it.
+    live (``answer_shape``, ``llm_model``, ``embedding_model``,
+    ``embedding_dim``, ``corpus``, ``question_set``). See
+    :func:`fairness_blockers` — a number without that block is not publishable,
+    so the shape that produces the number carries it.
     """
     scored = [score_row(row) for row in rows]
     strata: Dict[str, List[Dict[str, Any]]] = {}
@@ -360,10 +400,39 @@ def rank_systems(
     return out
 
 
+#: The answer shapes this harness knows how to name, so that two systems'
+#: declarations are comparable strings rather than two people's free text. A
+#: system whose shape is not one of these declares its own string — the gate
+#: compares for equality and does not care what the word is, only that both
+#: sides wrote down the same one and that somebody wrote one down at all.
+ANSWER_SHAPES: Dict[str, str] = {
+    "short-span": (
+        "the shortest exact answer — a name, a date, a number, yes/no. What "
+        "exact match and token F1 were designed for"
+    ),
+    "prose-cited": (
+        "several sentences of prose carrying bracket citations. Scores near "
+        "zero on exact match against a one-word gold answer BY CONSTRUCTION, "
+        "however right it is"
+    ),
+    "excerpt": (
+        "retrieved source text, not an answer — what a retrieval-only run "
+        "returns. Not comparable with either of the above"
+    ),
+}
+
 #: Declarations that must MATCH across systems before a cross-system number can
 #: be published. Each maps to the human sentence explaining why a mismatch
 #: invalidates the comparison rather than merely complicating it.
 FAIRNESS_KEYS: Dict[str, str] = {
+    "answer_shape": (
+        "the systems were asked for different ANSWER SHAPES, and exact match "
+        "and token F1 are computed over the whole answer string — so this "
+        "comparison scores formatting, not correctness. Measured on the same "
+        "correct fact (gold \"Scotland\"): cited prose scores EM 0.000 / F1 "
+        "0.063 where a bare span scores 1.000 / 1.000. Ask every system for "
+        "the same shape, or compare them with a judge instead of with EM/F1"
+    ),
     "llm_model": (
         "the answering model differs, so the comparison measures the models, "
         "not the retrieval"
@@ -383,6 +452,11 @@ FAIRNESS_KEYS: Dict[str, str] = {
 #: and the gate would get switched off. It stays subject to ``llm_model``, which
 #: is the half that matters: a baseline run on a different model than the system
 #: it baselines measures nothing.
+#:
+#: ``answer_shape`` is deliberately NOT here. The baseline is exactly the system
+#: most likely to be asked in a different shape from the system it baselines —
+#: it is the one whose prompt this repo writes — and a shape gap between a
+#: baseline and its subject is not a harmless asymmetry, it is the whole error.
 BASELINE_EXEMPT_KEYS = frozenset({"embedding_model", "embedding_dim"})
 
 
@@ -420,6 +494,7 @@ def fairness_blockers(reports: Sequence[Mapping[str, Any]]) -> List[str]:
 
 
 __all__ = [
+    "ANSWER_SHAPES",
     "BASELINE_EXEMPT_KEYS",
     "FAIRNESS_KEYS",
     "REFUSAL_MARKERS",

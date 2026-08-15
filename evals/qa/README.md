@@ -22,11 +22,67 @@ Per system, and per stratum within each system:
 | **refusal rate on answerable questions** | over-refusal |
 | **hallucination rate on unanswerable questions** | a fluent answer to a question with no answer |
 | **error rate** | queries that crashed, kept separate from both of the above |
+| **gold coverage** | whether the gold answer's words appear in the prediction *at all* — the one column that survives an answer-shape mismatch. A diagnostic, never a ranking: it rises with answer length |
+
+Every rate is printed on a row that also carries its own denominator, and a rate
+over an empty stratum prints `n/a` rather than `0.0%`. A hallucination rate of
+`0.0%` computed over zero unanswerable questions is not a good score, it is an
+absent measurement, and printing it as a number makes the report state something
+it did not measure — about a competitor's product, in a table someone will
+screenshot.
 
 Token F1 comes from `evals/metrics.py::prf1`, the same function
 `evals/federation/run_eval.py` scores cross-project links with. That is
 deliberate. Two evals in one repo, each with its own idea of what F1 means when
 a denominator is zero, cannot be read against each other.
+
+### Exact match and token F1 measure answer SHAPE as much as answer correctness
+
+This is the sharpest limitation of the instrument, and it is not a caveat you can
+put in a footnote and then quote the number anyway.
+
+Both metrics are computed over the whole predicted string. So the same correct
+fact scores completely differently depending on the shape the system was asked to
+answer in. Measured, on gold `Scotland`, one question:
+
+| system | answer | exact match | token F1 | gold coverage |
+|---|---|---|---|---|
+| prose, cited | "Angus is a council area on the east coast of Scotland [Angus (council area)]. …" | 0.000 | 0.030 | 1.000 |
+| bare span | "Scotland" | 1.000 | 1.000 | 1.000 |
+
+Both are right. The table says one of them is twenty times better than the other,
+and it says nothing about retrieval at all.
+
+**The two systems this directory ships have opposite shapes by construction.**
+`null_model.py::NULL_SYSTEM_PROMPT` asks for "the shortest exact answer — a name,
+a date, a number, or yes/no". Tesserae has no short-answer mode:
+`tesserae/query.py::_SYSTEM_PREAMBLE_HEADER` pins one house style for every
+caller — rule 4 asks for 60-220 words, rule 2 requires a bracket citation on
+every factual claim — and `ask_project` exposes no way to override it. So a
+Tesserae-vs-null exact-match table would rank the bare LLM first, on formatting.
+
+Three consequences, and the first two are enforced rather than requested:
+
+1. `answer_shape` is one of the `fairness_blockers()` keys, and the baseline is
+   **not** exempt from it. Comparing `prose-cited` against `short-span` is
+   blocked, and §3 withholds the ranking entirely rather than printing it above
+   the refusal.
+2. Each system declares the shape it *actually* answered in, derived from its
+   real configuration — `QABenchmarkTesserae.answer_shape()` from `no_llm`,
+   `QABenchmarkNullModel` from the prompt in use. Change the null model's prompt
+   without declaring what shape the new wording asks for and the run declares
+   nothing and is blocked, which is correct: only its author knows.
+3. **A prose-vs-span comparison needs a judge, not a normalizer.** This harness
+   deliberately does not ship one. An extractor strong enough to reduce a cited
+   paragraph to "Scotland" is itself a QA system, and it would become the thing
+   being measured; a weaker heuristic one would restore the *appearance* of
+   comparability that the gate just took away, which is worse than the bug. Gold
+   coverage is what you get instead — shape-robust, honestly biased toward
+   verbosity, and labelled a diagnostic in the report.
+
+To compare these two systems on exact match, someone must first give Tesserae a
+short-answer mode (a prompt override on `ask_project`) and run both under it.
+Until then the harness measures each system against itself and refuses to rank.
 
 ### The two rates only work as a pair
 
@@ -90,10 +146,14 @@ asterisk; it is a report you may not quote.
    (`tesserae/retrieval/hybrid.py::Model2VecBackend`). Recall differences across
    that gap are not attributable to the graph.
 
-3. **Same corpus, same questions, same answer-shape instruction.** Token F1
-   against a one-word gold answer collapses if one system replies in prose, so
-   every system must be asked for the same answer shape.
-   `evals/qa/null_model.py::NULL_SYSTEM_PROMPT` is the reference wording.
+3. **Same corpus, same questions, same answer shape.** Token F1 against a
+   one-word gold answer collapses if one system replies in prose, so every
+   system must be asked for the same answer shape.
+   `evals/qa/null_model.py::NULL_SYSTEM_PROMPT` is the reference wording for
+   `short-span`. This constraint currently does **not** hold between the two
+   systems shipped here — Tesserae answers `prose-cited` and cannot be asked
+   otherwise — which is why `--score` across them is blocked rather than
+   caveated. See "Exact match and token F1 measure answer SHAPE" above.
 
 4. **Every declaration must be recorded.** A missing declaration is treated as a
    blocker, not as agreement — "we did not write down which model answered" and
@@ -137,7 +197,11 @@ Nothing here runs by itself, and nothing here ingests. Three guards, in order:
 
 ```bash
 # Score answers that already exist. No LLM, no network, no corpus.
-uv run python -m evals.qa.run_qa_eval --score answers/*.json --out evals/qa/report.md
+# --out defaults to ~/.blackhole/Tesserae/qa/report.md — OUTSIDE the repo. A
+# generated comparative table naming a competitor is scratch until a human
+# decides to publish it, and `evals/qa/` is checked in, so an in-repo default
+# would be one `git add -A` away from being committed.
+uv run python -m evals.qa.run_qa_eval --score answers/*.json
 
 # Phase 1 — stage the corpus. Writes files. Compiles nothing.
 uv run python -m evals.qa.run_qa_eval --system tesserae --stage-only \

@@ -114,6 +114,16 @@ def test_token_f1_is_a_multiset_not_a_set():
     assert repeated["f1"] == pytest.approx(0.5)
 
 
+def test_the_multiset_rule_does_nothing_against_articles():
+    """The docstring used to claim the multiset rule stopped 'the the the the'
+    from scoring against 'the'. It does not: normalize_answer strips articles
+    off BOTH sides first, so that pair is two empty answers and scores 1.0.
+    Pinned so the example in the docstring cannot drift back."""
+    assert normalize_answer("the the the the") == ""
+    assert exact_match("the the the the", "the")
+    assert token_f1("the the the the", "the")["f1"] == pytest.approx(1.0)
+
+
 def test_token_f1_empty_answers():
     """The one case prf1 cannot decide, decided here and pinned."""
     assert token_f1("", "kansas")["f1"] == 0.0, "no credit for silence"
@@ -255,6 +265,8 @@ def test_summarize_matches_hand_computed_values():
     assert summary["hallucination_rate"] == pytest.approx(0.5)
     assert summary["unanswerable_refusal_rate"] == pytest.approx(0.5)
     assert summary["error_rate"] == pytest.approx(1 / 7)
+    # gold coverage: per-question recall 1.0, 2/3, 0, 0, 0
+    assert summary["gold_coverage"] == pytest.approx((1.0 + 2 / 3) / 5)
 
 
 def test_macro_and_micro_f1_are_genuinely_different_numbers():
@@ -262,6 +274,36 @@ def test_macro_and_micro_f1_are_genuinely_different_numbers():
     is failing selectively on short answers or on long ones."""
     summary = summarize([score_row(r) for r in FIXTURE_ROWS])
     assert abs(summary["f1_macro"] - summary["f1_micro"]) > 0.03
+
+
+def test_gold_coverage_survives_a_shape_mismatch_that_destroys_f1():
+    """The column that tells a reader whether two systems differed on the FACT
+    or only on the FORM. Same correct answer, two shapes: exact match and F1
+    diverge completely, coverage does not move."""
+    # _SCOTLAND_PROSE / _SCOTLAND_GOLD are the review's own case; see below.
+    prose = summarize([score_row({
+        "question": "In which country is Angus?", "gold": _SCOTLAND_GOLD,
+        "answer": _SCOTLAND_PROSE,
+    })])
+    span = summarize([score_row({
+        "question": "In which country is Angus?", "gold": _SCOTLAND_GOLD,
+        "answer": _SCOTLAND_GOLD,
+    })])
+    assert prose["exact_match"] == 0.0 and span["exact_match"] == 1.0
+    assert prose["f1_macro"] < 0.1 and span["f1_macro"] == pytest.approx(1.0)
+    assert prose["gold_coverage"] == pytest.approx(1.0), "the fact was there"
+    assert span["gold_coverage"] == pytest.approx(1.0)
+
+
+def test_gold_coverage_is_not_a_ranking_metric():
+    """It rewards verbosity by construction — pinned so nobody promotes it to
+    the headline. Answering with the whole corpus scores a perfect 1.0."""
+    firehose = summarize([score_row({
+        "question": "q", "gold": "Scotland",
+        "answer": "England Scotland Wales Ireland France Spain Portugal",
+    })])
+    assert firehose["gold_coverage"] == pytest.approx(1.0)
+    assert firehose["f1_macro"] < 0.3, "F1 is what pays for the padding"
 
 
 def test_a_system_that_refuses_everything_looks_perfect_on_hallucination_alone():
@@ -334,10 +376,10 @@ def test_the_model_gap_in_this_repo_blocks_publication():
     (examples/demo-corpus/scripts/seed_raganything_store.py:63) while Tesserae
     defaults to gpt-5.6-luna. Publishing across that gap measures the models."""
     blockers = fairness_blockers([
-        _report("tesserae", llm_model="gpt-5.6-luna",
+        _report("tesserae", answer_shape="prose-cited", llm_model="gpt-5.6-luna",
                 embedding_model="model2vec:minishlab/potion-base-8M",
                 embedding_dim=256, corpus="hotpot24", question_set="hotpot24"),
-        _report("lightrag", llm_model="gpt-5.4",
+        _report("lightrag", answer_shape="prose-cited", llm_model="gpt-5.4",
                 embedding_model="all-MiniLM-L6-v2",
                 embedding_dim=384, corpus="hotpot24", question_set="hotpot24"),
     ])
@@ -349,9 +391,85 @@ def test_the_model_gap_in_this_repo_blocks_publication():
 
 
 def test_matching_declarations_clear_the_gate():
-    common = dict(llm_model="gpt-5.6-luna", embedding_model="m2v",
-                  embedding_dim=256, corpus="hotpot24", question_set="hotpot24")
+    common = dict(answer_shape="short-span", llm_model="gpt-5.6-luna",
+                  embedding_model="m2v", embedding_dim=256,
+                  corpus="hotpot24", question_set="hotpot24")
     assert fairness_blockers([_report("a", **common), _report("b", **common)]) == []
+
+
+# ------------------------------------------------------- the answer-shape gate
+
+#: The exact review case. One correct fact — Angus is in Scotland — answered by
+#: a system whose prompt mandates 60-220 words of bracket-cited prose
+#: (``tesserae/query.py::_SYSTEM_PREAMBLE_HEADER`` rules 2 and 4) and by one
+#: whose prompt mandates the shortest exact span
+#: (``evals.qa.null_model.NULL_SYSTEM_PROMPT``).
+_SCOTLAND_GOLD = "Scotland"
+_SCOTLAND_PROSE = (
+    "Angus is a council area on the east coast of Scotland [Angus (council area)]. "
+    "It lies north of the Firth of Tay and borders Aberdeenshire to the north-east "
+    "[Aberdeenshire]. The county town is Forfar [Forfar]."
+)
+
+
+def _scotland_reports(*, tesserae_shape="prose-cited", null_shape="short-span"):
+    common = dict(llm_model="gpt-5.6-luna", corpus="hotpot24",
+                  question_set="hotpot24")
+    row = {"question": "In which country is Angus?", "gold": _SCOTLAND_GOLD,
+           "stratum": "hard"}
+    return [
+        score_system([{**row, "answer": _SCOTLAND_PROSE}], system="Tesserae",
+                     meta={**common, "answer_shape": tesserae_shape,
+                           "embedding_model": "m2v", "embedding_dim": 256}),
+        score_system([{**row, "answer": _SCOTLAND_GOLD}], system="NullModel",
+                     meta={**common, "answer_shape": null_shape, "role": "baseline",
+                           "embedding_model": "none", "embedding_dim": "none"}),
+    ]
+
+
+def test_the_scotland_case_is_a_formatting_gap_that_reads_as_a_quality_gap():
+    """The measurement the gate exists to stop being published. Both systems
+    return the SAME correct fact; the bare model wins by two orders of
+    magnitude, on shape alone."""
+    tesserae, null_model = _scotland_reports()
+    assert tesserae["overall"]["exact_match"] == 0.0
+    assert tesserae["overall"]["f1_macro"] < 0.1
+    assert null_model["overall"]["exact_match"] == 1.0
+    assert null_model["overall"]["f1_macro"] == pytest.approx(1.0)
+    # ...and both had the fact.
+    assert tesserae["overall"]["gold_coverage"] == pytest.approx(1.0)
+    assert null_model["overall"]["gold_coverage"] == pytest.approx(1.0)
+
+
+def test_mismatched_answer_shapes_block_publication():
+    """Before answer_shape was a fairness key this comparison reported NO
+    blockers and was publishable — a table ranking the bare LLM first, on
+    formatting, with the gate saying it was fine."""
+    blockers = fairness_blockers(_scotland_reports())
+    assert blockers, "the Scotland comparison must not be publishable"
+    shape = [b for b in blockers if b.startswith("answer_shape:")]
+    assert len(shape) == 1
+    assert "prose-cited" in shape[0] and "short-span" in shape[0]
+    assert "formatting" in shape[0], "the blocker must say WHY, not just that"
+
+
+def test_the_baseline_is_not_exempt_from_the_answer_shape_check():
+    """It is the exempt-looking one — no retrieval, its prompt written here —
+    and it is the system most likely to be asked in a different shape from the
+    one it baselines. Exempting it would exempt the whole defect."""
+    assert any(b.startswith("answer_shape:")
+               for b in fairness_blockers(_scotland_reports()))
+
+
+def test_matching_answer_shapes_clear_the_shape_gate():
+    blockers = fairness_blockers(_scotland_reports(tesserae_shape="short-span"))
+    assert not any(b.startswith("answer_shape:") for b in blockers)
+
+
+def test_an_undeclared_answer_shape_is_blocked_not_assumed_to_match():
+    blockers = fairness_blockers(_scotland_reports(tesserae_shape=None))
+    shape = [b for b in blockers if b.startswith("answer_shape:")]
+    assert len(shape) == 1 and "not declared by Tesserae" in shape[0]
 
 
 def test_an_undeclared_run_is_blocked_not_assumed_fair():
@@ -368,9 +486,11 @@ def test_an_undeclared_run_is_blocked_not_assumed_fair():
 def test_baseline_is_exempt_from_embeddings_but_not_from_the_model():
     """A null model has no retrieval — that is what it is for — but a null model
     run on a DIFFERENT model than the system it baselines measures nothing."""
-    system = _report("tesserae", llm_model="gpt-5.6-luna", embedding_model="m2v",
+    system = _report("tesserae", answer_shape="short-span", llm_model="gpt-5.6-luna",
+                     embedding_model="m2v",
                      embedding_dim=256, corpus="c", question_set="q")
-    matched = _report("null", role="baseline", llm_model="gpt-5.6-luna",
+    matched = _report("null", role="baseline", answer_shape="short-span",
+                      llm_model="gpt-5.6-luna",
                       embedding_model="none", embedding_dim="none",
                       corpus="c", question_set="q")
     assert fairness_blockers([system, matched]) == []
@@ -472,7 +592,40 @@ def test_runner_scores_saved_answers_and_writes_a_report(tmp_path, monkeypatch, 
     assert "## 1. Overall" in report and "## 2. Per stratum" in report
     assert "## 4. Fairness preconditions" in report
     assert "Latency is not measured" in report
-    assert "| fixture | 5 | 20.0% | 0.333 | 0.375 | 40.0% | 50.0% | 14.3% |" in report
+    assert ("| fixture | 5 | 2 | 20.0% | 0.333 | 0.375 | 0.333 | 40.0% | "
+            "50.0% | 14.3% |") in report
+
+
+def test_section_one_reports_n_a_rather_than_a_rate_over_no_questions(
+        tmp_path, monkeypatch, capsys):
+    """The §1 half of the zero-denominator bug. With no unanswerable rows the
+    hallucination rate is a mean over nothing; _mean returns 0.0, and printing
+    that as "0.0%" reads as "this system never hallucinates" — an unsupported
+    claim, and one this harness would have made about a COMPETITOR's product.
+    §2 already emitted n/a here; §1 did not."""
+    from evals.qa import run_qa_eval
+
+    monkeypatch.delenv("CI", raising=False)
+    answerable_only = [r for r in FIXTURE_ROWS if r["gold"] is not None]
+    unanswerable_only = [r for r in FIXTURE_ROWS if r["gold"] is None]
+    paths = []
+    for name, rows in (("competitor", answerable_only), ("mute", unanswerable_only)):
+        path = tmp_path / f"{name}.json"
+        path.write_text(json.dumps({"system": name, "meta": {}, "rows": rows}),
+                        encoding="utf-8")
+        paths.append(str(path))
+    out = tmp_path / "report.md"
+    assert run_qa_eval.main(["--score", *paths, "--out", str(out)]) == 0
+    capsys.readouterr()
+    report = out.read_text(encoding="utf-8")
+
+    # No unanswerable rows -> no hallucination rate, and the denominator is 0
+    # right there on the row rather than in a header sentence that has been
+    # replaced by the not-comparable warning.
+    assert "| competitor | 5 | 0 | 20.0% | 0.333 | 0.375 | 0.333 | 40.0% | n/a | 20.0% |" in report
+    # ...and the mirror image: no answerable rows -> no EM, F1 or refusal rate.
+    assert "| mute | 0 | 2 | n/a | n/a | n/a | n/a | n/a | 50.0% | 0.0% |" in report
+    assert "the systems answered different numbers of questions" in report
 
 
 def test_report_is_byte_identical_across_runs(tmp_path, monkeypatch, capsys):
@@ -500,7 +653,8 @@ def test_report_refuses_to_publish_a_comparison_across_the_model_gap(tmp_path,
     for name, model in (("tesserae", "gpt-5.6-luna"), ("lightrag", "gpt-5.4")):
         path = tmp_path / f"{name}.json"
         path.write_text(json.dumps({
-            "system": name, "meta": {"llm_model": model}, "rows": FIXTURE_ROWS,
+            "system": name, "meta": {"llm_model": model, "answer_shape": "short-span"},
+            "rows": FIXTURE_ROWS,
         }), encoding="utf-8")
         paths.append(str(path))
     out = tmp_path / "report.md"
@@ -509,8 +663,34 @@ def test_report_refuses_to_publish_a_comparison_across_the_model_gap(tmp_path,
     report = out.read_text(encoding="utf-8")
     assert "**These numbers are NOT publishable as a comparison.**" in report
     assert "gpt-5.4" in report
-    # Two identical fixtures score identically — the ranking must say "tied".
-    assert "## 3. Ranking" in report and "tied" in report
+    # The ranking table is the quotable part — the bit that gets screenshotted —
+    # so it is withheld rather than printed above the retraction.
+    assert "## 3. Ranking" in report
+    assert "**Withheld — see §4.**" in report
+    assert "| rank | system |" not in report
+
+
+def test_a_clean_comparison_still_gets_its_ranking(tmp_path, monkeypatch, capsys):
+    """The counterweight to withholding it: when every declaration matches, the
+    ranking prints, and two identical fixtures are reported as tied."""
+    from evals.qa import run_qa_eval
+
+    monkeypatch.delenv("CI", raising=False)
+    meta = {"answer_shape": "short-span", "llm_model": "gpt-5.6-luna",
+            "embedding_model": "m2v", "embedding_dim": 256,
+            "corpus": "c", "question_set": "q"}
+    paths = []
+    for name in ("alpha", "beta"):
+        path = tmp_path / f"{name}.json"
+        path.write_text(json.dumps({"system": name, "meta": meta, "rows": FIXTURE_ROWS}),
+                        encoding="utf-8")
+        paths.append(str(path))
+    out = tmp_path / "report.md"
+    assert run_qa_eval.main(["--score", *paths, "--out", str(out)]) == 0
+    capsys.readouterr()
+    report = out.read_text(encoding="utf-8")
+    assert "Every declaration matches" in report
+    assert "| rank | system |" in report and "tied" in report
 
 
 def test_answers_file_without_declarations_scores_but_cannot_be_published(tmp_path,
@@ -537,6 +717,83 @@ def test_answers_file_without_declarations_scores_but_cannot_be_published(tmp_pa
     report = out.read_text(encoding="utf-8")
     assert "competitor" in report
     assert "not declared by competitor" in report
+
+
+def test_the_default_report_path_is_outside_the_repository():
+    """A generated comparative table naming a competitor must not be one
+    `git add -A` away from the repo. It used to default to evals/qa/report.md,
+    which this branch un-gitignored so the harness itself could be checked in."""
+    from evals.qa import run_qa_eval
+    from evals.qa.vendor_base import REPO_ROOT
+
+    default = run_qa_eval.build_parser().parse_args([]).out.resolve()
+    assert default == run_qa_eval.DEFAULT_REPORT.resolve()
+    assert REPO_ROOT.resolve() not in default.parents, default
+    # Belt and braces: the in-repo path is ignored too, for the operator who
+    # passes it explicitly or copies a command out of git history.
+    ignores = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "evals/qa/report*.md" in ignores
+
+
+# ------------------------------------------- meta is resolved AFTER the client
+
+
+class _LateMetaBenchmark:
+    """A benchmark whose declarations only exist once its client does.
+
+    Exactly the shape of QABenchmarkTesserae, whose declared_meta() reads the
+    project's model pins off rag_client — which the vendored base initialises to
+    None. The runner used to build the meta before answer_phase ran, so every
+    Tesserae run declared llm_model: None, wrote it into the answers file, and
+    blocked §4 with a statement that was false about the run.
+    """
+
+    system_name = "LateMeta"
+
+    def __init__(self):
+        self.rag_client = None
+
+    async def initialize_rag(self):
+        return {"llm_model": "gpt-5.6-luna"}
+
+    async def cleanup_rag(self):
+        return None
+
+    async def query_rag(self, question):
+        return "scotland"
+
+    def declared_meta(self):
+        config = self.rag_client or {}
+        return {"answer_shape": "prose-cited", "llm_model": config.get("llm_model")}
+
+
+def test_answer_phase_resolves_meta_after_the_client_exists(tmp_path, capsys):
+    from evals.qa import run_qa_eval
+
+    benchmark = _LateMetaBenchmark()
+    assert benchmark.declared_meta()["llm_model"] is None, (
+        "the precondition: asked too early, this benchmark declares nothing"
+    )
+    answers = tmp_path / "answers.json"
+    rows, meta = run_qa_eval.answer_phase(
+        benchmark,
+        [{"question": "In which country is Angus?", "gold": "Scotland",
+          "stratum": "hard"}],
+        answers, {"corpus": "hotpot24", "question_set": "hotpot24"},
+    )
+    capsys.readouterr()
+    assert [r["answer"] for r in rows] == ["scotland"]
+    assert meta["llm_model"] == "gpt-5.6-luna", "resolved after initialize_rag"
+    assert meta["answer_shape"] == "prose-cited"
+    # The runner's own declarations are merged over, not instead of, the
+    # system's — and the saved file carries the resolved values, permanently.
+    assert meta["corpus"] == "hotpot24"
+    saved = json.loads(answers.read_text(encoding="utf-8"))
+    assert saved["meta"]["llm_model"] == "gpt-5.6-luna"
+    assert fairness_blockers([
+        score_system(rows, system="LateMeta", meta=meta),
+        _report("other", **{**meta, "embedding_model": "m2v", "embedding_dim": 256}),
+    ]) != [], "still blocked on the undeclared embeddings, not on the model"
 
 
 # ------------------------------------------------------------------ null model
@@ -680,6 +937,141 @@ def test_tesserae_adapter_refuses_an_uncompiled_project(tmp_path):
     with pytest.raises(MissingPrerequisite) as excinfo:
         asyncio.run(benchmark.initialize_rag())
     assert "tesserae compile" in excinfo.value.remedy
+
+
+class _FakeWiki:
+    """Stands in for ProjectWiki — the object initialize_rag() returns."""
+
+    def __init__(self, config):
+        self._config = config
+
+    def config(self):
+        return self._config
+
+
+def test_tesserae_declared_meta_reads_the_project_config_off_the_live_client():
+    """Exercises the REAL class, not a hand-built meta dict.
+
+    The gate's strict half — 'every value is READ from the project's own config'
+    — was dead code: the runner asked for the declarations before the client
+    existed, so this branch never ran on a shipped path and no test noticed,
+    because every fairness test fed hand-built dicts.
+    """
+    _skip_without_vendored_base()
+    from evals.qa.benchmark_tesserae import QABenchmarkTesserae, TesseraeConfig
+
+    benchmark = QABenchmarkTesserae(
+        [], [], TesseraeConfig(project_root="/tmp/qa-run", print_results=False,
+                               results_file=""),
+    )
+    # Before the client exists there is nothing to read — and nothing is
+    # invented. An undeclared model is a blocker, which is the correct outcome.
+    assert benchmark.rag_client is None
+    assert benchmark.declared_meta()["llm_model"] is None
+
+    benchmark.rag_client = _FakeWiki({
+        "llm_provider": "codex",
+        "extraction": {"codex_model": "gpt-5.6-luna", "claude_model": "opus"},
+    })
+    meta = benchmark.declared_meta()
+    assert meta["llm_model"] == "gpt-5.6-luna", "read from the project's config"
+    assert meta["llm_provider"] == "codex"
+    assert meta["answer_shape"] == "prose-cited"
+
+
+def test_tesserae_declared_meta_reads_the_raganything_pins_separately():
+    """The raganything store carries its OWN model pins — which is how the
+    gpt-5.4 / gpt-5.6-luna gap got into this repo. That whole branch had never
+    executed on a shipped path either."""
+    _skip_without_vendored_base()
+    from evals.qa.benchmark_tesserae import QABenchmarkTesserae, TesseraeConfig
+
+    benchmark = QABenchmarkTesserae(
+        [], [], TesseraeConfig(project_root="/tmp/qa-run", backend="raganything",
+                               print_results=False, results_file=""),
+    )
+    benchmark.rag_client = _FakeWiki({
+        "llm_provider": "codex",
+        "extraction": {"codex_model": "gpt-5.6-luna"},
+        "memory_backends": {"raganything": {
+            "llm": {"model": "gpt-5.4"},
+            "embedding": {"model": "all-MiniLM-L6-v2", "dim": 384},
+        }},
+    })
+    meta = benchmark.declared_meta()
+    assert meta["llm_model"] == "gpt-5.4", "the store's pin, not the project's"
+    assert meta["embedding_model"] == "all-MiniLM-L6-v2"
+    assert meta["embedding_dim"] == 384
+    assert meta["answer_shape"] == "prose-cited"
+
+
+def test_tesserae_declares_the_answer_shape_it_actually_answers_in():
+    """Tesserae has no short-answer mode: tesserae/query.py pins one house style
+    for every caller (60-220 words, bracket citations on every claim) and
+    ask_project exposes no override. Declaring anything else would hide the gap
+    that makes exact match measure formatting."""
+    _skip_without_vendored_base()
+    from evals.qa.benchmark_tesserae import QABenchmarkTesserae, TesseraeConfig
+
+    def _shape(**kwargs):
+        return QABenchmarkTesserae(
+            [], [], TesseraeConfig(project_root="/tmp/qa-run", print_results=False,
+                                   results_file="", **kwargs),
+        ).answer_shape()
+
+    assert _shape() == "prose-cited"
+    assert _shape(no_llm=True) == "excerpt", "a retrieved excerpt is not an answer"
+
+
+def test_null_model_declares_the_shape_its_prompt_asks_for():
+    _skip_without_vendored_base()
+    from evals.qa.null_model import (
+        NULL_SYSTEM_PROMPT, NullModelConfig, QABenchmarkNullModel,
+    )
+
+    def _meta(**kwargs):
+        return QABenchmarkNullModel(
+            [], [], NullModelConfig(results_file="", **kwargs),
+        ).declared_meta()
+
+    assert NULL_SYSTEM_PROMPT in NullModelConfig().system_prompt
+    assert _meta()["answer_shape"] == "short-span"
+    # Swap the wording and the shape is nobody's to guess: undeclared, hence
+    # blocked, until whoever wrote the new prompt says what it asks for.
+    assert _meta(system_prompt="Explain at length.")["answer_shape"] is None
+    assert _meta(system_prompt="Explain at length.",
+                 answer_shape="prose")["answer_shape"] == "prose"
+
+
+def test_the_two_shipped_systems_cannot_be_compared_on_exact_match():
+    """The end of the review case, at the level of the real adapters rather than
+    fixtures: the two systems this PR ships have opposite answer shapes by
+    construction, so the gate blocks them and the harness publishes nothing."""
+    _skip_without_vendored_base()
+    from evals.qa.benchmark_tesserae import QABenchmarkTesserae, TesseraeConfig
+    from evals.qa.null_model import NullModelConfig, QABenchmarkNullModel
+
+    tesserae = QABenchmarkTesserae(
+        [], [], TesseraeConfig(project_root="/tmp/qa-run", print_results=False,
+                               results_file=""),
+    )
+    tesserae.rag_client = _FakeWiki({
+        "llm_provider": "codex", "extraction": {"codex_model": "gpt-5.6-luna"},
+    })
+    null_model = QABenchmarkNullModel(
+        [], [], NullModelConfig(model="gpt-5.6-luna", results_file=""),
+    )
+    common = {"corpus": "hotpot24", "question_set": "hotpot24"}
+    row = {"question": "In which country is Angus?", "gold": "Scotland"}
+    blockers = fairness_blockers([
+        score_system([{**row, "answer": _SCOTLAND_PROSE}], system="Tesserae",
+                     meta={**tesserae.declared_meta(), **common}),
+        score_system([{**row, "answer": "Scotland"}], system="NullModel",
+                     meta={**null_model.declared_meta(), **common}),
+    ])
+    shape = [b for b in blockers if b.startswith("answer_shape:")]
+    assert len(shape) == 1, blockers
+    assert "prose-cited" in shape[0] and "short-span" in shape[0]
 
 
 def test_answer_text_normalizes_every_envelope_shape():

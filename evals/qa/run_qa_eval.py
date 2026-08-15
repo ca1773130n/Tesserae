@@ -1,7 +1,8 @@
 """Runner for the QA benchmark: stage, answer, score, report.
 
     # score answers that already exist — no LLM, no network, no corpus
-    uv run python -m evals.qa.run_qa_eval --score answers/*.json --out evals/qa/report.md
+    uv run python -m evals.qa.run_qa_eval --score answers/*.json \
+        --out ~/.blackhole/Tesserae/qa/report.md
 
     # phase 1: stage the corpus for Tesserae. Writes files. Compiles nothing.
     uv run python -m evals.qa.run_qa_eval --system tesserae --stage-only \
@@ -41,14 +42,27 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .scorer import fairness_blockers, rank_systems, score_system
 from .vendor_base import CORPUS_JSON, QA_PAIRS_JSON, MissingPrerequisite
 
 HERE = Path(__file__).resolve().parent
 UNANSWERABLE_JSON = HERE / "unanswerable.json"
-DEFAULT_REPORT = HERE / "report.md"
+
+#: Where a report goes when ``--out`` is not given: the project's scratch root,
+#: **outside the repository**. It used to default to ``evals/qa/report.md``,
+#: which this branch had just un-gitignored so the rest of the directory could
+#: be checked in — so the first ``git add -A`` after a run would have committed
+#: a comparative table naming a competitor, and ``_first_party_docs()`` never
+#: scans ``evals/`` so no guard would have caught it. A generated number is
+#: scratch until a human decides to publish it; the default now says so.
+#: ``evals/qa/report*.md`` is gitignored as well, for the operator who passes
+#: the old path explicitly or copies a command out of git history.
+#:
+#: No date in the path: this module is held to byte-identical re-runs, and a
+#: default output path that moves at midnight is a wall clock in the harness.
+DEFAULT_REPORT = Path.home() / ".blackhole" / "Tesserae" / "qa" / "report.md"
 
 SYSTEMS = ("tesserae", "null")
 
@@ -182,13 +196,30 @@ def stage_only(benchmark: Any, project: Path) -> int:
 
 def answer_phase(benchmark: Any, questions: Sequence[Mapping[str, Any]],
                  answers_out: Optional[Path],
-                 meta: Optional[Mapping[str, Any]] = None) -> List[Dict[str, Any]]:
-    """Ask every question. This is the phase that costs money."""
+                 run_meta: Optional[Mapping[str, Any]] = None,
+                 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Ask every question, and return ``(rows, meta)``. This phase costs money.
+
+    The meta is resolved **here**, after ``initialize_rag()`` and before the
+    client is torn down, and returned rather than passed in. That ordering is
+    load-bearing, not tidiness: ``QABenchmarkTesserae.declared_meta()`` reads
+    the project's model pins off ``rag_client``, which the vendored base sets to
+    ``None`` in ``__init__``. Asking for the declarations first — as this runner
+    used to — produced ``llm_model: None`` on every Tesserae run, wrote that
+    into the answers file permanently, and made §4 block with a statement that
+    was false about the run. It failed closed, so it published nothing wrong;
+    it also meant the strict half of the gate had never once executed.
+
+    ``run_meta`` carries the declarations only the *runner* knows (which
+    question set, which corpus) and is merged over the system's own.
+    """
     import asyncio
 
-    async def _run() -> List[Dict[str, Any]]:
+    async def _run() -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         benchmark.rag_client = await benchmark.initialize_rag()
         try:
+            # After the client exists — see the docstring.
+            meta = {**_meta_of(benchmark), **dict(run_meta or {})}
             rows: List[Dict[str, Any]] = []
             for index, question in enumerate(questions, start=1):
                 text = question["question"]
@@ -199,22 +230,18 @@ def answer_phase(benchmark: Any, questions: Sequence[Mapping[str, Any]],
                     answer = f"Error: {exc}"  # must not lose the other 35
                 rows.append({"question": text, "answer": answer,
                              "gold": question["gold"], "stratum": question["stratum"]})
-            return rows
+            return rows, meta
         finally:
             await benchmark.cleanup_rag()
 
-    rows = asyncio.run(_run())
+    rows, meta = asyncio.run(_run())
     if answers_out is not None:
-        payload = {
-            "system": benchmark.system_name,
-            "meta": dict(meta) if meta is not None else _meta_of(benchmark),
-            "rows": rows,
-        }
+        payload = {"system": benchmark.system_name, "meta": meta, "rows": rows}
         answers_out.parent.mkdir(parents=True, exist_ok=True)
         answers_out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n",
                                encoding="utf-8")
         print(f"wrote {answers_out}")
-    return rows
+    return rows, meta
 
 
 def _meta_of(benchmark: Any) -> Dict[str, Any]:
@@ -251,6 +278,24 @@ def _pct(value: float) -> str:
     return f"{100.0 * float(value):.1f}%"
 
 
+def _rate(value: float, denominator: int) -> str:
+    """A percentage, or ``n/a`` when it would be a rate over nothing.
+
+    ``scorer.summarize`` fills every slot with a float, so an empty stratum
+    yields ``0.0`` — and printing that is how a report comes to say a system
+    "never hallucinates" on the strength of zero unanswerable questions. It read
+    as a claim about a competitor's product and was supported by an empty
+    denominator. Every rate in this report goes through here, and every rate is
+    printed on a row that also carries its denominator.
+    """
+    return _pct(value) if denominator else "n/a"
+
+
+def _num(value: float, denominator: int, spec: str = ".3f") -> str:
+    """As :func:`_rate`, for the metrics that are not percentages."""
+    return format(float(value), spec) if denominator else "n/a"
+
+
 def _table(header: Sequence[str], rows: Sequence[Sequence[str]]) -> List[str]:
     out = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
     out.extend("| " + " | ".join(row) + " |" for row in rows)
@@ -258,18 +303,42 @@ def _table(header: Sequence[str], rows: Sequence[Sequence[str]]) -> List[str]:
 
 
 def _overall_section(reports: Sequence[Mapping[str, Any]]) -> List[str]:
-    header = ["system", "n answerable", "exact match", "token F1 (macro)",
-              "token F1 (micro)", "refusals on answerable",
-              "hallucination (unanswerable)", "errors"]
+    """§1. Every rate carries its own denominator on the same row.
+
+    ``n unanswerable`` is a column and not a footnote because the hallucination
+    rate is meaningless without it, and because the header sentence that used to
+    carry the counts is replaced by a warning as soon as two systems disagree —
+    which is exactly when a reader most needs the numbers.
+    """
+    header = ["system", "n answerable", "n unanswerable", "exact match",
+              "token F1 (macro)", "token F1 (micro)", "gold coverage",
+              "refusals on answerable", "hallucination (unanswerable)", "errors"]
     rows = []
     for report in reports:
         o = report["overall"]
+        answerable, unanswerable = int(o["n_answerable"]), int(o["n_unanswerable"])
         rows.append([
-            str(report["system"]), str(o["n_answerable"]),
-            _pct(o["exact_match"]), f"{o['f1_macro']:.3f}", f"{o['f1_micro']:.3f}",
-            _pct(o["refusal_rate"]), _pct(o["hallucination_rate"]), _pct(o["error_rate"]),
+            str(report["system"]), str(answerable), str(unanswerable),
+            _rate(o["exact_match"], answerable),
+            _num(o["f1_macro"], answerable), _num(o["f1_micro"], answerable),
+            _num(o["gold_coverage"], answerable),
+            _rate(o["refusal_rate"], answerable),
+            _rate(o["hallucination_rate"], unanswerable),
+            _rate(o["error_rate"], int(o["n"])),
         ])
-    return _table(header, rows)
+    lines = _table(header, rows)
+    lines += [
+        "",
+        "**gold coverage** is the share of the gold answer's tokens that appear "
+        "anywhere in the prediction. It is the one column here that survives an "
+        "answer-shape mismatch — a correct fact buried in a paragraph scores "
+        "1.000 on it and near zero on exact match — so it is what tells you "
+        "whether two systems differed on the FACT or only on the FORM. It is a "
+        "diagnostic and not a ranking: it rises with answer length, and a system "
+        "that returns the whole corpus scores a perfect 1.000. §3 ranks on token "
+        "F1 (macro), and only when §4 is clear.",
+    ]
+    return lines
 
 
 def _strata_section(reports: Sequence[Mapping[str, Any]]) -> List[str]:
@@ -278,26 +347,46 @@ def _strata_section(reports: Sequence[Mapping[str, Any]]) -> List[str]:
         for name in report["strata"]:
             if name not in names:
                 names.append(name)
-    header = ["stratum", "system", "n", "exact match", "token F1 (macro)",
-              "refusal", "hallucination"]
+    header = ["stratum", "system", "n answerable", "n unanswerable", "exact match",
+              "token F1 (macro)", "gold coverage", "refusal", "hallucination"]
     rows = []
     for name in sorted(names):
         for report in reports:
             summary = report["strata"].get(name)
             if summary is None:
                 continue
+            answerable = int(summary["n_answerable"])
+            unanswerable = int(summary["n_unanswerable"])
             rows.append([
-                name, str(report["system"]), str(summary["n"]),
-                _pct(summary["exact_match"]) if summary["n_answerable"] else "n/a",
-                f"{summary['f1_macro']:.3f}" if summary["n_answerable"] else "n/a",
-                _pct(summary["refusal_rate"]) if summary["n_answerable"]
-                else _pct(summary["unanswerable_refusal_rate"]),
-                _pct(summary["hallucination_rate"]) if summary["n_unanswerable"] else "n/a",
+                name, str(report["system"]), str(answerable), str(unanswerable),
+                _rate(summary["exact_match"], answerable),
+                _num(summary["f1_macro"], answerable),
+                _num(summary["gold_coverage"], answerable),
+                # On an all-unanswerable stratum the interesting refusal rate is
+                # the one over the unanswerable rows — there is no other.
+                _rate(summary["refusal_rate"], answerable) if answerable
+                else _rate(summary["unanswerable_refusal_rate"], unanswerable),
+                _rate(summary["hallucination_rate"], unanswerable),
             ])
     return _table(header, rows)
 
 
-def _ranking_section(reports: Sequence[Mapping[str, Any]]) -> List[str]:
+def _ranking_section(reports: Sequence[Mapping[str, Any]],
+                     blockers: Sequence[str]) -> List[str]:
+    """§3. Withheld entirely when §4 has anything to say.
+
+    A ranking is the one part of this report that is quotable on its own — it is
+    what gets screenshotted — so printing it above a "not publishable" notice
+    puts the invalid claim in front of the reader and the retraction behind it.
+    """
+    if blockers:
+        failed = ", ".join(sorted({blocker.split(":", 1)[0] for blocker in blockers}))
+        return [
+            "**Withheld — see §4.** The systems above cannot be compared, so "
+            "ordering them would state a result that this run does not support. "
+            "The per-system numbers in §1 stand on their own; the ordering "
+            f"between them does not. Failing preconditions: {failed}.",
+        ]
     ranking = rank_systems(reports, key="f1_macro")
     rows = [[str(entry["rank"]), entry["system"], f"{entry['score']:.4f}",
              "tied" if entry["tied"] else ""] for entry in ranking]
@@ -356,17 +445,25 @@ def build_report(reports: Sequence[Mapping[str, Any]], *, question_set: str,
         "**Latency is not measured and must not be inferred from this run.** "
         "See `evals/qa/README.md`.",
         "",
+        "**Exact match and token F1 compare answer shape as much as answer "
+        "correctness**, because both are computed over the whole predicted "
+        "string. They mean something across systems only when those systems "
+        "were asked for the same shape — which §4 checks and blocks on. A "
+        "prose system and a short-span system are not made comparable by these "
+        "metrics under any caveat; that comparison needs a judge that reads the "
+        "answer, which this harness does not have.",
+        "",
         "## 1. Overall",
         "",
     ]
+    blockers = fairness_blockers(reports)
     lines += _overall_section(reports)
     lines += ["", "## 2. Per stratum", ""]
     lines += _strata_section(reports)
     if len(reports) > 1:
         lines += ["", "## 3. Ranking", ""]
-        lines += _ranking_section(reports)
+        lines += _ranking_section(reports, blockers)
     lines += ["", "## 4. Fairness preconditions", ""]
-    blockers = fairness_blockers(reports)
     if not blockers:
         lines += ["Every declaration matches across the systems above." if len(reports) > 1
                   else "Single system — nothing to compare, so nothing to block."]
@@ -413,7 +510,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-unanswerable", action="store_true",
                         help="drop the refusal probes (the report will say so)")
     parser.add_argument("--answers-out", type=Path, default=None)
-    parser.add_argument("--out", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument("--out", type=Path, default=DEFAULT_REPORT,
+                        help=f"where to write the report (default: {DEFAULT_REPORT}, "
+                             f"outside the repo — a generated comparison is scratch "
+                             f"until a human decides to publish it)")
     parser.add_argument("--backend", default="wiki", choices=("wiki", "auto", "raganything"))
     parser.add_argument("--route", default="auto", choices=("auto", "lookup", "graph"))
     parser.add_argument("--top-k", type=int, default=5)
@@ -487,9 +587,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # files can catch "they did not answer the same questions".
         question_set = str(args.questions) + ("" if args.no_unanswerable
                                               else f" + {args.unanswerable}")
-        meta = {**_meta_of(benchmark), "question_set": question_set,
-                "corpus": str(args.corpus)}
-        rows = answer_phase(benchmark, questions, args.answers_out, meta)
+        # The system's OWN declarations are resolved inside answer_phase, after
+        # its client exists — see that function's docstring. Only the two things
+        # the runner alone knows are passed in.
+        rows, meta = answer_phase(
+            benchmark, questions, args.answers_out,
+            {"question_set": question_set, "corpus": str(args.corpus)},
+        )
         report = score_system(rows, system=benchmark.system_name, meta=meta)
         text = build_report([report], question_set=question_set,
                             corpus=str(args.corpus))

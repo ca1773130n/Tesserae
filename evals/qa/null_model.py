@@ -41,8 +41,12 @@ QABenchmarkRAG, QABenchmarkConfig = load_qa_benchmark_base()
 #: 1. **Short answers.** Token F1 against a gold answer like "scotland" collapses
 #:    if the system replies with a paragraph, so every system in the comparison
 #:    must be asked for the same answer SHAPE. This prompt is the reference
-#:    wording; any system compared against it should be asked the same way, and
-#:    a run where they were not is a fairness blocker, not a result.
+#:    wording for the ``short-span`` shape; any system compared against it must
+#:    be asked the same way. A run where they were not is a fairness blocker
+#:    rather than a result, and it is enforced rather than requested:
+#:    ``answer_shape`` is one of :data:`evals.qa.scorer.FAIRNESS_KEYS`.
+#:    Tesserae's own answers are ``prose-cited`` and do NOT match this — see
+#:    ``evals/qa/benchmark_tesserae.py::QABenchmarkTesserae.declared_meta``.
 #: 2. **Refusal is permitted and given an exact form.** Without a licensed way to
 #:    decline, the hallucination rate on unanswerable questions measures the
 #:    prompt rather than the model.
@@ -62,6 +66,14 @@ class NullModelConfig(QABenchmarkConfig):  # type: ignore[misc,valid-type]
     model: Optional[str] = None
     provider: Optional[str] = None
     system_prompt: str = NULL_SYSTEM_PROMPT
+    #: What shape ``system_prompt`` actually produces — one of
+    #: :data:`evals.qa.scorer.ANSWER_SHAPES`, and a fairness declaration.
+    #: ``None`` means "derive it", which :meth:`declared_meta` can only do for
+    #: the stock prompt; swap the prompt without setting this and the run
+    #: declares no shape and is blocked from publication. That is the intended
+    #: outcome: only the person who wrote the new wording knows what it asks
+    #: for, and guessing on their behalf is how a wrong number gets published.
+    answer_shape: Optional[str] = None
     results_file: str = "hotpot_qa_null_results.json"
 
 
@@ -139,9 +151,20 @@ class QABenchmarkNullModel(QABenchmarkRAG):  # type: ignore[misc,valid-type]
         on a different model than the system it baselines measures nothing. The
         embedding declaration is the literal string ``"none"`` rather than blank,
         because blank means "not recorded" and those are different facts.
+
+        ``answer_shape`` is **not** exempt, and is read off the prompt actually
+        in use rather than asserted: the stock prompt asks for the shortest
+        exact span, any other wording is the caller's to declare. The baseline
+        is the system most likely to be asked in a different shape from the one
+        it baselines, and that gap is precisely what makes exact match and
+        token F1 measure formatting instead of correctness.
         """
+        shape = self.config.answer_shape
+        if shape is None and self.config.system_prompt == NULL_SYSTEM_PROMPT:
+            shape = "short-span"
         return {
             "role": "baseline",
+            "answer_shape": shape,
             "llm_model": self.config.model or "<client default>",
             "embedding_model": "none",
             "embedding_dim": "none",

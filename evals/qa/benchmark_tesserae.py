@@ -147,6 +147,24 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
 
     # ------------------------------------------------------------------- meta
 
+    def answer_shape(self) -> str:
+        """What shape this configuration's answers actually come out in.
+
+        Tesserae has no short-answer mode. ``tesserae.query`` pins one house
+        style for every caller — ``_SYSTEM_PREAMBLE_HEADER`` rule 4 asks for
+        "60-220 words", rule 2 requires a bracket citation on every factual
+        claim — and ``ask_project`` exposes no way to override it. So a run
+        with synthesis on declares ``prose-cited``, which will not match the
+        baseline's ``short-span`` and will correctly block publication of an
+        exact-match comparison. That gap is a real property of the two systems,
+        not a bookkeeping error, and declaring anything else here would hide it.
+
+        With ``no_llm`` there is no synthesis at all and the answer is retrieved
+        source text, which is a third shape again — worth measuring, never
+        comparable with an answer.
+        """
+        return "excerpt" if self.config.no_llm else "prose-cited"
+
     def declared_meta(self) -> Dict[str, Any]:
         """The fairness declarations for this run — see
         :func:`evals.qa.scorer.fairness_blockers`.
@@ -156,6 +174,13 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
         declaration: it makes the fairness check pass while the run used
         something else, which is precisely the failure the check exists to
         catch.
+
+        **Call this AFTER :meth:`initialize_rag`.** The model pins live in the
+        project config, which is reachable only through ``rag_client``; called
+        before the client exists it can only report ``llm_model: None``, and
+        the run then declares — permanently, into the answers file — that
+        nobody recorded what answered. ``evals/qa/run_qa_eval.py`` resolves the
+        meta inside the answer phase for exactly this reason.
         """
         config: Dict[str, Any] = {}
         try:
@@ -165,6 +190,8 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
         if not isinstance(config, dict):
             config = {}
 
+        shape = self.answer_shape()
+
         if self.config.backend == "raganything":
             # The raganything store carries its OWN model pins, separately from
             # the ones Tesserae's own extraction uses — which is exactly how the
@@ -173,6 +200,7 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
             llm = raganything.get("llm") or {}
             embedding = raganything.get("embedding") or {}
             return {
+                "answer_shape": shape,
                 "llm_model": llm.get("model"),
                 "embedding_model": embedding.get("model"),
                 "embedding_dim": embedding.get("dim"),
@@ -185,7 +213,9 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
             from tesserae.llm_json import CODEX_DEFAULT_MODEL
 
             model = CODEX_DEFAULT_MODEL
-        meta: Dict[str, Any] = {"llm_model": model, "llm_provider": provider}
+        meta: Dict[str, Any] = {
+            "answer_shape": shape, "llm_model": model, "llm_provider": provider,
+        }
         try:
             from tesserae.retrieval.hybrid import active_embedding_backend
 
