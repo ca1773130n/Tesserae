@@ -47,7 +47,7 @@ De manière cruciale, ces arêtes découvertes sont écrites dans une **superpos
 
 `graph_map` sert une carte par portée. Une portée dont le cache de résumé est froid obtient une carte *structurelle* déterministe — un décompte des membres et une liste des meilleurs membres — et le premier agent qui la visite paie un appel LLM synchrone pour obtenir la prose. Cette opération déplace ce coût en dehors du chemin de lecture : dans un budget par tick (`--summarize-budget`, par défaut 25 ; `0` le désactive) il matérialise les résumés pour les portées les plus susceptibles d'être visitées ensuite, de sorte que la visite trouve un cache chaud.
 
-Les candidats sont classés par **demande** — les augmentations d'accès propre de la portée à partir de la traversée `graph_map` plus les décomptes d'accès de ses membres — puis par taille, degré et niveau, dans un ordre total, donc deux ticks sur l'état identique choisissent les mêmes portées. Un cache qui est déjà chaud et encore valide en termes de digestion ne coûte rien ; seule une matérialisation froide le fait. Sans un client LLM, l'opération entière est un non-op.
+Les candidats sont classés par **demande** — les augmentations d'accès propre de la portée à partir de la traversée `graph_map` plus les décomptes d'accès de ses membres — puis par taille, degré et niveau, dans un ordre total, donc deux ticks sur l'état identique choisissent les mêmes portées. Un cache qui est déjà chaud et encore dont le digest est encore valide ne coûte rien ; seule une matérialisation froide le fait. Sans un client LLM, l'opération entière est un non-op.
 
 ### 5. Brève — préchauffer les brèves de domaine de la charte
 
@@ -69,7 +69,7 @@ Les deux budgets sont par **tick**, et un tick se déclenche au maximum une fois
 | Brève | 8 | 12 | 96 appels LLM/heure |
 | **Total** | **33** | **12** | **396 appels LLM/heure** |
 
-C'est un **plafond atteint uniquement pendant que les caches sont froids**, et il décroît jusqu'à **zéro** : un cache chaud et valide en termes de digestion ne coûte aucun appel et aucune fente, de sorte qu'une fois que les portées et domaines d'un projet sont résumés, le cycle de sommeil ne dépense rien jusqu'à ce que le graphe change. Réglez l'un ou l'autre budget à `0` pour désactiver son opération, ou augmentez `--consolidate-idle` pour rendre les ticks plus rares.
+C'est un **plafond atteint uniquement pendant que les caches sont froids**, et il décroît jusqu'à **zéro** : un cache chaud et dont le digest est encore valide ne coûte aucun appel et aucune fente, de sorte qu'une fois que les portées et domaines d'un projet sont résumés, le cycle de sommeil ne dépense rien jusqu'à ce que le graphe change. Réglez l'un ou l'autre budget à `0` pour désactiver son opération, ou augmentez `--consolidate-idle` pour rendre les ticks plus rares.
 
 **Un budget est un plafond, pas un quota.** Les deux budgets sont dépensés *séquentiellement*
 à l'intérieur d'un tick, et le tick détient le portail de compilation pour tout le passage — donc par

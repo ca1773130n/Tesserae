@@ -212,7 +212,7 @@ zitiertes, agentenfertiges Dokument.
   für jede Abfrage liefert; Tests, die die Bündelform + Zitationsintegrität
   behaupten.
 - **Abnahme:** `compile_context("X")` liefert ein kohärentes
-  Mehrknoten-Dokument, dessen Zitate alle auflösen; der Harness-Brief
+  Mehrknoten-Dokument, dessen Zitate alle auflösen; der Harness-Briefing
   regeneriert sich pro Thema statt fest verdrahteter Top-12.
 - **Risiko:** Mittel — Synthesequalität; einen deterministischen
   Nicht-LLM-Zusammenbaumodus beibehalten.
