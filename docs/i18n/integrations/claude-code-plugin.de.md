@@ -37,9 +37,23 @@ Voraussetzung: `tesserae` bereits installiert (`pip install tesserae` oder `pipx
 > erst als `graphed`, wenn die Artefakte liegen, also verweigert die nächste
 > `compile --changed-only` ihren No-op, meldet `graph.json is not known to cover
 > every tracked document` und extrahiert den gesamten Korpus neu, wodurch auch die
-> Projektionen wieder entstehen. Baue keinen Workflow, der annimmt, dass eine lange Kompilierung
+> Projektionen wieder entstehen. Diese Neuextraktion des gesamten Korpus ist ein
+> Neudurchlauf, kein Neukauf. Antworten der codex- und claude-CLI-Provider werden
+> unter `~/.tesserae/llm_cache` gecacht, adressiert über einen Hash des tatsächlich
+> gesendeten Prompts, sodass jedes Dokument, das der gekillte Lauf bereits beendet
+> hatte, kostenlos von der Festplatte abgespielt wird, und die Reparatur zahlt nur für
+> die Dokumente, die sie nie erreicht hat. Ein Kill kostet dich die verstrichene Zeit des
+> Laufs, nicht seine Extraktionen. Zwei Dinge machen das rückgängig: das Löschen des
+> Cache-Verzeichnisses und die Verwendung des direkten API-Providers, der nur das
+> kurzfristige Prompt-Caching des SDK hat und nichts, das einen Kill überlebt. In beiden
+> Fällen kauft die Reparatur den gesamten Korpus erneut vom Anbieter zum vollen Preis. Baue keinen Workflow, der annimmt, dass eine lange Kompilierung
 > die Sitzung überlebt, die sie gestartet hat — führe sie im Vordergrund aus oder
 > über `tesserae engine`.
+>
+> Auf beiden Wegen kannst du zusehen. Eine Kompilierung ohne angehängtes Terminal —
+> abgelöst, umgeleitet oder unter CI — protokolliert eine Zeile pro Dokument auf stderr
+> im `tesserae.compile`-Kanal, mit Position, Pfad und ob dieses Dokument aus dem Cache
+> stammt oder einen Modellanruf gekostet hat; `--quiet` schaltet es aus.
 
 Vollständige Details, vollständige Befehls-/Hook-Tabellen und Per-Projekt-Opt-out-Anweisungen befinden sich im plugineigenen [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md).
 

@@ -172,6 +172,42 @@ def last_failure_kind() -> Optional[str]:
     return getattr(_LAST_FAILURE, "kind", None)
 
 
+#: Monotonic per-thread tally of on-disk cache consultations, so a caller can
+#: bracket a unit of work and learn what it COST rather than only that it
+#: finished. A compile that is 90% replay from ``~/.tesserae/llm_cache`` and one
+#: paying full price for every document look identical from the outside and take
+#: wildly different amounts of time; this is the only signal that separates them.
+#:
+#: Thread-local for the same reason ``_LAST_FAILURE`` is: BatchIngestRunner
+#: shares ONE client across TESSERAE_EXTRACT_CONCURRENCY worker threads, and a
+#: shared counter would attribute one worker's cache hit to whichever document
+#: another worker happened to be holding. Each worker extracts a document
+#: start-to-finish on its own thread, so a per-thread delta is exactly that
+#: document's cost.
+#:
+#: Counters only ever increase; callers take DELTAS. Never reset one — a reset
+#: races every other bracket open on the same thread.
+_CACHE_TALLY = threading.local()
+
+
+def _note_cache_lookup(*, hit: bool) -> None:
+    """Record one cache consultation on this thread."""
+    field = "hits" if hit else "misses"
+    setattr(_CACHE_TALLY, field, getattr(_CACHE_TALLY, field, 0) + 1)
+
+
+def cache_tally() -> tuple:
+    """``(hits, misses)`` for this thread since the process started.
+
+    Both climb monotonically; the useful quantity is the difference across a
+    unit of work. A lookup is counted only when the cache is actually
+    CONSULTED, so a run with ``TESSERAE_LLM_CACHE=0`` — or one on a client with
+    no on-disk cache at all — reports ``(0, 0)`` and a caller can honestly say
+    "unknown" instead of inventing a miss it never observed.
+    """
+    return (getattr(_CACHE_TALLY, "hits", 0), getattr(_CACHE_TALLY, "misses", 0))
+
+
 def set_client_factory(factory: Optional[Callable[..., Any]]) -> None:
     """Inject a fake Anthropic client for tests."""
     global _CLIENT_FACTORY
@@ -264,15 +300,26 @@ def _cli_cache_get(cache_key: Optional[str], *, model: str, prompt: str, extra: 
     """Cached raw response text, or None. Never raises — a bad cache must not
     break a compile, it just means paying for the call."""
     if not cache_key or not _cli_cache_enabled():
+        # Not a miss — the cache was never asked. Counting this would report a
+        # run with the cache switched off as one that missed on every document,
+        # which is the opposite of the truth (it never had a chance to hit).
         return None
+    # Every counted outcome below is "the cache was consulted", which is exactly
+    # the funnel every CLI client passes through — one instrumentation point
+    # rather than one per client, so a new client cannot forget to report.
     try:
         payload = json.loads(
             _cli_cache_path(cache_key, model=model, prompt=prompt, extra=extra).read_text(encoding="utf-8")
         )
         raw = payload.get("raw")
-        return raw if isinstance(raw, str) else None
     except (OSError, json.JSONDecodeError, ValueError):
+        # An unreadable or corrupt entry means paying for the call, so it is a
+        # miss in the only sense a caller cares about: cost.
+        _note_cache_lookup(hit=False)
         return None
+    hit = isinstance(raw, str)
+    _note_cache_lookup(hit=hit)
+    return raw if hit else None
 
 
 def _cli_cache_put(cache_key: Optional[str], raw: str, *, model: str, prompt: str, extra: str = "") -> None:

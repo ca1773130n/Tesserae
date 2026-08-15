@@ -35,8 +35,11 @@ Tesserae는 [Claude Code](https://docs.claude.com/en/docs/claude-code) 플러그
 > 표시를 남기므로, 다음 `compile --changed-only`는 no-op을 거부하고 `graph.json is
 > not known to cover every tracked document`이라고 알린 뒤 전체 코퍼스를 다시
 > 추출하며, 그 과정에서 투영도 다시 만들어집니다.
+> 그 전체 코퍼스 재추출은 재구매가 아니라 재탐색입니다. codex 및 claude CLI 공급자의 응답은 실제로 전송된 prompt의 다이제스트로 주소가 지정된 `~/.tesserae/llm_cache` 아래에 캐시되므로, 종료된 실행이 이미 완료한 모든 문서는 비용 없이 디스크에서 다시 재생되고 복구는 도달하지 못한 문서에만 비용을 지불합니다. 종료는 추출에 대한 비용이 아니라 실행의 경과 시간만 소비합니다. 두 가지가 그것을 취소합니다: 캐시 디렉토리 삭제 및 직접 API 공급자 사용으로, SDK의 단기 prompt 캐싱만 있고 종료를 견디는 것은 없습니다. 어느 경우든 복구는 전체 코퍼스를 공급자로부터 전체 가격으로 다시 구매합니다.
 > 긴 compile이 그것을 시작한 세션보다 오래 살아남는다고 가정하는 워크플로는 만들지
 > 마세요 — 포그라운드에서 실행하거나 `tesserae engine`을 쓰세요.
+>
+> 어느 쪽이든 지켜볼 수 있습니다. 터미널이 없는 compile — 분리되거나 리다이렉트되거나 CI 아래 — stderr의 `tesserae.compile` 채널에 문서당 한 줄을 기록하며, 위치, 경로, 해당 문서가 캐시에서 왔는지 아니면 모델 호출 비용이 들었는지를 나타냅니다. `--quiet`으로 끕니다.
 
 전체 세부 정보, 명령/훅 표, 프로젝트별 opt-out 설정은 플러그인 자체의 [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md)에 있습니다.
 

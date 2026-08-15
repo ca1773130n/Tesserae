@@ -1798,11 +1798,25 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 "true" if args.distill_enabled else "false"
             )
 
-        from .compile_progress import NullCompileProgress, make_compile_progress
+        from .compile_progress import RichCompileProgress, make_compile_progress
 
-        # Live codegraph-style progress on an interactive terminal; a no-op
-        # (and the plain summary line below) when piped/CI/MCP/daemon.
-        progress = make_compile_progress()
+        # Live codegraph-style progress on an interactive terminal; per-document
+        # log lines (and the plain summary line below) when piped/CI/daemon.
+        quiet_progress = bool(getattr(args, "quiet", False))
+        if not quiet_progress:
+            import logging
+
+            # Progress goes through ``logging``, which prints NOTHING unless a
+            # handler exists — so a compile launched from a bare `python -m`
+            # would still be silent. basicConfig is a no-op when the root logger
+            # already has handlers, so an embedder's configuration wins; this
+            # only supplies a default for the CLI. Root stays at WARNING and
+            # only the compile channel is opened, so this buys observability of
+            # the compile without turning on INFO for every other module.
+            # Matches the format string used by `tesserae engine`.
+            logging.basicConfig(level=logging.WARNING, format="[%(name)s] %(message)s")
+            logging.getLogger("tesserae.compile").setLevel(logging.INFO)
+        progress = make_compile_progress(quiet=quiet_progress)
         with progress:
             # --extractor != deterministic -> use the LLM extractor (concept/claim
             # layer). Default (deterministic) passes None so the pipeline keeps its
@@ -1842,8 +1856,11 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 lock_wait=getattr(args, "lock_wait", None),
             )
             progress.done(nodes=result["node_count"], edges=result["edge_count"])
-        if isinstance(progress, NullCompileProgress):
-            # Non-TTY: keep the stable, script-parseable summary line.
+        if not isinstance(progress, RichCompileProgress):
+            # Non-TTY: keep the stable, script-parseable summary line. Keyed off
+            # the RICH reporter, not the null one: the non-terminal default is
+            # now the logging reporter, and testing for null would have silently
+            # dropped the line every script parses.
             print(
                 "Compiled project wiki: "
                 f"processed={result['processed_files']} skipped={result['skipped_files']} "
@@ -2779,6 +2796,7 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
     parser.add_argument("--retry-fallbacks", action="store_true", help="With --changed-only: re-extract docs whose typed extraction previously failed and was served by the deterministic baseline (provider recovered). Without it those docs stay deterministic until their content changes.")
     parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
+    parser.add_argument("--quiet", action="store_true", help="Suppress per-document progress; keep only the final summary lines")
     _add_lock_wait_arg(parser)
     _add_all_projects_args(parser, "compile")
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when the byte-idempotence tripwire fires or the post-compile lint reports problems (lint errors → exit 2, warnings → exit 1; default: report-only)")
