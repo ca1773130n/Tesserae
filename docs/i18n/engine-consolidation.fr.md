@@ -71,11 +71,32 @@ Les deux budgets sont par **tick**, et un tick se déclenche au maximum une fois
 
 C'est un **plafond atteint uniquement pendant que les caches sont froids**, et il décroît jusqu'à **zéro** : un cache chaud et valide en termes de digestion ne coûte aucun appel et aucune fente, de sorte qu'une fois que les portées et domaines d'un projet sont résumés, le cycle de sommeil ne dépense rien jusqu'à ce que le graphe change. Réglez l'un ou l'autre budget à `0` pour désactiver son opération, ou augmentez `--consolidate-idle` pour rendre les ticks plus rares.
 
+**Un budget est un plafond, pas un quota.** Les deux budgets sont dépensés *séquentiellement*
+à l'intérieur d'un tick, et le tick détient le portail de compilation pour tout le passage — donc par
+défaut, un tick pourrait occuper le portail sur 33 appels LLM consécutifs. Une
+sauvegarde de fichier qui se produit en milieu de tick devait attendre tous les appels restants avant que son
+exécution de pipeline puisse commencer, ce qui avec un fournisseur CLI est des minutes. Les deux
+boucles de préchauffage vérifient maintenant, au début de chaque itération, si une exécution de pipeline
+est bloquée sur le portail, et **abandonnent leur budget restant** si c'est le cas :
+
+- le contrôle se fait *entre* les appels, jamais en milieu d'appel, donc l'exécution déjà en
+  vol se termine toujours et le pipeline n'attend que cet appel au maximum ;
+- arrêter tôt est sans perte. Le préchauffage est idempotent, donc une portée ou un domaine que le
+  tick n'a jamais atteint est simplement toujours froid au suivant, au même rang —
+  rien n'est perdu, corrompu ou payé deux fois ;
+- un domaine abandonné ne reçoit **pas** de coup de back-off. Les coups sont pour un domaine
+  dont la tentative de préchauffage a brûlé un appel et a échoué ; un abandonné n'a jamais été
+  tenté, donc le pénaliser repousserait un domaine préchauffable plus bas dans la queue parce qu'un
+  fichier sans rapport a été enregistré ;
+- c'est signalé, pas silencieux. Le dict de résumé du tick obtient `abandoned` et
+  `unspent` (combien de slots de budget n'ont pas été utilisés), donc le journal du daemon distingue
+  "arrêté pour un pipeline" de "il n'y avait rien à préchauffer".
+
 **Pourquoi ici et pas dans la compilation.** Une brève coûte un appel LLM. Les frapper pendant la compilation mettrait un appel par domaine à chaque compilation, et la compilation est le chemin que ce projet maintient déterministe et bon marché. Les frapper paresseusement à la lecture signifierait qu'un appel `graph_map` pourrait bloquer sur un modèle. Le cycle de sommeil inactif est le seul endroit qui reste qui peut dépenser un appel que personne n'attend.
 
 ## Sécurité et déterminisme
 
-- **S'exécute sous le portail de compilation.** La consolidation acquiert le même verrou qu'une recompilation, donc elle **s'exécute en série** avec les compilations et **ne chevauche jamais**. Une compilation en attente attend une consolidation en vol et inversement — le graphe n'est jamais lu en cours d'écriture.
+- **S'exécute sous le portail de compilation, pour tout le passage.** La consolidation acquiert le même verrou qu'une recompilation, donc elle **s'exécute en série** avec les compilations et **ne chevauche jamais**. Une compilation en attente attend une consolidation en vol et inversement — le graphe n'est jamais lu en cours d'écriture. Le portail n'est délibérément **pas** libéré entre les appels LLM : chaque opération d'un tick lit le `graph.json` unique que le tick a chargé, de sorte que rendre le portail en milieu de passage laisserait une compilation réécrire le graphe dessous et ferait que les brèves écrites tôt dans un passage décriraient un graphe différent de celles écrites tard. C'est pourquoi un tick attendant un pipeline **abandonne son budget restant** plutôt que de libérer le portail — il échange le préchauffage spéculatif contre la latence, jamais la cohérence pour la latence.
 - **Ne remonte jamais dans la boucle du daemon.** Le passage entier est enveloppe ; toute erreur est enregistrée et le thread continue de boucler. Une consolidation échouée ne casse jamais le moteur.
 - **Non-op quand le portail est fermé.** Avec `TESSERAE_AGENT_DISTILL` non défini, le passage ne charge rien de coûteux et retourne immédiatement, donc laisser le cycle de sommeil actif ne coûte essentiellement rien.
 - **Artefacts déterministes, inchangés.** Les artefacts distillés restent déterministes étant donné leurs entrées ; le cycle de sommeil ne change que *quand* la distillation s'exécute, jamais *ce* qu'elle produit. Le minutage d'inactivité ne fuit jamais dans `graph.json` ou aucune couche distillée.
