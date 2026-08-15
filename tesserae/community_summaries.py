@@ -413,7 +413,13 @@ def summarize_community(
                 ),
                 user=_format_user_prompt(prompt_members, child_cids),
                 schema_name="community_summary",
-                cache_key=f"community-summary-v1::{len(prompt_members)}",
+                # Namespace label only. It used to append the prompt-member
+                # COUNT, which read like content-keying and was not: every
+                # community with the same number of members addressed ONE cache
+                # entry and was served whichever community got there first. The
+                # client now hashes the assembled prompt itself, so the count
+                # bought nothing but the appearance of safety — dropped.
+                cache_key="community-summary-v1",
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("community_summaries: LLM failed for %s: %s", cid, exc)

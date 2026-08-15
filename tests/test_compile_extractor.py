@@ -595,14 +595,14 @@ def test_a_cache_drop_that_raises_does_not_replace_the_validation_error():
             calls.append(1)
             return {"nodes": [{"name": "   ", "type": "Concept"}], "edges": []}
 
-        def forget_cached_answer(self, cache_key, *, schema_name):
+        def forget_cached_answer(self, cache_key, *, schema_name, system, user):
             pass
 
     class _DropRaises:
         def complete_json(self, **k):
             return None
 
-        def forget_cached_answer(self, cache_key, *, schema_name):
+        def forget_cached_answer(self, cache_key, *, schema_name, system, user):
             raise OSError("read-only filesystem")
 
     client = lj.CompositeCLIClient([_BadSchema(), _DropRaises()])

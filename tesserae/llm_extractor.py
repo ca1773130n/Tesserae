@@ -392,8 +392,14 @@ class LLMResearchExtractor:
         if source_path_looks_like_i18n_duplicate(source_path):
             return ResearchGraph(nodes=[], edges=[])
         prompt = build_research_extraction_prompt(text=text, source_path=source_path, source_kind=source_kind, guidance=guidance)
+        # One binding for the system message: `complete_json` and the
+        # `forget_cached_answer` below must address the SAME cache entry, and
+        # that address is now a digest of the assembled system+user prompt.
+        system = "You extract a typed research-intelligence graph as ONE JSON object (nodes + edges)."
         # Content-keyed cache: identical (doc, kind, guidance) reuses the prior
         # extraction -> cheap re-compiles + stable output, via the client cache.
+        # The client hashes the prompt itself now, so this digest is belt-and-
+        # braces rather than the sole guard against two documents colliding.
         cache_key = hashlib.sha256(
             ("research-graph-v1\n" + (guidance or "") + "\n" + (source_kind or "") + "\n"
              + (source_path or "") + "\n" + text).encode("utf-8")
@@ -409,7 +415,7 @@ class LLMResearchExtractor:
         last_error: Optional[Exception] = None
         for attempt in range(_VALIDATION_RETRIES + 1):
             payload = self.client.complete_json(
-                system="You extract a typed research-intelligence graph as ONE JSON object (nodes + edges).",
+                system=system,
                 user=prompt,
                 schema_name="research-graph-v1",
                 cache_key=cache_key,
@@ -470,11 +476,19 @@ class LLMResearchExtractor:
             # that same entry forever. Dropping it is what makes the retry a
             # real re-ask AND keeps the doc recoverable on a later run.
             # Duck-typed: a client with no cache (Anthropic SDK, test fakes)
-            # simply has no such method.
+            # simply has no such method. `system`/`user` are the SAME pair the
+            # complete_json above sent — the cache entry is addressed by that
+            # prompt, so a drop that reconstructed them differently would
+            # unlink nothing and leave the rejected answer to be served again.
             forget = getattr(self.client, "forget_cached_answer", None)
             if callable(forget):
                 try:
-                    forget(cache_key, schema_name="research-graph-v1")
+                    forget(
+                        cache_key,
+                        schema_name="research-graph-v1",
+                        system=system,
+                        user=prompt,
+                    )
                 except Exception as exc:  # noqa: BLE001
                     # The point of the duck-typed getattr is tolerating client
                     # shapes we don't own, and a drop that raises must not
