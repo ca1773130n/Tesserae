@@ -76,7 +76,6 @@ self-demo는 생성된 아티팩트를 다음 아래에 기록합니다:
 .tesserae/manifest.json
 .tesserae/sqlite.db          # typed graph + node_memory sidecar + live HarnessSessionsDB
 .tesserae/report.md
-.tesserae/competitive_report.md
 .tesserae/temporal_facts.jsonl
 .tesserae/graphiti_episodes.jsonl
 .tesserae/markdown_projection/

@@ -145,8 +145,6 @@ SIDECARS: Tuple[Sidecar, ...] = (
             "code-symbol graph; re-extracted from the working tree"),
     Sidecar("combined-graph.json", "tesserae.project", KIND_DERIVED, True,
             "research graph unioned with the code graph"),
-    Sidecar("competitive_report.md", "tesserae.report", KIND_DERIVED, True,
-            "rendered comparison report; a compile re-renders it from the graph"),
     Sidecar("diverged-fields.md", "tesserae.vault_pull", KIND_DERIVED, True,
             "per-compile audit of vault divergences; the next compile rewrites it"),
     Sidecar("doctor-report.json", "tesserae.doctor", KIND_DERIVED, True,

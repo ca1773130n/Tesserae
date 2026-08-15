@@ -323,7 +323,7 @@ Es ist wissenswert beim Lesen von Ergebnissen: auf einem echten Graph mit 15.284
 
 ## Eine Frage weiterleiten
 
-`tesserae ask` wählt einen Abrufpfad nach Frageform aus: Einfache Entitätssuchen gehen zu günstig Backend, Multi-Hop / "was hat sich geändert" / "warum" / Corpus-breite Fragen gehen zum Graph. Unabhängige Benchmarks zeigen, dass Graphen bei Multi-Hop-, Zeit- und Synthesefragen führend sind und bei einfacher Faktsuche und Kosten *hinterherhinken* — also an jedem Graphen-Preisen für jede Frage zu zahlen ist ein Verlust.
+`tesserae ask` wählt einen Abrufpfad nach Frageform aus: Einfache Entitätssuchen gehen zu günstig Backend, Multi-Hop / "was hat sich geändert" / "warum" / Corpus-breite Fragen gehen zum Graph. Diese Aufteilung kodiert eine **Hypothese, keine Messung**: Wir erwarten, dass die Traversierung ihre Kosten bei Multi-Hop-, Zeit- und Synthesefragen einspielt und sie bei einfacher Faktsuche verschwendet. Nichts in diesem Repository prüft das — es gibt hier keinen Retrieval-Benchmark und keine veröffentlichte Zahl hinter der Routing-Tabelle, also behandeln Sie sie als überschreibbaren Standardwert, nicht als Ergebnis.
 
 Die Entscheidung wird in dem zurückgegebenen Umschlag angezeigt, daher ist eine billige Antwort prüfbar. Überschreiben Sie es mit `--route` auf der CLI oder dem Parameter `route` im MCP-Tool.
 

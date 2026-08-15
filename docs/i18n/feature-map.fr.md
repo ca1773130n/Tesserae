@@ -266,7 +266,6 @@ Un wiki hiérarchique orienté documents remplace l’ancien déversement de gra
 - ✅ Store de graphe SQLite.
 - ✅ Store de graphe Kuzu optionnel.
 - ✅ Rapport de graphe avec comptes, couverture de preuve, nœuds orphelins, buckets de dates, nœuds riches en alias.
-- ✅ Rapport concurrentiel décrivant les idées absorbées de MegaMem, Graphiti/Zep, serveurs de graphe MCP, RAG agentique.
 
 ### Workflow local au projet
 

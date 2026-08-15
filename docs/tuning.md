@@ -343,9 +343,11 @@ that same graph). The key is present exactly when `evidence_span` is non-null.
 
 `tesserae ask` picks a retrieval path by question shape: single-entity lookups go
 to the cheap backend, multi-hop / "what changed" / "why" / corpus-wide questions
-go to the graph. Independent benchmarks put graphs ahead on multi-hop, temporal
-and synthesis questions, and *behind* on simple fact lookup and cost — so paying
-graph prices for every question is a loss.
+go to the graph. That split encodes a **hypothesis, not a measurement**: we
+expect traversal to earn its cost on multi-hop, temporal and synthesis questions
+and to waste it on simple fact lookup. Nothing in this repository tests that —
+there is no retrieval benchmark here and no published number behind the routing
+table, so treat it as a default worth overriding rather than as a finding.
 
 The decision appears in the returned envelope, so a cheap answer is auditable.
 Override it with `--route` on the CLI, or the `route` parameter on the MCP tool.

@@ -261,7 +261,6 @@ Ein dokument-orientiertes, hierarchisches Wiki ersetzt den alten Graph-Dump. Sie
 - ✅ SQLite-Graph-Store.
 - ✅ Optionaler Kuzu-Graph-Store.
 - ✅ Graph-Report mit Zählungen, Evidence-Abdeckung, verwaisten Knoten, Datums-Buckets, alias-lastigen Knoten.
-- ✅ Competitive-Report zu übernommenen Ideen aus MegaMem, Graphiti/Zep, MCP-Graph-Servern, agentic RAG.
 
 ### Projektlokaler Workflow
 

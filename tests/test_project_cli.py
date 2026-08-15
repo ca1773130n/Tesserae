@@ -91,7 +91,6 @@ def test_project_ingest_updates_standard_artifacts(tmp_path):
     # Removed backend (0.19): no cognee bundle is ever written.
     assert not (project / ".tesserae" / "cognee_bundle").exists()
     assert (project / ".tesserae" / "temporal_facts.jsonl").exists()
-    assert (project / ".tesserae" / "competitive_report.md").exists()
 
 
 def test_project_temporal_artifacts_include_provenance(tmp_path):
@@ -105,7 +104,6 @@ def test_project_temporal_artifacts_include_provenance(tmp_path):
     facts = [json.loads(line) for line in (project / ".tesserae" / "temporal_facts.jsonl").read_text(encoding="utf-8").splitlines()]
     assert facts
     assert all("provenance" in fact for fact in facts)
-    assert "MegaMem" in (project / ".tesserae" / "competitive_report.md").read_text(encoding="utf-8")
 
 
 def test_project_compile_writes_graphiti_episode_export(tmp_path):

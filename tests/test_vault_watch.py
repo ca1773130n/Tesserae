@@ -64,7 +64,6 @@ class _FakeWiki:
             markdown_projection=project_root / ".tesserae" / "markdown_projection",
             report=project_root / ".tesserae" / "report.md",
             temporal_facts=project_root / ".tesserae" / "temporal_facts.jsonl",
-            competitive_report=project_root / ".tesserae" / "competitive_report.md",
             graphiti_episodes=project_root / ".tesserae" / "graphiti_episodes.jsonl",
             agent_harness=project_root / ".tesserae" / "agent_harness",
             harness_sessions=project_root / ".tesserae" / "harness_sessions",

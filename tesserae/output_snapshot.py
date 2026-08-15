@@ -17,8 +17,7 @@ The hash scope is an ALLOWLIST of test-proven byte-stable artifacts only
 (see ``tests/test_idempotence.py::test_compile_is_byte_idempotent`` and the
 phase-5 suite). Deliberately excluded because their byte-stability is
 unproven and one noisy artifact would make the signal cry wolf:
-``report.md``, ``competitive_report.md``,
-``graphiti_episodes.jsonl``, ``agent_harness/``, ``sqlite.db``, the Obsidian
+``report.md``, ``graphiti_episodes.jsonl``, ``agent_harness/``, ``sqlite.db``, the Obsidian
 vault (bidirectional, user-owned), ``manifest.json`` (input state), lint
 reports, and all ledgers/caches. Extending scope later is a one-line
 allowlist edit. The state file this module writes is excluded from the hash

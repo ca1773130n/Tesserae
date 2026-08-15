@@ -76,7 +76,6 @@ Key artifacts:
 .tesserae/manifest.json
 .tesserae/sqlite.db          # typed graph + node_memory sidecar + live HarnessSessionsDB
 .tesserae/report.md
-.tesserae/competitive_report.md
 .tesserae/temporal_facts.jsonl
 .tesserae/graphiti_episodes.jsonl
 .tesserae/markdown_projection/

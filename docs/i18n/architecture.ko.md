@@ -234,7 +234,6 @@ Phase 5가 영속적 자기 개선을 활성화했습니다. 가변적인 노드
   temporal_facts.jsonl        Graphiti-style temporal projection (numeric recurrence confidence)
   graphiti_episodes.jsonl     dependency-free Graphiti episode export
   report.md                   graph quality / summary
-  competitive_report.md       comparison vs. MegaMem / Graphiti / others
   markdown_projection/        flat human-readable markdown
   obsidian_vault/             Obsidian projection w/ .obsidian/, raw/assets/
   agent_harness/              Claude Code / Codex / etc. harness files

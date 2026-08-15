@@ -311,6 +311,6 @@ Vale la pena saber al leer resultados: en un gráfico real de 15.284 bordes, alr
 
 ## Enrutamiento de una pregunta
 
-`tesserae ask` elige una ruta de recuperación por forma de pregunta: las búsquedas de entidad única van al backend económico, las preguntas multi-salto / "qué cambió" / "por qué" / amplitud del corpus van al gráfico. Los puntos de referencia independientes muestran que los gráficos están adelante en preguntas multi-salto, temporales y de síntesis, y *atrás* en búsqueda de hechos simples y costo — así que pagar precios de gráfico por cada pregunta es una pérdida.
+`tesserae ask` elige una ruta de recuperación por forma de pregunta: las búsquedas de entidad única van al backend económico, las preguntas multi-salto / "qué cambió" / "por qué" / amplitud del corpus van al gráfico. Esa división codifica una **hipótesis, no una medición**: esperamos que el recorrido compense su costo en preguntas multi-salto, temporales y de síntesis, y que lo desperdicie en búsquedas de hechos simples. Nada en este repositorio lo comprueba — aquí no hay ninguna prueba de rendimiento de recuperación ni ninguna cifra publicada detrás de la tabla de enrutamiento, así que trátala como un valor por defecto que conviene anular, no como un resultado.
 
 La decisión aparece en el sobre devuelto, por lo que una respuesta económica es auditable. Anularlo con `--route` en la CLI, o el parámetro `route` en la herramienta MCP.

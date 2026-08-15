@@ -234,7 +234,6 @@ query / seeds
   temporal_facts.jsonl        Graphiti-style temporal projection (numeric recurrence confidence)
   graphiti_episodes.jsonl     dependency-free Graphiti episode export
   report.md                   graph quality / summary
-  competitive_report.md       comparison vs. MegaMem / Graphiti / others
   markdown_projection/        flat human-readable markdown
   obsidian_vault/             Obsidian projection w/ .obsidian/, raw/assets/
   agent_harness/              Claude Code / Codex / etc. harness files

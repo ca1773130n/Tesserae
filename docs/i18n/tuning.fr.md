@@ -331,7 +331,7 @@ Il vaut la peine de savoir en lisant les résultats : sur un vrai graphique de 1
 
 ## Acheminer une question
 
-`tesserae ask` choisit un chemin de récupération par forme de question : les recherches d'entité unique vont au backend bon marché, les questions multi-sauts / "qu'est-ce qui a changé" / "pourquoi" / corpus vont au graphique. Les tests indépendants montrent que les graphiques mènent sur les questions multi-sauts, temporelles et de synthèse, et *traînent* sur la recherche de faits simples et le coût — donc payer les tarifs du graphique pour chaque question est une perte.
+`tesserae ask` choisit un chemin de récupération par forme de question : les recherches d'entité unique vont au backend bon marché, les questions multi-sauts / "qu'est-ce qui a changé" / "pourquoi" / corpus vont au graphique. Ce découpage encode une **hypothèse, pas une mesure** : nous attendons que le parcours rentabilise son coût sur les questions multi-sauts, temporelles et de synthèse, et qu'il le gaspille sur la recherche de faits simples. Rien dans ce dépôt ne le vérifie — il n'y a ici aucune mesure de performance de récupération ni aucun chiffre publié derrière la table de routage, alors traitez-la comme une valeur par défaut à surcharger, pas comme un résultat.
 
 La décision apparaît dans l'enveloppe retournée, une réponse bon marché est donc auditable. Remplacez-la avec `--route` sur la CLI, ou le paramètre `route` sur l'outil MCP.
 

@@ -266,7 +266,6 @@ Una wiki document-first y jerárquica reemplaza al viejo volcado del grafo. Ver 
 - ✅ Store de grafo SQLite.
 - ✅ Store de grafo Kuzu opcional.
 - ✅ Informe del grafo con recuentos, cobertura de evidencia, nodos huérfanos, buckets por fecha, nodos con muchos alias.
-- ✅ Informe competitivo describiendo ideas absorbidas de MegaMem, Graphiti/Zep, servidores de grafo MCP, RAG agéntico.
 
 ### Flujo local al proyecto
 

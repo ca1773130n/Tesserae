@@ -264,7 +264,6 @@ Neo4j의 agent-memory 설계를 읽고 Tesserae의 자체 제약을 견디는 �
 - ✅ SQLite 그래프 저장소.
 - ✅ 선택적 Kuzu 그래프 저장소.
 - ✅ 개수, 근거 커버리지, 고아 노드, 날짜 버킷, alias 과다 노드를 담은 그래프 보고서.
-- ✅ MegaMem, Graphiti/Zep, MCP 그래프 서버, agentic RAG에서 흡수한 아이디어를 기술하는 경쟁 보고서.
 
 ### 프로젝트 로컬 워크플로
 
