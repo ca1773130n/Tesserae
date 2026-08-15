@@ -19,9 +19,9 @@ Ein dedizierter Konsolidierungs-Thread wacht in einem festen **Prüfintervall** 
 
 Jede Bearbeitung, jeder Sessionsdurchgang oder jede Neukompilierung erhöht die Aktivitätsuhr, daher verstreicht das Leerlauf-Fenster nur während echter Ruhe. Beide Uhren sind **monoton**, nie Wanduhr, und werden niemals in einem Artefakt beibehalten — Konsolidierungszeitpunkt kann niemals das Byte-deterministische Diagramm stören.
 
-## Was ausgeführt wird — drei Operationen
+## Was ausgeführt wird — fünf Operationen
 
-Jede Auslösung lädt das kompilierte Diagramm aus `.tesserae/graph.json` (wenn die Datei fehlt, wird der Durchgang übersprungen) und führt drei Konsolidierungsvorgänge in der richtigen Reihenfolge aus. Zusammen spiegeln sie das wider, was ein ruhender Gehirn macht: die letzten lauten Dinge komprimieren, das nie Besuchteste verblassen lassen und neue Assoziationen zwischen dem, was überlebt, verkabeln.
+Jede Auslösung lädt das kompilierte Diagramm aus `.tesserae/graph.json` (wenn die Datei fehlt, wird der Durchgang übersprungen) und führt fünf Konsolidierungsvorgänge in der richtigen Reihenfolge aus. Zusammen spiegeln sie das wider, was ein ruhender Gehirn macht: die letzten lauten Dinge komprimieren, das nie Besuchteste verblassen lassen, neue Assoziationen zwischen dem, was überlebt, verkabeln und proben — es wird jetzt, während niemand wartet, ein wenig Aufwand in die Beschreibungen investiert, die ein Leser als Nächstes haben möchte.
 
 ### 1. Komprimieren / vergessen — Destillation
 
@@ -43,13 +43,43 @@ Der letzte Vorgang sucht nach *neuen* Beziehungen zwischen dem, was überlebt ha
 
 Entscheidend ist, dass diese erkannten Kanten in eine **Sidecar-Überlagerung** unter `.tesserae` geschrieben werden, *niemals* in `graph.json`. Die Überlagerung **sammelt sich über Zyklen an** — jeder Zuordnungsdurchgang dedupliciert und erweitert das, was frühere Durchgänge gefunden haben. Bei der Lesezeit (Abfrage, PPR-Expansion, Föderations-Ansichten) wird die Überlagerung **nur im Speicher** in das Diagramm zusammengeführt, genau wie die Pro-Agent-Ansichtsüberlagerung — daher wird das Byte-deterministische `graph.json` niemals berührt. Der gesamte Vorgang wird eingewickelt und wird nie in die Daemon-Schleife angehoben.
 
+### 4. Zusammenfassen — die Community-Caches vorwärmen, in die Agenten hinabsteigen
+
+`graph_map` serviert eine Karte pro Bereich. Ein Bereich, dessen Zusammenfassungs-Cache kalt ist, erhält eine deterministische *strukturelle* Karte — eine Mitgliederzahl und eine Liste der Top-Mitglieder — und der erste Agent, der ihn besucht, benötigt einen synchronen LLM-Aufruf für die Prosa. Diese Operation verlagert diese Kosten aus dem Lesepfad: innerhalb eines Pro-Tick-Budgets (`--summarize-budget`, Standard 25; `0` deaktiviert es) materialisiert sie Zusammenfassungen für die Bereiche, die am ehesten als nächstes besucht werden, damit der Besuch einen warmen Cache findet.
+
+Kandidaten werden nach **Anforderung** eingestuft — die Zugriffszählungen des Bereichs von `graph_map`-Durchläufen plus die Zugriffszähler seiner Mitglieder — dann nach Größe, Grad und Ebene in einer Gesamtreihenfolge, sodass zwei Ticks über identischem Zustand dieselben Bereiche auswählen. Ein Cache, der bereits warm und noch Digest-gültig ist, kostet kein Budget; nur eine kalte Materialisierung kostet. Ohne einen LLM-Client ist der gesamte Vorgang ein No-Op.
+
+### 5. Brief — die Charter-Domain-Briefe vorwärmen
+
+Die gleiche Form, nur auf einer anderen Achse: Die Kandidaten sind die aktiven Domains von [der Charter](../README.md) statt der Dendrogramm-Communities. Eine kalte Domain wird überall, wo sie erscheint, als strukturelle Karte gerendert — in `graph_map`, in `charter_route`s Scoring-Corpus und in Lint's `CHARTER_FALLBACK`-Zensus — daher ist dieser Durchgang das, was der Charter Prosa verleiht.
+
+Das Budget ist seine eigene Stellschraube (`--brief-budget`, Standard 8; `0` deaktiviert es), absichtlich getrennt von `--summarize-budget`, damit kein Betrieb den anderen aushungert, und absichtlich kleiner: Die **Abteilungen** der Charter sind das, was `graph_map` als seinen Root-Kartensatz ausliefert, und es gibt nur eine Handvoll von ihnen, daher wärmt 8 den Einstiegspunkt im ersten Idle-Tick auf und tiefere Ebenen folgen dahinter mit 8 pro Tick.
+
+Die Reihenfolge ist **Breitensuche**, nicht eine Anforderungsreihenfolge. Eines Domains Mitgliedermenge enthält seinen gesamten Teilbaum, daher dominiert die Anforderung eines übergeordneten immer die seiner Untergeordneten und keine Domain wird vor ihren Vorfahren vorgewärmt. Das ist absichtlich: Agenten steigen von der Wurzel ab, daher ist die grobe Karte die, die zuerst gelesen wird und für die sich Prosa zu haben lohnt. Zugriffszähler ordnen Domains, die sich nicht gegenseitig enthalten, und die aktiven **Abteilungen** — Domains ohne aktives Eltern-Element, dieselbe Regel wie die `graph_map`-Wurzel, nicht `tier == 1` — sortieren vor allem anderen.
+
+Einige Domains kosten nie einen Budget-Platz, da ein Platz für einen LLM-Aufruf reserviert ist: ausrangierte Domains, der `intake`-Zensus (der kein Thema hat, daher würde ein Brief, geschrieben aus 25 seiner Tausenden von Mitgliedern, nur einen Bruchteil eines Prozents mit Sicherheit beschreiben), eine Domain, deren Mitglieder das Diagramm verlassen haben, und alles bereits Warme. Und eine Domain, deren Materialisierung **fehlschlägt** — meist weil ihre Prosa keines ihrer untergeordneten Elemente zitierte und abgelehnt wurde — wird für eine verdoppelte Tick-Anzahl zurückgestellt, statt immer wieder versucht zu werden, daher kann eine ständig unwärmbare Domain keinen Platz blockieren, den eine wärmbare brauchen könnte.
+
+### Was dies pro Stunde kostet
+
+Beide Budgets sind pro **Tick**, und ein Tick schießt höchstens einmal pro `--consolidate-idle` Fenster. Bei den Defaults:
+
+| | pro Tick | Ticks/Stunde bei `--consolidate-idle 300` | Obergrenze |
+|---|---|---|---|
+| Zusammenfassen | 25 | 12 | 300 LLM-Aufrufe/Stunde |
+| Brief | 8 | 12 | 96 LLM-Aufrufe/Stunde |
+| **Gesamt** | **33** | **12** | **396 LLM-Aufrufe/Stunde** |
+
+Das ist eine **Obergrenze, die nur erreicht wird, während Caches kalt sind**, und sie fällt auf **null**: Ein warmer, Digest-gültiger Cache kostet keinen Aufruf und keinen Platz, daher verbringt der Schlafzyklus, sobald die Bereiche und Domains eines Projekts zusammengefasst werden, nichts, bis sich das Diagramm ändert. Stellen Sie eines der Budgets auf `0` ein, um seinen Betrieb auszuschalten, oder erhöhen Sie `--consolidate-idle`, um Ticks seltener zu machen.
+
+**Warum hier und nicht im Compile.** Ein Brief kostet einen LLM-Aufruf. Sie während des Kompilierens zu prägen würde einen Aufruf pro Domain bei jedem Kompilierungsvorgang bedeuten, und Kompilierung ist der Pfad, den dieses Projekt deterministisch und günstig hält. Sie faul beim Lesen zu prägen würde bedeuten, dass ein `graph_map`-Aufruf auf einem Modell blockieren könnte. Der Idle-Schlafzyklus ist der einzige Ort, der bleibt, der einen Aufruf verbringen kann, auf den niemand wartet.
+
 ## Sicherheit und Determinismus
 
 - **Läuft unter dem Kompilierungs-Tor.** Konsolidierung erwirbt das gleiche Sperren wie eine Neukompilierung, daher **serialisiert** sie sich mit Kompilierungen und **überlappt sich niemals**. Eine ausstehende Kompilierung wartet auf eine laufende Konsolidierung und umgekehrt — das Diagramm wird niemals während des Schreibens gelesen.
 - **Wird niemals in die Daemon-Schleife angehoben.** Der gesamte Durchgang wird eingewickelt; jeder Fehler wird protokolliert und der Thread schleift weiter. Eine fehlgeschlagene Konsolidierung bringt die Engine nie zum Abstürz.
 - **Noop, wenn das Tor aus ist.** Mit ungesetztem `TESSERAE_AGENT_DISTILL` lädt der Durchgang nichts Teures und kehrt sofort zurück, daher kostet die Beibehaltung des Schlafzyklus im Wesentlichen nichts.
 - **Deterministische Artefakte, unverändert.** Destillierte Artefakte bleiben deterministische bei ihren Eingaben; der Schlafzyklus ändert nur *wann* Destillation läuft, niemals *was* sie produziert. Leerlauf-Zeit leckt niemals in `graph.json` oder irgendeine destillierte Schicht.
-- **`graph.json` bleibt Byte-idempotent.** Keine neue Operation schreibt es. Der Zugriffszustand lebt im `node_memory`-Sidecar und erkannte Verbindungen in einer kumulativen Überlagerung — beide unter `.tesserae`, beide nur im Speicher bei Lesezeit zusammengeführt. Die maßgeblichen Diagramm-Bytes sind von Abrufverlauf oder erkannten Links unberührt.
+- **`graph.json` bleibt Byte-idempotent.** Keine Operation schreibt es. Der Zugriffszustand lebt im `node_memory`-Sidecar, erkannte Verbindungen in einer kumulativen Überlagerung und sowohl Zusammenfassungen als auch Domain-Briefe im `community_summaries`-Cache — alle unter `.tesserae`, alle nur im Speicher bei Lesezeit zusammengeführt. Die maßgeblichen Diagramm-Bytes sind von Abrufverlauf, erkannten Links oder vorgewärmter Prosa unberührt. Zusammenfassungen und Briefe sind **Caches, nicht Wissen**: Das Löschen des Cache-Verzeichnisses kostet den nächsten Leser nur eine strukturelle Karte und nichts anderes.
 - **Sauberes Herunterfahren.** Der Konsolidierungs-Thread beobachtet das Stopperereignis des Daemon und wird bei `Ctrl-C` / Herunterfahren rasch beendet. Es ist nur eine Funktion im Langzeitlaufmodus: `tesserae engine ... --once` startet ihn niemals.
 
 ## CLI-Flaggen
@@ -60,8 +90,10 @@ Entscheidend ist, dass diese erkannten Kanten in eine **Sidecar-Überlagerung** 
 | `--consolidate-idle SECONDS` | `300` | Ruhefenster: Konsolidierung nach dieser Anzahl von Sekunden ohne Aktivität. |
 | `--consolidate-every SECONDS` | `21600` | Obergrenze: Konsolidierung mindestens so häufig unabhängig von Aktivität. `0` deaktiviert die Obergrenze. |
 | `--consolidate-check SECONDS` | `30` | Wie oft der Konsolidierungs-Thread aufwacht, um die Auslöser neu zu bewerten. |
+| `--summarize-budget N` | `25` | Max LLM-Aufrufe pro Tick für die Vorwärmung von Community-Zusammenfassungen. `0` deaktiviert den Zusammenfassungs-Betrieb. |
+| `--brief-budget N` | `8` | Max LLM-Aufrufe pro Tick für die Vorwärmung von Charter-Domain-Briefen. `0` deaktiviert den Brief-Betrieb. |
 
-## Flotten-Verhalten(`--all`)
+## Flotten-Verhalten (`--all`)
 
 `tesserae engine --all` hält jedes registrierte Projekt in einem Prozess frisch. Jede Projekteinheit erhält ihren eigenen Konsolidierungs-Thread mit den gleichen Steuerelementen, und alle Einheiten teilen sich ein flottenweites Kompilierungs-Tor — daher serialisiert sich eine Konsolidierung in einem Projekt gegen Kompilierungen in der gesamten Flotte, überlappt sich mit keiner.
 
