@@ -39,7 +39,7 @@ Byte zurück, ohne einen einzigen Modellaufruf:
 
 <!-- sidecars:safe-list -->
 `agent_harness` · `code-graph.json` · `combined-graph.json` ·
-`competitive_report.md` · `diverged-fields.md` · `doctor-report.json` ·
+`diverged-fields.md` · `doctor-report.json` ·
 `doctor-report.md` · `graph.json` · `graph.kuzu` · `graphiti_episodes.jsonl` ·
 `hierarchy.json` · `lint-report.json` · `lint-report.md` · `log.md` ·
 `markdown_projection` · `merge-ledger.json` · `okf` ·

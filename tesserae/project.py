@@ -49,7 +49,7 @@ from .obsidian_adapter import ObsidianVaultAdapter
 from .persistence import SQLiteResearchGraphStore
 from .report import GraphReporter
 from .research_graph import ResearchCorpusAnalyzer, ResearchGraph, ResearchGraphExtractor, ResearchNode, ResearchNodeType, filter_filename_shaped_concepts, graph_from_payload, link_paper_repo_pairs, prefer_research_node
-from .temporal import TemporalFactProjector, render_competitive_report
+from .temporal import TemporalFactProjector
 from .temporal_observed import record_fact_observations, transaction_now
 from .raganything_adapter import merge_raganything_graph
 from .wiki_projector import partition_graph
@@ -216,7 +216,6 @@ class ProjectPaths:
     markdown_projection: Path
     report: Path
     temporal_facts: Path
-    competitive_report: Path
     graphiti_episodes: Path
     agent_harness: Path
     harness_sessions: Path
@@ -313,7 +312,6 @@ class ProjectWiki:
             markdown_projection=self.root / "markdown_projection",
             report=self.root / "report.md",
             temporal_facts=self.root / "temporal_facts.jsonl",
-            competitive_report=self.root / "competitive_report.md",
             graphiti_episodes=self.root / "graphiti_episodes.jsonl",
             agent_harness=self.root / "agent_harness",
             harness_sessions=self.root / "harness_sessions",
@@ -453,7 +451,6 @@ class ProjectWiki:
             "markdown_projection_path": ".tesserae/markdown_projection",
             "report_path": ".tesserae/report.md",
             "temporal_facts_path": ".tesserae/temporal_facts.jsonl",
-            "competitive_report_path": ".tesserae/competitive_report.md",
             "graphiti_episodes_path": ".tesserae/graphiti_episodes.jsonl",
             "agent_harness_path": ".tesserae/agent_harness",
             "harness_sessions_path": ".tesserae/harness_sessions",
@@ -3969,7 +3966,6 @@ class ProjectWiki:
         self.export_agent_harness()
         self.export_obsidian()
         self.build_site()
-        self.paths.competitive_report.write_text(render_competitive_report(), encoding="utf-8")
         self._append_build_history(research_graph, code_graph)
 
         # Tier 1a tail: write the snapshot capturing what we just projected

@@ -134,7 +134,6 @@ tesserae compile
   temporal_facts.jsonl
   graphiti_episodes.jsonl
   report.md
-  competitive_report.md
   markdown_projection/
   obsidian_vault/
   agent_harness/

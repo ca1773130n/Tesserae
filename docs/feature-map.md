@@ -265,7 +265,6 @@ Document-first, hierarchical wiki replaces the old graph dump. See [`docs/fronte
 - ✅ SQLite graph store.
 - ✅ Optional Kuzu export (`tesserae export kuzu`) — one-way, never a store.
 - ✅ Graph report with counts, evidence coverage, orphan nodes, date buckets, alias-heavy nodes.
-- ✅ Competitive report describing absorbed ideas from MegaMem, Graphiti/Zep, MCP graph servers, agentic RAG.
 
 ### Project-local workflow
 

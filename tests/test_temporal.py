@@ -6,8 +6,7 @@ import pytest
 from tesserae.research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 from tesserae.temporal import (FACT_MATCH_CEILING, TIMELINE_PAGE_CEILING,
                                TemporalFact, TemporalFactProjector, is_dated,
-                               render_competitive_report, search_facts,
-                               timeline)
+                               search_facts, timeline)
 
 
 def temporal_sample_graph():
@@ -315,12 +314,3 @@ def test_timeline_dated_filter_narrows_before_the_sort():
     assert only_dated["undated_events"] == 0
     assert only_dated["dated"] == "dated"
 
-
-def test_competitive_report_documents_absorbed_open_source_advantages():
-    report = render_competitive_report()
-
-    assert "MegaMem" in report
-    assert "Graphiti" in report
-    assert "temporal facts" in report
-    assert "controlled ontology" in report
-    assert "no API key" in report
