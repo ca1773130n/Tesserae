@@ -18,6 +18,7 @@ evals/*
 !evals/growth/
 !evals/qa/
 !evals/lme_mab/
+!evals/tck/
 
 # Un-ignoring evals/qa/ re-exposes anything a run drops in it. The QA runner
 # defaults --out to ~/.blackhole/ instead, so this only catches the operator who
