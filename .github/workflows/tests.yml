@@ -153,11 +153,16 @@ jobs:
         run: uv run --no-sync pytest -q -rs
 
       - name: Report the environment on failure
-        if: ${{ matrix.python-version == '3.11' || github.event_name != 'pull_request' }}
         # A failure that only reproduces on one matrix leg is nearly always an
         # environment difference. Print the resolved set once, here, rather than
         # asking the next person to re-run with --verbose.
-        if: failure()
+        #
+        # Both conditions in ONE key: this step already had `if: failure()`, and
+        # adding a second `if:` produced a duplicate key. YAML loaders take the
+        # last one and say nothing; GitHub rejects the file outright, reports it
+        # as `startup_failure` with no annotation, and names the run after the
+        # workflow file — which reads exactly like a syntax error somewhere else.
+        if: ${{ failure() && (matrix.python-version == '3.11' || github.event_name != 'pull_request') }}
         run: |
           echo "::group::python"
           uv run --no-sync python -VV
