@@ -30,6 +30,8 @@ from evals.lme_mab.adapter import (
     PROTOCOL_K,
     MabMemory,
     RefusedToCompileInRepo,
+    Session,
+    document_index,
     guard_work_dir,
     protocol_blockers,
     split_sessions,
@@ -72,22 +74,27 @@ class _NotATerminal:
         return False
 
 
-def _search_returning(n: int, *, total: int = 0):
+def _search_returning(n: int, *, total: int = 0, paths: Sequence[str] = ()):
     """A ``hybrid_search`` stub that yields ``n`` hits regardless of ``top_k``.
 
     Deliberately ignores ``top_k``: the adapter must slice to K itself rather
-    than trusting the backend to have honoured it.
+    than trusting the backend to have honoured it. ``paths`` gives hit ``i``
+    the ``source_path`` a compiled node would carry; hits past its end carry
+    none, which is what a node the compile gave no provenance looks like.
     """
 
     def _search(graph, query, **kwargs):
-        return _Result([_Scored(_Node(f"node-{i}", f"about {query}")) for i in range(n)],
+        return _Result([_Scored(_Node(f"node-{i}", f"about {query}",
+                                      paths[i] if i < len(paths) else ""))
+                        for i in range(n)],
                        total_matches=total or n)
 
     return _search
 
 
-def _memory(work: Path, *, hits: int) -> MabMemory:
-    memory = MabMemory(compile_fn=lambda w: None, search_fn=_search_returning(hits),
+def _memory(work: Path, *, hits: int, paths: Sequence[str] = ()) -> MabMemory:
+    memory = MabMemory(compile_fn=lambda w: None,
+                       search_fn=_search_returning(hits, paths=paths),
                        backend=object())
     memory.work = work
     memory._graph = object()  # a compiled graph would be loaded here
@@ -287,6 +294,79 @@ def test_query_before_ingest_raises_rather_than_scoring_zero():
         memory.query("q")
 
 
+# ------------------------------------------- the documents behind the hits
+
+
+def test_document_index_round_trips_a_staged_document_name():
+    """``document_index`` is the inverse of ``Session.document_name`` and the
+    only place either direction is written — nobody formats or parses
+    ``session-%04d.md`` themselves."""
+    for index in (0, 7, 113, 12345):
+        name = Session(index=index, date="", turns=[]).document_name
+        assert document_index(name) == index
+
+
+def test_document_index_reads_a_relative_or_an_absolute_source_path():
+    """A retrieved node carries whatever path the compile recorded."""
+    assert document_index("corpus/session-0007.md") == 7
+    assert document_index("/tmp/work/corpus/session-0113.md") == 113
+
+
+@pytest.mark.parametrize("name", [
+    "", None, "notes.md", "session-7.md", "session-0007.md.bak", "xsession-0007.md",
+])
+def test_document_index_refuses_a_name_this_adapter_did_not_write(name):
+    """Strict rather than forgiving: a near-miss resolved to a plausible index
+    is fabricated evidence, and the caller counts ``None`` instead."""
+    assert document_index(name) is None
+
+
+def test_query_hits_carry_the_document_they_came_from(tmp_path):
+    memory = _memory(tmp_path, hits=2,
+                     paths=["corpus/session-0002.md", "corpus/session-0000.md"])
+
+    hits = memory.query_hits("q", k=2)
+
+    assert [hit.document for hit in hits] == [2, 0]
+    assert all(hit.text for hit in hits)
+    assert memory.shortfalls == []
+
+
+def test_query_is_the_text_of_query_hits(tmp_path):
+    """One search, one shortfall recorder — ``query`` adds nothing of its own."""
+    memory = _memory(tmp_path, hits=4)
+
+    texts = memory.query("q")
+
+    assert texts == [hit.text for hit in memory.query_hits("q")]
+    assert len(memory.shortfalls) == 2  # one per call, both through query_hits
+
+
+def test_search_documents_dedups_and_keeps_the_first_occurrence(tmp_path):
+    """Two nodes from one session are one document, at the better rank: they
+    are not two pieces of evidence about where the answer lives."""
+    memory = _memory(tmp_path, hits=4, paths=[
+        "corpus/session-0005.md", "corpus/session-0002.md",
+        "corpus/session-0005.md", "corpus/session-0009.md",
+    ])
+
+    assert memory.search_documents("q", k=4) == [5, 2, 9]
+    assert memory.n_unmapped_hits == 0
+
+
+def test_search_documents_drops_an_unmappable_hit_and_counts_it(tmp_path):
+    """``merge_node_group`` keeps ONE ``source_path`` when it collapses a
+    concept extracted from many sessions, so some hits point at no staged
+    document at all. They are counted — the row is a lower bound — never
+    resolved to a nearby index."""
+    memory = _memory(tmp_path, hits=3, paths=[
+        "corpus/session-0001.md", "", "concept-page.md",
+    ])
+
+    assert memory.search_documents("q", k=3) == [1]
+    assert memory.n_unmapped_hits == 2
+
+
 # -------------------------------------------------------- protocol controls
 
 
@@ -318,7 +398,7 @@ def test_the_report_withholds_the_comparable_table_when_a_control_is_unmet():
         system="Tesserae", meta=_met_meta(judge=""),
     )
 
-    text = runner.build_report(report)
+    text = runner.build_report([report])
 
     assert "**Withheld" in text
     assert "**UNMET**" in text
@@ -332,7 +412,7 @@ def test_the_report_prints_the_table_when_every_control_is_met():
         system="Tesserae", meta=_met_meta(),
     )
 
-    text = runner.build_report(report)
+    text = runner.build_report([report])
 
     assert "**Withheld" not in text
     assert "| Tesserae | gpt-5.4-mini | text-embedding-3-small | 10 |" in text
@@ -344,7 +424,7 @@ def test_the_report_reads_no_clock():
         system="Tesserae", meta=_met_meta(),
     )
 
-    assert runner.build_report(report) == runner.build_report(report)
+    assert runner.build_report([report]) == runner.build_report([report])
 
 
 def test_a_shortfall_is_reported_rather_than_averaged_away():
@@ -354,7 +434,7 @@ def test_a_shortfall_is_reported_rather_than_averaged_away():
     )
 
     text = runner.build_report(
-        report, shortfalls=[{"question": "q", "requested": 10, "returned": 2,
+        [report], shortfalls=[{"question": "q", "requested": 10, "returned": 2,
                              "total_matches": 2}])
 
     assert "1 of 1 queries returned fewer than K=10" in text
@@ -399,10 +479,37 @@ def test_the_runner_skips_when_the_parquet_is_missing(monkeypatch, capsys, tmp_p
     assert "ai-hyz/MemoryAgentBench" in out
 
 
-def test_the_runner_skips_without_an_openai_key(monkeypatch, capsys, tmp_path):
-    """The protocol fixes ``text-embedding-3-small``; falling back to model2vec
-    would vary the embedder and the architecture at once and still print a
-    number."""
+def test_the_runner_skips_without_a_key_when_the_openai_embedder_is_asked_for(
+    monkeypatch, capsys, tmp_path
+):
+    """``--embedding-prefer openai`` is what bills, so it is what needs the key."""
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    parquet = tmp_path / "m.parquet"
+    parquet.write_bytes(b"not really a parquet")
+
+    assert runner.main([
+        "--parquet", str(parquet), "--work", str(tmp_path / "work"),
+        "--embedding-prefer", "openai",
+        "--i-know-this-costs-money", "--yes",
+    ]) == 0
+
+    out = capsys.readouterr().out
+    assert "SKIP:" in out and "OPENAI_API_KEY" in out
+
+
+def test_the_runner_does_not_demand_a_key_for_the_local_embedder(
+    monkeypatch, capsys, tmp_path
+):
+    """A key it will never use must not stand between a run and the local arms.
+
+    ``--embedding-prefer`` defaults to the local backend so §6 can hold ONE
+    embedder still across all three arms. The gate used to fire for every
+    Tesserae run regardless, which refused the self-consistent local comparison
+    that section exists to print — over a credential the run would not have
+    touched. The run still stops here, but on the corrupt parquet rather than on
+    the key.
+    """
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     parquet = tmp_path / "m.parquet"
@@ -414,7 +521,8 @@ def test_the_runner_skips_without_an_openai_key(monkeypatch, capsys, tmp_path):
     ]) == 0
 
     out = capsys.readouterr().out
-    assert "SKIP:" in out and "OPENAI_API_KEY" in out
+    assert "SKIP:" in out
+    assert "OPENAI_API_KEY" not in out
 
 
 def test_the_runner_skips_when_the_work_dir_is_inside_the_repo(monkeypatch, capsys, tmp_path):
@@ -438,7 +546,13 @@ def test_the_runner_will_not_spend_without_a_confirmation(monkeypatch, capsys, t
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setattr(runner.sys, "stdin", _NotATerminal())
-    monkeypatch.setattr(runner, "load_groups_or_skip", lambda p: [_group()])
+    # With the answer key, because the runner aligns gold before it asks for
+    # money — a group whose ``haystack_sessions`` is missing refuses first, and
+    # this test is about the confirmation and not about that refusal.
+    gold = [{"role": "user", "content": "where did I leave my keys", "has_answer": False},
+            {"role": "assistant", "content": "on the hall table", "has_answer": True}]
+    monkeypatch.setattr(runner, "load_groups_or_skip",
+                        lambda p: [_group(haystack_sessions=[[gold]])])
     parquet = tmp_path / "m.parquet"
     parquet.write_bytes(b"stub")
 
