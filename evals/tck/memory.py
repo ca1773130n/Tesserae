@@ -164,12 +164,51 @@ class TesseraeMemory:
     and it must never point at a real project's ``.tesserae/``.
     """
 
+    #: Written into a root the first time this harness claims it. ``reset()``
+    #: deletes files, and the kit calls it before EVERY scenario, so the root
+    #: must be provably ours before anything is unlinked. A README sentence is
+    #: not a guard in front of an ``unlink``: pointed at a real project this
+    #: would delete ``session_chunks.db`` — the captured-turn substrate, which
+    #: NO compile rebuilds — and recreate it empty, so it would not even look
+    #: deleted.
+    _MARKER_NAME = ".tesserae-tck-scratch"
+
     def __init__(self, project_root: str | Path) -> None:
         self.project_root = Path(project_root)
         self.tesserae_dir = self.project_root / ".tesserae"
+        self._claim_root()
         self.tesserae_dir.mkdir(parents=True, exist_ok=True)
         self._db = SessionChunksDB(chunks_db_path(self.project_root))
         self._last_ts: Optional[datetime] = None
+
+    @property
+    def marker_path(self) -> Path:
+        return self.project_root / self._MARKER_NAME
+
+    def _claim_root(self) -> None:
+        """Refuse any root this harness did not create.
+
+        An empty or absent directory is claimed by writing the marker. A
+        directory that already holds ``.tesserae/`` without the marker is a
+        real project and is refused outright — that is the case that would
+        destroy data.
+        """
+        if self.marker_path.exists():
+            return
+        if self.tesserae_dir.exists():
+            raise RuntimeError(
+                f"refusing to use {self.project_root}: it has a .tesserae/ "
+                f"directory but no {self._MARKER_NAME} marker, so it looks "
+                f"like a real project. This harness DELETES "
+                f"session_chunks.db and agent-writes.jsonl before every "
+                f"scenario. Point TESSERAE_TCK_ROOT at an empty directory."
+            )
+        self.project_root.mkdir(parents=True, exist_ok=True)
+        self.marker_path.write_text(
+            "Created by evals/tck. This directory is disposable: the TCK "
+            "harness deletes its .tesserae/ substrates before every scenario.\n",
+            encoding="utf-8",
+        )
 
     # ------------------------------------------------------------------ #
     # Harness lifecycle                                                    #
@@ -262,7 +301,13 @@ class TesseraeMemory:
             role=role,
             content=content,
             timestamp=ts,
-            metadata=dict(metadata or {}),
+            metadata={},  # NOT dict(metadata or {}): the turns table has no
+            # metadata column, so echoing the caller's input back would
+            # pass two scenarios that assert only on the returned object
+            # (SPEC-2.1.5 "MUST preserve metadata", SPEC-2.1.12) while
+            # storing nothing. That is the same fakery this harness
+            # refuses for search_messages, and 57 with nothing echoed is
+            # a stronger artifact than 59 with an asterisk.,
         )
 
     @staticmethod

@@ -102,15 +102,24 @@ def test_reset_empties_the_substrate(memory):
 # --------------------------------------------------------------------------- #
 
 
-def test_metadata_is_not_persisted(memory):
-    """The write carries it; every read drops it.
+def test_metadata_is_dropped_on_the_write_not_just_the_read(memory):
+    """Nothing stores it, so nothing claims it — not even the returned object.
 
-    ``record_turns`` writes the ``meta`` column as ``{"name": ...}`` or ``{}``
-    and carries nothing else, so a metadata round-trip through this store is
-    impossible. Bronze asserts one (SPEC-2.2.8), and this is why it fails.
+    ``record_turns`` writes the ``meta`` column as ``{"name": ...}`` and carries
+    nothing else, so a metadata round-trip through this store is impossible.
+
+    An earlier revision echoed the caller's dict back on the WRITE while the
+    read dropped it. That is invisible to a caller who only inspects what
+    ``add_message`` returned — which is exactly what SPEC-2.1.5 ("MUST preserve
+    metadata") and SPEC-2.1.12 assert — so it bought two Bronze passes for a
+    field the engine never persisted, and took the score from 57 to 59.
+
+    Both ends now return ``{}``. This test is the ratchet: if the write ever
+    starts echoing again, the reported number silently inflates by two and
+    nothing else here would notice.
     """
     written = memory.add_message("s1", "user", "hi", metadata={"source": "test"})
-    assert written.metadata == {"source": "test"}
+    assert written.metadata == {}, "the write echoed metadata the store drops"
     assert memory.messages("s1")[0].metadata == {}
 
 

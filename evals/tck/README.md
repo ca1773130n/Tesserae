@@ -5,8 +5,8 @@ publishes is a Technology Compliance Kit: [`neo4j-labs/agent-memory-tck`][tck],
 189 scenarios across four tiers, backend-agnostic, and free of model calls. That
 made it the one Neo4j comparison reachable on this machine, so we ran it.
 
-**Tesserae fails it, and the failures are the useful part.** 59 of 93 Bronze
-scenarios pass. The 34 that fail all trace to four properties of the engine, and
+**Tesserae fails it, and the failures are the useful part.** 57 of 93 Bronze
+scenarios pass. The 36 that fail all trace to four properties of the engine, and
 none of the four is a bug.
 
 [tck]: https://github.com/neo4j-labs/agent-memory-tck
@@ -19,7 +19,7 @@ tags, so a commit is the only pin available).
 
 | Tier | Passed | Failed | Skipped | Total |
 | --- | ---: | ---: | ---: | ---: |
-| Bronze | **59** | 34 | 0 | 93 |
+| Bronze | **57** | 36 | 0 | 93 |
 | Silver | 6 | 61 | 0 | 67 |
 | Gold | 0 | 16 | 2 | 18 |
 | Platinum | 0 | 0 | 11 | 11 |
@@ -34,7 +34,29 @@ nothing here has been submitted anywhere.
 
 [cert]: https://github.com/neo4j-labs/agent-memory-tck/blob/main/docs/how-to/certification.adoc
 
-## Why the 34 Bronze scenarios fail
+### Two scenarios we chose to fail, and why the number is 57 not 59
+
+`add_message` returns `metadata={}` rather than echoing the caller's dict back.
+The turns table has no metadata column, so echoing would pass SPEC-2.1.5
+("MUST preserve metadata") and SPEC-2.1.12 while storing nothing — the same
+fakery this harness already refuses for `search_messages`, where a five-line
+substring matcher would have bought 7 more passes and measured nothing.
+
+An earlier revision scored 59 that way. 57 with nothing echoed is the stronger
+artifact, and it is the number to quote.
+
+### The scratch root is guarded, because `clear_all_data` deletes
+
+The kit calls `clear_all_data` before every one of its 189 scenarios, and the
+implementation unlinks `session_chunks.db` and `agent-writes.jsonl`. Pointed at
+a real project that destroys the captured-turn substrate — which no compile
+rebuilds — and recreates it empty, so it would not even look deleted.
+
+`TesseraeMemory` now refuses any root holding a `.tesserae/` directory without
+the `.tesserae-tck-scratch` marker this harness writes. Prose was the only
+defence before; prose is not a guard in front of an `unlink`.
+
+## Why the 36 Bronze scenarios fail
 
 Every one raises `evals.tck.memory.Unsupported` naming the property responsible,
 except the last, which fails on an assertion.
@@ -64,8 +86,8 @@ absence. Platinum self-skips on `NotImplementedError`, as the kit intends.
 **Defensible:**
 
 > Tesserae ships an adapter implementing the `neo4j-labs/agent-memory` TCK 1.0.0
-> interface over its compile-free write paths, and passes 59 of 93 Bronze
-> scenarios. It reaches no certification tier. The 34 failures are architectural:
+> interface over its compile-free write paths, and passes 57 of 93 Bronze
+> scenarios. It reaches no certification tier. The 36 failures are architectural:
 > Tesserae is a compile-and-project context engine, not a mutable memory service.
 
 **Not defensible, and the reasons matter more than the list:**
