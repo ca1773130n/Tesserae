@@ -10,7 +10,7 @@ The comparison is lopsided in both directions, which is why the shortlist is sho
 
 Only two systems are worth learning from — `neo4j-labs/agent-memory` (PyPI `neo4j-agent-memory` v0.5.0, with an embedded MCP server) and Graphiti — and what they have that Tesserae does not is three things: **a persisted vector index, a soft-merge tombstone, and a transaction-time clock.** Every one of the three is a data-structure decision, not a storage-engine decision.
 
-Adopting Neo4j CE would cost more than it buys, and the cost is measurable rather than aesthetic. CE supports only property uniqueness and property type constraints; property existence and NODE/RELATIONSHIP KEY constraints are Enterprise-only, so **Neo4j CE cannot make a property mandatory at the database level** — while `ResearchEdge.__post_init__` raises today on any type outside the whitelist, for free, and `llm_extractor.validate_research_graph` refuses to compile a graph carrying an unsupported node type, an unsupported edge type or a dangling endpoint. Moving to CE would trade a hard guarantee for post-hoc pruning, which is exactly what `neo4j-graphrag` does: a `GraphPruner` between extractor and writer recording `NOT_IN_SCHEMA` / `MISSING_REQUIRED_PROPERTY` into `PruningStats`, with `additional_*` flags defaulting permissive whenever the corresponding list is empty. The rest of the cliff compounds it — online backup/restore is EE-only and CE gets offline dump plus offline full import; CE runs only the slotted Cypher runtime; multiple and composite databases are EE-only; all access control beyond basic user creation is EE-only; autonomous clustering is EE-only and CE is single-instance with no HA; CDC, Neo4j's only native change feed, is EE-only and its own docs warn it is not an exact-copy mechanism; and GDS Community enforces a hard concurrency cap of 4 in code (`CONCURRENCY_LIMITATION = 4`). Against all that, what CE actually gives away for free is two indexes: Lucene HNSW vector indexes and Lucene fulltext indexes, both confirmed available in Community Edition, the latter covering relationships as well as nodes. Two indexes are worth building. They are not worth a database.
+Adopting Neo4j CE would cost more than it buys, and the cost is measurable rather than aesthetic. CE supports only property uniqueness constraints; property existence, property type and NODE/RELATIONSHIP KEY constraints are all Enterprise-only, so **Neo4j CE cannot make a property mandatory at the database level** — while `ResearchEdge.__post_init__` raises today on any type outside the whitelist, for free, and `llm_extractor.validate_research_graph` refuses to compile a graph carrying an unsupported node type, an unsupported edge type or a dangling endpoint. Moving to CE would trade a hard guarantee for post-hoc pruning, which is exactly what `neo4j-graphrag` does: a `GraphPruner` between extractor and writer recording `NOT_IN_SCHEMA` / `MISSING_REQUIRED_PROPERTY` into `PruningStats`, with `additional_*` flags defaulting permissive whenever the corresponding list is empty. The rest of the cliff compounds it — online backup/restore is EE-only and CE gets offline dump plus offline full import; CE runs only the slotted Cypher runtime; multiple and composite databases are EE-only; all access control beyond basic user creation is EE-only; autonomous clustering is EE-only and CE is single-instance with no HA; CDC, Neo4j's only native change feed, is EE-only and its own docs warn it is not an exact-copy mechanism; and GDS Community enforces a hard concurrency cap of 4 in code (`CONCURRENCY_LIMITATION = 4`). Against all that, what CE actually gives away for free is two indexes: Lucene HNSW vector indexes and Lucene fulltext indexes, both confirmed available in Community Edition, the latter covering relationships as well as nodes. Two indexes are worth building. They are not worth a database.
 
 **On GPLv3, the verified part is narrow and the unverified part is the part people usually decide on.** Verified: `neo4j/neo4j` ships an unmodified GPLv3 `LICENSE.txt` with no Classpath or linking exception and contains only Community Edition source, with Enterprise shipping closed-source components absent from the repository; the GDS repo is likewise GPLv3, and distributed GDS is open sources plus closed sources, the GPLv3-buildable subset being "OpenGDS". **Not** verified, and not asserted here: the common claim that running CE as an external server over Bolt is safe while bundling its jars or linking it in embedded mode raises copyleft obligations. No Neo4j statement on network use versus distribution was found, and "linking in-process triggers copyleft" is a contested legal reading rather than a finding — a question for counsel, not a fact to plan against. The practical consequence points the same way regardless, and it is an argument *for* the capabilities path rather than a caveat on it: **if Tesserae never vendors, bundles, links or ships Neo4j, nobody ever has to answer the question.** "We would need legal advice to know whether our own distribution is compliant" is a permanent tax on every release, and no capability in this comparison is worth paying it. Learning from GPLv3 source is unrestricted — reading `apoc.refactor.mergeNodes` and then deliberately not copying its destructiveness is not a derivative work.
 
@@ -208,3 +208,47 @@ If deletion is preferred to promotion, that is also an acceptable discharge of t
 - **`CALL {…} IN TRANSACTIONS OF n ROWS` as an atomicity model.** Explicitly not atomic, producing intermediate commits with a per-query `ON ERROR CONTINUE|BREAK|FAIL|RETRY` policy. `record_agent_write` builds the slice before appending so an unconstructable payload is refused before anything is written; that is the posture to keep.
 - **TTL archival as the growth bound.** `archive_expired_conversations(ttl_days, dry_run=True)` is age-driven, where `agent_distill` forgets by absorption and demote-to-index — never deletion — driven by real MCP read-access state, with `remainder_top_k` hysteresis so nodes do not oscillate, and an append-only forget ledger that lint checks. Take only the dry-run-by-default posture, which `schema_drift`'s `approved` gate already has.
 - **GraphRAG-style context assembly.** A newline join of `item.content` into one `{context}` slot, with no reranking, dedup, token budgeting or provenance, and `content` being `str(node)`. `compile_context` has a char budget, preview-plus-handle read discipline, reserved pools that report `delivered=false` when the budget dropped a reservation, and per-citation `via_views`. There is nothing here to take.
+
+---
+
+## Re-verification against current Neo4j docs — 2026-08-16
+
+The edition claims above are statements about someone else's product, made from
+sources read on 2026-08-14. Neo4j ships on a calendar cadence, so they were
+re-checked before being quoted anywhere public. Source: **Neo4j Cypher Manual,
+Version 25**, fetched **2026-08-16**.
+
+| Feature | Edition, as documented today |
+|---|---|
+| Property **uniqueness** constraints | Community |
+| Property **existence** constraints | **Enterprise Edition** |
+| Property **type** constraints | **Enterprise Edition** |
+| **Key** constraints (NODE / RELATIONSHIP) | **Enterprise Edition** |
+| **Graph types** (schema for a database) | **Enterprise Edition**, Cypher 25 only, introduced Neo4j 2026.02, GA 2026.06 |
+| **Vector indexes** (Lucene-powered) | Community — carries no edition tag |
+
+**One correction to the body above, and it runs against our own interest to
+find it late rather than in our favour to state it:** the original text credited
+Community Edition with *property type constraints*. The current manual tags
+those **Enterprise Edition**. CE has exactly one constraint family — uniqueness.
+The sentence in §Verdict has been corrected.
+
+**One addition that strengthens the finding.** Neo4j has since introduced
+**graph types**, a whole-database schema mechanism that the constraints page now
+recommends over individual `CREATE CONSTRAINT` statements, on the grounds that
+it "offers both additional, more sophisticated constraint types and a more
+holistic and simplified approach". It is **Enterprise Edition**. So the claim
+that CE cannot make a property mandatory holds through *both* the old constraint
+syntax and the new schema mechanism — it is not an artifact of an ageing API.
+
+**What did not change:** vector indexes remain available in Community Edition
+and carry no edition tag, which is the half of the original finding that argued
+*for* building two sidecar indexes rather than adopting the database. The
+storage decision is unaffected in either direction.
+
+**Standing rule for anyone quoting this.** These rows are about a third party's
+product and go stale. Quote them only with the version and the fetch date
+attached, and re-verify before publishing. This is the same standard PR #178
+imposed on Tesserae's own comparative claims, applied to claims we make about
+others — and `tests/test_docs_comparative_claims.py` will not catch a stale fact
+about Neo4j, because it can only see claims about *us*.
