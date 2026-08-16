@@ -27,22 +27,7 @@ name: tests
 on:
   push:
     branches: [main]
-    # Docs, translations and editor config cannot break the suite. A PR that
-    # touches only these ran 3 matrix legs of ~4000 tests for nothing, and on
-    # a docs-heavy day that was most of the day's CI. Code paths are unchanged.
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
-      - '.editorconfig'
-      - '.gitignore'
-      - 'LICENSE'
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
-      - '.editorconfig'
-      - '.gitignore'
-      - 'LICENSE'
   workflow_dispatch:
 
 permissions:
