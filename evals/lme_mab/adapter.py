@@ -72,6 +72,10 @@ PROTOCOL_K = 10
 PROTOCOL_BACKBONE = "gpt-5.4-mini"
 PROTOCOL_EMBEDDING_MODEL = "text-embedding-3-small"
 PROTOCOL_EMBEDDING_DIM = 1536
+#: The ``active_embedding_backend`` preference that resolves
+#: :data:`PROTOCOL_EMBEDDING_MODEL`. Asking for it is what bills, so it is also
+#: the only value of ``--embedding-prefer`` that needs ``OPENAI_API_KEY``.
+PROTOCOL_EMBEDDING_PREFER = "openai"
 PROTOCOL_JUDGE = "gpt-4o-mini"
 
 #: The four controls, mapped to the sentence explaining why drifting off one
@@ -180,6 +184,34 @@ class Session:
             # retrieval key on "this is the answer" and score the leak.
             lines += [f"**{role}:**", "", content, ""]
         return "\n".join(lines).rstrip() + "\n"
+
+
+#: The inverse of :attr:`Session.document_name`. ``\d{4,}`` rather than ``\d+``
+#: so it matches what that property writes and nothing that merely looks like
+#: it; the leading separator class lets a bare name, a relative path and an
+#: absolute one all resolve.
+_DOCUMENT_NAME = re.compile(r"(?:^|[\\/])session-(\d{4,})\.md$")
+
+
+def document_index(name: Any) -> Optional[int]:
+    """The session index behind a staged document name, or ``None``.
+
+    The inverse of :attr:`Session.document_name`, and the only place either
+    direction of that mapping is spelled out. A retrieved node carries its
+    provenance as a ``source_path`` — ``corpus/session-0007.md``, or whatever
+    absolute path the compile recorded — and a caller that wants the session
+    back must not re-derive the format itself: two spellings of
+    ``session-%04d.md`` that drift by one zero map every hit to nothing, and
+    "no document matched" is indistinguishable from a memory that retrieved
+    badly.
+
+    Strict on purpose. Anything this module did not write — ``session-7.md``, a
+    concept page, an empty path — is ``None``, and the caller counts it rather
+    than resolving it to the nearest plausible index. A fabricated document
+    index is a fabricated hit.
+    """
+    match = _DOCUMENT_NAME.search(str(name or "").strip())
+    return int(match.group(1)) if match else None
 
 
 def _sessions_from_context(context: str) -> Optional[List[Session]]:
@@ -357,6 +389,28 @@ def evidence_text(node: Any) -> str:
     return " — ".join(part for part in parts if part)
 
 
+@dataclass(frozen=True)
+class MabHit:
+    """One retrieved node: the evidence text, and the document behind it.
+
+    The two travel together because one search answers both questions — what
+    the memory said, and which session it said it from. Recovering the
+    provenance with a second search would not be the same search, and the
+    retrieval comparison scores exactly the documents the answer was built on.
+    """
+
+    #: What the backbone reads. :func:`evidence_text` of the node.
+    text: str
+    #: The node's ``source_path``, ``""`` when it has none.
+    source_path: str
+
+    @property
+    def document(self) -> Optional[int]:
+        """The staged session index, or ``None`` when the node's provenance is
+        not one of this adapter's documents. See :func:`document_index`."""
+        return document_index(self.source_path)
+
+
 class MabMemory:
     """A memory system under test: ingest a haystack, answer with evidence.
 
@@ -388,6 +442,10 @@ class MabMemory:
         #: a padded evidence list would report a full budget the retrieval never
         #: filled, and K is the control the whole comparison rests on.
         self.shortfalls: List[Dict[str, Any]] = []
+        #: Retrieved nodes whose provenance is not a staged session document.
+        #: See :meth:`search_documents` — this is the size of the gap between
+        #: what Tesserae retrieved and what its retrieval can be SCORED on.
+        self.n_unmapped_hits = 0
 
     # ------------------------------------------------------------------ ingest
 
@@ -483,9 +541,12 @@ class MabMemory:
         self._search_fn = hybrid_search
         return self._search_fn
 
-    def query(self, question: str, *, k: int = PROTOCOL_K) -> List[str]:
-        """Up to ``k`` evidence strings for ``question``. Never more, never padded.
+    def query_hits(self, question: str, *, k: int = PROTOCOL_K) -> List[MabHit]:
+        """Up to ``k`` hits for ``question``. Never more, never padded.
 
+        The one search both :meth:`query` and :meth:`search_documents` are
+        built on, so the evidence a run answers from and the documents its
+        retrieval is scored on can never come from two different rankings.
         Fewer than ``k`` is recorded in :attr:`shortfalls` and returned short.
         Padding to length — with blanks, with repeats, with lower-ranked
         anything — would make an under-filled evidence budget indistinguishable
@@ -500,19 +561,76 @@ class MabMemory:
             mode=self._mode,
             backend=self.embedding_backend(),
         )
-        evidence = [evidence_text(scored.node) for scored in result.scored][:k]
-        if len(evidence) < k:
+        hits = [
+            MabHit(
+                text=evidence_text(scored.node),
+                source_path=str(getattr(scored.node, "source_path", "") or ""),
+            )
+            for scored in result.scored
+        ][:k]
+        if len(hits) < k:
             self.shortfalls.append({
                 "question": question,
                 "requested": k,
-                "returned": len(evidence),
+                "returned": len(hits),
                 "total_matches": int(getattr(result, "total_matches", 0) or 0),
             })
-        return evidence
+        return hits
+
+    def query(self, question: str, *, k: int = PROTOCOL_K) -> List[str]:
+        """The evidence strings of :meth:`query_hits`. See it for the contract."""
+        return [hit.text for hit in self.query_hits(question, k=k)]
+
+    def search_documents(self, question: str, *, k: int = PROTOCOL_K) -> List[int]:
+        """The session indices behind :meth:`query_hits`, ranked and de-duplicated.
+
+        The same shape ``baselines.LexicalArm`` and ``baselines.DenseArm``
+        return, which is what lets one scorer measure all three arms. Two hits
+        from one session are one document at their FIRST rank: a node and its
+        neighbour are not two pieces of evidence about where the answer lives.
+        So this can return fewer than ``k`` documents from a full ``k`` hits —
+        ten nodes may come from four sessions — and that is the budget doing
+        its job rather than a shortfall to fix. K is the evidence the backbone
+        reads, and topping the list up to ten DISTINCT sessions would hand this
+        arm a bigger budget than the baselines got.
+
+        **This is a LOWER BOUND on Tesserae's retrieval, and the report must
+        say so.** A node keeps one ``source_path``, and
+        ``tesserae.canonicalization.merge_node_group`` keeps the canonical
+        node's when it collapses a concept that was extracted from many
+        sessions — so a concept mentioned in twenty sessions points at one of
+        them, and the other nineteen are structurally unreachable through
+        provenance no matter how well the memory retrieved. Hits that map to no
+        staged document at all (a node the compile gave no source, a page this
+        adapter did not write) are counted in :attr:`n_unmapped_hits` and
+        dropped. Neither case is guessed at: a hit resolved to a nearby session
+        index would be a fabricated retrieval, which scores better than the
+        honest number and means nothing.
+        """
+        return self.documents_of(self.query_hits(question, k=k))
+
+    def documents_of(self, hits: Sequence[MabHit]) -> List[int]:
+        """The mapping half of :meth:`search_documents`, over hits already read.
+
+        Split out so a run that ANSWERS and scores retrieval derives both from
+        one :meth:`query_hits` call. Calling ``query`` and ``search_documents``
+        for the same question searches twice, records the shortfall twice, and
+        scores a ranking the answer never read.
+        """
+        documents: List[int] = []
+        for hit in hits:
+            index = hit.document
+            if index is None:
+                self.n_unmapped_hits += 1
+                continue
+            if index not in documents:
+                documents.append(index)
+        return documents
 
 
 __all__ = [
     "IngestResult",
+    "MabHit",
     "MabMemory",
     "PROTOCOL_BACKBONE",
     "PROTOCOL_CONTROLS",
@@ -524,6 +642,7 @@ __all__ = [
     "REPO",
     "RefusedToCompileInRepo",
     "Session",
+    "document_index",
     "evidence_text",
     "guard_work_dir",
     "protocol_blockers",

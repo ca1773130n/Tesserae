@@ -362,7 +362,12 @@ def _comparative_claims(text: str) -> list[str]:
 #: costs nothing, and listing it now means the tripwire fires the moment that
 #: work lands rather than silently continuing to assert "no measurement
 #: exists" about a tree that has one.
-FIRST_PARTY_EVAL_PATHS = ("metrics.py", "qa", "federation", "growth")
+#:
+#: ``lme_mab/`` is the LongMemEval-MAB harness, and it earns its place twice
+#: over: ``retrieval.py`` computes recall@K and MRR, and ``run.py``'s §6 prints
+#: a three-row table of Tesserae against two baselines. A module that prints a
+#: comparison and is invisible to this scan is exactly the shape #178 retracted.
+FIRST_PARTY_EVAL_PATHS = ("metrics.py", "qa", "federation", "growth", "lme_mab")
 
 
 def _first_party_python() -> list[Path]:

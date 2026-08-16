@@ -21,6 +21,10 @@ Trees for Memory Construction and Retrieval* — arXiv:2606.04555, 3 Jun 2026
 own side: BM25, Dense, RAPTOR, MemTree, A-MEM, Mem0, HippoRAG, and the paper's
 own SegTreeMem (best, ~20% over the strongest external baseline).
 
+This repo holds **none** of those published numbers. The BM25 and Dense arms in
+§6 below are ours, measured under our own protocol; they share a name with two
+of the published baselines and nothing else.
+
 ## The data, measured rather than assumed
 
 `ai-hyz/MemoryAgentBench`, split `Accurate_Retrieval`, records whose
@@ -94,6 +98,31 @@ comparable to the published baselines. Say that plainly if anyone quotes it.
     # write the session documents and stop: no compile, no LLM, no network
     uv run python -m evals.lme_mab.run --parquet <p> --groups 0 --stage-only
 
+    # the two baselines only: recall@10 and MRR of the gold session.
+    # No cost banner, no consent flag, no API key, no LLM, no money — and no
+    # network: the dense arm loads its local model with the Hugging Face hub
+    # switched off (`HF_HUB_OFFLINE`), because `StaticModel.from_pretrained`
+    # otherwise contacts huggingface.co on every construction even when every
+    # file is already cached — measured with a spy on `socket.getaddrinfo`.
+    # A cold cache is a refusal naming the one-time warm-up command, never a
+    # download in the middle of a benchmark.
+    uv run python -m evals.lme_mab.run --parquet <p> --groups 0 \
+        --arms bm25,dense --retrieval-only
+
+`--arms` takes a comma list of `tesserae`, `bm25`, `dense` and defaults to
+`tesserae`. One predicate — is `tesserae` among them — gates every money layer:
+the cost banner, the consent flag, the typed confirmation and the answering
+backbone. A list without it reads the parquet, ranks `Session.render()` in
+memory and writes the report. The CI guard has **no** carve-out: `CI` set skips
+every arm, because a benchmark that runs in CI under one set of flags is one
+edit away from running under all of them.
+
+The `OPENAI_API_KEY` check is gated on something narrower — `--embedding-prefer
+openai`, the one value that bills. That flag defaults to the local backend so §6
+can hold ONE embedder still across all three arms, and a gate keyed to the arm
+rather than to the embedder demanded a credential the default run never touches,
+refusing exactly the self-consistent local comparison §6 exists to print.
+
 Ingest lands a group's dialogue in a scratch project OUTSIDE this repo and
 compiles there. `guard_work_dir` refuses anything else, using the sentence
 `evals/growth/run.py` already uses: `refusing to compile inside the repo — that
@@ -109,6 +138,78 @@ ten sessions and ten turns are different amounts of evidence, and picking the
 smaller unit would move the score for a reason that is not the memory
 architecture. The full argument is in `adapter.py`'s module docstring.
 
+## §6, the retrieval comparison — ours, not the paper's
+
+The report's §6 puts Tesserae, BM25 and Dense in one table on **recall@K and MRR
+of the gold session**. Dropping answer accuracy for retrieval accuracy drops the
+LLM judge, which is the one control this machine cannot meet at all, so the
+three rows can be measured here honestly. What it does not do is make them
+quotable next to anybody's published LongMemEval numbers, and the report says so
+in a paragraph printed **above** the table rather than below it — a screenshot of
+a table has to carry its own caveat. That string is
+`retrieval.NOT_COMPARABLE`; every consumer imports it and nobody restates it.
+
+What is held still across the three rows:
+
+| held still | value |
+|---|---|
+| corpus | one list of `Session.render()` documents — the exact bytes a Tesserae run stages |
+| budget | K = 10 for every arm |
+| embedder | the repo's own local `model2vec:minishlab/potion-base-8M`, asked for **by name**, by every arm |
+| gold | one `align_gold` result per group, shared by all three arms |
+
+`prefer="model2vec"` and never `"auto"`: `auto` degrades to a hash-bucket stub
+on a `UserWarning` nobody sees in a benchmark run, and the stub produces
+plausible-looking numbers that measure a hash function. The dense arm checks the
+resolved backend's `name` on every use and refuses otherwise.
+
+**The embedder row is enforced, not asserted.** `--embedding-prefer` used to
+default to `openai`, so the Tesserae arm resolved `text-embedding-3-small` while
+the dense arm resolved model2vec, and the table printed two embedders directly
+under a sentence claiming one — a sentence whose stated reason for not being
+quotable was that the embedder in the table *is not* `text-embedding-3-small`,
+which the same table then printed. The flag now defaults to the local embedder,
+and `retrieval.embedder_refusal` withholds §6 entirely — naming both arms and
+what each resolved — when the rows do not share it. A caveat that is true
+because the code enforces it beats a caveat that is true because it was
+reworded.
+
+An arm that refuses is not the end of the run. The dense arm's model may not be
+in this machine's cache; BM25 has by then scored every question, and those
+numbers are kept. §6 names the missing arm **above** its table, for the same
+reason the caveat goes there: a crop showing two rows where three arms were
+asked for reads as a comparison that ran.
+
+Neither baseline returns a document its lane scored at or below zero — a BM25
+zero is no shared term, a non-positive cosine is no similarity — so an arm that
+matched nothing comes back empty rather than filling K on tie-break order. The
+shortfall is recorded and the metric never pads it.
+
+Tesserae's row says **lower bound** in its own method cell, not only in the
+footnote under the table — the cell is the part that travels with the number
+into a screenshot or a paste, and the footnote is the part that gets cropped
+off. It is a lower bound twice over: a retrieved node carries one
+`source_path`, and `canonicalization.merge_node_group` keeps the canonical
+node's when it collapses a concept extracted from many sessions, so some gold
+sessions are unreachable through provenance however well the memory retrieved;
+and K hits de-duplicate to fewer than K documents when several nodes come from
+one session. Topping that list back up to ten distinct sessions would hand this
+arm a bigger budget than the baselines got, so it is left short and the footnote
+says why.
+
+Which is why the §6 footnote counts questions that returned fewer than K
+**distinct documents** and does not call them shortfalls. That count is not
+`MabMemory.shortfalls`: the arm's own record counts a *search* that matched
+fewer than K nodes, while §6 counts documents after de-duplication, and for
+Tesserae that fires on nearly every question with nothing wrong. A lane that
+matched nothing lands in the same count, so it is read beside §5 and never on
+its own.
+
+`--k` is checked before anything is read. `K < 1` is refused by name —
+`min(|G|, 0)` is a division by zero and `[:-1]` quietly drops the last document
+off every ranking and prints a negative rate — and the refusal arrives as a
+`SKIP` on the flag rather than as a traceback after the 20MB parquet load.
+
 ### What the parquet actually holds — measured, and not what was assumed
 
 The dialogue is in the file **twice**, and the two copies disagree:
@@ -118,13 +219,51 @@ The dialogue is in the file **twice**, and the two copies disagree:
 | `context` | `repr` of a flat list alternating `'Chat Time: 2022/11/17 (Thu) 12:04'` with a list of turn dicts | **yes** |
 | `metadata.haystack_sessions` | already parsed: per question → sessions → `{role, content, has_answer}` | **no** |
 
-Flattened, `haystack_sessions` holds exactly as many sessions as `context` has
-`Chat Time:` markers — 111 / 107 / 116 / 112 / 113 for groups 0-4, 559 in total
-— and its turn text is 96.7% of the context's characters, the rest being the
-`repr` scaffolding and the date headers. So they agree on the dialogue and
-disagree only about dates, and the adapter splits on `context`: there is no
-`haystack_dates` field anywhere in this parquet, and `temporal-reasoning` is one
-of the question types being scored.
+The two views agree on the dialogue — the haystack's turn text is 96.7% of the
+context's characters, the rest being the `repr` scaffolding and the date headers
+— and the adapter splits on `context`, because there is no `haystack_dates`
+field anywhere in this parquet and `temporal-reasoning` is one of the question
+types being scored.
+
+#### Correction: they do not align positionally, and this file used to say they did
+
+An earlier version of this section said the flattened `haystack_sessions` holds
+exactly as many sessions as `context` has `Chat Time:` markers, "111 / 107 / 116
+/ 112 / 113 for groups 0-4". Both halves of that are wrong, measured through
+`adapter.split_sessions` and `retrieval.session_signature` on the real parquet:
+
+| group | `split_sessions(context)` | flattened haystack | dup. signatures | haystack matched | gold sessions | gold matched | questions with ≥1 gold |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 111 | 111 | 0 | 111 | 105 | **105** | 60/60 |
+| 1 | 107 | 107 | 0 | 107 | 105 | **105** | 59/60 |
+| 2 | 116 | 116 | 0 | 116 | 109 | **109** | 58/60 |
+| 3 | **111** | **112** | 0 | 112 | 102 | **102** | 57/60 |
+| 4 | **110** | **113** | 0 | 112 | 93 | **93** | 56/60 |
+
+1. **The counts disagree for groups 3 and 4.** `haystack_sessions` is stored per
+   *question* — 1-6 sessions each — and a session that answers two questions is
+   listed twice, so flattening counts occurrences and not sessions.
+2. **The order disagrees for every group, including the three where the counts
+   match.** `flatten(haystack)[0]` and `split_sessions(context)[0]` are
+   different conversations in group 0: a Delta SkyMiles redemption against a
+   résumé rewrite. Any offset or cumulative-index bridge (`sessions[off + s]`)
+   therefore mis-attributes gold in **every** group, silently, while printing a
+   number that looks right.
+
+So the bridge is the turn text itself. `retrieval.session_signature` is
+`sha1("|".join(whitespace-normalised turn contents))`, and matching on it
+resolves **514 of 514** gold sessions across all five groups with **zero**
+duplicate signatures. Exactly one non-gold haystack occurrence, in group 4,
+matches nothing; it is counted as `n_unmatched`, never guessed at. An unmatched
+occurrence that is *gold* refuses instead of being counted, because that one
+moves the answer key: a question with two golds, one of them unfindable, would
+print recall 1.000 where the truth is 0.500, and a question whose only gold went
+missing would fall into `n_no_gold` and leave the mean — dropping exactly the
+question the arms were most likely to have missed. On the measured data the
+refusal never fires. Ten of the
+300 questions carry no gold session at all (0/1/2/3/4 per group) and are
+excluded from recall and MRR rather than scored zero — you cannot score
+retrieval of a gold that does not exist.
 
 `metadata` also carries `question_types` — `multi-session`,
 `knowledge-update`, `temporal-reasoning`, `single-session-user`,

@@ -53,13 +53,20 @@ class MabGroup:
       date at all**, and ``has_answer`` marks the gold evidence turn, which no
       retrieval path may read.
 
-    Flattened, ``haystack_sessions`` holds exactly as many sessions as
-    ``context`` has ``Chat Time:`` markers (111/107/116/112/113 for groups 0-4),
-    and its turn text is 96.7% of the context's characters — the remainder is
-    the ``repr`` scaffolding and the date headers. So they agree on the
-    dialogue and disagree only about dates, which is why
-    :func:`evals.lme_mab.adapter.split_sessions` prefers ``context``: the
-    benchmark's ``temporal-reasoning`` stratum is unanswerable without them.
+    The two views agree on the dialogue — the haystack's turn text is 96.7% of
+    the context's characters, the remainder being the ``repr`` scaffolding and
+    the date headers — and disagree about everything else. Measured through
+    :func:`evals.lme_mab.adapter.split_sessions`, ``context`` yields
+    111/107/116/**111**/**110** sessions for groups 0-4 against the flattened
+    haystack's 111/107/116/**112**/**113**: a question's session slices overlap
+    and repeat, so the flattened count is not a session count. Nor do the two
+    agree on ORDER where they agree on count. **Never bridge them by position**
+    — :func:`evals.lme_mab.retrieval.align_gold` matches on content signature,
+    and the README's §"What the parquet actually holds" carries the full table.
+
+    ``split_sessions`` prefers ``context`` because it is the only view with
+    dates, and the benchmark's ``temporal-reasoning`` stratum is unanswerable
+    without them.
     """
 
     index: int
