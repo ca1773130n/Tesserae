@@ -62,7 +62,7 @@ below before choosing; do not improvise a new rendering into one file.
 | **tick** (engine cycle) | `Tick` | keep `tick` | keep `tick` | ティック | 틱 | тик | keep `tick` |
 | **warm / warming** (a cache) | vorwärmen | precalentar | préchauffer | ウォーミング | 예열 | прогревание | 预热 |
 | **cold** (a cache) | kalt | frío | froid | 冷たい | 차가운 | холодный | 冷 |
-| **brief** (the artifact) | *see note* | *see note* | brève | ブリーフ | 브리프 | краткая справка | 简报 |
+| **brief** (the artifact) | `Briefing` | *see note* | brève | ブリーフ | 브리프 | краткая справка | 简报 |
 | **digest** (the artifact) | `Digest` | keep `digest` | keep `digest` | ダイジェスト | 다이제스트 | keep `digest` | keep `digest` |
 | **prompt** | `Prompt` | keep `prompt` | keep `prompt` | プロンプト | keep `prompt` | keep `prompt` | keep `prompt` |
 | **stood down** (yielded) | zurückgestellt | *see note* | abandonné | 撤退した | 포기 | *see note* | 让路 |
@@ -80,36 +80,41 @@ below before choosing; do not improvise a new rendering into one file.
 
 ## Banned renderings, and why
 
-Each of these shipped. Several are still in the tree, so the file and line is
-recorded and the next pass can fix it rather than rediscover it.
+Each of these shipped. An entry marked **Still present** is still in the tree,
+with the file and line recorded so the next pass can fix it rather than
+rediscover it; one marked *Cleared* is kept as a record of what was already
+wrong once, because these are the terms that get mistranslated twice.
+
+Counts here are claims with a date on them, and they go stale — every *Cleared*
+note below was once a **Still present** one. Re-measure before trusting a count.
 
 | term | lang | never | because |
 | --- | --- | --- | --- |
 | tick | zh | 检查周期 | That is what `--consolidate-check` means. Using it for `tick` made a cost table contradict itself. Fixed: zero occurrences remain; `tick` is kept in English 27×. |
 | cold | ko | 추운 | Cold *weather*. A cache is 차가운. |
 | warm | ko | 데워 *as a noun* | 데워 is a connective form and cannot take a particle. The noun is 예열; the adverbial "미리 데워 두는" (`agent-memory.ko.md:53`) is correct and may stay. |
-| digest | fr | digestion | Food. **Still present**: `engine-consolidation.fr.md:50` and `:72` say "valide en termes de digestion" for *digest-valid*. French keeps `digest` 23× elsewhere. |
-| prompt | es | indicativo / indicación | `indicativo` is a radio call sign. **Still present**: `tuning.es.md:121` says "firmas de indicación" — the only one of 35 occurrences that is not the English word. |
+| digest | fr | digestion | Food. Cleared — 0 occurrences as of 2026-08-16; French keeps `digest`. |
+| prompt | es | indicativo / indicación | `indicativo` is a radio call sign. Cleared — 0 occurrences of either as of 2026-08-16; Spanish keeps `prompt`. |
 | stood down | ko | 대기 | "Standing by" — the opposite. The tick *gives up* its slot. |
 | stood down | zh | 待命 | "Awaiting orders" — the opposite. `engine-consolidation.zh.md:79` now has 为管道让路, which is right. |
 | breadth-first | ru | широкий-первый | A calque that means nothing. `обход в ширину` is the term. |
 | lossless | ru | безвредна | "Harmless". |
 | refill | ru | переполнит | "Overflow" — the opposite of refilling a cache that was emptied. |
-| serve | zh | 服用 | To take medicine. |
+| serve | zh | 服用 | To take medicine. Cleared 2026-08-16 — `tuning.zh.md:225` now reads 提供服务, the corpus's own rendering. |
 | serve | de | servieren | Food service. |
 | retired | ru | вышедшие на пенсию | On a pension. |
 | retired | ja | 引き出された | Withdrawn (as from a bank). |
-| retired | ko | 은퇴한 | Retirement from a job. **Still present** at `engine-consolidation.ko.md:60`; 폐기된 is used correctly 10× elsewhere, including `doctor.ko.md:47` for the same English phrase. |
-| sidecar | ru | боковой автомобиль | A motorcycle sidecar. |
+| retired | ko | 은퇴한 | Retirement from a job. Cleared — 0 occurrences as of 2026-08-16; 폐기된 is the rendering in use. |
+| sidecar | ru | боковой автомобиль | A motorcycle sidecar. Cleared 2026-08-16 — the two at `engine-consolidation.ru.md:38` now read `сайдкар`, which the Russian mirrors already used 34×. |
 | row | ru | ряд | A row of physical objects. `строка` is the table/DB row and outnumbers it 78 to 9 in these files. |
-| graph | de | Diagramm | A chart. **Still present** 12× — `engine-consolidation.de.md:20, 24, 44, 60, 72` among them. `Graph` is used 444× and is correct. |
-| brief | de | Brief | A letter in the post. **Still present** 13× — `engine-consolidation.de.md:52, 60, 69, 81, 101`. German has no settled rendering yet; `Briefing` appears once (`release-notes/v0.30.0.de.md:76`) and is the only candidate the corpus offers. Pick one and apply it everywhere. |
+| graph | de | Diagramm | A chart. Cleared — 0 occurrences in the mirrors as of 2026-08-16. `Graph` is correct and is what the corpus uses. |
+| brief | de | Brief | A letter in the post. Cleared — 0 occurrences in the mirrors as of 2026-08-16. **`Briefing` (neuter: *das* Briefing, plural *Briefings*) is now the house rendering**, settled by the corpus rather than chosen: it is what `engine-consolidation.de.md` uses throughout, and the last two holdouts at `integrations/mcp.de.md:81` were brought into line. |
 
 ---
 
 ## Notes on the unsettled entries
 
-**brief — de.** No house rendering exists. See the banned table above.
+**brief — de.** Settled 2026-08-16: **`Briefing`**, neuter, plural `Briefings`. Watch the agreement — *ihr Briefing*, not *ihren Brief*, and *eines* rather than *einer* where the pronoun follows.
 
 **brief — es.** `engine-consolidation.es.md` uses `Breve` as a bare noun in the
 section heading and cost table, and `resúmenes` in the body. But `resumen` is

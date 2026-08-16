@@ -222,7 +222,7 @@ tesserae compile --all --name alpha --name beta
 
 ## 恢复降级的语料库
 
-当文档提取失败时，它由确定性基线服用和
+当文档提取失败时，它由确定性基线提供服务和
 在 `.tesserae/manifest.json` 中**标记**。没有标记，它无法
 与干净提取区分，所以 `--changed-only` 会永远跳过它，
 降级将是永久的，直到文件自身内容改变。
