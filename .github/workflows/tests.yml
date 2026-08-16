@@ -27,7 +27,22 @@ name: tests
 on:
   push:
     branches: [main]
+    # Docs, translations and editor config cannot break the suite. A PR that
+    # touches only these ran 3 matrix legs of ~4000 tests for nothing, and on
+    # a docs-heavy day that was most of the day's CI. Code paths are unchanged.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.editorconfig'
+      - '.gitignore'
+      - 'LICENSE'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.editorconfig'
+      - '.gitignore'
+      - 'LICENSE'
   workflow_dispatch:
 
 permissions:
@@ -43,6 +58,8 @@ jobs:
   pytest:
     name: pytest (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    # A hung job otherwise burns the full 6h default. The suite is ~5 minutes.
+    timeout-minutes: 20
     env:
       # Forbid uv from downloading its own CPython. It must use the interpreter
       # actions/setup-python put on PATH, because that is the one with a working
@@ -60,7 +77,17 @@ jobs:
         # ">=3.10"` plus the 3.10/3.11/3.12 classifiers in pyproject.toml. If a
         # version is added there, add it here — a support claim nothing tests is
         # the same shape of problem this workflow was written to fix.
-        python-version: ["3.10", "3.11", "3.12"]
+        # A PR runs ONE leg; main and manual runs get all three.
+        #
+        # The matrix exists because this project claims 3.10-3.12 support, and
+        # a version-specific break has shipped here before (PR #160 passed
+        # locally and failed on 3.10/3.11 over BLAS reassociation). But paying
+        # 3x on every PR to catch that is the wrong trade: the break is rare,
+        # and main still runs the full matrix before anything is released, so
+        # it is caught within one merge rather than never.
+        #
+        # 3.11 is the PR leg because it is what the project develops against.
+        python-version: ${{ github.event_name == 'pull_request' && fromJSON('["3.11"]') || fromJSON('["3.10","3.11","3.12"]') }}
 
     steps:
       - name: Checkout
