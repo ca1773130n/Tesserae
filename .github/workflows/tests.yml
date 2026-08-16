@@ -77,7 +77,11 @@ jobs:
         # ">=3.10"` plus the 3.10/3.11/3.12 classifiers in pyproject.toml. If a
         # version is added there, add it here — a support claim nothing tests is
         # the same shape of problem this workflow was written to fix.
-        # A PR runs ONE leg; main and manual runs get all three.
+        # All three legs ALWAYS exist, because branch protection requires
+        # `pytest (py3.10|3.11|3.12)` by name — a leg that stops being produced
+        # is a check that never reports and a PR that never merges. What
+        # changes on a PR is what the legs DO: only 3.11 runs the suite, and
+        # the other two land as green no-ops in ~20s instead of ~5min.
         #
         # The matrix exists because this project claims 3.10-3.12 support, and
         # a version-specific break has shipped here before (PR #160 passed
@@ -87,19 +91,21 @@ jobs:
         # it is caught within one merge rather than never.
         #
         # 3.11 is the PR leg because it is what the project develops against.
-        python-version: ${{ github.event_name == 'pull_request' && fromJSON('["3.11"]') || fromJSON('["3.10","3.11","3.12"]') }}
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
       - name: Set up Python ${{ matrix.python-version }}
+        if: ${{ matrix.python-version == '3.11' || github.event_name != 'pull_request' }}
         id: setup-python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
+        if: ${{ matrix.python-version == '3.11' || github.event_name != 'pull_request' }}
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -107,6 +113,7 @@ jobs:
           cache-dependency-glob: uv.lock
 
       - name: Sync the locked environment
+        if: ${{ matrix.python-version == '3.11' || github.event_name != 'pull_request' }}
         # `--locked` fails if uv.lock is stale rather than silently updating it,
         # so a lockfile that has drifted from pyproject.toml is a red build
         # instead of a surprise months later. (main carried exactly that drift
@@ -130,6 +137,7 @@ jobs:
           --extra ingest-url
 
       - name: Run the suite
+        if: ${{ matrix.python-version == '3.11' || github.event_name != 'pull_request' }}
         # Collection is scoped to tests/ by [tool.pytest.ini_options] in
         # pyproject.toml. Without it pytest walks into evals/, which holds
         # gitignored upstream clones (cognee, MegaMem) carrying their own
@@ -145,6 +153,7 @@ jobs:
         run: uv run --no-sync pytest -q -rs
 
       - name: Report the environment on failure
+        if: ${{ matrix.python-version == '3.11' || github.event_name != 'pull_request' }}
         # A failure that only reproduces on one matrix leg is nearly always an
         # environment difference. Print the resolved set once, here, rather than
         # asking the next person to re-run with --verbose.
