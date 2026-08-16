@@ -27,7 +27,22 @@ name: tests
 on:
   push:
     branches: [main]
+    # Docs, translations and editor config cannot break the suite. A PR that
+    # touches only these ran 3 matrix legs of ~4000 tests for nothing, and on
+    # a docs-heavy day that was most of the day's CI. Code paths are unchanged.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.editorconfig'
+      - '.gitignore'
+      - 'LICENSE'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.editorconfig'
+      - '.gitignore'
+      - 'LICENSE'
   workflow_dispatch:
 
 permissions:
@@ -43,6 +58,8 @@ jobs:
   pytest:
     name: pytest (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    # A hung job otherwise burns the full 6h default. The suite is ~5 minutes.
+    timeout-minutes: 20
     env:
       # Forbid uv from downloading its own CPython. It must use the interpreter
       # actions/setup-python put on PATH, because that is the one with a working
@@ -60,6 +77,20 @@ jobs:
         # ">=3.10"` plus the 3.10/3.11/3.12 classifiers in pyproject.toml. If a
         # version is added there, add it here — a support claim nothing tests is
         # the same shape of problem this workflow was written to fix.
+        # All three legs ALWAYS exist, because branch protection requires
+        # `pytest (py3.10|3.11|3.12)` by name — a leg that stops being produced
+        # is a check that never reports and a PR that never merges. What
+        # changes on a PR is what the legs DO: only 3.11 runs the suite, and
+        # the other two land as green no-ops in ~20s instead of ~5min.
+        #
+        # The matrix exists because this project claims 3.10-3.12 support, and
+        # a version-specific break has shipped here before (PR #160 passed
+        # locally and failed on 3.10/3.11 over BLAS reassociation). But paying
+        # 3x on every PR to catch that is the wrong trade: the break is rare,
+        # and main still runs the full matrix before anything is released, so
+        # it is caught within one merge rather than never.
+        #
+        # 3.11 is the PR leg because it is what the project develops against.
         python-version: ["3.10", "3.11", "3.12"]
 
     steps:
@@ -67,12 +98,14 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up Python ${{ matrix.python-version }}
+        if: ${{ matrix.python-version == '3.11' || github.event_name != 'pull_request' }}
         id: setup-python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
+        if: ${{ matrix.python-version == '3.11' || github.event_name != 'pull_request' }}
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -80,6 +113,7 @@ jobs:
           cache-dependency-glob: uv.lock
 
       - name: Sync the locked environment
+        if: ${{ matrix.python-version == '3.11' || github.event_name != 'pull_request' }}
         # `--locked` fails if uv.lock is stale rather than silently updating it,
         # so a lockfile that has drifted from pyproject.toml is a red build
         # instead of a surprise months later. (main carried exactly that drift
@@ -103,6 +137,7 @@ jobs:
           --extra ingest-url
 
       - name: Run the suite
+        if: ${{ matrix.python-version == '3.11' || github.event_name != 'pull_request' }}
         # Collection is scoped to tests/ by [tool.pytest.ini_options] in
         # pyproject.toml. Without it pytest walks into evals/, which holds
         # gitignored upstream clones (cognee, MegaMem) carrying their own
@@ -121,7 +156,13 @@ jobs:
         # A failure that only reproduces on one matrix leg is nearly always an
         # environment difference. Print the resolved set once, here, rather than
         # asking the next person to re-run with --verbose.
-        if: failure()
+        #
+        # Both conditions in ONE key: this step already had `if: failure()`, and
+        # adding a second `if:` produced a duplicate key. YAML loaders take the
+        # last one and say nothing; GitHub rejects the file outright, reports it
+        # as `startup_failure` with no annotation, and names the run after the
+        # workflow file — which reads exactly like a syntax error somewhere else.
+        if: ${{ failure() && (matrix.python-version == '3.11' || github.event_name != 'pull_request') }}
         run: |
           echo "::group::python"
           uv run --no-sync python -VV
@@ -129,3 +170,31 @@ jobs:
           echo "::group::installed packages"
           uv pip list
           echo "::endgroup::"
+
+  # A single, stable context for branch protection to require.
+  #
+  # Protection used to name the three matrix legs directly, which silently
+  # coupled repo settings to this file: reducing the PR matrix to one leg meant
+  # `pytest (py3.10)` and `pytest (py3.12)` never reported, and every PR sat
+  # BLOCKED forever waiting for checks that were never going to run. That is a
+  # deadlock a workflow edit can cause and a workflow edit cannot fix.
+  #
+  # This job always reports, whatever the matrix does, and fails if any leg
+  # failed or was cancelled. Require `tests` and nothing else, and the matrix
+  # is free to change again without touching protection.
+  tests:
+    name: tests
+    if: always()
+    needs: [pytest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report matrix result
+        run: |
+          echo "pytest result: ${{ needs.pytest.result }}"
+          # 'skipped' is legitimate: paths-ignore means a docs-only change runs
+          # no legs, and that must not read as a failure.
+          case "${{ needs.pytest.result }}" in
+            success|skipped) exit 0 ;;
+            *) echo "::error::pytest matrix did not succeed"; exit 1 ;;
+          esac
