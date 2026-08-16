@@ -339,6 +339,88 @@ class Model2VecBackend:
         return self._encode(list(texts))
 
 
+class OpenAIEmbeddingBackend:
+    """Hosted embeddings via the OpenAI embeddings API — EXPLICIT USE ONLY.
+
+    Exists so a benchmark can hold the embedding substrate constant with a
+    published protocol. LongMemEval-MAB results (and the baselines Tesserae
+    would be compared against) fix ``text-embedding-3-small`` for every system,
+    so retrieval differences are attributable to the memory architecture rather
+    than to the embedder. Running Tesserae's default model2vec against those
+    numbers would compare two things at once.
+
+    **Never on the ``auto`` path, deliberately.** Every other backend in this
+    module is free and local; this one bills per call and needs the network. A
+    resolver that could reach it by default would turn an ordinary
+    ``search_nodes`` into a metered request nobody asked for. It is reachable
+    only as ``prefer="openai"``, and — following this module's stated contract
+    that an explicit preference which fails to construct is re-raised — it
+    raises rather than degrading when ``OPENAI_API_KEY`` is absent.
+
+    Vectors are cached by :mod:`tesserae.retrieval.vector_cache` on
+    ``(backend_name, backend_dim, sha256(text))``, and ``name`` carries the
+    model, so switching models re-embeds instead of serving another model's
+    vectors.
+    """
+
+    #: Published dimensionality, used only to avoid a probe call when the API
+    #: has not been reached yet. The real value from the first response wins.
+    _KNOWN_DIMS = {
+        "text-embedding-3-small": 1536,
+        "text-embedding-3-large": 3072,
+    }
+
+    #: The API accepts many inputs per request; batch to keep any single
+    #: request well inside its token ceiling on long corpus texts.
+    _BATCH = 96
+
+    def __init__(self, model: str = "text-embedding-3-small") -> None:
+        import os
+
+        key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+        if not key:
+            raise RuntimeError(
+                "OpenAIEmbeddingBackend requires OPENAI_API_KEY. It is never "
+                "reached on the 'auto' path, so this means it was asked for "
+                "explicitly (prefer='openai') without a key configured."
+            )
+        self._key = key
+        self._model = model
+        self.name = f"openai:{model}"
+        self.dim = int(self._KNOWN_DIMS.get(model, 0))
+
+    def _post(self, batch: List[str]) -> List[List[float]]:
+        import json as _json
+        import urllib.request
+
+        req = urllib.request.Request(
+            "https://api.openai.com/v1/embeddings",
+            data=_json.dumps({"model": self._model, "input": batch}).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self._key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            payload = _json.load(resp)
+        # Order is not promised by the field order alone — the API returns an
+        # explicit index per item, so sort on it rather than trusting arrival
+        # order. A silently permuted batch would attach every vector to the
+        # wrong text and be invisible downstream.
+        items = sorted(payload["data"], key=lambda d: int(d["index"]))
+        return [[float(x) for x in d["embedding"]] for d in items]
+
+    def embed(self, texts: Sequence[str]) -> List[List[float]]:
+        out: List[List[float]] = []
+        pending = list(texts)
+        for i in range(0, len(pending), self._BATCH):
+            out.extend(self._post(pending[i : i + self._BATCH]))
+        if out and not self.dim:
+            self.dim = len(out[0])
+        return out
+
+
 # Module-scope cache so repeated MCP `search_nodes` calls don't reload a
 # multi-hundred-MB ``SentenceTransformer`` model every query. Keyed by the
 # ``prefer`` argument so swapping resolver preferences mid-process still
@@ -359,7 +441,13 @@ def active_embedding_backend(prefer: str = "auto") -> EmbeddingBackend:
     """Resolve the best embedding backend that is actually importable.
 
     ``prefer`` may be ``auto`` (default), ``model2vec``/``m2v``,
-    ``sentence-transformers``/``st`` or ``hash``.
+    ``sentence-transformers``/``st``, ``openai`` or ``hash``.
+
+    ``openai`` is reachable ONLY by name. It is the one backend that bills per
+    call and needs the network, so the ``auto`` path must never be able to
+    select it — an ordinary read would otherwise become a metered request. It
+    exists so a benchmark can hold the embedding substrate constant with a
+    published protocol that fixes ``text-embedding-3-small``.
 
     Resolution order on the ``auto`` path is **model2vec → sentence-transformers
     → hash stub**. model2vec is tried first: it is lighter (~8 MB static model),
@@ -396,6 +484,12 @@ def active_embedding_backend(prefer: str = "auto") -> EmbeddingBackend:
         except Exception:  # pragma: no cover - depends on optional dep
             if prefer != "auto":
                 raise
+    # Hosted embeddings: EXPLICIT ONLY, never reachable from "auto". This one
+    # bills per call and needs the network, so it must be asked for by name.
+    if prefer == "openai":
+        backend = OpenAIEmbeddingBackend()
+        _BACKEND_CACHE[prefer] = backend
+        return backend
     if prefer == "hash":
         backend = HashEmbeddingBackend()
         _BACKEND_CACHE[prefer] = backend
