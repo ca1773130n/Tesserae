@@ -80,10 +80,68 @@ models.
 Until both are available, a run here produces an internal number and **not** one
 comparable to the published baselines. Say that plainly if anyone quotes it.
 
-## Not built yet
+## The adapter
 
-The ingest/query adapter. Ingest must land a group's dialogue in a scratch
-project OUTSIDE this repo and compile there — `evals/growth/run.py` already
-enforces that boundary (`refusing to compile inside the repo — that overwrites
-.tesserae/graph.json`) and this must do the same. Query must return exactly
-K=10 evidence items via `hybrid_search`.
+`adapter.py` is the memory system under test; `run.py` drives it.
+
+    # what would it cost? prints the estimate and stops
+    uv run python -m evals.lme_mab.run --parquet <Accurate_Retrieval.parquet>
+
+    # ONE group first — 60 questions, a fifth of the bill. The intended first run.
+    uv run python -m evals.lme_mab.run --parquet <p> --groups 0 \
+        --work ~/.blackhole/Tesserae/lme-mab/work --i-know-this-costs-money --yes
+
+    # write the session documents and stop: no compile, no LLM, no network
+    uv run python -m evals.lme_mab.run --parquet <p> --groups 0 --stage-only
+
+Ingest lands a group's dialogue in a scratch project OUTSIDE this repo and
+compiles there. `guard_work_dir` refuses anything else, using the sentence
+`evals/growth/run.py` already uses: `refusing to compile inside the repo — that
+overwrites .tesserae/graph.json`. It raises where growth calls `sys.exit`, which
+is the only reason a test can execute it at all.
+
+Query returns exactly K=10 evidence items via `hybrid_search`. When the graph
+holds fewer it records a shortfall and returns short. It never pads.
+
+**The retrieval unit is a session, not a turn window.** ~112 documents per
+group rather than ~1,290. K=10 is a fixed control, so the unit size is one too:
+ten sessions and ten turns are different amounts of evidence, and picking the
+smaller unit would move the score for a reason that is not the memory
+architecture. The full argument is in `adapter.py`'s module docstring.
+
+### What the parquet actually holds — measured, and not what was assumed
+
+The dialogue is in the file **twice**, and the two copies disagree:
+
+| view | shape | dates? |
+|---|---|---|
+| `context` | `repr` of a flat list alternating `'Chat Time: 2022/11/17 (Thu) 12:04'` with a list of turn dicts | **yes** |
+| `metadata.haystack_sessions` | already parsed: per question → sessions → `{role, content, has_answer}` | **no** |
+
+Flattened, `haystack_sessions` holds exactly as many sessions as `context` has
+`Chat Time:` markers — 111 / 107 / 116 / 112 / 113 for groups 0-4, 559 in total
+— and its turn text is 96.7% of the context's characters, the rest being the
+`repr` scaffolding and the date headers. So they agree on the dialogue and
+disagree only about dates, and the adapter splits on `context`: there is no
+`haystack_dates` field anywhere in this parquet, and `temporal-reasoning` is one
+of the question types being scored.
+
+`metadata` also carries `question_types` — `multi-session`,
+`knowledge-update`, `temporal-reasoning`, `single-session-user`,
+`single-session-assistant`, `single-session-preference` — which the report uses
+as strata. An aggregate that hides which KIND of question failed says very
+little about a memory system.
+
+`has_answer` marks the gold evidence turn. It is staged into no document and
+read on no retrieval path; a corpus carrying it would let retrieval key on
+"this is the answer" and score the leak.
+
+### The controls are checked, and today they fail
+
+`adapter.protocol_blockers` compares the run's declarations against the four
+fixed values above. `evals/qa/scorer.py::fairness_blockers` does not fit — it
+asks whether two runs *in this repo* declared the same thing, and the question
+here is whether ONE run matches a constant from somebody else's paper, with no
+second report to diff against. Until the two blocked controls are available, §3
+of the report withholds its quotable table and names the control that is
+missing. Today that is the judge, every time.

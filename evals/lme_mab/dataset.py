@@ -27,9 +27,9 @@ model.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Sequence
+from typing import Any, List, Mapping, Sequence
 
 #: The split holding the LongMemEval-derived groups, and the marker in each
 #: record's ``metadata.source`` that identifies them. ``Accurate_Retrieval``
@@ -40,13 +40,42 @@ SOURCE_MARKER = "longmemeval"
 
 @dataclass(frozen=True)
 class MabGroup:
-    """One shared haystack plus the questions asked against it."""
+    """One shared haystack plus the questions asked against it.
+
+    ``context`` and ``haystack_sessions`` are two views of the SAME dialogue and
+    neither is complete on its own — measured on the real parquet, not assumed:
+
+    * ``context`` is the ``repr`` of a flat Python list that alternates
+      ``'Chat Time: 2022/11/17 (Thu) 12:04'`` with a list of turn dicts, so it
+      is the only view carrying **session dates**;
+    * ``metadata.haystack_sessions`` is already parsed — a list per question, of
+      sessions, of ``{role, content, has_answer}`` turns — but carries **no
+      date at all**, and ``has_answer`` marks the gold evidence turn, which no
+      retrieval path may read.
+
+    Flattened, ``haystack_sessions`` holds exactly as many sessions as
+    ``context`` has ``Chat Time:`` markers (111/107/116/112/113 for groups 0-4),
+    and its turn text is 96.7% of the context's characters — the remainder is
+    the ``repr`` scaffolding and the date headers. So they agree on the
+    dialogue and disagree only about dates, which is why
+    :func:`evals.lme_mab.adapter.split_sessions` prefers ``context``: the
+    benchmark's ``temporal-reasoning`` stratum is unanswerable without them.
+    """
 
     index: int
     source: str
     context: str
     questions: Sequence[str]
     answers: Sequence[Sequence[str]]
+    #: ``metadata.haystack_sessions`` verbatim: sessions grouped per question.
+    #: Empty when the parquet did not carry it — the adapter then has only the
+    #: ``context`` view, and says so.
+    haystack_sessions: Sequence[Sequence[Sequence[Mapping[str, Any]]]] = field(default_factory=tuple)
+    #: ``metadata.question_types`` — ``multi-session``, ``knowledge-update``,
+    #: ``temporal-reasoning``, ``single-session-user`` and friends. Carried
+    #: because they are the benchmark's own strata, and an aggregate that hides
+    #: which KIND of question failed says almost nothing about a memory system.
+    question_types: Sequence[str] = field(default_factory=tuple)
 
     @property
     def approx_tokens(self) -> int:
@@ -68,7 +97,8 @@ def load_groups(parquet_path: Path) -> List[MabGroup]:
     rows = pq.read_table(str(parquet_path)).to_pylist()
     groups: List[MabGroup] = []
     for row in rows:
-        source = str((row.get("metadata") or {}).get("source", ""))
+        metadata = row.get("metadata") or {}
+        source = str(metadata.get("source", ""))
         if SOURCE_MARKER not in source.lower():
             continue
         groups.append(
@@ -78,6 +108,11 @@ def load_groups(parquet_path: Path) -> List[MabGroup]:
                 context=row.get("context") or "",
                 questions=list(row.get("questions") or []),
                 answers=[list(a) for a in (row.get("answers") or [])],
+                haystack_sessions=[
+                    [[dict(turn) for turn in session] for session in per_question]
+                    for per_question in (metadata.get("haystack_sessions") or [])
+                ],
+                question_types=[str(t) for t in (metadata.get("question_types") or [])],
             )
         )
     if not groups:
