@@ -27,13 +27,7 @@ name: tests
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
   workflow_dispatch:
 
 permissions:
@@ -49,7 +43,6 @@ jobs:
   pytest:
     name: pytest (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     env:
       # Forbid uv from downloading its own CPython. It must use the interpreter
       # actions/setup-python put on PATH, because that is the one with a working
