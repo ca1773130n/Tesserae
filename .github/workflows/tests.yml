@@ -156,3 +156,31 @@ jobs:
           echo "::group::installed packages"
           uv pip list
           echo "::endgroup::"
+
+  # A single, stable context for branch protection to require.
+  #
+  # Protection used to name the three matrix legs directly, which silently
+  # coupled repo settings to this file: reducing the PR matrix to one leg meant
+  # `pytest (py3.10)` and `pytest (py3.12)` never reported, and every PR sat
+  # BLOCKED forever waiting for checks that were never going to run. That is a
+  # deadlock a workflow edit can cause and a workflow edit cannot fix.
+  #
+  # This job always reports, whatever the matrix does, and fails if any leg
+  # failed or was cancelled. Require `tests` and nothing else, and the matrix
+  # is free to change again without touching protection.
+  tests:
+    name: tests
+    if: always()
+    needs: [pytest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report matrix result
+        run: |
+          echo "pytest result: ${{ needs.pytest.result }}"
+          # 'skipped' is legitimate: paths-ignore means a docs-only change runs
+          # no legs, and that must not read as a failure.
+          case "${{ needs.pytest.result }}" in
+            success|skipped) exit 0 ;;
+            *) echo "::error::pytest matrix did not succeed"; exit 1 ;;
+          esac
