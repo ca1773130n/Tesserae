@@ -90,12 +90,52 @@ def load_graph_with_overlay(work: Path) -> Any:
     return apply_overlay(work, graph)
 
 
+def _raw(item: Any) -> dict:
+    """One node or edge as the plain mapping ``evals/growth`` indexes into.
+
+    ``ResearchNode``/``ResearchEdge`` serialise through ``model_dump``. An
+    earlier version guessed ``to_dict`` and fell back to passing the object
+    through untouched when the attribute was missing — which is exactly what
+    happened, and the mistake surfaced three frames away as
+    ``'ResearchNode' object has no attribute 'get'`` inside growth's
+    ``grounded_sources``. An unknown shape raises here instead.
+    """
+    if isinstance(item, dict):
+        return item
+    dump = getattr(item, "model_dump", None) or getattr(item, "to_dict", None)
+    if dump is None:
+        raise TypeError(
+            f"cannot serialise {type(item).__name__} for evals/growth: it has "
+            "neither model_dump() nor to_dict()"
+        )
+    return dump()
+
+
 def as_dict(graph: Any) -> dict:
     """``evals/growth``'s evaluate() takes the raw dict shape."""
     return {
-        "nodes": [n.to_dict() if hasattr(n, "to_dict") else n for n in graph.nodes],
-        "edges": [e.to_dict() if hasattr(e, "to_dict") else e for e in graph.edges],
+        "nodes": [_raw(n) for n in graph.nodes],
+        "edges": [_raw(e) for e in graph.edges],
     }
+
+
+def staged_corpus() -> tuple[List[Path], Set[Path], Set[str]]:
+    """The whole corpus, in the three shapes `evaluate()` wants.
+
+    ``corpus_docs()`` yields ``(iso_date, path, arxiv_id, kind)`` and the id is
+    the THIRD field. Reading the first one lands on the date, no ``requires``
+    entry matches something shaped like ``2016-07-09``, ``have_sources`` is
+    False for every question, and the Tesserae column reports ``0/15`` while
+    ``connected`` sits at 12 — which reads as the architecture failing rather
+    than as an unpacking mistake. That is what this harness printed on its
+    first real run, so the unpacking lives here where a test can hold it.
+
+    Nothing is sliced: this experiment freezes the corpus, so every document is
+    staged at every cycle by definition.
+    """
+    entries = corpus_docs()
+    docs = [path for _, path, _, _ in entries]
+    return docs, set(docs), {arxiv for _, _, arxiv, _ in entries}
 
 
 # --------------------------------------------------------------------------
@@ -160,6 +200,25 @@ def measure_graph(
 # the baselines, which cannot move
 
 
+def _readable_docs(docs: Sequence[Path]) -> List[Path]:
+    """Corpus entries as the individual files the baselines can retrieve.
+
+    ``corpus_docs()`` yields one path per document *unit*, and for a paper that
+    unit is a directory holding ``abstract.md`` and ``paper.md``. That is right
+    for the graph arm — growth's grounding matches on path parts — and it is
+    why the first run of this harness died on ``IsADirectoryError`` here.
+
+    Directories expand to the same ``.md`` files Tesserae compiled, so both
+    arms see one identical corpus. Concatenating each directory into a single
+    blob would be the other way to make this run, and it would quietly change
+    the retrieval unit between the arms while the shared K stayed the same.
+    """
+    out: List[Path] = []
+    for p in docs:
+        out.extend(sorted(p.rglob("*.md")) if p.is_dir() else [p])
+    return out
+
+
 def measure_baseline(
     arm: str, docs: Sequence[Path], questions: List[dict], *, cycle: int
 ) -> Point:
@@ -176,7 +235,8 @@ def measure_baseline(
     """
     from tesserae.retrieval.hybrid import _bm25_scores, _tokenize
 
-    texts = [p.read_text(encoding="utf-8", errors="ignore") for p in docs]
+    files = _readable_docs(docs)
+    texts = [p.read_text(encoding="utf-8", errors="ignore") for p in files]
     corpus_tokens = [_tokenize(t) for t in texts]
     if arm == "Dense":
         from tesserae.retrieval.hybrid import active_embedding_backend
@@ -214,7 +274,7 @@ def measure_baseline(
         connected=sum(1 for q in live if covered(q)),
         controls_fired=sum(1 for q in controls if covered(q)),
         n_questions=len(live),
-        nodes=len(docs),
+        nodes=len(files),
         edges=0,
         llm_calls=0,
         notes=["no mechanism to improve without new documents"],
@@ -327,9 +387,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     questions = load_questions()
-    docs = [path for _, path, _, _ in corpus_docs()]
-    staged = set(docs)
-    staged_arxiv = {ref for ref, _, _, _ in corpus_docs()}
+    docs, staged, staged_arxiv = staged_corpus()
 
     arms = [a.strip().lower() for a in args.arms.split(",") if a.strip()]
     points: List[Point] = []
