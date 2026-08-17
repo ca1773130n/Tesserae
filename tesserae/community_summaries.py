@@ -354,6 +354,38 @@ def _cites_child_communities(
     return any(child_cid in prose for child_cid in child_cids)
 
 
+def _forget_rejected(json_client: object, *, system: str, user: str) -> None:
+    """Drop the cached answer this module just refused, so a retry re-asks.
+
+    Without this the rejection is permanent rather than transient. The cache is
+    addressed by the assembled prompt, and the prompt for a given community is
+    a pure function of its members — so a rejected answer is served back to
+    every later attempt at the same community, at no LLM cost and with the same
+    verdict, forever. The citation lint makes that population predictable
+    rather than rare: it can only reject a community that HAS children, which
+    is exactly the routers a charter's upper tiers are made of.
+
+    Mirrors ``ResearchGraphExtractor``'s drop (``llm_extractor.py``): duck-typed
+    because a client with no cache (Anthropic SDK, test fakes) has no such
+    method, and swallowing because a failed drop must not replace the caller's
+    own ``None`` return with an unrelated exception. Worst case the rejected
+    answer survives and the community re-fails identically — the behaviour this
+    function exists to end, not a new one.
+    """
+    forget = getattr(json_client, "forget_cached_answer", None)
+    if not callable(forget):
+        return
+    try:
+        forget(
+            "community-summary-v1",
+            schema_name="community_summary",
+            system=system,
+            user=user,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("community_summaries: cache drop failed: %s", exc)
+
+
 def summarize_community(
     prompt_members: Sequence[ResearchNode],
     *,
@@ -404,14 +436,18 @@ def summarize_community(
         if json_client is None:
             logger.debug("community_summaries: no LLM; skipping %s", cid)
             return None
+        # Hoisted so the rejection paths below can hand `forget_cached_answer`
+        # the SAME pair this call sent. The cache entry is addressed by the
+        # assembled prompt, so a drop that rebuilt either string differently
+        # would unlink nothing and report success.
+        system_prompt = (
+            _SYSTEM_PROMPT + _CITATION_SYSTEM_SUFFIX if child_cids else _SYSTEM_PROMPT
+        )
+        user_prompt = _format_user_prompt(prompt_members, child_cids)
         try:
             resp = json_client.complete_json(  # type: ignore[attr-defined]
-                system=(
-                    _SYSTEM_PROMPT + _CITATION_SYSTEM_SUFFIX
-                    if child_cids
-                    else _SYSTEM_PROMPT
-                ),
-                user=_format_user_prompt(prompt_members, child_cids),
+                system=system_prompt,
+                user=user_prompt,
                 schema_name="community_summary",
                 # Namespace label only. It used to append the prompt-member
                 # COUNT, which read like content-keying and was not: every
@@ -427,6 +463,7 @@ def summarize_community(
         summary = _validate_summary(resp)
         if summary is None:
             logger.warning("community_summaries: invalid LLM response for %s", cid)
+            _forget_rejected(json_client, system=system_prompt, user=user_prompt)
             return None
         if not _cites_child_communities(summary, child_cids):
             logger.warning(
@@ -434,6 +471,7 @@ def summarize_community(
                 "community ids; falling back to structural (not cached)",
                 cid,
             )
+            _forget_rejected(json_client, system=system_prompt, user=user_prompt)
             return None
         _write_cache(
             cache_path,
