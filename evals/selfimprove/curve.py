@@ -52,7 +52,6 @@ from typing import Any, Dict, List, Optional, Sequence, Set
 from ..growth.run import (
     corpus_docs,
     evaluate,
-    load_questions,
 )
 from ..lme_mab.adapter import RefusedToCompileInRepo, guard_work_dir
 from ..qa.run_qa_eval import Skip
@@ -62,6 +61,42 @@ from ..qa.run_qa_eval import Skip
 #: budget rather than the memory. Same constant, same reason, as
 #: ``evals/lme_mab``'s ``PROTOCOL_K``.
 K = 10
+
+#: Nodes `hybrid_search` hands PPR as its personalization vector.
+#:
+#: UNSWEPT AND LOAD-BEARING. The whole graph arm hangs on it, and it has had
+#: none of the treatment `MAX_HOPS` got in `evals/growth/sweep_hops.py`. It is
+#: also the one constant that must NOT be chosen after seeing which way the
+#: overlay verdict went — that is tuning to the sample. Sweep it against the
+#: controls, the way the hop budget was, before quoting any number as final.
+SEED_K = 25
+
+#: Reported cut-offs. K stays the shared budget; the rest are diagnostics.
+#: R@10 saturates near 1.0, so MRR and R@3/R@5 are the headline and R@10 is
+#: only there to show the ceiling being approached.
+RANK_KS = (1, 3, 5, 10)
+
+#: Offset used to build the shuffled-gold null: question i is scored against
+#: question (i + this) % n's gold set. Coprime with most question counts, so it
+#: is a derangement in practice rather than a near-identity permutation.
+NULL_OFFSET = 7
+
+QUESTIONS = Path(__file__).parent / "questions.yaml"
+
+
+def load_questions() -> List[dict]:
+    """This experiment's OWN question set, not ``evals/growth``'s.
+
+    Growth's set measures cumulative slices, so every question being answerable
+    at the full corpus is its intended end state. Reusing it froze experiment 1
+    at 15/15 with nowhere to rise, and growth's hop budget is swept against that
+    set specifically — adding to it would invalidate a calibration this module
+    does not own. See ``questions.yaml`` for how these were authored and
+    verified.
+    """
+    import yaml
+
+    return yaml.safe_load(QUESTIONS.read_text(encoding="utf-8"))["questions"]
 
 
 # --------------------------------------------------------------------------
@@ -139,15 +174,164 @@ def staged_corpus() -> tuple[List[Path], Set[Path], Set[str]]:
 
 
 # --------------------------------------------------------------------------
+# ranked retrieval: the metric that can go DOWN
+
+
+def doc_index() -> Dict[str, Path]:
+    """Corpus unit name -> unit path. Verified collision-free at 73/73 units.
+
+    Both arms are scored on this one universe. Without it the graph arm sees
+    the 50 paper directories and the baselines see 85 markdown files, and that
+    asymmetry alone was enough to flip the overlay verdict in an early probe.
+    """
+    units, _, _ = staged_corpus()
+    return {p.name: p for p in units}
+
+
+def doc_id(source_path: Optional[str], index: Dict[str, Path]) -> Optional[str]:
+    """The corpus unit a ``source_path`` belongs to, by name anywhere in it.
+
+    Prefix-agnostic deliberately: a scratch project keeps ``corpus/papers/<dir>/``
+    while ``evals/growth/run.py::main`` flattens to ``work/corpus/<src.name>/``,
+    so any fixed-depth ``relative_to`` is wrong for one of them. Growth's own
+    ``grounded_sources`` matches on path parts for the same reason.
+    """
+    for part in Path(source_path or "").parts:
+        if part in index:
+            return part
+    return None
+
+
+def gold_set(question: dict) -> Set[str]:
+    """The documents that must be retrieved, as corpus unit names."""
+    return {f"arxiv-{r.replace('.', '-')}" for r in question.get("requires") or []}
+
+
+def score_ranking(
+    ranked: Sequence[str], gold: Set[str], ks: Sequence[int] = RANK_KS
+) -> Dict[str, float]:
+    """Recall at each cut-off, plus reciprocal rank of the first gold hit.
+
+    A gold document missing from the ranking entirely contributes 0 to both,
+    never ``None`` and never a dropped row, so the denominator stays the full
+    question count and a collapse cannot hide as a smaller sample.
+
+    Both numbers are reported because each is blind to something. MRR sees only
+    the FIRST gold hit, so it cannot tell that the second gold document fell out
+    of the top ten; recall sees that and cannot tell that the first one slipped
+    from rank 1 to rank 9.
+    """
+    scores = {f"R@{k}": len(gold & set(ranked[:k])) / len(gold) for k in ks} if gold else {
+        f"R@{k}": 0.0 for k in ks
+    }
+    scores["RR"] = next((1.0 / i for i, d in enumerate(ranked, 1) if d in gold), 0.0)
+    return scores
+
+
+def rank_documents_graph(
+    graph: Any,
+    query: str,
+    index: Dict[str, Path],
+    node_index: Dict[str, Any],
+    *,
+    backend: Any,
+    vector_cache: Any,
+    seed_k: int = SEED_K,
+    walk: bool = True,
+) -> List[str]:
+    """Documents ranked by hybrid search seeding a personalized PageRank walk.
+
+    This is where edges enter the score. ``walk=False`` drops the walk and ranks
+    by hybrid search alone — the edge-blind null, which must score IDENTICALLY
+    on a graph with and without the association overlay. If the real arm ever
+    matches it, edges are contributing nothing and a rising curve is the
+    embedder rather than the memory.
+
+    First occurrence wins when several nodes map to one document: that is
+    max-score-per-document. Summing node scores instead would reward a document
+    merely for having minted more nodes, which is a property of the extractor.
+    """
+    from tesserae.retrieval.hybrid import hybrid_search
+
+    res = hybrid_search(
+        graph, query, top_k=seed_k, backend=backend,
+        vector_cache=vector_cache, mode="hybrid",
+    )
+    seeds = [s.node.id for s in res.scored]
+    if walk:
+        from tesserae.retrieval.ppr import personalized_pagerank
+
+        ordered = [nid for nid, _ in personalized_pagerank(
+            graph, seeds, alpha=0.15, top_k=len(graph.nodes)
+        )]
+    else:
+        ordered = seeds
+
+    out: List[str] = []
+    for node_id in ordered:
+        node = node_index.get(node_id)
+        if node is None:
+            continue
+        did = doc_id(getattr(node, "source_path", None), index)
+        if did and did not in out:
+            out.append(did)
+    return out
+
+
+def rank_documents_baseline(
+    scores: Sequence[float], files: Sequence[Path], index: Dict[str, Path]
+) -> List[str]:
+    """Documents ranked by a baseline's per-file scores, deduped to units.
+
+    Keeps ``_top_k``'s conventions exactly — drop non-positive scores, break
+    ties by corpus order — so switching from a set-intersection test to a ranked
+    list changes what is measured without changing how the baselines order.
+    """
+    order = sorted(range(len(scores)), key=lambda i: (-scores[i], i))
+    out: List[str] = []
+    for i in order:
+        if scores[i] <= 0.0:
+            continue
+        did = doc_id(str(files[i]), index)
+        if did and did not in out:
+            out.append(did)
+    return out
+
+
+def _aggregate(per_question: List[Dict[str, float]]) -> Dict[str, float]:
+    if not per_question:
+        return {f"R@{k}": 0.0 for k in RANK_KS} | {"RR": 0.0}
+    keys = per_question[0].keys()
+    return {k: sum(r[k] for r in per_question) / len(per_question) for k in keys}
+
+
+# --------------------------------------------------------------------------
 # one measurement
 
 
 @dataclass
 class Point:
-    """One row of the curve: what the memory could answer at this cycle."""
+    """One row of the curve: how well the memory RANKED at this cycle.
+
+    ``mrr`` and ``recall_at`` are the headline and they are two-sided — an
+    association that pulls a distractor above a gold document lowers them. The
+    old headline, ``answerable``, is kept as ``connected``/``answerable``
+    diagnostics precisely because it is NOT two-sided: it is monotone in edges,
+    so it can only rise, and a metric that cannot fall was measuring density.
+    """
 
     cycle: int
     arm: str
+    mrr: float
+    recall_at: Dict[int, float]
+    #: Shuffled-gold null. Each question's own ranking scored against a
+    #: different question's gold set. If this converges on ``mrr``, the ranking
+    #: carries no question-specific signal and every number above is noise.
+    mrr_null: float
+    #: Edge-blind null: the same arm with the PPR walk removed. It must differ
+    #: between a graph with and without the overlay; if the real arm ever equals
+    #: it, edges contribute nothing and the curve is the embedder talking.
+    mrr_edge_blind: float
     answerable: int
     connected: int
     controls_fired: int
@@ -158,9 +342,12 @@ class Point:
     notes: List[str] = field(default_factory=list)
 
     def as_row(self) -> Dict[str, Any]:
-        return {
+        row = {
             "cycle": self.cycle,
             "arm": self.arm,
+            "mrr": round(self.mrr, 4),
+            "mrr_null": round(self.mrr_null, 4),
+            "mrr_edge_blind": round(self.mrr_edge_blind, 4),
             "answerable": self.answerable,
             "connected": self.connected,
             "controls_fired": self.controls_fired,
@@ -169,26 +356,65 @@ class Point:
             "edges": self.edges,
             "llm_calls": self.llm_calls,
         }
+        row.update({f"r_at_{k}": round(v, 4) for k, v in sorted(self.recall_at.items())})
+        return row
 
 
 def measure_graph(
     work: Path, questions: List[dict], staged: Set[Path], staged_arxiv: Set[str],
     *, cycle: int, llm_calls: int = 0,
 ) -> Point:
+    from tesserae.retrieval.hybrid import active_embedding_backend
+    from tesserae.retrieval.vector_cache import VectorCache
+
     graph = load_graph_with_overlay(work)
     raw = as_dict(graph)
     rows = evaluate(raw, questions, staged, staged_arxiv)
-    live = [r for r in rows if not r["control"]]
-    controls = [r for r in rows if r["control"]]
+    live_rows = [r for r in rows if not r["control"]]
+    control_rows = [r for r in rows if r["control"]]
+
+    backend = active_embedding_backend("model2vec")
+    if not backend.name.startswith("model2vec:"):
+        # Same guard the dense arm has always had. Scoring the graph arm against
+        # the hash stub produces numbers that look like retrieval and are not.
+        raise Skip(
+            f"the graph arm resolved {backend.name}, not model2vec",
+            "install the semantic extra: uv sync --all-extras",
+        )
+    cache = VectorCache.for_project(work)
+    index = doc_index()
+    node_index = {n.id: n for n in graph.nodes}
+    live = [q for q in questions if not q.get("control")]
+
+    def rank(q: dict, *, walk: bool) -> List[str]:
+        return rank_documents_graph(
+            graph, q["text"], index, node_index,
+            backend=backend, vector_cache=cache, walk=walk,
+        )
+
+    rankings = [rank(q, walk=True) for q in live]
+    golds = [gold_set(q) for q in live]
+    scored = _aggregate([score_ranking(r, g) for r, g in zip(rankings, golds)])
+    # Shuffled gold: the SAME rankings against someone else's answer key.
+    shifted = [golds[(i + NULL_OFFSET) % len(golds)] for i in range(len(golds))]
+    null = _aggregate([score_ranking(r, g) for r, g in zip(rankings, shifted)])
+    blind = _aggregate([
+        score_ranking(rank(q, walk=False), g) for q, g in zip(live, golds)
+    ])
+
     return Point(
         cycle=cycle,
         arm="Tesserae",
-        answerable=sum(1 for r in live if r["answerable"]),
-        connected=sum(1 for r in live if r["connected"]),
-        # Must stay 0. The controls ask what the corpus cannot answer; a path
-        # between their anchors means the checker is finding spurious
-        # connections and every number in the table is suspect.
-        controls_fired=sum(1 for r in controls if r["connected"]),
+        mrr=scored["RR"],
+        recall_at={k: scored[f"R@{k}"] for k in RANK_KS},
+        mrr_null=null["RR"],
+        mrr_edge_blind=blind["RR"],
+        answerable=sum(1 for r in live_rows if r["answerable"]),
+        connected=sum(1 for r in live_rows if r["connected"]),
+        # Diagnostic, not the headline. A path between a control's anchors means
+        # the connectivity checker is finding spurious links — worth seeing, but
+        # it is the ranked score above that can register the HARM those links do.
+        controls_fired=sum(1 for r in control_rows if r["connected"]),
         n_questions=len(live),
         nodes=len(raw["nodes"]),
         edges=len(raw["edges"]),
@@ -252,24 +478,36 @@ def measure_baseline(
 
     live = [q for q in questions if not q.get("control")]
     controls = [q for q in questions if q.get("control")]
+    index = doc_index()
+
+    def scores_for(text: str) -> List[float]:
+        if arm == "BM25":
+            return _bm25_scores(_tokenize(text), corpus_tokens)
+        return _cosine_scores(backend, vectors, text)
 
     def covered(q: dict) -> bool:
+        """The old connectivity-analogue, kept as a diagnostic column."""
         a1, a2 = q["anchors"]
-        if arm == "BM25":
-            s1 = _bm25_scores(_tokenize(a1), corpus_tokens)
-            s2 = _bm25_scores(_tokenize(a2), corpus_tokens)
-        else:
-            s1 = _cosine_scores(backend, vectors, a1)
-            s2 = _cosine_scores(backend, vectors, a2)
-        top1 = {i for i in _top_k(s1)}
-        top2 = {i for i in _top_k(s2)}
-        # Evidence for BOTH anchors inside ONE budget of K documents: the
-        # baseline's analogue of "a path exists between them".
+        top1 = set(_top_k(scores_for(a1)))
+        top2 = set(_top_k(scores_for(a2)))
         return bool(top1 & top2) or len(top1 | top2) <= K
+
+    rankings = [rank_documents_baseline(scores_for(q["text"]), files, index) for q in live]
+    golds = [gold_set(q) for q in live]
+    scored = _aggregate([score_ranking(r, g) for r, g in zip(rankings, golds)])
+    shifted = [golds[(i + NULL_OFFSET) % len(golds)] for i in range(len(golds))]
+    null = _aggregate([score_ranking(r, g) for r, g in zip(rankings, shifted)])
 
     return Point(
         cycle=cycle,
         arm=arm,
+        mrr=scored["RR"],
+        recall_at={k: scored[f"R@{k}"] for k in RANK_KS},
+        mrr_null=null["RR"],
+        # A baseline has no walk to remove, so it IS its own edge-blind null.
+        # Reporting its real score here rather than 0.0 keeps the column
+        # meaning "what this arm scores without edges" in every row.
+        mrr_edge_blind=scored["RR"],
         answerable=sum(1 for q in live if covered(q)),
         connected=sum(1 for q in live if covered(q)),
         controls_fired=sum(1 for q in controls if covered(q)),
@@ -311,13 +549,21 @@ def render(points: Sequence[Point]) -> str:
         "column is therefore the memory improving itself, and a flat one is a "
         "memory that cannot.",
         "",
-        "| cycle | arm | answerable | connected | nodes | edges | LLM calls | controls fired |",
-        "|---|---|---:|---:|---:|---:|---:|---:|",
+        "The headline is MRR and recall of the gold documents each question "
+        "names. Both can FALL: an association that lifts a distractor above a "
+        "gold document lowers them. That is the whole reason they replaced "
+        "`answerable`, which is monotone in edges and so could only ever rise.",
+        "",
+        "| cycle | arm | MRR | R@1 | R@3 | R@5 | R@10 | nodes | edges | LLM calls | MRR null | MRR edge-blind | answerable | controls |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for p in points:
+        r = p.recall_at
         lines.append(
-            f"| {p.cycle} | {p.arm} | {p.answerable}/{p.n_questions} | "
-            f"{p.connected} | {p.nodes} | {p.edges} | {p.llm_calls} | {p.controls_fired} |"
+            f"| {p.cycle} | {p.arm} | {p.mrr:.3f} | "
+            + " | ".join(f"{r.get(k, 0.0):.3f}" for k in RANK_KS)
+            + f" | {p.nodes} | {p.edges} | {p.llm_calls} | {p.mrr_null:.3f} | "
+            f"{p.mrr_edge_blind:.3f} | {p.answerable}/{p.n_questions} | {p.controls_fired} |"
         )
     lines += ["", "## Reading this table", ""]
 
@@ -327,20 +573,43 @@ def render(points: Sequence[Point]) -> str:
     for arm, ps in by_arm.items():
         if len(ps) < 2:
             continue
-        delta = ps[-1].answerable - ps[0].answerable
+        d_mrr = ps[-1].mrr - ps[0].mrr
+        d_r5 = ps[-1].recall_at.get(5, 0.0) - ps[0].recall_at.get(5, 0.0)
         lines.append(
-            f"- **{arm}**: {ps[0].answerable} → {ps[-1].answerable} answerable "
-            f"over {len(ps) - 1} cycle(s), Δ **{delta:+d}**, "
+            f"- **{arm}**: MRR {ps[0].mrr:.3f} → {ps[-1].mrr:.3f} (Δ **{d_mrr:+.3f}**), "
+            f"R@5 {ps[0].recall_at.get(5, 0.0):.3f} → {ps[-1].recall_at.get(5, 0.0):.3f} "
+            f"(Δ **{d_r5:+.3f}**) over {len(ps) - 1} cycle(s), "
             f"{sum(p.llm_calls for p in ps)} LLM call(s) spent."
         )
+
+    lines += ["", "### The two nulls, which are not decoration", ""]
+    worst_null = max((p.mrr_null for p in points), default=0.0)
+    best = max((p.mrr for p in points), default=0.0)
+    lines.append(
+        f"- **Shuffled gold**: the same rankings scored against another "
+        f"question's answer key. Highest seen {worst_null:.3f} against a real "
+        f"{best:.3f}. If these converge, the ranking carries no "
+        "question-specific signal and nothing above means anything."
+    )
+    graph_pts = [p for p in points if p.arm == "Tesserae"]
+    if graph_pts:
+        gaps = [p.mrr - p.mrr_edge_blind for p in graph_pts]
+        lines.append(
+            f"- **Edge-blind**: the graph arm with the PPR walk removed, so "
+            f"edges cannot contribute. Gap to the real arm ranges "
+            f"{min(gaps):+.3f} to {max(gaps):+.3f}. A gap of 0 everywhere would "
+            "mean the curve is the embedder rather than the memory."
+        )
+
     fired = sum(p.controls_fired for p in points)
     lines += [
         "",
-        f"**Controls fired: {fired}.** These questions ask what the corpus "
-        "cannot answer. Anything but 0 means the checker is finding spurious "
-        "connections and every number above is suspect."
+        f"**Controls fired: {fired}.** A path between a control's anchors means "
+        "the connectivity diagnostic is finding spurious links. It no longer "
+        "invalidates the headline — the ranked score is what registers the harm "
+        "such links do — but it is the cheapest signal that they exist."
         if fired
-        else "",
+        else "**Controls fired: 0.**",
         "",
         "The baselines are recomputed at every cycle rather than carried "
         "forward, so their flat line is measured rather than assumed.",

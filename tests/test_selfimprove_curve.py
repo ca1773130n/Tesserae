@@ -76,27 +76,64 @@ def test_graph_json_itself_is_never_mutated_by_the_overlay(tmp_path: Path) -> No
     assert (tmp_path / ".tesserae" / "graph.json").read_bytes() == raw
 
 
+def _point(arm: str, cycle: int, mrr: float, r5: float, **kw) -> Point:
+    """Keyword-only, because the positional form broke the moment `Point` grew
+    a field — which is the same hazard the distill sweep hit with DistillResult."""
+    return Point(
+        cycle=cycle, arm=arm, mrr=mrr,
+        recall_at={1: r5 / 2, 3: r5, 5: r5, 10: r5},
+        mrr_null=kw.get("mrr_null", 0.05),
+        mrr_edge_blind=kw.get("mrr_edge_blind", mrr - 0.1),
+        answerable=kw.get("answerable", 5), connected=kw.get("connected", 5),
+        controls_fired=kw.get("controls_fired", 0), n_questions=kw.get("n_questions", 59),
+        nodes=kw.get("nodes", 100), edges=kw.get("edges", 200),
+    )
+
+
 def test_the_report_names_a_flat_arm_as_flat_rather_than_omitting_it() -> None:
     """A baseline that cannot move is the comparison, so it has to appear."""
     points = [
-        Point(0, "Tesserae", 5, 5, 0, 15, 100, 200),
-        Point(0, "BM25", 3, 3, 0, 15, 40, 0),
-        Point(1, "Tesserae", 9, 9, 0, 15, 100, 240),
-        Point(1, "BM25", 3, 3, 0, 15, 40, 0),
+        _point("Tesserae", 0, 0.500, 0.60),
+        _point("BM25", 0, 0.300, 0.40),
+        _point("Tesserae", 1, 0.700, 0.80),
+        _point("BM25", 1, 0.300, 0.40),
     ]
     out = render(points)
     assert "BM25" in out
-    assert "Δ **+4**" in out, "the graph arm's lift must be stated"
-    assert "Δ **+0**" in out, "the baseline's flat line must be stated, not omitted"
+    assert "Δ **+0.200**" in out, "the graph arm's lift must be stated"
+    assert "Δ **+0.000**" in out, "the baseline's flat line must be stated, not omitted"
 
 
-def test_a_fired_control_is_shouted_about() -> None:
-    """Controls ask what the corpus cannot answer. A path between their anchors
-    means the checker is finding spurious connections and every number is
-    suspect — that cannot be a quiet column."""
-    out = render([Point(0, "Tesserae", 5, 5, 2, 15, 100, 200)])
+def test_the_report_states_a_LOSS_with_its_sign(subtests=None) -> None:
+    """The point of the whole metric change: consolidation must be able to hurt,
+    and when it does the report has to say so rather than rendering a bare
+    magnitude. `answerable` could never produce this row at all."""
+    out = render([
+        _point("Tesserae", 0, 0.747, 0.833),
+        _point("Tesserae", 1, 0.719, 0.600),
+    ])
+    assert "Δ **-0.028**" in out, "an MRR regression must be signed, not absolute"
+    assert "Δ **-0.233**" in out, "a recall regression must be signed too"
+
+
+def test_a_fired_control_is_reported(the_headline_no_longer_depends_on_it=None) -> None:
+    """Controls remain the cheapest signal that spurious links exist, but they no
+    longer invalidate the table — the ranked score is what prices the harm."""
+    out = render([_point("Tesserae", 0, 0.5, 0.6, controls_fired=2)])
     assert "Controls fired: 2" in out
-    assert "suspect" in out
+
+
+def test_both_nulls_appear_in_every_report() -> None:
+    """A shuffled-gold score near the real one means the ranking has no
+    question-specific signal; an edge-blind score equal to the real one means
+    edges contributed nothing. Either silently invalidates the run, so neither
+    may be an optional column."""
+    out = render([
+        _point("Tesserae", 0, 0.747, 0.833, mrr_null=0.054, mrr_edge_blind=0.691),
+        _point("Tesserae", 1, 0.719, 0.600, mrr_null=0.046, mrr_edge_blind=0.691),
+    ])
+    assert "Shuffled gold" in out and "0.054" in out
+    assert "Edge-blind" in out
 
 
 def test_growth_can_index_into_what_as_dict_hands_it(tmp_path: Path) -> None:
@@ -166,7 +203,8 @@ def test_a_baseline_can_read_a_corpus_of_directories(tmp_path: Path) -> None:
     point = measure_baseline(
         "BM25",
         [paper, loose],
-        [{"id": "q1", "anchors": ["alpha", "beta"]}],
+        [{"id": "q1", "text": "where do alpha and beta meet?",
+          "anchors": ["alpha", "beta"], "requires": []}],
         cycle=0,
     )
     # Three files, not two directory entries: the baselines index what
