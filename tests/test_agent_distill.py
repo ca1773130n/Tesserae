@@ -660,6 +660,42 @@ def test_size_lint_fails_loud_when_over_budget(tmp_path: Path) -> None:
     assert not agent_artifact_path(project, AGENT).exists()
 
 
+def test_one_agents_size_failure_does_not_discard_the_rest_of_the_sweep(
+    tmp_path: Path,
+) -> None:
+    """A sweep is per-agent, and one bad artifact is one agent's problem.
+
+    `distill_all` was a bare comprehension over `distill_agent`, so the first
+    DistillSizeError propagated out and the caller got nothing — not even the
+    agents that had already been distilled earlier in the same sweep. The
+    engine's own path (`refresh_distill`) had always caught per agent; the CLI,
+    which is the documented way to build agent memory, had not, so a single
+    oversized artifact made `tesserae distill` unusable for the whole project.
+
+    A budget of 5000 puts AGENT over the bound and leaves OTHER_AGENT at 3318,
+    and AGENT sorts first — so pre-fix this never reaches OTHER_AGENT at all.
+    """
+    graph = _base_graph()
+    project = tmp_path / "proj"
+    project.mkdir()
+
+    results = distill_all(
+        graph,
+        project_root=project,
+        summarizer=StubSummarizer(),
+        options=DistillOptions(artifact_char_budget=5000),
+    )
+
+    by_key = {r.agent_key: r for r in results}
+    assert by_key[AGENT].status == "failed"
+    assert "one-read bound" in by_key[AGENT].error
+    # The whole point: the agent AFTER the failure still got its artifact.
+    assert by_key[OTHER_AGENT].status == "written"
+    assert agent_artifact_path(project, OTHER_AGENT).is_file()
+    # And failing loud still means the failed agent wrote nothing.
+    assert not agent_artifact_path(project, AGENT).exists()
+
+
 def _bulk_graph() -> ResearchGraph:
     """One session + 40 unrelated singleton findings (index-pressure fixture)."""
     s1 = _session("s1", "2026-07-01T09:00:00Z", "2026-07-01T10:00:00Z", "bulk")

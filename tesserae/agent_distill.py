@@ -805,7 +805,11 @@ class DistillResult:
     """Outcome of one per-agent distill run — raw data for the CLI/tests."""
 
     agent_key: str
-    status: str  # written | unchanged | skipped-watermark | dry-run | no-sessions
+    status: str  # written | unchanged | skipped-watermark | dry-run | no-sessions | failed
+    #: Set only when status == "failed": the DistillError's message. One agent
+    #: failing must not cost the sweep the agents that succeeded, so the sweep
+    #: records the failure here and carries on.
+    error: str = ""
     artifact_path: Optional[Path] = None
     artifact_chars: int = 0
     size_level: str = "ok"  # ok | warning
@@ -2355,19 +2359,31 @@ def distill_all(
     )
     state = DistillStateStore(_state_db_path(Path(project_root)))
     breaker = _CircuitBreaker()
-    return [
-        distill_agent(
-            graph,
-            key,
-            project_root=project_root,
-            registry=registry,
-            summarizer=summarizer,
-            options=options,
-            state=state,
-            _breaker=breaker,
-        )
-        for key in agent_keys
-    ]
+    results: List[DistillResult] = []
+    for key in agent_keys:
+        # One agent's failure is that agent's, not the sweep's. This was a bare
+        # comprehension, so a single DistillSizeError — one artifact over the
+        # 48k one-read bound — propagated out and took every other agent with
+        # it, including the ones already written earlier in the same sweep. The
+        # engine's own path (`refresh_distill`) always caught per agent and
+        # carried on; the CLI, which is the documented way to do this, did not.
+        try:
+            results.append(
+                distill_agent(
+                    graph,
+                    key,
+                    project_root=project_root,
+                    registry=registry,
+                    summarizer=summarizer,
+                    options=options,
+                    state=state,
+                    _breaker=breaker,
+                )
+            )
+        except DistillError as exc:
+            logger.warning("distill for %s failed: %s", key, exc)
+            results.append(DistillResult(agent_key=key, status="failed", error=str(exc)))
+    return results
 
 
 # --------------------------------------------------------------------------- manager pass (§8.3)
