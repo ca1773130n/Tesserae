@@ -962,6 +962,31 @@ def test_a_short_id_is_byte_identical_to_before(tmp_path: Path) -> None:
     assert _cache_path(tmp_path, cid).name == "CommunitySummary_0446996a870c659f.json"
 
 
+def test_a_name_that_was_always_writable_is_never_renamed(tmp_path: Path) -> None:
+    """The bound must be the filesystem's, not a margin below it.
+
+    This cache is addressed BY PATH, so lowering the threshold does not migrate
+    the entries between the old bound and the real one — it orphans them. The
+    domain reads cold and is re-summarized at full price. Measured when the
+    bound was 200 bytes: 42 of 1,425 warm domains went cold on the next read.
+
+    A stem of exactly 250 bytes yields a 255-byte filename, which every
+    mainstream filesystem accepts, so it must survive verbatim.
+    """
+    stem = "CharterDomain:" + "a" * (250 - len("CharterDomain:"))
+    name = _cache_path(tmp_path, stem).name
+    assert len(name.encode("utf-8")) == 255
+    assert name == stem.replace(":", "_") + ".json", "a writable name was renamed"
+
+
+def test_one_byte_over_the_limit_is_bounded(tmp_path: Path) -> None:
+    """And the first genuinely unwritable stem still gets the digest."""
+    stem = "CharterDomain:" + "a" * (251 - len("CharterDomain:"))
+    name = _cache_path(tmp_path, stem).name
+    assert len(name.encode("utf-8")) <= 255
+    assert name != stem.replace(":", "_") + ".json"
+
+
 def test_the_bounded_path_is_deterministic(tmp_path: Path) -> None:
     """Same id, same file — this cache is read back by path on every visit."""
     assert _cache_path(tmp_path, _LONG_CID) == _cache_path(tmp_path, _LONG_CID)
