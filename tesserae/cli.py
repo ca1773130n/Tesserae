@@ -6915,6 +6915,7 @@ def _handle_distill(args: argparse.Namespace) -> int:
     from .agent_distill import (
         DistillError,
         DistillOptions,
+        DistillResult,
         agent_distill_enabled,
         build_llm_summarizer,
         distill_agent,
@@ -6984,17 +6985,26 @@ def _handle_distill(args: argparse.Namespace) -> int:
                     )
                     return 1
                 keys.append(key)
-            results = [
-                distill_agent(
-                    graph,
-                    key,
-                    project_root=wiki.project_root,
-                    registry=registry,
-                    summarizer=summarizer,
-                    options=options,
-                )
-                for key in dict.fromkeys(keys)  # dedupe, keep CLI order
-            ]
+            results = []
+            for key in dict.fromkeys(keys):  # dedupe, keep CLI order
+                # Per agent, for the same reason `distill_all` is: naming three
+                # agents and having the first one's size error discard the other
+                # two is not what `--agent a --agent b` asks for.
+                try:
+                    results.append(
+                        distill_agent(
+                            graph,
+                            key,
+                            project_root=wiki.project_root,
+                            registry=registry,
+                            summarizer=summarizer,
+                            options=options,
+                        )
+                    )
+                except DistillError as exc:
+                    results.append(
+                        DistillResult(agent_key=key, status="failed", error=str(exc))
+                    )
         else:
             results = distill_all(
                 graph,
@@ -7022,6 +7032,9 @@ def _handle_distill(args: argparse.Namespace) -> int:
             continue
         if result.status == "no-sessions":
             print(f"{result.agent_key}  no-sessions (nothing attributed to this agent)")
+            continue
+        if result.status == "failed":
+            print(f"{result.agent_key}  FAILED  {result.error}", file=sys.stderr)
             continue
         if result.status == "dry-run":
             print(
@@ -7054,7 +7067,10 @@ def _handle_distill(args: argparse.Namespace) -> int:
             )
     summary = "  ".join(f"{status}={count}" for status, count in sorted(totals.items()))
     print(f"Distill pass over {len(results)} agent(s): {summary}")
-    return 0
+    # Still exit 1 when any agent failed — the sweep now finishes for the rest,
+    # but a failure that only shows up in a summary line is a failure a script
+    # will walk straight past.
+    return 1 if totals.get("failed") else 0
 
 
 def _route_distill(rest: List[str]) -> int:
