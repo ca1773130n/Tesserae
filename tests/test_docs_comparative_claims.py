@@ -367,7 +367,9 @@ def _comparative_claims(text: str) -> list[str]:
 #: over: ``retrieval.py`` computes recall@K and MRR, and ``run.py``'s §6 prints
 #: a three-row table of Tesserae against two baselines. A module that prints a
 #: comparison and is invisible to this scan is exactly the shape #178 retracted.
-FIRST_PARTY_EVAL_PATHS = ("metrics.py", "qa", "federation", "growth", "lme_mab")
+FIRST_PARTY_EVAL_PATHS = (
+    "metrics.py", "qa", "federation", "growth", "lme_mab", "selfimprove",
+)
 
 
 def _first_party_python() -> list[Path]:
