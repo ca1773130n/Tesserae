@@ -923,6 +923,53 @@ def test_a_client_without_a_cache_still_works(tmp_path: Path) -> None:
     )
 
 
+# The real id that failed on this project's 1,411-domain charter, truncated at
+# the point where the slug is already past any filesystem's per-component limit.
+_LONG_CID = (
+    "CharterDomain:the-label-cap-is-count-based-and-unchanged-so-increasing-"
+    "label-sprite-scale-and-font-sizes-does-not-alter-label-selection-limits-"
+    "reduced-halo-and-hot-edge-alpha-lowers-visual-intensity-while-particle-"
+    "width-1-4-remains-sane-for-the-small-particle-count"
+)
+
+
+def test_a_sentence_length_id_still_produces_a_writable_path(tmp_path: Path) -> None:
+    """A charter anchor can be a whole sentence; the filename cannot.
+
+    APFS, ext4 and NTFS all cap one path component at 255 bytes. Unbounded, the
+    id below produced `[Errno 63] File name too long` and the domain could never
+    cache a summary — on any budget, on any retry, because the failure was in
+    the path rather than the answer. Measured: 5 of 1,411 domains.
+    """
+    path = _cache_path(tmp_path, _LONG_CID)
+    assert len(path.name.encode("utf-8")) <= 255
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}", encoding="utf-8")  # the actual failure was here
+    assert path.is_file()
+
+
+def test_two_ids_sharing_a_long_prefix_do_not_collide(tmp_path: Path) -> None:
+    """Truncation alone would merge them; the digest is of the FULL id."""
+    a = _cache_path(tmp_path, _LONG_CID + "-alpha")
+    b = _cache_path(tmp_path, _LONG_CID + "-beta")
+    assert a != b
+
+
+def test_a_short_id_is_byte_identical_to_before(tmp_path: Path) -> None:
+    """The 1,405 caches written before the bound existed must keep resolving,
+    so a name that already fits is never rewritten."""
+    cid = "CommunitySummary:0446996a870c659f"
+    assert _cache_path(tmp_path, cid).name == "CommunitySummary_0446996a870c659f.json"
+
+
+def test_the_bounded_path_is_deterministic(tmp_path: Path) -> None:
+    """Same id, same file — this cache is read back by path on every visit."""
+    assert _cache_path(tmp_path, _LONG_CID) == _cache_path(tmp_path, _LONG_CID)
+    assert level_cache_path(tmp_path, 3, _LONG_CID) == level_cache_path(
+        tmp_path, 3, _LONG_CID
+    )
+
+
 def test_compile_prompt_has_no_citation_section(tmp_path: Path) -> None:
     """The compile pass summarizes leaf members (child_cids empty) — its
     prompts and system message are byte-identical to the pre-refactor code."""

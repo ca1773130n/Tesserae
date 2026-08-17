@@ -234,9 +234,39 @@ def _members_digest(members: Sequence[ResearchNode]) -> str:
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
+#: Longest filename this module will produce, in BYTES. APFS, ext4 and NTFS all
+#: cap a single path COMPONENT at 255 bytes; 200 leaves room for the ``.json``
+#: suffix and for a caller's own prefix without tracking each filesystem's exact
+#: rule. Chosen once here so the truncation point cannot drift between writers.
+_MAX_STEM_BYTES = 200
+
+
 def _cache_path(cache_dir: Path, cid: str) -> Path:
+    """``<cache_dir>/<cid with ':' → '_'>.json``, bounded to a writable length.
+
+    A community id carries its anchor's slug, and a charter anchor can be a
+    whole sentence — the graph is built from prose, so an anchor like "the label
+    cap is count-based and unchanged so increasing label sprite scale…" becomes
+    a 250-character slug. Unbounded, that produced a filename over the 255-byte
+    limit every mainstream filesystem enforces, and the write failed with
+    ``[Errno 63] File name too long``. Measured on this project's 1,411-domain
+    charter: 5 domains could never cache a summary, on any budget and any retry,
+    because the failure was in the path rather than in the answer.
+
+    Over-long stems are truncated and given a 16-hex-character digest of the
+    FULL id, so two ids sharing a 180-character prefix still address different
+    files. Anything that already fits is left byte-identical — the 1,405 caches
+    written before this existed keep resolving, and a rename pass is not needed.
+    """
     safe = cid.replace(":", "_")
-    return cache_dir / f"{safe}.json"
+    if len(safe.encode("utf-8")) <= _MAX_STEM_BYTES:
+        return cache_dir / f"{safe}.json"
+    digest = hashlib.sha1(cid.encode("utf-8")).hexdigest()[:16]
+    # Truncate on a byte boundary, not a character count: a multi-byte slug
+    # sliced by characters can still exceed the limit.
+    keep = _MAX_STEM_BYTES - len(digest) - 1
+    stem = safe.encode("utf-8")[:keep].decode("utf-8", "ignore").rstrip("-_")
+    return cache_dir / f"{stem}-{digest}.json"
 
 
 def level_cache_path(cache_dir: Path, level: int, cid: str) -> Path:
