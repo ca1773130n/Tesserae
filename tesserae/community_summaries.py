@@ -234,11 +234,16 @@ def _members_digest(members: Sequence[ResearchNode]) -> str:
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
-#: Longest filename this module will produce, in BYTES. APFS, ext4 and NTFS all
-#: cap a single path COMPONENT at 255 bytes; 200 leaves room for the ``.json``
-#: suffix and for a caller's own prefix without tracking each filesystem's exact
-#: rule. Chosen once here so the truncation point cannot drift between writers.
-_MAX_STEM_BYTES = 200
+#: Longest STEM this module will produce, in BYTES: the 255-byte per-component
+#: limit APFS, ext4 and NTFS all enforce, minus the ``.json`` suffix.
+#:
+#: It has to be the real limit rather than a comfortable margin below it. A
+#: lower bound renames every stem between it and 255 — names that were writable
+#: all along — and since this cache is addressed BY PATH, a renamed entry is not
+#: migrated but orphaned: the domain reads cold and is summarized again at full
+#: price. Measured when this was 200: 42 of 1,425 warm domains went cold on the
+#: next read, having cost an LLM call each to produce.
+_MAX_STEM_BYTES = 255 - len(".json")
 
 
 def _cache_path(cache_dir: Path, cid: str) -> Path:
