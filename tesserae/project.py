@@ -2169,6 +2169,7 @@ class ProjectWiki:
             refresh_clocks,
             succeed,
             write_charter,
+            charter_scope,
             worth_chartering,
         )
 
@@ -2188,7 +2189,13 @@ class ProjectWiki:
             return None
 
         research_layer, _code_layer = partition_graph(graph)
-        if prior is None and not worth_chartering(research_layer):
+        # The founding gate is evaluated on the SAME universe build_charter
+        # builds over. Handing it the unscoped layer let process memory fund an
+        # institution the knowledge had not earned: HypePaper cleared the bound
+        # at 460,998 while its research corpus was 10,094 characters — a fifth
+        # of the one-read bound — and got 46 divisions named after OAuth
+        # accounts and pasted prompts for it.
+        if prior is None and not worth_chartering(charter_scope(research_layer)):
             # Below the one-read bound: never create .tesserae/charter/. The
             # bound is a FOUNDING test only — an existing institution keeps
             # being maintained even if the corpus later shrinks, because its
@@ -2196,6 +2203,9 @@ class ProjectWiki:
             # oscillating around the budget.
             return None
 
+        # NOTE: the UNSCOPED layer, deliberately. build_charter re-scopes
+        # internally and must see SESSION nodes first to resolve project roots.
+        # See the roots comment in build_charter before "simplifying" this.
         fresh = build_charter(research_layer)
         real_domains = [slug for slug in fresh["domains"] if slug != _INTAKE_SLUG]
         if prior is None and len(real_domains) < 2:
