@@ -286,6 +286,7 @@ def test_associate_does_not_inherit_federations_cosine_floor() -> None:
     the graph still builds, the pass still runs, only the links get worse. So
     the decoupling is asserted rather than left to a comment.
     """
+    import pathlib
     from inspect import signature
 
     import tesserae.federation as F
@@ -295,10 +296,19 @@ def test_associate_does_not_inherit_federations_cosine_floor() -> None:
         discover_links,
     )
 
-    assert DEFAULT_ASSOCIATE_MIN_COSINE == 0.65, (
-        "the swept value; change it by re-running evals/selfimprove/sweep_cosine.py "
-        "and updating the table at the constant, not by editing this number"
+    assert DEFAULT_ASSOCIATE_MIN_COSINE == 0.55, (
+        "the swept value at K=10; change it by re-running "
+        "evals/selfimprove/sweep_cosine.py --at-k <k> and updating the table at "
+        "the constant, not by editing this number"
     )
+    # It equals federation's number today by coincidence, not by inheritance.
+    # If this ever reads `is F.DEFAULT_SEMANTIC_MIN_COSINE` or imports it, the
+    # decoupling has been undone and the next federation retune silently drags
+    # association with it.
+    assert "DEFAULT_SEMANTIC_MIN_COSINE" not in (
+        pathlib.Path("tesserae/memory/associate.py").read_text().split(
+            "DEFAULT_ASSOCIATE_MIN_COSINE = ")[1]
+    ), "associate re-coupled to federation's constant below its own definition"
     for fn in (discover_links, consolidate_associations):
         assert signature(fn).parameters["min_cosine"].default == DEFAULT_ASSOCIATE_MIN_COSINE, (
             f"{fn.__name__} took its floor from somewhere other than this pass's own constant"
