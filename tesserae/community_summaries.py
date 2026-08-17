@@ -234,16 +234,26 @@ def _members_digest(members: Sequence[ResearchNode]) -> str:
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
-#: Longest STEM this module will produce, in BYTES: the 255-byte per-component
-#: limit APFS, ext4 and NTFS all enforce, minus the ``.json`` suffix.
+#: Bytes :func:`_write_cache`'s temp name adds beyond the stem — ``.tmp.``, a
+#: pid (7 digits is past any mainstream ``pid_max``) and 8 hex characters.
+_TMP_SUFFIX_BYTES = len(".tmp.") + 7 + len(".") + 8
+
+#: Longest STEM this module will produce, in BYTES.
 #:
-#: It has to be the real limit rather than a comfortable margin below it. A
-#: lower bound renames every stem between it and 255 — names that were writable
-#: all along — and since this cache is addressed BY PATH, a renamed entry is not
-#: migrated but orphaned: the domain reads cold and is summarized again at full
-#: price. Measured when this was 200: 42 of 1,425 warm domains went cold on the
-#: next read, having cost an LLM call each to produce.
-_MAX_STEM_BYTES = 255 - len(".json")
+#: The 255-byte per-component limit APFS, ext4 and NTFS all enforce, minus room
+#: for the LONGER of the two names each write produces. The final name takes
+#: ``.json``; the temp name :func:`_write_cache` writes first takes
+#: ``.tmp.<pid>.<hex>``, some 16 bytes more — so budgeting for ``.json`` alone
+#: bounds a name that is never the one that fails. That was #190: the final
+#: path fit, ``os.replace`` was never reached, and the same five domains kept
+#: raising ``[Errno 63]`` from the temp write.
+#:
+#: It also has to be the real limit rather than a comfortable margin below it.
+#: This cache is addressed BY PATH, so lowering the bound does not migrate the
+#: entries between it and the limit — it orphans them, and each one is re-earned
+#: at the price of an LLM call. That was #189: 42 of 1,425 warm domains went
+#: cold on the next read.
+_MAX_STEM_BYTES = 255 - _TMP_SUFFIX_BYTES
 
 
 def _cache_path(cache_dir: Path, cid: str) -> Path:

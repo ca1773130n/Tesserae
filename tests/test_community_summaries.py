@@ -23,7 +23,10 @@ from typing import Any, List, Optional, Union
 import pytest
 
 from tesserae.community_summaries import (
+    _MAX_STEM_BYTES,
     _cache_path,
+    _read_cache,
+    _write_cache,
     community_id,
     compile_community_summaries,
     detect_communities,
@@ -963,20 +966,22 @@ def test_a_short_id_is_byte_identical_to_before(tmp_path: Path) -> None:
 
 
 def test_a_name_that_was_always_writable_is_never_renamed(tmp_path: Path) -> None:
-    """The bound must be the filesystem's, not a margin below it.
+    """The bound must be the real one, not a margin below it.
 
     This cache is addressed BY PATH, so lowering the threshold does not migrate
-    the entries between the old bound and the real one — it orphans them. The
-    domain reads cold and is re-summarized at full price. Measured when the
-    bound was 200 bytes: 42 of 1,425 warm domains went cold on the next read.
+    the entries between the old bound and the real one — it orphans them, and
+    each is re-earned at the price of an LLM call. Measured when the bound was
+    200 bytes: 42 of 1,425 warm domains went cold on the next read.
 
-    A stem of exactly 250 bytes yields a 255-byte filename, which every
-    mainstream filesystem accepts, so it must survive verbatim.
+    "Writable" means the WRITER succeeds, not that the final name fits: the temp
+    name is the longer of the two. So the longest writable stem is asserted by
+    writing it, and it must keep its verbatim name.
     """
-    stem = "CharterDomain:" + "a" * (250 - len("CharterDomain:"))
-    name = _cache_path(tmp_path, stem).name
-    assert len(name.encode("utf-8")) == 255
-    assert name == stem.replace(":", "_") + ".json", "a writable name was renamed"
+    stem = "CharterDomain:" + "a" * (_MAX_STEM_BYTES - len("CharterDomain:"))
+    path = _cache_path(tmp_path, stem)
+    assert path.name == stem.replace(":", "_") + ".json", "a writable name was renamed"
+    _write_cache(path, {"schema_version": 1})
+    assert path.is_file()
 
 
 def test_one_byte_over_the_limit_is_bounded(tmp_path: Path) -> None:
@@ -985,6 +990,34 @@ def test_one_byte_over_the_limit_is_bounded(tmp_path: Path) -> None:
     name = _cache_path(tmp_path, stem).name
     assert len(name.encode("utf-8")) <= 255
     assert name != stem.replace(":", "_") + ".json"
+
+
+def test_the_longest_allowed_stem_can_actually_be_WRITTEN(tmp_path: Path) -> None:
+    """The bound must cover the temp name, which is the longer of the two.
+
+    `_write_cache` writes `<stem>.tmp.<pid>.<hex>` and then `os.replace`s it
+    onto `<stem>.json` — so the temp name is ~16 bytes longer than the final
+    one, and a bound that budgets only for `.json` bounds a name that is never
+    the one that fails. #190 did exactly that: the final path fit, os.replace
+    was never reached, and the same five domains kept raising [Errno 63].
+
+    This calls the real writer rather than asserting on a length, because the
+    length arithmetic is what was wrong twice.
+    """
+    stem = "CharterDomain:" + "a" * (400 - len("CharterDomain:"))
+    path = _cache_path(tmp_path, stem)
+    _write_cache(path, {"schema_version": 1})  # raised [Errno 63] before
+    assert path.is_file()
+
+
+def test_every_domain_length_round_trips_through_the_writer(tmp_path: Path) -> None:
+    """Sweep the boundary rather than trusting one hand-picked length."""
+    for n in (230, 234, 235, 236, 250, 255, 256, 300):
+        cid = "CharterDomain:" + "b" * (n - len("CharterDomain:"))
+        path = _cache_path(tmp_path, cid)
+        _write_cache(path, {"schema_version": 1, "n": n})
+        assert path.is_file(), f"stem of {n} bytes could not be written"
+        assert _read_cache(path) == {"schema_version": 1, "n": n}
 
 
 def test_the_bounded_path_is_deterministic(tmp_path: Path) -> None:
