@@ -35,7 +35,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 from ..federation import (
-    DEFAULT_SEMANTIC_MIN_COSINE,
     add_semantic_links,
     federate_graphs,
 )
@@ -56,10 +55,48 @@ SHARES_CONCEPT_EDGE = "shares_concept_with"
 # while agent keys are the other members). Never leaks into graph.json.
 _BASE_ALIAS = "project"
 
-# Discovery defaults — mirror federation.add_semantic_links so the associate pass
-# and cross-project bridges use the same tuned thresholds.
+# Discovery defaults. top_k and max_candidates still mirror
+# federation.add_semantic_links — they bound the candidate set, and that bound
+# means the same thing in both passes. The cosine floor does NOT mirror it any
+# more; see DEFAULT_ASSOCIATE_MIN_COSINE below for what changed and why.
 DEFAULT_ASSOCIATE_TOP_K = 5
 DEFAULT_ASSOCIATE_MAX_CANDIDATES = 1500
+
+#: Cosine floor for THIS pass, sourced from `evals/selfimprove/sweep_cosine.py`.
+#:
+#: It used to be `federation.DEFAULT_SEMANTIC_MIN_COSINE` (0.55). That number is
+#: real and well earned — precision 1.00, recall 0.70, F1 0.82 in
+#: `evals/federation/report.md` — but it was measured on **cross-project identity
+#: matching**, where a candidate pair is two projects' views of the same entity.
+#: This pass ranges over every node pair in ONE graph and calls a link correct
+#: when a reader would accept the relationship. Different population, different
+#: notion of correct; perfect precision on one buys nothing on the other, and
+#: this pass had no measurement of its own until now.
+#:
+#: Swept on the ranked-retrieval metric over 59 live questions (demo-corpus,
+#: 3130 nodes), NOT on the controls — the sweep began because a control fired,
+#: and choosing the threshold that silences it would be tuning to that control:
+#:
+#:     min_cosine   overlay edges    MRR     R@5     R@10
+#:     none                     0   0.818   0.669   0.763
+#:     0.50                  4655   0.820   0.609   0.804
+#:     0.55 (was)            3957   0.818   0.608   0.804
+#:     0.60                  2951   0.811   0.613   0.793
+#:     0.65 (now)            1928   0.844   0.629   0.787
+#:     0.70                  1103   0.839   0.640   0.787
+#:     0.75                   568   0.846   0.652   0.779
+#:
+#: 0.65 is chosen as strictly better than the 0.55 it replaces on both headline
+#: numbers (+0.026 MRR, +0.021 R@5) while still discovering ~1900 links.
+#:
+#: Read the first row before trusting any of the others. **No threshold in the
+#: grid beats running no association pass at all on R@5** — 0.669 is the best
+#: figure in the column. What the pass actually does on this corpus is trade
+#: precision at the top of the ranking for recall deeper down (R@10 0.763 →
+#: 0.804 at 0.55). Whether that is a good trade depends on the K the consumer
+#: reads at, which is a product decision this constant cannot make. Re-run the
+#: sweep, do not edit this comment, if that judgement changes.
+DEFAULT_ASSOCIATE_MIN_COSINE = 0.65
 
 
 # --------------------------------------------------------------------------- #
@@ -110,7 +147,7 @@ def discover_links(
     backend,
     agents: Optional[Sequence[Tuple[str, ResearchGraph]]] = None,
     top_k: int = DEFAULT_ASSOCIATE_TOP_K,
-    min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE,
+    min_cosine: float = DEFAULT_ASSOCIATE_MIN_COSINE,
     max_candidates: int = DEFAULT_ASSOCIATE_MAX_CANDIDATES,
     vector_cache=None,
 ) -> List[Tuple[str, str, float]]:
@@ -276,7 +313,7 @@ def consolidate_associations(
     backend=None,
     agents: Optional[Sequence[Tuple[str, ResearchGraph]]] = None,
     top_k: int = DEFAULT_ASSOCIATE_TOP_K,
-    min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE,
+    min_cosine: float = DEFAULT_ASSOCIATE_MIN_COSINE,
     max_candidates: int = DEFAULT_ASSOCIATE_MAX_CANDIDATES,
 ) -> Dict[str, object]:
     """Run one associate pass for the sleep cycle: discover links, persist them.
