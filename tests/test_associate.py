@@ -269,3 +269,39 @@ def test_consolidate_never_raises_on_backend_error(tmp_path):
     stats = A.consolidate_associations(tmp_path, g, backend=_BoomBackend())
     assert stats["associate_added"] == 0
     assert "associate_error" in stats  # swallowed, never propagated into the daemon
+
+
+def test_associate_does_not_inherit_federations_cosine_floor() -> None:
+    """The two passes measure different things and must be free to differ.
+
+    `associate` used to take `federation.DEFAULT_SEMANTIC_MIN_COSINE` (0.55),
+    which is real — precision 1.00, recall 0.70 in evals/federation/report.md —
+    but was measured on CROSS-PROJECT identity matching. This pass ranges over
+    every node pair in one graph and calls a link correct when a reader would
+    accept the relationship. Perfect precision on the first population claims
+    nothing about the second, and the swept number for this pass is 0.65
+    (evals/selfimprove/sweep_cosine.py).
+
+    Re-coupling them would silently revert that, and nothing else would fail:
+    the graph still builds, the pass still runs, only the links get worse. So
+    the decoupling is asserted rather than left to a comment.
+    """
+    from inspect import signature
+
+    import tesserae.federation as F
+    from tesserae.memory.associate import (
+        DEFAULT_ASSOCIATE_MIN_COSINE,
+        consolidate_associations,
+        discover_links,
+    )
+
+    assert DEFAULT_ASSOCIATE_MIN_COSINE == 0.65, (
+        "the swept value; change it by re-running evals/selfimprove/sweep_cosine.py "
+        "and updating the table at the constant, not by editing this number"
+    )
+    for fn in (discover_links, consolidate_associations):
+        assert signature(fn).parameters["min_cosine"].default == DEFAULT_ASSOCIATE_MIN_COSINE, (
+            f"{fn.__name__} took its floor from somewhere other than this pass's own constant"
+        )
+    # Federation keeps its own, unchanged — this must not have moved it.
+    assert F.DEFAULT_SEMANTIC_MIN_COSINE == 0.55
