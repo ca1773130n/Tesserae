@@ -1,7 +1,12 @@
 # Proving the architecture: lifelong learning and self-improving memory
 
 **Date:** 2026-08-17
-**Status:** design, not yet run
+**Status:** run 2026-08-18. Design stands; **§3's headline metric is superseded**
+by [2026-08-18-a-headroom-bearing-instrument.md](2026-08-18-a-headroom-bearing-instrument.md),
+which records what the run measured and why `answerable` cannot express the
+claim: Tesserae scored 15/15 at T0 with nowhere to rise, and a connectivity
+metric is monotone in edges, so consolidation can never make it fall. Experiments
+2 and 3 below are unchanged and still queued.
 **Goal:** evidence that Tesserae's architecture is better than alternatives at
 *accumulating domain knowledge over time* and at *automatically self-improving
 each expert memory* — not that it retrieves well once.
