@@ -118,7 +118,7 @@ def measure_at(
     }
 
 
-def render(rows: Sequence[Dict[str, Any]]) -> str:
+def render(rows: Sequence[Dict[str, Any]], at_k: int = 10) -> str:
     out = [
         "# What threshold should `associate` use?",
         "",
@@ -127,9 +127,17 @@ def render(rows: Sequence[Dict[str, Any]]) -> str:
         "`associate` borrows it for a different task over a different candidate "
         "population. This table is the first associate-specific measurement.",
         "",
-        "Chosen on MRR and R@5 over 59 live questions, NOT on the control column "
-        "— a threshold picked to silence a control that had already been seen "
-        "firing would be tuned to that control.",
+        f"**Judged at K={at_k}**, because that is the evidence budget the "
+        "consumer actually reads. The threshold that wins depends entirely on "
+        "this: association trades precision at the top of the ranking for recall "
+        "deeper down, so R@5 and R@10 disagree about the answer and a table that "
+        "does not name its K will confidently recommend the wrong one. It did "
+        "exactly that once — see the constant's comment in "
+        "`tesserae/memory/associate.py`.",
+        "",
+        "Not judged on the control column: the investigation began because a "
+        "control fired, and a threshold picked to silence it would be tuned to "
+        "that control.",
         "",
         "| min_cosine | overlay edges | MRR | R@1 | R@3 | R@5 | R@10 | answerable | controls |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
@@ -144,24 +152,42 @@ def render(rows: Sequence[Dict[str, Any]]) -> str:
 
     base = next((r for r in rows if r["threshold"] is None), None)
     swept = [r for r in rows if r["threshold"] is not None]
+    key = f"r_at_{at_k}"
     out += ["", "## Reading this table", ""]
     if base and swept:
-        best_mrr = max(swept, key=lambda r: r["mrr"])
-        best_r5 = max(swept, key=lambda r: r["r_at_5"])
+        best = max(swept, key=lambda r: r[key])
+        # A plateau, not a peak: several thresholds usually tie at the top, and
+        # picking the showiest one of a tie is how a sample gets tuned to. Take
+        # the cheapest member — fewest edges for the same score.
+        top = [r for r in swept if abs(r[key] - best[key]) < 1e-9]
+        cheapest = min(top, key=lambda r: r["overlay_edges"])
+        beats = [r for r in swept if r[key] > base[key]]
         out += [
-            f"- No association at all: MRR {base['mrr']:.3f}, R@5 {base['r_at_5']:.3f}.",
-            f"- Best MRR: **{best_mrr['threshold']:.2f}** at {best_mrr['mrr']:.3f} "
-            f"(Δ vs none {best_mrr['mrr'] - base['mrr']:+.3f}).",
-            f"- Best R@5: **{best_r5['threshold']:.2f}** at {best_r5['r_at_5']:.3f} "
-            f"(Δ vs none {best_r5['r_at_5'] - base['r_at_5']:+.3f}).",
+            f"- No association at all: R@{at_k} {base[key]:.3f} "
+            f"(MRR {base['mrr']:.3f}, R@5 {base['r_at_5']:.3f}).",
+            f"- Best R@{at_k}: **{best[key]:.3f}**, reached by "
+            + ", ".join(f"{r['threshold']:.2f}" for r in top)
+            + f" — Δ vs none {best[key] - base[key]:+.3f}.",
+            f"- Cheapest point on that plateau: **{cheapest['threshold']:.2f}** "
+            f"at {cheapest['overlay_edges']} edges (versus "
+            f"{max(r['overlay_edges'] for r in top)} at its most expensive). "
+            "Same score, fewer links to be wrong about.",
         ]
-        beats = [r for r in swept if r["mrr"] > base["mrr"] and r["r_at_5"] >= base["r_at_5"]]
         out.append(
-            "- Thresholds that beat doing nothing on BOTH MRR and R@5: "
-            + (", ".join(f"{r['threshold']:.2f}" for r in beats) if beats else
-               "**none** — on this corpus the association pass does not pay for "
-               "itself at any threshold in the grid, and that is the finding.")
+            f"- Thresholds that beat doing nothing at K={at_k}: "
+            + (", ".join(f"{r['threshold']:.2f}" for r in beats)
+               + f" — the pass pays for itself here."
+               if beats else
+               "**none** — the association pass does not pay for itself at any "
+               "threshold in the grid at this K, and that is the finding.")
         )
+        if best["r_at_5"] < base["r_at_5"]:
+            out.append(
+                f"- Counter-reading, stated so it is not lost: at K=5 the best "
+                f"threshold still loses to no association at all "
+                f"({best['r_at_5']:.3f} vs {base['r_at_5']:.3f}). The pass buys "
+                f"depth and spends precision. It is only a win because K={at_k}."
+            )
     return "\n".join(out) + "\n"
 
 
@@ -171,6 +197,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="scratch project root, OUTSIDE this repo")
     p.add_argument("--out", type=Path, default=None)
     p.add_argument("--grid", default=",".join(str(g) for g in GRID))
+    p.add_argument("--at-k", type=int, default=10, choices=RANK_KS,
+                   help="the evidence budget the consumer reads at; the winning "
+                        "threshold depends on it (default: 10)")
     return p
 
 
@@ -214,7 +243,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
               f"edges={rows[-1]['overlay_edges']} controls={rows[-1]['controls_fired']}",
               file=sys.stderr)
 
-    report = render(rows)
+    report = render(rows, at_k=args.at_k)
     print(report)
     if args.out:
         args.out.write_text(report, encoding="utf-8")

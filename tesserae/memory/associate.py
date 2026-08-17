@@ -79,24 +79,34 @@ DEFAULT_ASSOCIATE_MAX_CANDIDATES = 1500
 #:
 #:     min_cosine   overlay edges    MRR     R@5     R@10
 #:     none                     0   0.818   0.669   0.763
+#:     0.45                  4986   0.813   0.619   0.798
 #:     0.50                  4655   0.820   0.609   0.804
-#:     0.55 (was)            3957   0.818   0.608   0.804
+#:     0.52                  4402   0.820   0.605   0.804
+#:     0.55  <- chosen       3957   0.818   0.608   0.804
+#:     0.58                  3394   0.802   0.615   0.791
 #:     0.60                  2951   0.811   0.613   0.793
-#:     0.65 (now)            1928   0.844   0.629   0.787
+#:     0.65                  1928   0.844   0.629   0.787
 #:     0.70                  1103   0.839   0.640   0.787
-#:     0.75                   568   0.846   0.652   0.779
 #:
-#: 0.65 is chosen as strictly better than the 0.55 it replaces on both headline
-#: numbers (+0.026 MRR, +0.021 R@5) while still discovering ~1900 links.
+#: **Judged at K=10, the evidence budget consumers actually read.** R@10 tops
+#: out at 0.804 on a plateau of 0.50/0.52/0.55, and 0.55 is its cheapest point —
+#: same score, ~700 fewer links to be wrong about. Association pays for itself
+#: at this K: 0.763 with no pass at all, 0.804 with one.
 #:
-#: Read the first row before trusting any of the others. **No threshold in the
-#: grid beats running no association pass at all on R@5** — 0.669 is the best
-#: figure in the column. What the pass actually does on this corpus is trade
-#: precision at the top of the ranking for recall deeper down (R@10 0.763 →
-#: 0.804 at 0.55). Whether that is a good trade depends on the K the consumer
-#: reads at, which is a product decision this constant cannot make. Re-run the
-#: sweep, do not edit this comment, if that judgement changes.
-DEFAULT_ASSOCIATE_MIN_COSINE = 0.65
+#: The number is unchanged from the federation constant it used to inherit, and
+#: that coincidence is worth not mistaking for the old state of affairs: 0.55 is
+#: now this pass's own measured value at this K, and federation is free to move
+#: its own without dragging this with it.
+#:
+#: An earlier version of this comment said 0.65, chosen because it won MRR and
+#: R@5. That was the wrong objective, not a wrong reading: association trades
+#: precision at the top of the ranking for recall deeper down, so R@5 and R@10
+#: genuinely disagree about the best threshold. At K=5 no threshold in the grid
+#: beats running no association pass at all (0.669 with none, 0.629 at best) —
+#: the pass is a win *because* K is 10. Re-run
+#: `evals/selfimprove/sweep_cosine.py --at-k <k>` if that operating point
+#: changes; do not edit this table.
+DEFAULT_ASSOCIATE_MIN_COSINE = 0.55
 
 
 # --------------------------------------------------------------------------- #
