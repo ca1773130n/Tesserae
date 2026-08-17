@@ -33,7 +33,13 @@ from .community_summaries import (
     read_warm_summary,
 )
 from .hierarchy import undirected_degrees
-from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
+from .research_graph import (
+    ResearchEdge,
+    ResearchGraph,
+    ResearchNode,
+    ResearchNodeType,
+    SESSION_FINDING_TYPES,
+)
 from .temporal import _latest_ts, _source_ts, graph_project_roots
 
 logger = logging.getLogger(__name__)
@@ -502,6 +508,42 @@ _SYNTHESIS_TYPES = frozenset(
     {ResearchNodeType.SYNTHESIS, ResearchNodeType.COMMUNITY_SUMMARY}
 )
 
+
+#: Node types that record HOW WORK HAPPENED rather than what is true. The
+#: charter is an institution over knowledge; a division named after an OAuth
+#: account, a tool call or a pasted prompt is the graph describing its own
+#: operator instead of its subject.
+#:
+#: DERIVED from ``SESSION_FINDING_TYPES`` rather than re-listed, so a new
+#: finding kind joins automatically and cannot be forgotten here.
+#:
+#: EVENT is the member that matters most and the one the canonical set misses.
+#: Measured on this project's own 62,366-node graph: excluding
+#: ``SESSION_FINDING_TYPES | {SESSION}`` WITHOUT Event makes the institution
+#: WORSE, not better — live divisions go 4 -> 11 and five of them anchor on
+#: Event nodes named after tool calls (``event-362-tool-bash``,
+#: ``event-770-tool-edit``, ``event-491-tool-toolsearch``), because Event is
+#: 17.8% of that graph and Louvain re-clusters around whatever hubs are left.
+#: Adding Event takes demoted anchors from 296/1,415 to 1/790, the survivor
+#: being ``intake`` itself.
+#:
+#: AGENT is here for the same reason at smaller scale: it is an OAuth account
+#: name, and it is what HypePaper's largest division is currently CALLED
+#: (``codex-codex-nomcp-default``).
+#:
+#: SOURCE_DOCUMENT is deliberately NOT here. It is a public wiki kind
+#: (wiki_projector.py:101, route ``sources``) and ingested content, not process
+#: memory; sweeping in its nodes would delete a research surface from the
+#: charter rather than remove noise from it.
+PROCESS_MEMORY_TYPES = frozenset(
+    SESSION_FINDING_TYPES
+    | {
+        ResearchNodeType.SESSION,
+        ResearchNodeType.EVENT,
+        ResearchNodeType.AGENT,
+    }
+)
+
 _INTAKE_SLUG = "intake"
 
 
@@ -831,28 +873,70 @@ def _domain_clock(
     return _latest_ts([*stamps, *child_clocks]), undated
 
 
-def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> dict:
+def charter_scope(
+    graph: ResearchGraph,
+    *,
+    exclude_synthesis: bool = True,
+    exclude_process: bool = True,
+) -> ResearchGraph:
+    """The universe the charter is built over: knowledge, not process.
+
+    Extracted from ``build_charter`` so the FOUNDING GATE and the BUILD see the
+    same universe. They did not. ``worth_chartering`` was handed the whole
+    research layer while ``build_charter`` scoped internally, so a corpus whose
+    mass is almost entirely process memory bought an institution its knowledge
+    had not earned. Measured on HypePaper: 460,998 total mass against 10,094 of
+    actual research — a charter founded nine times over the one-read bound by a
+    corpus that fits inside it almost five times, and named accordingly
+    (``codex-codex-nomcp-default``, ``fid``, ``map``).
+
+    Edges are pruned to both-endpoints-kept. ``ResearchGraph`` validates edge
+    TYPES only and ``_undirected_projection`` silently SKIPS dangling edges
+    (community_summaries.py:129), so a filter that forgets this produces an
+    invalid graph Louvain swallows rather than raises on, and the damage is
+    invisible in every downstream artifact. Measured on HypePaper: 4,679 of
+    16,636 edges (28.1%) would dangle if left unpruned.
+    """
+    drop: set[ResearchNodeType] = set()
+    if exclude_synthesis:
+        drop |= _SYNTHESIS_TYPES
+    if exclude_process:
+        drop |= PROCESS_MEMORY_TYPES
+    nodes = [node for node in graph.nodes if node.type not in drop]
+    keep = {node.id for node in nodes}
+    edges = [
+        edge for edge in graph.edges if edge.source in keep and edge.target in keep
+    ]
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def build_charter(
+    graph: ResearchGraph,
+    *,
+    exclude_synthesis: bool = True,
+    exclude_process: bool = True,
+) -> dict:
     """Derive the full institution from the research graph.
 
     Founding pass only: ``reorg_seq`` is 0 and every domain is ``founded``.
     Succession against a prior charter is Task 8.
     """
-    scoped = ResearchGraph(
-        nodes=[
-            n for n in graph.nodes
-            if not (exclude_synthesis and n.type in _SYNTHESIS_TYPES)
-        ],
-        edges=list(graph.edges),
+    scoped = charter_scope(
+        graph,
+        exclude_synthesis=exclude_synthesis,
+        exclude_process=exclude_process,
     )
-    keep = {n.id for n in scoped.nodes}
-    scoped.edges = [e for e in scoped.edges if e.source in keep and e.target in keep]
 
-    # Roots come from the graph as HANDED IN, not from ``scoped``. Session
-    # nodes are not synthesis types today so the two agree exactly; tying the
-    # root declaration to the synthesis filter would mean a later addition to
-    # ``_SYNTHESIS_TYPES`` silently disables ``_source_ts``'s path rung, and
-    # ladder coverage collapses from 81.9% to 7.6% (temporal.py:129) with
-    # nothing failing to say so.
+    # Roots come from the graph as HANDED IN, not from ``scoped``. This was
+    # already load-bearing for the synthesis filter; ``exclude_process`` makes
+    # it CRITICAL and no longer hypothetical. ``graph_project_roots`` reads
+    # ``metadata.project_root`` off SESSION nodes ONLY (temporal.py:205), and
+    # SESSION is exactly what ``scoped`` now drops. Measured on HypePaper:
+    # roots resolve to ('/Users/neo/Developer/Projects/HypePaper',) from the
+    # layer as handed in and to () from ``scoped``. Scoping upstream of this
+    # call — at project.py:2190, say — therefore collapses ladder coverage from
+    # 81.9% to 7.6% (temporal.py:129) with nothing failing to say so. This is
+    # why the scope lives in here and not at the call site.
     roots = graph_project_roots(graph)
 
     clusters, _dropped = sections(scoped)

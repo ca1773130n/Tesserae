@@ -524,6 +524,18 @@ def partition_graph(graph: ResearchGraph) -> Tuple[ResearchGraph, ResearchGraph]
       kept (this includes intra-code edges *and* any cross-layer
       ``mentioned_in`` edge that anchors a code symbol to a research node;
       callers can drop the cross-layer half if needed).
+    
+    There is deliberately NO session/process layer here, and adding one is a
+    mistake this docstring exists to stop. This function's research half is
+    written straight to ``.tesserae/graph.json`` (project.py:3828-3838), which
+    is the only graph every MCP read path loads (mcp_server.py:5684 -> 5721 ->
+    5754, 20 call sites). Splitting session memory out here does not clean up a
+    surface — it empties ``find_session_findings``, ``fresh_insights`` and
+    ``list_sessions``, takes ``search_nodes``' candidate corpus from 2,279 to
+    112, and drops 3,691 cross-layer provenance edges. Measured on HypePaper
+    2026-08-18. The charter is the only surface where process memory must not
+    compete to name things, and it scopes itself: see ``charter.charter_scope``
+    and ``charter.PROCESS_MEMORY_TYPES``.
     """
     research_node_ids: set[str] = set()
     code_node_ids: set[str] = set()

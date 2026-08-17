@@ -3,8 +3,20 @@ from __future__ import annotations
 
 import pytest
 
-from tesserae.charter import DOMAIN_MASS_CAP, DOMAIN_MASS_FLOOR, mass
-from tesserae.research_graph import ResearchNode, ResearchNodeType
+from tesserae.charter import (
+    DOMAIN_MASS_CAP,
+    DOMAIN_MASS_FLOOR,
+    PROCESS_MEMORY_TYPES,
+    charter_scope,
+    mass,
+)
+from tesserae.research_graph import (
+    ResearchEdge,
+    ResearchGraph,
+    ResearchNode,
+    ResearchNodeType,
+    SESSION_FINDING_TYPES,
+)
 
 
 def _node(nid: str, name: str, description: str = "") -> ResearchNode:
@@ -1742,3 +1754,100 @@ def test_split_domain_scope_is_the_only_reader_of_the_grammar():
     assert split_domain_scope("domain:") is None  # a prefix is not a slug
     assert split_domain_scope("CommunitySummary:abc") is None
     assert split_domain_scope("agent:writer") is None
+
+
+# ---------------------------------------------------------------------------
+# exclude_process — the charter is an institution over knowledge, not process
+# ---------------------------------------------------------------------------
+
+
+def test_process_memory_types_is_derived_and_covers_event_and_agent():
+    """The set is derived, and the two members the canonical set misses are in.
+
+    EVENT is the one that matters: excluding SESSION_FINDING_TYPES | {SESSION}
+    WITHOUT it measured WORSE on this project's own graph — divisions 4 -> 11,
+    five anchored on tool calls (``event-362-tool-bash``) — because Event is
+    17.8% of that graph and Louvain re-clusters onto whatever hubs remain.
+    """
+    assert SESSION_FINDING_TYPES <= PROCESS_MEMORY_TYPES
+    for t in (ResearchNodeType.SESSION, ResearchNodeType.EVENT, ResearchNodeType.AGENT):
+        assert t in PROCESS_MEMORY_TYPES
+    # Ingested content, not process memory, and a public wiki kind. Sweeping it
+    # in would delete a research surface rather than remove noise from one.
+    assert ResearchNodeType.SOURCE_DOCUMENT not in PROCESS_MEMORY_TYPES
+
+
+def test_charter_scope_prunes_edges_to_kept_nodes():
+    """No dangling edge survives the scope.
+
+    Nothing else enforces this: ResearchGraph validates edge TYPES only, and
+    _undirected_projection SKIPS danglers silently, so an unpruned filter makes
+    an invalid graph that Louvain swallows. Measured on HypePaper: 4,679 of
+    16,636 edges (28.1%) would dangle.
+    """
+    graph = ResearchGraph(
+        nodes=[
+            ResearchNode(id="Concept:a", name="A", type=ResearchNodeType.CONCEPT),
+            ResearchNode(id="Concept:b", name="B", type=ResearchNodeType.CONCEPT),
+            ResearchNode(id="Session:s1", name="S1", type=ResearchNodeType.SESSION),
+        ],
+        edges=[
+            ResearchEdge(source="Concept:a", target="Concept:b", type="shares_concept_with"),
+            ResearchEdge(source="Session:s1", target="Concept:a", type="discussed_in"),
+        ],
+    )
+    scoped = charter_scope(graph)
+    kept = {n.id for n in scoped.nodes}
+    assert "Session:s1" not in kept
+    assert all(e.source in kept and e.target in kept for e in scoped.edges)
+
+
+def test_the_founding_gate_sees_the_scoped_universe():
+    """A corpus that clears the bound only on process memory must not found.
+
+    This is the HypePaper shape as a fixture: unscoped mass 460,998 against a
+    48,000 bound, scoped mass 10,094. The institution it bought was named
+    ``codex-codex-nomcp-default``.
+    """
+    research = [_fat_node(f"Concept:r{i}", 200) for i in range(3)]
+    process = [
+        ResearchNode(
+            id=f"Session:s{i}",
+            name=f"S{i}",
+            type=ResearchNodeType.SESSION,
+            description="x" * 4000,
+        )
+        for i in range(20)
+    ]
+    graph = ResearchGraph(nodes=research + process, edges=[])
+    assert worth_chartering(graph) is True
+    assert worth_chartering(charter_scope(graph)) is False
+
+
+def test_exclude_process_false_restores_the_prior_universe():
+    """The flag is a scope, not a rewrite — mirrors the exclude_synthesis test."""
+    graph = ResearchGraph(
+        nodes=[
+            ResearchNode(id=f"Concept:a{i}", name=f"A{i}", type=ResearchNodeType.CONCEPT)
+            for i in range(3)
+        ]
+        + [ResearchNode(id="Agent:acct", name="acct", type=ResearchNodeType.AGENT)],
+        edges=[
+            ResearchEdge(source="Concept:a0", target="Concept:a1", type="shares_concept_with"),
+            ResearchEdge(source="Concept:a1", target="Concept:a2", type="shares_concept_with"),
+            ResearchEdge(source="Agent:acct", target="Concept:a0", type="performed_by"),
+        ],
+    )
+    dropped = {
+        mid
+        for e in build_charter(graph)["domains"].values()
+        for mid in e["direct_member_ids"]
+    }
+    assert "Agent:acct" not in dropped
+
+    kept = {
+        mid
+        for e in build_charter(graph, exclude_process=False)["domains"].values()
+        for mid in e["direct_member_ids"]
+    }
+    assert "Agent:acct" in kept
