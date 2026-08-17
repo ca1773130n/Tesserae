@@ -791,6 +791,138 @@ def test_citation_rejection_falls_back_and_is_not_cached(tmp_path: Path) -> None
     assert not level_cache_path(tmp_path, 1, cid).exists()
 
 
+class _CachingClient(_ScriptedClient):
+    """A client that CACHES by prompt, the way the real CLI clients do.
+
+    ``_ScriptedClient`` answers from a script and keeps no cache, so it cannot
+    tell a re-ask from a replay — every visit looks like a fresh LLM call even
+    when the real client would have served the rejected answer off disk for
+    free. That is why the sibling test above passes with or without the drop.
+    """
+
+    def __init__(self, answer: dict) -> None:
+        super().__init__()
+        self._answer = answer
+        self._cache: dict = {}
+        self.forgotten: List[dict] = []
+        self.llm_calls = 0
+
+    def complete_json(self, *, system, user, schema_name, cache_key=None, **kw):
+        key = (system, user, schema_name)
+        if key in self._cache:
+            return self._cache[key]
+        self.llm_calls += 1
+        super().complete_json(
+            system=system, user=user, schema_name=schema_name, cache_key=cache_key
+        )
+        self._cache[key] = self._answer
+        return self._answer
+
+    def forget_cached_answer(self, cache_key, *, schema_name, system, user) -> None:
+        self.forgotten.append({"cache_key": cache_key, "schema_name": schema_name})
+        self._cache.pop((system, user, schema_name), None)
+
+
+def test_citation_rejection_drops_the_cached_answer_so_a_retry_re_asks(
+    tmp_path: Path,
+) -> None:
+    """A rejected summary must not be served back to every later attempt.
+
+    The cache is addressed by the assembled prompt, and a community's prompt is
+    a pure function of its members — so without the drop the first rejection is
+    permanent: every retry replays the same rejected bytes, spends no LLM call,
+    and reaches the same verdict forever. The citation lint makes that
+    population predictable rather than rare, since it can only reject a
+    community that HAS children — the routers a charter's upper tiers are made
+    of. Measured on this project: 135 of 1,411 domains carry ``child_slugs``,
+    including all three reachable root cards.
+    """
+    members = _lazy_members()
+    cid = community_id([n.id for n in members])
+    child_cids = [community_id(["Concept:m0", "Concept:m1"])]
+    client = _CachingClient(
+        {
+            "title": "Vague",
+            "description": "A summary that cites nothing at all.",
+            "tags": ["a", "b", "c", "d", "e"],
+        }
+    )
+
+    for _ in range(3):
+        assert (
+            materialize_community_summary(
+                members,
+                cid=cid,
+                member_ids=[n.id for n in members],
+                level=1,
+                cache_dir=tmp_path,
+                json_client=client,
+                child_cids=child_cids,
+            )
+            is None
+        )
+
+    # Without the drop this is 1: the rejected answer is replayed twice.
+    assert client.llm_calls == 3, (
+        "a rejected summary was served from cache instead of re-asked — "
+        f"{client.llm_calls} real call(s) for 3 attempts"
+    )
+    assert len(client.forgotten) == 3
+    assert client.forgotten[0] == {
+        "cache_key": "community-summary-v1",
+        "schema_name": "community_summary",
+    }
+    assert not level_cache_path(tmp_path, 1, cid).exists()
+
+
+def test_an_invalid_summary_is_also_dropped(tmp_path: Path) -> None:
+    """The shape-validation rejection caches an answer too, so it drops too."""
+    members = _lazy_members()
+    cid = community_id([n.id for n in members])
+    client = _CachingClient({"title": "no description or tags"})
+
+    for _ in range(2):
+        assert (
+            materialize_community_summary(
+                members,
+                cid=cid,
+                member_ids=[n.id for n in members],
+                level=1,
+                cache_dir=tmp_path,
+                json_client=client,
+            )
+            is None
+        )
+    assert client.llm_calls == 2
+    assert len(client.forgotten) == 2
+
+
+def test_a_client_without_a_cache_still_works(tmp_path: Path) -> None:
+    """The drop is duck-typed: an Anthropic-SDK-shaped client has no such
+    method, and a rejection must still return None rather than raise."""
+    members = _lazy_members()
+    cid = community_id([n.id for n in members])
+    uncited = {
+        "title": "Vague",
+        "description": "A summary that cites nothing at all.",
+        "tags": ["a", "b", "c", "d", "e"],
+    }
+    client = _ScriptedClient(scripted=[uncited])
+    assert not hasattr(client, "forget_cached_answer")
+    assert (
+        materialize_community_summary(
+            members,
+            cid=cid,
+            member_ids=[n.id for n in members],
+            level=1,
+            cache_dir=tmp_path,
+            json_client=client,
+            child_cids=[community_id(["Concept:m0"])],
+        )
+        is None
+    )
+
+
 def test_compile_prompt_has_no_citation_section(tmp_path: Path) -> None:
     """The compile pass summarizes leaf members (child_cids empty) — its
     prompts and system message are byte-identical to the pre-refactor code."""
