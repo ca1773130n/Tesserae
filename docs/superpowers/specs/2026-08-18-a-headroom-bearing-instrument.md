@@ -230,3 +230,58 @@ so the broken version does not get built later:
 The prerequisite for experiment 2 is not more slices. It is a question set large
 enough to resolve the effect, on a corpus where no single document carries a
 third of the gold.
+
+
+---
+
+## 10. n = 284, and the sign flips (added 2026-08-18)
+
+§8 reported the ladder at n = 59 and called the graph's own contribution
+"+0.009 with a CI spanning zero". The question set was then grown to **284 live
+questions + 48 controls** — 225 new ones authored across 12 themes from the paper
+text, 95% surviving adversarial verification, with the hub paper 2308.04079 cut
+from 37% of gold sets to 13% and all 50 papers now gold for something.
+
+At that sample the earlier reading does not survive.
+
+| arm | lanes | text | granularity | R@10 | MRR |
+|---|---:|---|---|---:|---:|
+| Dense | 1 | markdown | document | 0.786 | 0.820 |
+| Tesserae (+ PPR) | 3 | node text | node | 0.804 | 0.795 |
+| Tesserae−edges | 3 | node text | node | 0.806 | 0.860 |
+| BM25 | 1 | markdown | document | 0.861 | 0.888 |
+| **Hybrid-doc** | 3 | markdown | document | **0.896** | **0.943** |
+
+Paired bootstrap, 4000 resamples, n = 284:
+
+    Tesserae − Tesserae−edges   -0.002  [-0.025, +0.022]
+    Tesserae − BM25             -0.057  [-0.083, -0.029]
+    Tesserae − Hybrid-doc       -0.092  [-0.116, -0.068]
+    Hybrid-doc − BM25           +0.035  [+0.018, +0.054]
+
+**The graph contributes nothing measurable.** Removing the PPR walk moves R@10 by
+−0.002. The interval is now tight enough to state a real bound rather than a
+shrug: on this corpus the edges are worth **less than 0.025 R@10**.
+
+**And this pipeline loses to plain BM25 over raw markdown**, by a margin whose
+confidence interval excludes zero. At n = 59 the same ladder read +0.026
+[−0.034, +0.088] and looked like a win. It was a small-sample artifact.
+
+That is the most useful thing this instrument has produced. Every earlier version
+of it — `answerable`, the single-lane comparison, the n = 59 ladder — reported a
+Tesserae win. Each time the win dissolved when the instrument got stricter, and
+this is the first version strict enough to say so with an interval off zero.
+
+### What this does not establish
+
+Not that Tesserae's *product* retrieval is worse. This arm scores at **node**
+granularity, and the doc-pooled variant of the same node text scored 0.802
+against the node-level 0.763 at n = 59 — pooling was the largest single lever
+anywhere in the ladder, larger than the edges by a factor of five. Whether
+`compile_context` and `ask` pool to documents the way this harness does is
+**unverified**, and is the next thing to check. If they do, the product is not
+what was measured here; if they do not, this is a product finding and not merely
+a harness one.
+
+Also unchanged: one corpus, one embedder (model2vec), K = 10, and `SEED_K = 25`
+still unswept.
