@@ -64,7 +64,7 @@ UNANSWERABLE_JSON = HERE / "unanswerable.json"
 #: default output path that moves at midnight is a wall clock in the harness.
 DEFAULT_REPORT = Path.home() / ".blackhole" / "Tesserae" / "qa" / "report.md"
 
-SYSTEMS = ("tesserae", "null")
+SYSTEMS = ("tesserae", "null", "bm25", "hybrid")
 
 
 class Skip(Exception):
@@ -162,6 +162,14 @@ def _build_benchmark(system: str, corpus: Sequence[str], questions: Sequence[Map
             )
         from .null_model import NullModelConfig, QABenchmarkNullModel
 
+        if system in ("bm25", "hybrid"):
+            from .benchmark_retrieval import QABenchmarkRetrieval, RetrievalConfig
+
+            return QABenchmarkRetrieval(
+                corpus, questions,
+                RetrievalConfig(lane=system, top_k=args.top_k,
+                                model=args.model, provider=getattr(args, "provider", None)),
+            )
         return QABenchmarkNullModel(
             list(corpus), qa_pairs,
             NullModelConfig(
