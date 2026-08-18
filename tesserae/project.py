@@ -2883,6 +2883,7 @@ class ProjectWiki:
         use_llm: bool = False,
         force_no_llm: bool = False,
         model: str = "claude-sonnet-4-6",
+        answer_style: str = "prose-cited",
     ) -> "QueryResult":
         """Convenience wrapper around :class:`tesserae.query.WikiQuery`.
 
@@ -2894,6 +2895,10 @@ class ProjectWiki:
         from .query import WikiQuery
 
         wq = WikiQuery(self.project_root, top_k=top_k, kind_filter=kind)
+        # Selects the system preamble, and therefore the ANSWER SHAPE. Standard
+        # QA metrics score exact match over the whole answer string, so this is
+        # the difference between a measurable answer and an unmeasurable one.
+        wq.answer_style = answer_style
         return wq.answer(
             question,
             model=model,

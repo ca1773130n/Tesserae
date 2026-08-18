@@ -49,7 +49,12 @@ class _StubWiki:
     def config(self):
         return {"memory_backends": self._backends}
 
-    def query(self, question, *, top_k, use_llm, force_no_llm=False):
+    def query(self, question, *, top_k, use_llm, force_no_llm=False,
+              answer_style="prose-cited"):
+        # Mirrors ProjectWiki.query. A stub that lags the real signature
+        # fails as a TypeError here rather than silently dropping the
+        # answer shape at a call site that thinks it set one.
+        self.answer_style = answer_style
         self.last_use_llm = use_llm
         self.last_force_no_llm = force_no_llm
         return _StubResult()
