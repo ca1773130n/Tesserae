@@ -62,6 +62,49 @@ from ..qa.run_qa_eval import Skip
 #: ``evals/lme_mab``'s ``PROTOCOL_K``.
 K = 10
 
+#: The comparison ladder, and why a single-lane baseline is not one.
+#:
+#: `rank_documents_graph` seeds from `hybrid_search(mode="hybrid")`, which is an
+#: RRF fusion of THREE lanes (bm25 + lexical + embedding, DEFAULT_WEIGHTS all
+#: 1.0), scored over node text at node granularity. BM25 and Dense are ONE lane
+#: each over raw markdown at document granularity. Beating them therefore
+#: measures lane count and granularity, not architecture — and this harness
+#: reported exactly that as a Tesserae win before `Hybrid-doc` existed.
+#:
+#: Measured on the frozen corpus, 59 live questions, K=10, overlay off:
+#:
+#:     arm                lanes  text        granularity   R@10
+#:     Dense                  1  markdown    document     0.728
+#:     BM25                   1  markdown    document     0.738
+#:     Tesserae-edges         3  node text   node         0.754
+#:     Tesserae (+ PPR)       3  node text   node         0.763
+#:     NodeText-doc           3  node text   document     0.802
+#:     Hybrid-doc             3  markdown    document     0.827
+#:
+#: Paired bootstrap, 4000 resamples, question-clustered:
+#:
+#:     Tesserae - Tesserae-edges   +0.009  [-0.045, +0.062]   <- the graph itself
+#:     Tesserae - BM25             +0.026  [-0.034, +0.088]
+#:     Tesserae - Hybrid-doc       -0.063  [-0.116, -0.011]   <- excludes zero
+#:
+#: So: the whole Tesserae-over-BM25 margin is +0.026, of which the edges are
+#: +0.009 with a CI spanning zero, and against a fusion-matched baseline this
+#: memory LOSES by a margin whose CI does not span zero. `Hybrid-doc` is in the
+#: default arm list so that result cannot be omitted by forgetting a flag.
+#:
+#: Resolving a +0.009 effect against a ~0.06 half-width needs roughly 36x this
+#: sample — about 2,100 questions. More cycles do not help. What this harness
+#: can honestly deliver at n=59 is a BOUND: the edges contribute less than 0.06
+#: R@10 on this corpus.
+ARM_LADDER = ("Tesserae", "Hybrid-doc", "BM25", "Dense")
+
+#: (display name, --arms key) for every non-graph arm, in report order. ONE list,
+#: because the T0 loop and the per-cycle loop used to carry their own copies and
+#: adding Hybrid-doc to the second alone printed a cycle-0 table without the arm
+#: that beats us — a comparison silently omitted at exactly the row a reader
+#: starts from.
+BASELINE_ARMS = (("Hybrid-doc", "hybrid-doc"), ("BM25", "bm25"), ("Dense", "dense"))
+
 #: Nodes `hybrid_search` hands PPR as its personalization vector.
 #:
 #: UNSWEPT AND LOAD-BEARING. The whole graph arm hangs on it, and it has had
@@ -464,7 +507,7 @@ def measure_baseline(
     files = _readable_docs(docs)
     texts = [p.read_text(encoding="utf-8", errors="ignore") for p in files]
     corpus_tokens = [_tokenize(t) for t in texts]
-    if arm == "Dense":
+    if arm in ("Dense", "Hybrid-doc"):
         from tesserae.retrieval.hybrid import active_embedding_backend
         from tesserae.retrieval.vector_cache import embed_texts
 
@@ -483,7 +526,23 @@ def measure_baseline(
     def scores_for(text: str) -> List[float]:
         if arm == "BM25":
             return _bm25_scores(_tokenize(text), corpus_tokens)
-        return _cosine_scores(backend, vectors, text)
+        if arm == "Dense":
+            return _cosine_scores(backend, vectors, text)
+        # Hybrid-doc: the SAME three-lane RRF the graph arm's seeding stage uses,
+        # over the same raw markdown the other baselines see, at document
+        # granularity. See ARM_LADDER for why this arm has to exist.
+        from tesserae.retrieval.hybrid import _fuse, _lexical_scores, DEFAULT_WEIGHTS
+
+        fused, _ = _fuse(
+            {
+                "bm25": _bm25_scores(_tokenize(text), corpus_tokens),
+                "lexical": _lexical_scores(text, texts),
+                "embedding": _cosine_scores(backend, vectors, text),
+            },
+            DEFAULT_WEIGHTS,
+            len(texts),
+        )
+        return fused
 
     def covered(q: dict) -> bool:
         """The old connectivity-analogue, kept as a diagnostic column."""
@@ -628,7 +687,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cycles", type=int, default=3,
                    help="consolidation cycles to run after T0 (default: 3)")
     p.add_argument("--out", type=Path, default=None)
-    p.add_argument("--arms", default="tesserae,bm25,dense")
+    p.add_argument("--arms", default="tesserae,hybrid-doc,bm25,dense")
     p.add_argument("--cycles-run", action="store_true",
                    help="run the consolidation cycles. Without it the run "
                         "measures T0 and stops. NOT a money gate: the "
@@ -663,7 +722,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if "tesserae" in arms:
         points.append(measure_graph(work, questions, staged, staged_arxiv, cycle=0))
-    for arm, key in (("BM25", "bm25"), ("Dense", "dense")):
+    for arm, key in BASELINE_ARMS:
         if key in arms:
             points.append(measure_baseline(arm, docs, questions, cycle=0))
 
@@ -680,7 +739,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             pt = measure_graph(work, questions, staged, staged_arxiv, cycle=cycle)
             pt.notes.append(f"associate added {added} link(s), 0 LLM calls")
             points.append(pt)
-        for arm, key in (("BM25", "bm25"), ("Dense", "dense")):
+        for arm, key in BASELINE_ARMS:
             if key in arms:
                 points.append(measure_baseline(arm, docs, questions, cycle=cycle))
 

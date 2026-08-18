@@ -229,3 +229,37 @@ def test_every_question_has_its_sources_on_the_frozen_corpus() -> None:
         "questions require papers the full corpus does not contain: "
         f"{sorted(required - staged_arxiv)[:5]}"
     )
+
+
+def test_the_fusion_matched_arm_is_present_at_every_cycle_including_T0() -> None:
+    """The arm that beats us must not be missing from the row a reader starts at.
+
+    The T0 loop and the per-cycle loop each carried their own copy of the arm
+    list. Adding `Hybrid-doc` to the second one alone printed a cycle-0 table
+    with only BM25 and Dense — the two single-lane arms Tesserae beats — and a
+    cycle-1 table with the three-lane arm that beats Tesserae. Same run, and the
+    flattering half is the half a reader sees first.
+    """
+    from evals.selfimprove.curve import ARM_LADDER, BASELINE_ARMS
+
+    keys = {k for _, k in BASELINE_ARMS}
+    assert "hybrid-doc" in keys, (
+        "the fusion-matched baseline is the comparison; without it the harness "
+        "measures lane count and reports it as architecture"
+    )
+    # Every non-graph rung of the documented ladder has to be runnable.
+    for name in ARM_LADDER:
+        if name == "Tesserae":
+            continue
+        assert name in {n for n, _ in BASELINE_ARMS}, f"{name} is documented but not wired"
+
+
+def test_hybrid_doc_fuses_the_same_three_lanes_the_graph_arm_seeds_from() -> None:
+    """If they ever diverge, the 'matched' baseline stops being matched and the
+    comparison quietly reverts to measuring lane count."""
+    from tesserae.retrieval.hybrid import DEFAULT_WEIGHTS
+
+    assert set(DEFAULT_WEIGHTS) == {"bm25", "lexical", "embedding"}, (
+        "hybrid_search's lanes changed; Hybrid-doc in measure_baseline must be "
+        "updated to fuse the same set or it is no longer the matched control"
+    )
