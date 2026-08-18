@@ -109,3 +109,39 @@ def test_unknown_lane_fails_at_construction() -> None:
 def test_defaults_match_the_rest_of_the_repository() -> None:
     assert DEFAULT_TOP_K == 10, "the evidence budget every other measurement used"
     assert set(LANES) == {"bm25", "hybrid"}
+
+
+def test_the_corpus_arrives_without_the_harness_staging_it() -> None:
+    """The bug that produced a whole table of fake numbers.
+
+    `insert_document` is only called during a staging phase, and `--answer`
+    alone skips it. The first real run indexed nothing, retrieved nothing, and
+    reported token F1 of 0.009-0.057 for 332 questions — a null model wearing a
+    retrieval label. The corpus must reach the arm by construction, not by
+    hoping the harness feeds it.
+    """
+    b = QABenchmarkRetrieval(["alpha beta", "gamma delta"], [], RetrievalConfig(lane="bm25"))
+    assert len(b.documents) == 2
+    assert b.declared_meta()["documents_indexed"] == 2
+
+
+def test_staging_twice_does_not_double_index_the_corpus() -> None:
+    """A staged run and an --answer-only run must index the same corpus, or the
+    two are not comparable — and duplicated documents would also distort BM25's
+    document-frequency statistics."""
+    docs = ["alpha beta", "gamma delta"]
+    b = QABenchmarkRetrieval(list(docs), [], RetrievalConfig(lane="bm25"))
+    for i, d in enumerate(docs):
+        asyncio.run(b.insert_document(d, i))
+    assert len(b.documents) == 2, "constructor-seeded documents were re-added"
+    asyncio.run(b.insert_document("epsilon", 9))
+    assert len(b.documents) == 3, "a genuinely new document must still be accepted"
+
+
+def test_an_empty_index_refuses_instead_of_answering() -> None:
+    """Answering from no documents yields numbers that look like retrieval and
+    are not. One raised question is cheap; a full plausible table is not."""
+    b = QABenchmarkRetrieval([], [], RetrievalConfig(lane="bm25"))
+    b.rag_client = _Client()
+    with pytest.raises(RuntimeError, match="no documents to retrieve from"):
+        asyncio.run(b.query_rag("alpha"))
