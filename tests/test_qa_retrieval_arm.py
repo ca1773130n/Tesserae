@@ -12,13 +12,25 @@ import asyncio
 
 import pytest
 
-from evals.qa.benchmark_retrieval import (
-    DEFAULT_TOP_K,
-    LANES,
-    QABenchmarkRetrieval,
-    RetrievalConfig,
-)
-from evals.qa.null_model import NULL_SYSTEM_PROMPT
+from evals.qa.vendor_base import MissingPrerequisite
+
+# The arm subclasses the VENDORED cognee benchmark base, which lives in the
+# gitignored `evals/cognee` clone and needs `dotenv`. Neither exists on a CI
+# runner, so importing at module scope turns a missing optional prerequisite
+# into a collection ERROR that fails the whole suite — which is exactly what it
+# did. `tests/test_lme_mab_dataset.py` already skips on absent `pyarrow`; this
+# is the same idiom for a prerequisite that raises instead of ImportError.
+try:
+    from evals.qa.benchmark_retrieval import (
+        DEFAULT_TOP_K,
+        LANES,
+        QABenchmarkRetrieval,
+        RetrievalConfig,
+    )
+    from evals.qa.null_model import NULL_SYSTEM_PROMPT
+except MissingPrerequisite as exc:  # pragma: no cover - environment-dependent
+    pytest.skip(f"vendored QA benchmark base unavailable: {exc}",
+                allow_module_level=True)
 
 
 class _Client:
