@@ -168,12 +168,12 @@ def _build_benchmark(system: str, corpus: Sequence[str], questions: Sequence[Map
             return QABenchmarkRetrieval(
                 corpus, questions,
                 RetrievalConfig(lane=system, top_k=args.top_k,
-                                model=args.model, provider=getattr(args, "provider", None)),
+                                model=args.model, provider=args.provider),
             )
         return QABenchmarkNullModel(
             list(corpus), qa_pairs,
             NullModelConfig(
-                model=args.model, print_results=False,
+                model=args.model, provider=args.provider, print_results=False,
                 results_file=str(args.answers_out) if args.answers_out else "",
             ),
         )
@@ -527,7 +527,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--no-llm", action="store_true",
                         help="Tesserae retrieval only — measures excerpts, not answers")
-    parser.add_argument("--model", default=None, help="null-model LLM model id")
+    parser.add_argument("--model", default=None,
+                        help="answering LLM model id, for every arm that takes one")
+    parser.add_argument("--provider", default=None,
+                        help="answering LLM provider (claude|codex). MUST match "
+                             "across arms: scorer.FAIRNESS_KEYS blocks a "
+                             "comparison whose arms answered with different "
+                             "models, because it would measure the models "
+                             "rather than the retrieval. The tesserae arm reads "
+                             "its provider from the PROJECT config, so pin the "
+                             "baselines to the same one.")
     return parser
 
 
