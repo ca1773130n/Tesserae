@@ -128,6 +128,42 @@ user message. You never invent papers, numbers, names, or claims.
 """
 
 
+#: The short-span preamble. Rules 1-3 and 5 are the house rules and stay; only
+#: rule 4, the length and shape target, differs.
+#:
+#: This exists because Tesserae could not be benchmarked at all without it.
+#: HotpotQA, LongMemEval and MemoryAgentBench all score exact match and token F1
+#: over the WHOLE answer string against a one-phrase gold answer, so 60-220 words
+#: of cited prose scores near zero however correct it is —
+#: `evals/qa/scorer.py::ANSWER_SHAPES` says exactly that, and
+#: `fairness_blockers` correctly refuses to publish a comparison across two
+#: shapes. The default house style was therefore not a style preference; it was
+#: an unstated decision that this system is unmeasurable next to any competitor.
+#:
+#: Citations are dropped here, and that is the point of the shape rather than an
+#: oversight: a bracket citation inside a one-phrase answer is scored as answer
+#: tokens and penalises the very metric this mode exists to be scored on. Callers
+#: that need provenance want the default mode, which still carries it.
+_SHORT_SPAN_PREAMBLE_HEADER = """\
+You are the librarian voice of Tesserae, a self-evolving research notebook.
+You answer questions strictly from the compiled wiki sources provided in the
+user message. You never invent papers, numbers, names, or claims.
+
+# Hard rules
+
+1. RESTATE, DO NOT INVENT. If the answer is not present in the supplied
+   <source> blocks, reply with exactly: I don't know
+2. SHORTEST EXACT ANSWER. A name, a date, a number, a mechanism phrase.
+   No explanation, no full sentence, no preamble.
+3. NEUTRAL VOICE. Plain text. No markdown, no code fences, no HTML.
+4. NO CITATIONS in this mode. Do not emit bracket citations or node ids —
+   they are scored as answer tokens and would corrupt the measurement.
+5. NO FRONTMATTER. Do not emit a YAML frontmatter block or a leading H1.
+
+# Wiki overview
+"""
+
+
 _DEFAULT_OVERVIEW = """\
 Tesserae ingests markdown notes (papers, repositories, daily research
 digests, source documents) and projects them into a typed research
@@ -729,8 +765,14 @@ class WikiQuery:
     # --------------------------------------------------------- prompt helpers
 
     def _system_blocks(self) -> List[Dict[str, Any]]:
-        if self._system_blocks_cache is not None:
+        # Keyed on the style: the cache is per-instance, and an instance whose
+        # style is switched between calls would otherwise serve the previous
+        # style's preamble and silently answer in the wrong shape.
+        style = getattr(self, "answer_style", "prose-cited")
+        if (self._system_blocks_cache is not None
+                and getattr(self, "_system_blocks_style", None) == style):
             return self._system_blocks_cache
+        self._system_blocks_style = style
         overview = _DEFAULT_OVERVIEW
         if self.overview_path.exists():
             try:
@@ -739,7 +781,10 @@ class WikiQuery:
                     overview = text.strip() + "\n"
             except OSError:
                 pass
-        text = _SYSTEM_PREAMBLE_HEADER + overview + "\n" + _ontology_recap()
+        header = (_SHORT_SPAN_PREAMBLE_HEADER
+                  if getattr(self, "answer_style", "prose-cited") == "short-span"
+                  else _SYSTEM_PREAMBLE_HEADER)
+        text = header + overview + "\n" + _ontology_recap()
         self._system_blocks_cache = [
             {
                 "type": "text",
@@ -928,6 +973,9 @@ def _xml_escape(value: str) -> str:
 # ----------------------------------------------------------------- ask dispatcher
 
 
+ANSWER_STYLES = ("prose-cited", "short-span")
+
+
 def ask_project(
     wiki: Any,
     question: str,
@@ -937,6 +985,7 @@ def ask_project(
     use_llm: bool = True,
     no_llm: bool = False,
     route: str = "auto",
+    answer_style: str = "prose-cited",
 ) -> Dict[str, Any]:
     """Run a question against the configured memory backends and return a JSON-serializable envelope.
 
@@ -1053,7 +1102,8 @@ def ask_project(
             planned["route"] = route_info
             return planned
 
-    result = wiki.query(cleaned_question, top_k=top_k, use_llm=want_llm, force_no_llm=no_llm)
+    result = wiki.query(cleaned_question, top_k=top_k, use_llm=want_llm,
+                        force_no_llm=no_llm, answer_style=answer_style)
     payload = result.to_dict()
     payload["backend"] = "wiki"
     payload["question"] = cleaned_question
