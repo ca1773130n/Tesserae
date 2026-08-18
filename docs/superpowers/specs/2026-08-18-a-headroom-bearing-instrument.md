@@ -1,7 +1,8 @@
 # A headroom-bearing instrument for the self-improvement claim
 
 **Date:** 2026-08-18
-**Status:** scope, not yet built
+**Status:** built and run. **Its comparison was unfair in our favour** — see
+§8, added 2026-08-18 after a nine-agent confound hunt.
 **Supersedes:** the metric choice in
 [2026-08-17-lifelong-learning-evidence.md](2026-08-17-lifelong-learning-evidence.md)
 §3. That document's experiment design, arms, sequencing and honesty constraints
@@ -151,3 +152,81 @@ Every constraint in the superseded spec §7 continues to apply.
 3. **Which corpus?** `examples/demo-corpus` is compiled, small, and already
    understood. It is also the corpus the current questions were written against,
    which risks authoring the new set against a graph we have been staring at.
+
+
+---
+
+## 8. The comparison was measuring lane count (added 2026-08-18)
+
+Designing experiment 2 turned up a defect in experiment 1, already merged.
+
+`rank_documents_graph` seeds from `hybrid_search(mode="hybrid")` — an RRF fusion
+of **three** lanes (bm25 + lexical + embedding, all weighted 1.0), scored over
+node text at node granularity. BM25 and Dense are **one** lane each, over raw
+markdown, at document granularity. Beating them measures lane count and
+granularity. It does not measure architecture, and §1 of this document reported
+it as though it did.
+
+The ladder, measured on the frozen corpus, 59 live questions, K=10, overlay off:
+
+| arm | lanes | text | granularity | R@10 |
+|---|---:|---|---|---:|
+| Dense | 1 | markdown | document | 0.728 |
+| BM25 | 1 | markdown | document | 0.738 |
+| Tesserae−edges | 3 | node text | node | 0.754 |
+| Tesserae (+ PPR) | 3 | node text | node | 0.763 |
+| NodeText-doc | 3 | node text | document | 0.802 |
+| **Hybrid-doc** | 3 | markdown | document | **0.827** |
+
+Paired bootstrap, 4000 resamples, question-clustered:
+
+    Tesserae − Tesserae−edges   +0.009  [-0.045, +0.062]   <- the graph itself
+    Tesserae − BM25             +0.026  [-0.034, +0.088]
+    Tesserae − Hybrid-doc       -0.063  [-0.116, -0.011]   <- excludes zero
+
+Three things follow.
+
+**The architecture's own contribution is +0.009 with a CI spanning zero.** The
+rest of the +0.026 margin over BM25 is lane count and node-level scoring, both
+properties of the retrieval wrapper rather than of the memory.
+
+**Against a fusion-matched baseline this memory loses**, by a margin whose
+confidence interval does not include zero. `Hybrid-doc` is now in the default
+arm list of `evals/selfimprove/curve.py` so that result cannot be omitted by
+forgetting a flag, and a test fails if it is dropped from either loop.
+
+**n=59 cannot resolve the question.** Against a +0.009 effect and a ~0.06
+half-width, resolution needs roughly 36× the sample — about 2,100 questions.
+More consolidation cycles do not help. What this corpus can honestly deliver is
+a bound: **the edges contribute less than 0.06 R@10 at 73 documents.**
+
+## 9. Experiment 2 is NOT ready to build
+
+The design failed its own adversarial review, and the failures are worth keeping
+so the broken version does not get built later:
+
+- **The raw per-slice curve is the gold-availability calendar.** Every arm tracks
+  the fraction of each question's gold set that exists at cut N. A
+  constant-skill arm produces exactly the "rises fast, decelerates, plateaus"
+  shape the claim predicts, and a *higher* constant skill rises faster and
+  plateaus higher. Same class of defect as `answerable` being monotone in edges.
+- **Event-time normalisation was proposed to fix that, and its headline is not
+  schedule-invariant** as claimed: mean R@10 at unlock moves 0.814–0.861 across
+  legal slice schedules, and the Hybrid−BM25 delta moves −0.002 → +0.040 — 79%
+  of the pre-registered minimum detectable effect, from a free parameter.
+- **The one resolvable effect is manufactured by a step the design itself bars
+  from quotation**: the final 64→73 cut adds nine never-gold aggregator
+  documents and zero gold. Ending at 64 instead drops the effect below the MDE;
+  restricted to papers, its CI straddles zero.
+- **One document decides the sign.** `arxiv-2308-04079` is gold for 22 of 59
+  questions. Removing it moves BM25's uptake 0.727 → 0.785 and flips the
+  headline.
+- **The compile is not free, contrary to the design's own cost model.** Cache
+  addressing includes the resolved provider/model, and `compile_slice(first=True)`
+  re-inits without one — falling back to the machine default and missing every
+  cached entry. Up to 1,215 extraction calls where the plan predicted zero. Any
+  future run must pass `--llm-provider claude --claude-config-dir` explicitly.
+
+The prerequisite for experiment 2 is not more slices. It is a question set large
+enough to resolve the effect, on a corpus where no single document carries a
+third of the gold.
