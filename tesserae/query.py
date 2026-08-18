@@ -1095,7 +1095,8 @@ def ask_project(
     if planner_available and route_info["shape"] == SHAPE_GRAPH:
         from .ask_planner import plan_and_answer
 
-        planned = plan_and_answer(wiki, cleaned_question, top_k=top_k)
+        planned = plan_and_answer(wiki, cleaned_question, top_k=top_k,
+                                  answer_style=answer_style)
         if planned is not None:
             planned["backend"] = "wiki"
             planned["question"] = cleaned_question

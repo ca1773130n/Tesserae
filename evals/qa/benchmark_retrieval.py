@@ -217,8 +217,26 @@ class QABenchmarkRetrieval(QABenchmarkRAG):  # type: ignore[misc,valid-type]
         return answer.strip()
 
     def declared_meta(self) -> Dict[str, Any]:
+        # embedding_model / embedding_dim are FAIRNESS_KEYS: without them the
+        # scorer withholds the ranking, and correctly — the hybrid lane and the
+        # graph arm both embed, and if either silently fell back to the
+        # hash-bucket stub the comparison would measure embedders rather than
+        # memories. Read from the LIVE backend, never hardcoded: a hardcoded
+        # declaration passes the gate while the run used something else.
+        model, dim = "none", "none"
+        if self.config.lane == "hybrid":
+            try:
+                from tesserae.retrieval.hybrid import active_embedding_backend
+
+                backend = (self._index or {}).get("backend") or active_embedding_backend("model2vec")
+                model = getattr(backend, "name", "unknown")
+                dim = getattr(backend, "dim", None) or len(backend.embed(["x"])[0])
+            except Exception as exc:  # pragma: no cover - environment-dependent
+                model, dim = f"unresolved: {exc}", "unknown"
         return {
             "answer_shape": self.config.answer_shape,
+            "embedding_model": model,
+            "embedding_dim": dim,
             "llm_model": self.config.model,
             "llm_provider": self.config.provider,
             "retrieval_lane": self.config.lane,

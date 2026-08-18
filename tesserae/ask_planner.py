@@ -618,6 +618,7 @@ def plan_and_answer(
     top_k: int = 5,
     history: Optional[List[Dict[str, Any]]] = None,
     client: Any = None,
+    answer_style: str = "prose-cited",
 ) -> Optional[Dict[str, Any]]:
     """Full plan→execute→synthesize pass. Returns an ``ask_project``-shaped
     envelope, or None when no LLM backend is usable / planning fails — the
@@ -691,6 +692,13 @@ def _plan_and_answer(
     from .query import WikiQuery
 
     wq = WikiQuery(wiki.project_root, top_k=top_k)
+    # The planner builds its OWN WikiQuery, so ask_project's answer_style has to
+    # be handed over explicitly. Without this the graph route — the main route —
+    # silently ignored the parameter and answered in cited prose while the run
+    # DECLARED short-span, which is exactly the mismatch the fairness gate
+    # exists to catch. Measured: 87.5 words mean against 10-15 for every other
+    # arm in the same benchmark.
+    wq.answer_style = answer_style
     system_text = "\n\n".join(
         str(b.get("text", "")) for b in wq._system_blocks() if isinstance(b, dict) and b.get("text")
     )
@@ -711,8 +719,14 @@ def _plan_and_answer(
         return None
     if not body or not body.strip():
         return None
-    if not NODE_CITATION_RE.search(body):
-        return None  # ungrounded prose — let the classic path report honestly
+    if answer_style != "short-span" and not NODE_CITATION_RE.search(body):
+        # Ungrounded prose — let the classic path report honestly.
+        #
+        # Skipped for short-span, whose preamble FORBIDS citations: applying it
+        # there would reject every planner answer and silently fall back to a
+        # different retrieval path, so the two answer styles would differ in
+        # what they retrieved and not only in how they phrased it.
+        return None
 
     id_to_name: Dict[str, str] = {h.node_id: h.title for h in hits if h.node_id and h.title}
     id_to_name.update(ctx.citation_names)

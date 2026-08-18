@@ -68,3 +68,32 @@ def test_the_default_instance_still_answers_in_the_house_style(tmp_path: Path) -
     """No caller asked for this change; every existing one must be unaffected."""
     q = WikiQuery(tmp_path, top_k=5)
     assert "CITE EVERY FACTUAL CLAIM" in q._system_blocks()[0]["text"]
+
+
+def test_the_planner_route_honours_the_style_it_is_handed() -> None:
+    """The hole in the first fix, found by a 332-question benchmark run.
+
+    `ask_project` routes graph-shaped questions to `plan_and_answer`, which
+    builds its OWN WikiQuery. The style was threaded to `wiki.query` and not to
+    the planner, so the MAIN route ignored it: Tesserae answered at 87.5 words
+    mean against 10-15 for every other arm while declaring `short-span`.
+    """
+    from inspect import signature
+
+    from tesserae.ask_planner import plan_and_answer
+
+    assert signature(plan_and_answer).parameters["answer_style"].default == "prose-cited"
+
+
+def test_short_span_is_exempt_from_the_citation_gate() -> None:
+    """The planner drops any answer without a bracket citation. Short-span
+    FORBIDS citations, so applying the gate there would reject every planner
+    answer and fall back to a different retrieval path — making the two styles
+    differ in what they retrieved, not only in how they phrased it."""
+    import inspect
+
+    from tesserae import ask_planner
+
+    src = inspect.getsource(ask_planner)
+    gate = 'answer_style != "short-span" and not NODE_CITATION_RE.search(body)'
+    assert gate in src, "the citation gate must be style-aware, or short-span never plans"
