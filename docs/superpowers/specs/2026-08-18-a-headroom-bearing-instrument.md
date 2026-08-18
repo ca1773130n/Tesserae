@@ -278,10 +278,67 @@ Not that Tesserae's *product* retrieval is worse. This arm scores at **node**
 granularity, and the doc-pooled variant of the same node text scored 0.802
 against the node-level 0.763 at n = 59 — pooling was the largest single lever
 anywhere in the ladder, larger than the edges by a factor of five. Whether
-`compile_context` and `ask` pool to documents the way this harness does is
-**unverified**, and is the next thing to check. If they do, the product is not
-what was measured here; if they do not, this is a product finding and not merely
-a harness one.
+`compile_context` and `ask` pool to documents the way this harness does was the
+open question. **It is now answered — they do not.** See §11.
 
 Also unchanged: one corpus, one embedder (model2vec), K = 10, and `SEED_K = 25`
 still unswept.
+
+
+---
+
+## 11. The product path is node-level, so this is a product finding (added 2026-08-18)
+
+`context_compiler.compile_context` dedupes on `node.id`, never on `source_path`.
+Measured on the scratch corpus, three questions, default budget:
+
+    citations returned    distinct source documents
+            20                       8
+            20                       7
+            20                      11
+
+**2.39 citations per document.** A twenty-slot evidence budget buys an agent
+material from roughly eight documents. Nothing in the retrieval path pools node
+text to its document before spending that budget, which is exactly the
+granularity the harness scored — so §10's numbers describe the product, not an
+artifact of how the harness happened to rank.
+
+### What pooling is worth, measured
+
+Same node text, same three-lane fusion, the only change being that each
+document's nodes are concatenated into one unit before ranking. n = 284:
+
+| ranking unit | R@10 | MRR |
+|---|---:|---:|
+| Tesserae, node-level (what ships) | 0.804 | 0.795 |
+| **same node text, pooled per document** | **0.854** | 0.834 |
+
+    pooled − node-level   +0.049  [+0.024, +0.075]
+
+The CI excludes zero, and the effect is **twenty times** the edges' −0.002. On
+this corpus, at this K, choosing the ranking unit matters enormously more than
+the graph structure does.
+
+### The part that pooling does not fix
+
+Pooled node text still loses to raw markdown: 0.854 against BM25's 0.861 and
+Hybrid-doc's 0.896. So the ordering of causes, largest first, is:
+
+1. **Extraction is lossy for retrieval.** Even at the best granularity, the text
+   Tesserae mints scores below the source markdown it was minted from. That is
+   the biggest single gap in the ladder and nothing about graph structure
+   addresses it.
+2. **Ranking unit**, worth ~0.05 and free to change.
+3. **Edges**, worth less than 0.025 and indistinguishable from zero.
+
+### What this licenses, and what it does not
+
+Licenses: pooling per document before spending the context budget is a
+measurable improvement with a CI off zero, on this corpus. It is a change to
+ranking, not to what gets stored.
+
+Does not license: any claim about answer quality. This metric is gold-document
+recall. A bundle of twenty citations from eight documents may serve an agent
+better than twenty documents' worth of shallower evidence — that is a different
+experiment (`evals/qa/` has the scorer) and it has not been run. Nor does it
+license a conclusion beyond one corpus, one embedder, and K = 10.
