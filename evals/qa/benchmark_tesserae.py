@@ -51,6 +51,15 @@ class TesseraeConfig(QABenchmarkConfig):  # type: ignore[misc,valid-type]
     a compile there overwrites the project's real graph with the benchmark's,
     the same footgun ``evals/growth/run.py`` warns about.
     """
+    #: The ANSWER SHAPE this arm asks for. Tesserae gained a short-span mode in
+    #: #204 specifically so it could be compared with anything at all — every
+    #: standard QA metric scores exact match and token F1 over the whole answer
+    #: string, and 60-220 words of cited prose scores near zero against a phrase
+    #: however correct it is. The arm then still called `ask_project` without it
+    #: and answered in prose for a whole 332-question run, which
+    #: `scorer.FAIRNESS_KEYS` would have blocked from publication.
+    answer_style: str = "short-span"
+
 
     project_root: str = ""
     staging_dir: Optional[str] = None
@@ -142,6 +151,7 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
             use_llm=not self.config.no_llm,
             no_llm=self.config.no_llm,
             route=self.config.route,
+            answer_style=self.config.answer_style,
         )
         return answer_text(envelope)
 
@@ -163,7 +173,12 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
         source text, which is a third shape again — worth measuring, never
         comparable with an answer.
         """
-        return "excerpt" if self.config.no_llm else "prose-cited"
+        if self.config.no_llm:
+            return "excerpt"
+        # Report what was actually ASKED FOR, never a constant. A hardcoded
+        # declaration passes the fairness gate while the run used something
+        # else, which is the precise failure the gate exists to catch.
+        return "short-span" if self.config.answer_style == "short-span" else "prose-cited"
 
     def declared_meta(self) -> Dict[str, Any]:
         """The fairness declarations for this run — see
