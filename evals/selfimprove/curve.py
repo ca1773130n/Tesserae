@@ -67,35 +67,41 @@ K = 10
 #: `rank_documents_graph` seeds from `hybrid_search(mode="hybrid")`, which is an
 #: RRF fusion of THREE lanes (bm25 + lexical + embedding, DEFAULT_WEIGHTS all
 #: 1.0), scored over node text at node granularity. BM25 and Dense are ONE lane
-#: each over raw markdown at document granularity. Beating them therefore
-#: measures lane count and granularity, not architecture — and this harness
-#: reported exactly that as a Tesserae win before `Hybrid-doc` existed.
+#: each over raw markdown at document granularity. Beating them would measure
+#: lane count and granularity, not architecture.
 #:
-#: Measured on the frozen corpus, 59 live questions, K=10, overlay off:
+#: Measured on the frozen corpus, K=10, overlay off, **n = 284 live questions**:
 #:
-#:     arm                lanes  text        granularity   R@10
-#:     Dense                  1  markdown    document     0.728
-#:     BM25                   1  markdown    document     0.738
-#:     Tesserae-edges         3  node text   node         0.754
-#:     Tesserae (+ PPR)       3  node text   node         0.763
-#:     NodeText-doc           3  node text   document     0.802
-#:     Hybrid-doc             3  markdown    document     0.827
+#:     arm                lanes  text        granularity   R@10    MRR
+#:     Dense                  1  markdown    document     0.786  0.820
+#:     Tesserae (+ PPR)       3  node text   node         0.804  0.795
+#:     Tesserae-edges         3  node text   node         0.806  0.860
+#:     BM25                   1  markdown    document     0.861  0.888
+#:     Hybrid-doc             3  markdown    document     0.896  0.943
 #:
-#: Paired bootstrap, 4000 resamples, question-clustered:
+#: Paired bootstrap, 4000 resamples:
 #:
-#:     Tesserae - Tesserae-edges   +0.009  [-0.045, +0.062]   <- the graph itself
-#:     Tesserae - BM25             +0.026  [-0.034, +0.088]
-#:     Tesserae - Hybrid-doc       -0.063  [-0.116, -0.011]   <- excludes zero
+#:     Tesserae - Tesserae-edges   -0.002  [-0.025, +0.022]
+#:     Tesserae - BM25             -0.057  [-0.083, -0.029]
+#:     Tesserae - Hybrid-doc       -0.092  [-0.116, -0.068]
+#:     Hybrid-doc - BM25           +0.035  [+0.018, +0.054]
 #:
-#: So: the whole Tesserae-over-BM25 margin is +0.026, of which the edges are
-#: +0.009 with a CI spanning zero, and against a fusion-matched baseline this
-#: memory LOSES by a margin whose CI does not span zero. `Hybrid-doc` is in the
-#: default arm list so that result cannot be omitted by forgetting a flag.
+#: Read those honestly. **The graph contributes nothing measurable**: removing the
+#: PPR walk changes R@10 by -0.002, and the interval is now tight enough to say
+#: the edges are worth less than 0.025 R@10 on this corpus rather than merely
+#: "unresolved". **And this pipeline loses to plain BM25 over raw markdown**, by
+#: a margin whose CI excludes zero.
 #:
-#: Resolving a +0.009 effect against a ~0.06 half-width needs roughly 36x this
-#: sample — about 2,100 questions. More cycles do not help. What this harness
-#: can honestly deliver at n=59 is a BOUND: the edges contribute less than 0.06
-#: R@10 on this corpus.
+#: At n=59 the same ladder read Tesserae - BM25 = +0.026 [-0.034, +0.088] and
+#: looked like a win. It was a small-sample artifact: 4.8x the questions and a
+#: hub paper cut from 37% of gold sets to 13% flipped the sign and moved the CI
+#: off zero. That is the single most useful thing this harness has done.
+#:
+#: What it does NOT establish: that Tesserae's product retrieval path is worse.
+#: This arm scores at NODE granularity, and the doc-pooled variant of the same
+#: node text scored 0.802 against the node-level 0.763 at n=59 — pooling was the
+#: largest single lever in the ladder. Whether `compile_context` / `ask` pool the
+#: way this harness does is unverified and is the next thing to check.
 ARM_LADDER = ("Tesserae", "Hybrid-doc", "BM25", "Dense")
 
 #: (display name, --arms key) for every non-graph arm, in report order. ONE list,
