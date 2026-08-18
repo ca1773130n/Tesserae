@@ -58,7 +58,13 @@ class TesseraeConfig(QABenchmarkConfig):  # type: ignore[misc,valid-type]
     #: however correct it is. The arm then still called `ask_project` without it
     #: and answered in prose for a whole 332-question run, which
     #: `scorer.FAIRNESS_KEYS` would have blocked from publication.
-    answer_style: str = "short-span"
+    #:
+    #: Defaults to the PRODUCT's shape, not the benchmark's. `tesserae ask`
+    #: answers in cited prose, so that is what this arm answers in unless a
+    #: caller asks otherwise — `run_qa_eval` does, because its job is numbers
+    #: that can be compared. Defaulting to short-span here would make the arm
+    #: describe a system nobody runs.
+    answer_style: str = "prose-cited"
 
 
     project_root: str = ""
