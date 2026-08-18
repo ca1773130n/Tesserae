@@ -625,7 +625,8 @@ def plan_and_answer(
     caller then falls back to the classic BM25 path."""
 
     try:
-        return _plan_and_answer(wiki, question, top_k=top_k, history=history, client=client)
+        return _plan_and_answer(wiki, question, top_k=top_k, history=history,
+                                client=client, answer_style=answer_style)
     except Exception as exc:  # noqa: BLE001 — planner bugs must never sink `ask`
         print(f"(ask planner error: {type(exc).__name__}: {exc} — falling back to wiki search)", file=sys.stderr)
         return None
@@ -638,6 +639,7 @@ def _plan_and_answer(
     top_k: int,
     history: Optional[List[Dict[str, Any]]],
     client: Any,
+    answer_style: str = "prose-cited",
 ) -> Optional[Dict[str, Any]]:
     if client is None:
         from .llm_json import build_rotating_client
