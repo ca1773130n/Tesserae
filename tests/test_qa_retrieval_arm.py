@@ -10,6 +10,12 @@ from __future__ import annotations
 
 import asyncio
 
+# asyncio.run, never get_event_loop(): another module in the same session
+# (tests/test_qa_scorer.py) leaves no current loop in the main thread, and
+# get_event_loop() then raises. These tests passed alone and failed in the
+# suite — an ordering dependency, not a real defect, but one that would have
+# read as a broken arm.
+
 import pytest
 
 from evals.qa.vendor_base import MissingPrerequisite
@@ -43,7 +49,7 @@ def _arm(lane="bm25", docs=("alpha beta gamma", "delta epsilon", "alpha zeta")):
     b = QABenchmarkRetrieval(list(docs), [], RetrievalConfig(lane=lane, top_k=2))
     b.client_factory = _Client
     for i, d in enumerate(docs):
-        asyncio.get_event_loop().run_until_complete(b.insert_document(d, i))
+        asyncio.run(b.insert_document(d, i))
     return b
 
 
@@ -70,7 +76,7 @@ def test_retrieved_sources_reach_the_prompt_and_are_capped() -> None:
     b = _arm(docs=("alpha " * 5000, "beta gamma", "alpha delta"))
     b.config.doc_chars = 100
     b.rag_client = _Client()
-    out = asyncio.get_event_loop().run_until_complete(b.query_rag("alpha"))
+    out = asyncio.run(b.query_rag("alpha"))
     assert out == "a short answer", "the answer must be stripped, not raw"
     system, user = b.prompts_sent[0]["system"], b.prompts_sent[0]["user"]
     assert "<source id=" in user and "Question: alpha" in user
@@ -90,7 +96,7 @@ def test_an_exhausted_account_raises_instead_of_reading_as_a_refusal() -> None:
     b = _arm()
     b.rag_client = _Dead()
     with pytest.raises(RuntimeError, match="no answer"):
-        asyncio.get_event_loop().run_until_complete(b.query_rag("alpha"))
+        asyncio.run(b.query_rag("alpha"))
 
 
 def test_unknown_lane_fails_at_construction() -> None:
