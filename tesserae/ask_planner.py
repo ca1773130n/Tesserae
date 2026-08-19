@@ -640,10 +640,30 @@ def _document_corpus(root: Path) -> Tuple[List[str], List[str], Any]:
         if not m:
             continue
         sp = m.group(1).strip().strip('"').strip("'")
-        if sp and sp not in seen:
-            body = _read_source(sp, cache, root)
-            if body:
-                seen[sp] = body
+        if not sp:
+            continue
+        # Pool by UNIT, not by file. A paper is a directory holding abstract.md
+        # and paper.md, and a page names only one of them — indexing that file
+        # alone leaves the other invisible to ranking. The retrieval baseline
+        # pools every markdown in the unit, and that difference is the residue
+        # between 0.829 gold coverage here and its 0.896. Keyed on the directory
+        # so the two halves of one paper are one retrievable document.
+        unit = str(Path(sp).parent)
+        if unit in seen:
+            continue
+        body = _read_source(sp, cache, root)
+        try:
+            siblings = sorted(
+                q for q in Path(sp).parent.glob("*.md") if str(q) != sp
+            )
+        except (OSError, ValueError):
+            siblings = []
+        for sib in siblings:
+            extra = _read_source(str(sib), cache, root)
+            if extra:
+                body = f"{body}\n\n{extra}" if body else extra
+        if body:
+            seen[unit] = body
     paths, texts = list(seen), [seen[p] for p in seen]
 
     vectors = None
@@ -805,7 +825,7 @@ def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits
                 if _p in _docs_emitted:
                     continue
                 _docs_emitted.add(_p)
-                parts.append(f'<source kind="document" title="{Path(_p).parent.name}">')
+                parts.append(f'<source kind="document" title="{Path(_p).name}">')
                 parts.append(_t[:SYNTHESIS_SOURCE_CHARS])
                 parts.append("</source>")
         except Exception:  # noqa: BLE001 — never sink a plan on the extra lane
