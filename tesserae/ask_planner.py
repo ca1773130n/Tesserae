@@ -603,15 +603,34 @@ def _source_path_of(hit: Any) -> Optional[str]:
     return m.group(1).strip().strip('"').strip("'") or None
 
 
-def _read_source(path: str, cache: Dict[str, str]) -> str:
-    """Read a source document once. Degrades to "" — never raise into a plan."""
-    if path in cache:
-        return cache[path]
-    try:
-        text = Path(path).read_text(encoding="utf-8", errors="ignore")
-    except (OSError, ValueError):
-        text = ""
-    cache[path] = text
+def _read_source(path: str, cache: Dict[str, str], root: Optional[Path] = None) -> str:
+    """Read a source document once, CONFINED to ``root``. Degrades to "".
+
+    ``source_path`` comes out of a wiki page's frontmatter, and that value is not
+    trusted: Tesserae ingests documents and URLs from outside the project, a
+    document can carry its own frontmatter, and a wiki page is an ordinary file
+    a user or a tool can edit. Without this guard a crafted
+    ``source_path: /etc/ssh/id_rsa`` is read and pasted verbatim into an LLM
+    prompt — an arbitrary-file-read that exfiltrates through the answer.
+
+    So the resolved path must sit inside the project root. ``..`` is defeated by
+    resolving first and comparing the resolved forms; a symlink pointing out of
+    the tree is defeated by the same resolution. ``root=None`` means "no root to
+    confine to" and reads nothing rather than reading everything.
+    """
+    key = f"{root}\x00{path}"
+    if key in cache:
+        return cache[key]
+    text = ""
+    if root is not None:
+        try:
+            resolved = Path(path).resolve()
+            base = Path(root).resolve()
+            if resolved.is_relative_to(base) and resolved.is_file():
+                text = resolved.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, ValueError, RuntimeError):
+            text = ""
+    cache[key] = text
     return text
 
 
@@ -631,7 +650,8 @@ def _read_source(path: str, cache: Dict[str, str]) -> str:
 SYNTHESIS_SOURCE_CHARS = 4_000
 
 
-def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits: List[Any]) -> str:
+def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits: List[Any],
+                             source_root: Optional[Path] = None) -> str:
     from .query import _strip_frontmatter  # noqa: PLC0415 — avoid import cycle at module load
 
     parts = [
@@ -652,6 +672,7 @@ def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits
         parts.append("")
     _source_cache: Dict[str, str] = {}
     _docs_emitted: set = set()
+    _source_root = source_root
     for hit in hits:
         body = ""
         if hit.page_text:
@@ -671,7 +692,7 @@ def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits
         # copies instead of coverage.
         _sp = _source_path_of(hit)
         if _sp and _sp not in _docs_emitted:
-            _raw = _read_source(_sp, _source_cache)
+            _raw = _read_source(_sp, _source_cache, _source_root)
             if _raw:
                 _docs_emitted.add(_sp)
                 body = _raw
@@ -776,7 +797,8 @@ def _plan_and_answer(
     system_text = "\n\n".join(
         str(b.get("text", "")) for b in wq._system_blocks() if isinstance(b, dict) and b.get("text")
     )
-    message = _build_synthesis_message(question, evidence, hits)
+    message = _build_synthesis_message(question, evidence, hits,
+                                       source_root=getattr(wiki, 'project_root', None))
     if history:
         prior = "\n\n".join(
             f"{t.get('role')}: {t.get('content')}"

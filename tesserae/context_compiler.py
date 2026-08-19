@@ -199,7 +199,8 @@ def _empty_pool_reservations() -> Dict[str, Optional[Dict[str, object]]]:
 SOURCE_EXCERPT_CHARS = 4_000
 
 
-def _source_text(node: ResearchNode, cache: Dict[str, str]) -> str:
+def _source_text(node: ResearchNode, cache: Dict[str, str],
+                 root: Optional[str] = None) -> str:
     """The raw source document behind ``node``, read once per path.
 
     Why this exists. The bundle used to carry only EXTRACTED text — the node's
@@ -222,13 +223,25 @@ def _source_text(node: ResearchNode, cache: Dict[str, str]) -> str:
     path = getattr(node, "source_path", None)
     if not path:
         return ""
-    if path in cache:
-        return cache[path]
-    try:
-        text = Path(path).read_text(encoding="utf-8", errors="ignore")
-    except (OSError, ValueError):
-        text = ""
-    cache[path] = text
+    key = f"{root}\x00{path}"
+    if key in cache:
+        return cache[key]
+    # CONFINED to the project root. `source_path` rides on a node minted from an
+    # ingested document, and Tesserae ingests from outside the project — so the
+    # value is not trusted. Unconfined, a crafted path is read and pasted into an
+    # LLM prompt, which exfiltrates it through the answer. Resolving both sides
+    # before comparing defeats `..` and symlinks alike; no root means read
+    # nothing rather than read anything.
+    text = ""
+    if root is not None:
+        try:
+            resolved = Path(path).resolve()
+            base = Path(root).resolve()
+            if resolved.is_relative_to(base) and resolved.is_file():
+                text = resolved.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, ValueError, RuntimeError):
+            text = ""
+    cache[key] = text
     return text
 
 
@@ -1037,7 +1050,7 @@ def compile_context(
         # instead of on coverage.
         _sp = getattr(node, "source_path", None)
         if _sp and _sp not in _docs_emitted:
-            _raw = _source_text(node, _source_cache)
+            _raw = _source_text(node, _source_cache, project_root)
             if _raw:
                 _docs_emitted.add(_sp)
                 # REPLACE the extracted body with the source, do not append it.
