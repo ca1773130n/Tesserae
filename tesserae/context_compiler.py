@@ -386,36 +386,6 @@ def fit_to_budget(
     )
 
 
-def _fuse_walk_with_seeds(
-    walked: Sequence[Tuple[str, float]], seed_ids: Sequence[str], k: int = 60
-) -> List[Tuple[str, float]]:
-    """Reciprocal-rank fusion of the PPR order with the seed (retriever) order.
-
-    ``seed_ids`` arrives in hybrid-search rank order, so its index IS its rank.
-    Nodes the walk found but the retriever never matched keep their walk rank
-    and simply have no seed term — they can enter the bundle, which is the
-    expansion we want, without displacing a node the query actually matched.
-
-    The returned SCORE is not the raw RRF value. Downstream DOES interpret
-    magnitude — the recency blend divides by the maximum and mixes the result
-    with a freshness term — and raw RRF is nearly flat except for a 2x step
-    between "the retriever matched this" and "only the walk found it". Handing
-    that to the blend pins every walk-only node at ~0.5 relevance, a floor a
-    0.25-weighted recency term can never overcome, and three recency tests
-    caught it. So the fused ORDER is computed by RRF and then re-scored as a
-    smooth 1/(rank+1) decay, which is the shape PPR's own scores had.
-    """
-    seed_rank = {nid: i for i, nid in enumerate(seed_ids)}
-    fused = []
-    for i, (nid, _score) in enumerate(walked):
-        rr = 1.0 / (k + i + 1)
-        if nid in seed_rank:
-            rr += 1.0 / (k + seed_rank[nid] + 1)
-        fused.append((nid, rr))
-    fused.sort(key=lambda it: (-it[1], it[0]))
-    return [(nid, 1.0 / (i + 1)) for i, (nid, _rr) in enumerate(fused)]
-
-
 def _neighborhood_within_depth(
     graph: ResearchGraph,
     seed_ids: Sequence[str],
@@ -902,21 +872,16 @@ def compile_context(
             for nid, score in full_ranked
             if nid in in_neighborhood and nid not in suppressed
         ]
-        # FUSE the walk with the seed ranking instead of letting the walk
-        # replace it. The walk's EXPANSION earns its place — it lifts the
-        # bundle from 5.8 to 6.8 documents per question, +0.027 R@10 with a CI
-        # excluding zero. Its REORDERING AUTHORITY does not: left in charge it
-        # evicts a mean 2.20 seed-ranked documents per question, on 237 of 284
-        # questions, for -0.033 R@1 and -0.061 MRR (both CI-clean).
-        #
-        # Reciprocal-rank fusion keeps both: a node the walk discovered still
-        # enters, but it cannot outrank a node the retriever actually matched
-        # on the query. Measured against the shipping order on the same 284
-        # questions: R@1 0.2295 -> 0.2620, MRR 0.7963 -> 0.8578, R@10 unchanged
-        # within noise. Same rule cognee enforces with its 6.5 distance floor —
-        # graph expansion may reorder WITHIN retrieved candidates and may never
-        # promote unretrieved material above a real hit.
-        pre_rank = _fuse_walk_with_seeds(pre_rank, seed_ids)
+        # NOT fused with the seed ranking, deliberately. Letting the walk
+        # reorder is measurably wrong on R@1 (0.2295 vs 0.2620) and MRR (0.7963
+        # vs 0.8578) — it evicts 2.20 seed-ranked documents per question on 237
+        # of 284 — but the fix is worth only +0.001 R@10, which is the operating
+        # point, and three attempts at it each broke an invariant this module
+        # holds on purpose: PPR is insensitive to seed ORDER (multi_pool unions
+        # sub-queries and would otherwise change the answer) and mcp_server pins
+        # the walk's own ordering. A +0.001 change is not worth weakening either.
+        # Revisit only with a fusion that is seed-order-independent BY
+        # CONSTRUCTION and leaves the walk's contract intact.
         if view_names:
             # Single view: every walked node was reached by that view.
             via_map = {nid: view_names for nid, _ in pre_rank}
@@ -1075,7 +1040,18 @@ def compile_context(
             _raw = _source_text(node, _source_cache)
             if _raw:
                 _docs_emitted.add(_sp)
-                body = f"{body}\n\n### Source\n\n{_raw[:SOURCE_EXCERPT_CHARS]}"
+                # REPLACE the extracted body with the source, do not append it.
+                # Appending pays for the same document twice: the first version
+                # of this change pushed the mean bundle from 17,106 to 34,307
+                # chars past a 32,000 default budget, so FEWER documents fit and
+                # the budget walk started evicting nodes — a multi-pool test
+                # caught it selecting a different node entirely. cognee does not
+                # pay twice either: its DocumentChunk's text IS the body.
+                #
+                # The node's own name is kept as the heading so the extracted
+                # layer still says WHY this document was retrieved, which is the
+                # part the graph contributes.
+                body = f"{_raw[:SOURCE_EXCERPT_CHARS]}"
         if budget > 0 and chars_used + len(body) > budget:
             # A valid query must never yield an empty bundle just because the
             # first ranked body overflows the budget: always include the FIRST
