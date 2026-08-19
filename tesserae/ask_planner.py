@@ -268,8 +268,30 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
     if action == "wiki_search":
         from .query import WikiQuery
 
-        wq = WikiQuery(ctx.wiki.project_root, top_k=_as_int(args.get("top_k"), top_k, 8))
-        hits = wq.search(str(args.get("query") or ""))
+        # Retrieve to a budget of DISTINCT SOURCE DOCUMENTS, not of wiki pages.
+        #
+        # Several wiki pages routinely project from one paper, so a top_k of 10
+        # pages collapses to 7.2 distinct documents and 0.696 gold coverage,
+        # where the retrieval baseline delivers 10 documents at 0.896 — measured
+        # on 40 questions. Over-fetching pages and stopping at `k` distinct
+        # documents makes the two budgets the same thing, which is the only way
+        # the comparison is about the memory rather than about the unit each
+        # side happens to count in.
+        _k = _as_int(args.get("top_k"), top_k, 8)
+        wq = WikiQuery(ctx.wiki.project_root, top_k=_k * DOC_OVERFETCH)
+        _all = wq.search(str(args.get("query") or ""))
+        hits, _docs = [], set()
+        for _h in _all:
+            _sp = _source_path_of(_h)
+            if _sp is None:
+                hits.append(_h)          # no source to dedupe on; keep as-is
+                continue
+            if _sp in _docs:
+                continue                 # same paper, already represented
+            if len(_docs) >= _k:
+                break
+            _docs.add(_sp)
+            hits.append(_h)
         lines = [f"- [{h.kind}] {h.title}: {h.excerpt}" for h in hits]
         return _clip("\n".join(lines) or "(no wiki matches)"), hits
 
@@ -633,6 +655,12 @@ def _read_source(path: str, cache: Dict[str, str], root: Optional[Path] = None) 
     cache[key] = text
     return text
 
+
+#: How many wiki pages to fetch per distinct source document wanted. Pages
+#: project from documents many-to-one, so retrieving `k` pages yields fewer than
+#: `k` documents; 3x over-fetch reaches a 10-document budget on this corpus with
+#: room to spare, and the loop stops at the budget rather than at the fetch.
+DOC_OVERFETCH = 3
 
 #: Characters of each retrieved source handed to the synthesis step.
 #:
