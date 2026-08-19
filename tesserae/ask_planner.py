@@ -580,6 +580,22 @@ def _validated_proposal(raw: Any) -> Optional[Dict[str, Any]]:
     }
 
 
+#: Characters of each retrieved source handed to the synthesis step.
+#:
+#: Was an unnamed `[:1000]` literal. On the 284-question benchmark the retrieval
+#: baseline pastes 4,000 characters per document and answered 93.7% of the
+#: questions; Tesserae clipped every source to a QUARTER of that and refused
+#: 41.2% of them — and 91% of those refusals had the right document cited, with
+#: only 38% of the gold answer's content words present anywhere in the prompt.
+#: A model cannot answer from evidence it was not shown, and refusing was the
+#: correct response to what it received.
+#:
+#: 4,000 is the baseline's allowance, so the two are now asked to answer from
+#: the same amount of text. It is a per-source cap, not a total: the number of
+#: sources is bounded upstream by top_k.
+SYNTHESIS_SOURCE_CHARS = 4_000
+
+
 def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits: List[Any]) -> str:
     from .query import _strip_frontmatter  # noqa: PLC0415 — avoid import cycle at module load
 
@@ -603,7 +619,7 @@ def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits
         body = ""
         if hit.page_text:
             body = _strip_frontmatter(hit.page_text).strip()
-        body = (body or hit.excerpt)[:1000]
+        body = (body or hit.excerpt)[:SYNTHESIS_SOURCE_CHARS]
         parts.append(f'<source kind="{hit.kind}" title="{hit.title}" node_id="{hit.node_id or ""}">')
         parts.append(body)
         parts.append("</source>")
