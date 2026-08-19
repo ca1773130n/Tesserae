@@ -13,7 +13,9 @@ caller falls back to the classic BM25 path unchanged.
 from __future__ import annotations
 
 import json
+import re
 import sys
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -580,6 +582,39 @@ def _validated_proposal(raw: Any) -> Optional[Dict[str, Any]]:
     }
 
 
+_SOURCE_PATH_RE = re.compile(r"^source_path:\s*(.+?)\s*$", re.MULTILINE)
+
+
+def _source_path_of(hit: Any) -> Optional[str]:
+    """The source document a wiki hit was projected from, or None.
+
+    Read from the page's own frontmatter (`source_path:`), which the projector
+    already writes. The search index keys hits on wiki slugs like
+    ``entities:droid-slam`` that do not exist in ``graph.json``, so there is no
+    node to ask — the frontmatter is the only bridge back to the source, and it
+    needs no recompile.
+    """
+    text = getattr(hit, "page_text", None)
+    if not text:
+        return None
+    m = _SOURCE_PATH_RE.search(text[:2000])
+    if not m:
+        return None
+    return m.group(1).strip().strip('"').strip("'") or None
+
+
+def _read_source(path: str, cache: Dict[str, str]) -> str:
+    """Read a source document once. Degrades to "" — never raise into a plan."""
+    if path in cache:
+        return cache[path]
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="ignore")
+    except (OSError, ValueError):
+        text = ""
+    cache[path] = text
+    return text
+
+
 #: Characters of each retrieved source handed to the synthesis step.
 #:
 #: Was an unnamed `[:1000]` literal. On the 284-question benchmark the retrieval
@@ -615,10 +650,31 @@ def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits
         parts.append(ev["content"])
         parts.append("</source>")
         parts.append("")
+    _source_cache: Dict[str, str] = {}
+    _docs_emitted: set = set()
     for hit in hits:
         body = ""
         if hit.page_text:
             body = _strip_frontmatter(hit.page_text).strip()
+        # Prefer the SOURCE document over the wiki projection.
+        #
+        # `hit.page_text` is the wiki page — a projection of the extracted node —
+        # so this path never showed the model the prose it was extracted FROM.
+        # Measured: 91% of Tesserae's refusals had the right document cited while
+        # only 38% of the gold answer's content words appeared in the prompt, and
+        # raising the clip from 1,000 to 4,000 chars of PROJECTION moved refusals
+        # by only 2 points (41.2% -> 39.1%). More of the wrong text does not help.
+        #
+        # The wiki frontmatter carries `source_path`, so the source is reachable
+        # here without a recompile. Deduplicated per document: several hits
+        # routinely project from one paper, and repeating it spends the budget on
+        # copies instead of coverage.
+        _sp = _source_path_of(hit)
+        if _sp and _sp not in _docs_emitted:
+            _raw = _read_source(_sp, _source_cache)
+            if _raw:
+                _docs_emitted.add(_sp)
+                body = _raw
         body = (body or hit.excerpt)[:SYNTHESIS_SOURCE_CHARS]
         parts.append(f'<source kind="{hit.kind}" title="{hit.title}" node_id="{hit.node_id or ""}">')
         parts.append(body)
