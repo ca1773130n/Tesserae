@@ -193,6 +193,45 @@ def _empty_pool_reservations() -> Dict[str, Optional[Dict[str, object]]]:
     return {pool.value: None for pool in _pool_order()}
 
 
+#: Characters of RAW SOURCE text carried per distinct document. The retrieval
+#: baseline this bundle is measured against pastes 4,000 per document, and it is
+#: the reference the number is chosen against rather than a guess.
+SOURCE_EXCERPT_CHARS = 4_000
+
+
+def _source_text(node: ResearchNode, cache: Dict[str, str]) -> str:
+    """The raw source document behind ``node``, read once per path.
+
+    Why this exists. The bundle used to carry only EXTRACTED text — the node's
+    wiki projection or its description — and measurement showed exactly what
+    that costs: on 284 questions the right documents were cited for 91% of the
+    questions Tesserae refused, while only **38%** of the gold answer's content
+    words appeared anywhere in the bundle. The retriever was finding the
+    document and the bundle was then handing the model everything about it
+    except what it says.
+
+    This is the shape cognee reaches from the other direction: its
+    ``DocumentChunk`` is a first-class graph node carrying raw ``text``, so an
+    entity hit drags its whole source chunk into the context and extraction
+    never has to survive on its own. Ours replaced the text with the index.
+
+    Degrades silently to "" — a missing or unreadable source must never sink a
+    bundle (PITFALL 2), and 21% of real-graph nodes are derived and have no
+    source document by construction.
+    """
+    path = getattr(node, "source_path", None)
+    if not path:
+        return ""
+    if path in cache:
+        return cache[path]
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="ignore")
+    except (OSError, ValueError):
+        text = ""
+    cache[path] = text
+    return text
+
+
 def _fetch_body(node: ResearchNode, store: Optional[WikiPageStore]) -> str:
     """Return the best available body text for ``node``, degrading gracefully.
 
@@ -1020,11 +1059,23 @@ def compile_context(
 
     selected: List[tuple] = []  # (node, body)
     chars_used = 0
+    _source_cache: Dict[str, str] = {}
+    _docs_emitted: set = set()
     for node_id, _score in ranked:
         node = node_index.get(node_id)
         if node is None:
             continue
         body = _fetch_body(node, store)
+        # Carry the SOURCE text for each distinct document the bundle touches,
+        # once. Deduplicated by path because several nodes routinely extract
+        # from one document and repeating it would spend the budget on copies
+        # instead of on coverage.
+        _sp = getattr(node, "source_path", None)
+        if _sp and _sp not in _docs_emitted:
+            _raw = _source_text(node, _source_cache)
+            if _raw:
+                _docs_emitted.add(_sp)
+                body = f"{body}\n\n### Source\n\n{_raw[:SOURCE_EXCERPT_CHARS]}"
         if budget > 0 and chars_used + len(body) > budget:
             # A valid query must never yield an empty bundle just because the
             # first ranked body overflows the budget: always include the FIRST
