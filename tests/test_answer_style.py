@@ -39,12 +39,24 @@ def test_short_span_forbids_the_citations_the_default_requires(tmp_path: Path) -
     answer is scored as answer tokens and penalises the metric this mode exists
     to be scored on."""
     assert "CITE EVERY FACTUAL CLAIM" in _SYSTEM_PREAMBLE_HEADER
-    assert "NO CITATIONS" in _SHORT_SPAN_PREAMBLE_HEADER
+    assert "no citations" in _SHORT_SPAN_PREAMBLE_HEADER.lower()
     assert "60-220 words" in _SYSTEM_PREAMBLE_HEADER
     assert "60-220 words" not in _SHORT_SPAN_PREAMBLE_HEADER
-    # The rules that are not about shape are house rules and must survive.
-    for rule in ("RESTATE, DO NOT INVENT", "NEUTRAL VOICE", "NO FRONTMATTER"):
-        assert rule in _SHORT_SPAN_PREAMBLE_HEADER, f"{rule} was dropped"
+
+    # LEAN ON PURPOSE, and the leanness is the fix — not a style preference.
+    # At 1,688 chars this prompt stated "do not invent" three separate ways
+    # (persona line, rule 1, "never invent papers, numbers, names, or claims")
+    # and Tesserae refused 59.9% of answerable questions where a 391-char
+    # baseline refused 6.3%, with 93% of those refusals holding a gold document
+    # in the bundle. Re-adding grounding boilerplate here re-creates that.
+    assert len(_SHORT_SPAN_PREAMBLE_HEADER) < 600, (
+        f"short-span prompt is {len(_SHORT_SPAN_PREAMBLE_HEADER)} chars; "
+        "grounding boilerplate converts present evidence into refusals"
+    )
+    assert "invent" not in _SHORT_SPAN_PREAMBLE_HEADER.lower()
+    assert "strictly" not in _SHORT_SPAN_PREAMBLE_HEADER.lower()
+    # Exactly one refusal clause, matching the baselines.
+    assert _SHORT_SPAN_PREAMBLE_HEADER.count("I don't know") == 1
 
 
 def test_the_preamble_cache_cannot_serve_one_style_to_the_other(tmp_path: Path) -> None:
@@ -60,8 +72,10 @@ def test_the_preamble_cache_cannot_serve_one_style_to_the_other(tmp_path: Path) 
     short = q._system_blocks()[0]["text"]
 
     assert prose != short, "the cache served the first style's preamble to the second"
-    assert "SHORTEST EXACT ANSWER" in short
-    assert "SHORTEST EXACT ANSWER" not in prose
+    assert "shortest exact answer" in short.lower()
+    assert "shortest exact answer" not in prose.lower()
+    # The short prompt must not inherit the prose prompt's framing.
+    assert len(short) < len(prose) / 3, "short-span picked up the overview/ontology again"
 
 
 def test_the_default_instance_still_answers_in_the_house_style(tmp_path: Path) -> None:

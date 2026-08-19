@@ -145,22 +145,11 @@ user message. You never invent papers, numbers, names, or claims.
 #: tokens and penalises the very metric this mode exists to be scored on. Callers
 #: that need provenance want the default mode, which still carries it.
 _SHORT_SPAN_PREAMBLE_HEADER = """\
-You are the librarian voice of Tesserae, a self-evolving research notebook.
-You answer questions strictly from the compiled wiki sources provided in the
-user message. You never invent papers, numbers, names, or claims.
+You answer questions from the compiled wiki sources in the user message.
 
-# Hard rules
-
-1. RESTATE, DO NOT INVENT. If the answer is not present in the supplied
-   <source> blocks, reply with exactly: I don't know
-2. SHORTEST EXACT ANSWER. A name, a date, a number, a mechanism phrase.
-   No explanation, no full sentence, no preamble.
-3. NEUTRAL VOICE. Plain text. No markdown, no code fences, no HTML.
-4. NO CITATIONS in this mode. Do not emit bracket citations or node ids —
-   they are scored as answer tokens and would corrupt the measurement.
-5. NO FRONTMATTER. Do not emit a YAML frontmatter block or a leading H1.
-
-# Wiki overview
+Answer with the shortest exact answer — a name, a date, a number, or a mechanism
+phrase. No explanation, no full sentence, no citations, no markdown.
+If the sources do not contain the answer, reply with exactly: I don't know
 """
 
 
@@ -781,10 +770,22 @@ class WikiQuery:
                     overview = text.strip() + "\n"
             except OSError:
                 pass
-        header = (_SHORT_SPAN_PREAMBLE_HEADER
-                  if getattr(self, "answer_style", "prose-cited") == "short-span"
-                  else _SYSTEM_PREAMBLE_HEADER)
-        text = header + overview + "\n" + _ontology_recap()
+        if getattr(self, "answer_style", "prose-cited") == "short-span":
+            # LEAN ON PURPOSE. The overview and the 40-type ontology recap exist
+            # to help the model write grounded CITED PROSE; a one-phrase answer
+            # needs neither, and they cost 1.4k characters of framing.
+            #
+            # Measured, and this is the reason the mode exists at all: with the
+            # full packaging the short-span prompt ran 1,688 chars against the
+            # retrieval baseline's 391, and Tesserae REFUSED 59.9% of answerable
+            # questions where that baseline refused 6.3% — while 93% of those
+            # refusals had a gold document sitting in the bundle. The bare model
+            # with NO documents refused only 18.3%, so this was never a
+            # retrieval failure: the instruction was converting present evidence
+            # into "I don't know".
+            text = _SHORT_SPAN_PREAMBLE_HEADER
+        else:
+            text = _SYSTEM_PREAMBLE_HEADER + overview + "\n" + _ontology_recap()
         self._system_blocks_cache = [
             {
                 "type": "text",
