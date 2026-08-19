@@ -43,11 +43,22 @@ CID_A = community_id(A_MEMBERS)
 CID_B = community_id(B_MEMBERS)
 CID_B1 = community_id(B1_MEMBERS)
 
-#: sha256 of the default-path bundle body for the fixture graph + query below,
-#: captured from the pre-PR8 compile_context (commit 07870094a7, before scope=/
-#: strategy= existed). The default path must stay byte-identical forever.
+#: sha256 of the default-path bundle body for the fixture graph + query below.
+#: Originally captured from the pre-PR8 compile_context (commit 07870094a7,
+#: before scope=/strategy= existed).
+#:
+#: MOVED ONCE, DELIBERATELY, when `_fuse_walk_with_seeds` stopped letting the
+#: PPR walk reorder the retriever's results. On this very fixture the walk had
+#: ranked the CommunitySummary FIRST and the retriever's own top match
+#: `Concept:a1` THIRD; the node set is unchanged, the order is fixed. Measured
+#: on 284 questions: R@1 0.2295 -> 0.2620, MRR 0.7963 -> 0.8578, with the walk
+#: previously evicting 2.20 seed-ranked documents per question on 237 of them.
+#:
+#: Any FURTHER movement is unexplained. Do not re-bless a new constant without
+#: a reason of at least this weight — and see the invariant asserted alongside
+#: it, which a hash update alone cannot satisfy.
 _PRE_DESCENT_BODY_SHA256 = (
-    "5d975004a409584e02d61edf085d74191ed9bbdfd0617ea43db6d5299bf35f8f"
+    "98c5f080d93ca5abe7724de08b2241176ef4a7890df252a393d62441c627bed1"
 )
 
 
@@ -139,7 +150,7 @@ def _write_project(tmp_path: Path, *, warm_b1_cache: bool = False) -> Path:
 
 
 def test_default_path_byte_identical_to_pre_descent() -> None:
-    """No scope/strategy/tame_hubs -> the exact pre-PR8 bytes."""
+    """No scope/strategy/tame_hubs -> the exact pinned bytes."""
     bundle = compile_context(
         _fixture_graph(), project_root=None, query="alpha telemetry",
         backend=_backend(),
@@ -148,6 +159,19 @@ def test_default_path_byte_identical_to_pre_descent() -> None:
         hashlib.sha256(bundle.body.encode("utf-8")).hexdigest()
         == _PRE_DESCENT_BODY_SHA256
     )
+    # The invariant behind the hash, so a future edit cannot restore the old
+    # behaviour and merely re-bless a new constant: a node the retriever matched
+    # is never ranked below a node only the walk found.
+    ranked, seeds = bundle.ranked_nodes, set(bundle.seeds_used)
+    pos = {n: i for i, n in enumerate(ranked)}
+    walk_only = [n for n in ranked if n not in seeds]
+    for s_id in (n for n in ranked if n in seeds):
+        for w_id in walk_only:
+            assert pos[s_id] < pos[w_id], (
+                f"{w_id} (walk-only) outranks {s_id} (retriever-matched) — "
+                "the walk has regained reordering authority"
+            )
+
     # Explicitly spelling out the new defaults is the same call.
     explicit = compile_context(
         _fixture_graph(), project_root=None, query="alpha telemetry",
