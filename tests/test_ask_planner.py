@@ -746,13 +746,13 @@ def _make_source_project(tmp_path: Path):
     alpha.mkdir(parents=True)
     beta.mkdir(parents=True)
     (alpha / "paper.md").write_text(
-        "SENTINEL-ALPHA-BODY. Zygomorphic flange calibration is how the rig "
-        "settles. It does work when the plate is warm.\n",
+        "SENTINEL-ALPHA-BODY. Zygomorphic flange calibration settles the rig. "
+        "It does work once the plate warms.\n",
         encoding="utf-8",
     )
     (beta / "paper.md").write_text(
-        "SENTINEL-BETA-BODY. A plate warms and it does work. Nothing here "
-        "settles anything else.\n",
+        "SENTINEL-BETA-BODY. A plate warms and it does work. Nothing settles "
+        "the rig here.\n",
         encoding="utf-8",
     )
     (wiki_dir / "alpha.md").write_text(
@@ -794,3 +794,81 @@ def test_a_document_the_fusion_lane_already_pasted_is_not_pasted_again(tmp_path)
     assert message.count('kind="document"') == 2  # the fusion lane ran
     assert message.count("SENTINEL-ALPHA-BODY") == 1
     assert message.count("SENTINEL-BETA-BODY") == 1
+
+
+def test_a_block_sharing_no_rare_term_with_the_question_is_not_admitted(tmp_path):
+    """The over-fetch lane's job is coverage, not relevance, so it brings in
+    near-miss prose that scored well and is about something else. A block that
+    carries none of the question's rare vocabulary cannot answer it."""
+    from tesserae.ask_planner import _anchor_terms, _build_synthesis_message
+
+    project, alpha, beta = _make_source_project(tmp_path)
+    question = "how does zygomorphic calibration work"
+
+    assert _anchor_terms(project, question) == {"zygomorphic", "calibration"}
+
+    message = _build_synthesis_message(
+        question, [], _hits_for(alpha, beta), source_root=project
+    )
+
+    assert 'title="Alpha"' in message      # carries both anchors
+    assert 'title="Beta"' not in message   # carries neither
+
+
+def test_the_gate_fails_open_when_the_question_has_no_rare_term(tmp_path):
+    """query.py records what a prompt-side constraint that fires
+    indiscriminately costs: 59.9% refusals on the ANSWERABLE stratum against a
+    6.3% baseline. A gate with nothing to discriminate on removes nothing."""
+    from tesserae.ask_planner import _anchor_terms, _build_synthesis_message
+
+    project, alpha, beta = _make_source_project(tmp_path)
+    question = "how does it work"
+
+    assert _anchor_terms(project, question) == set()
+
+    message = _build_synthesis_message(
+        question, [], _hits_for(alpha, beta), source_root=project
+    )
+
+    assert 'title="Alpha"' in message
+    assert 'title="Beta"' in message
+
+
+def test_the_gate_leaves_the_fusion_lane_and_the_graph_evidence_alone(tmp_path):
+    """Conservative scope, and it is the whole safety argument: the fusion
+    top-10 is byte-for-byte what the hybrid baseline answers from, and the kg:
+    blocks are the graph's own dated evidence. Gating either trades measured
+    gold coverage for an unmeasured fabrication effect."""
+    from tesserae.ask_planner import _build_synthesis_message
+
+    project, alpha, beta = _make_source_project(tmp_path)
+    evidence = [{"action": "timeline", "args": {},
+                 "content": "2026-01-01 an entirely unrelated dated row"}]
+
+    message = _build_synthesis_message(
+        "how does zygomorphic calibration work", evidence,
+        _hits_for(alpha, beta), source_root=project,
+    )
+
+    assert 'kind="kg:timeline"' in message
+    assert "an entirely unrelated dated row" in message
+    # Beta lost its over-fetch block but its fusion-ranked document survives.
+    assert message.count('kind="document"') == 2
+    assert "SENTINEL-BETA-BODY" in message
+
+
+def test_no_source_root_leaves_the_prompt_exactly_as_it_was(tmp_path):
+    """Both lanes this change touches need a project root to read. Without one
+    the prompt is what it always was, byte for byte — the callers that pass
+    None are unaffected by either the dedupe key or the gate."""
+    from tesserae.ask_planner import _build_synthesis_message
+
+    _project, alpha, beta = _make_source_project(tmp_path)
+
+    message = _build_synthesis_message(
+        "how does zygomorphic calibration work", [], _hits_for(alpha, beta)
+    )
+
+    assert 'kind="document"' not in message
+    assert 'title="Alpha"' in message
+    assert 'title="Beta"' in message

@@ -842,10 +842,105 @@ DOC_OVERFETCH = 3
 #: sources is bounded upstream by top_k.
 SYNTHESIS_SOURCE_CHARS = 4_000
 
+#: A question term ANCHORS a block to this question when it occurs in at most
+#: this share of the source corpus. A block carrying no anchor is not evidence
+#: for the question, however well it scored — it is the near-miss material the
+#: wiki over-fetch lane brings in, and near-miss material is what supplies half
+#: of a relation nothing in the corpus asserts.
+#:
+#: A FRACTION rather than a count, because 3-of-71 and 3-of-62,000 are not the
+#: same test and this constant has to survive being pointed at both.
+#:
+#: Swept over the 352-question demo benchmark (284 answerable + 68 abstention
+#: controls, 71 document units), prompts rebuilt through this function, no LLM
+#: calls. `chars` is the share of the prompt's evidence characters that
+#: survives; `lost` is the share of gold-answer tokens present anywhere in the
+#: ungated prompt that the gate removes:
+#:
+#:     fraction  cap   answerable chars / lost / worst   controls chars
+#:       0.03      2        0.828   0.0097   0.333            0.849
+#:       0.05      3        0.846   0.0091   0.333            0.877
+#:       0.08      5        0.873   0.0077   0.333            0.903
+#:       0.12      8        0.909   0.0049   0.167            0.934
+#:       0.20     14        0.964   0.0020   0.167            0.994
+#:
+#: 0.05 buys a 15% smaller prompt for 0.91% of the gold tokens — inside the
+#: benchmark's ±0.0137 noise floor, which is the point: the coverage cost is
+#: below what the metric can see and the volume cut is not. Above 0.12 the gate
+#: stops removing anything worth removing.
+#:
+#: Two things this table says that the mean does not. The worst single question
+#: loses a third of its in-prompt gold tokens, and that tail does not close
+#: until 0.12 — rare-term admission is a lexical proxy for relevance and it is
+#: wrong on questions whose gold vocabulary is common. And the gate removes
+#: MORE from the answerable stratum than from the controls (0.846 against
+#: 0.877), which is the wrong direction if prompt VOLUME is what drives
+#: fabrication. Controls are authored in dense corpus vocabulary, so their rare
+#: terms hit more blocks. That asymmetry could zero the effect, and it is the
+#: reason this ships behind a control re-run rather than as a settled win.
+ANCHOR_DF_FRACTION = 0.05
+
+#: Per-term document frequency over the source corpus, keyed like
+#: :data:`_DOC_CORPUS_CACHE` and held one project at a time for the same reason.
+_DF_CACHE: Dict[Tuple[str, float], Tuple[Dict[str, int], int]] = {}
+
+
+def _document_df(root: Path) -> Tuple[Dict[str, int], int]:
+    """(term -> documents containing it, document count) for this corpus.
+
+    Derived from :func:`_document_corpus`, so it costs one pass over text that
+    is already read and cached; the pass itself is ~30 ms on 135 documents and
+    amortises to nothing across a session.
+    """
+    from .retrieval.hybrid import _tokenize  # noqa: PLC0415 — heavy module
+
+    key = _corpus_key(root)
+    cached = _DF_CACHE.get(key)
+    if cached is not None:
+        return cached
+    _paths, texts, _vectors = _document_corpus(root)
+    df: Dict[str, int] = {}
+    for text in texts:
+        for term in set(_tokenize(text)):
+            df[term] = df.get(term, 0) + 1
+    result = (df, len(texts))
+    _DF_CACHE.clear()  # one project at a time; never grow unbounded
+    _DF_CACHE[key] = result
+    return result
+
+
+def _anchor_terms(root: Path, question: str) -> set:
+    """The question's terms rare enough in this corpus to anchor a block to it.
+
+    Empty when the question has no rare term, and the gate then FAILS OPEN.
+    That is deliberate rather than lazy: query.py records what happened the last
+    time a prompt-side constraint fired indiscriminately — 59.9% refusals on the
+    ANSWERABLE stratum against the baseline's 6.3%. A gate that cannot tell
+    which blocks matter must not remove any. It is a safety valve, not a common
+    path: on the 352-question demo benchmark it opened for 0 questions at
+    :data:`ANCHOR_DF_FRACTION` = 0.05, so nothing here is load-bearing for the
+    measured numbers.
+
+    Terms absent from the corpus entirely (df == 0) are not anchors either.
+    They discriminate nothing: no block can carry them, so admitting on them
+    would empty the lane.
+    """
+    from .retrieval.hybrid import _tokenize  # noqa: PLC0415 — heavy module
+
+    df, ndoc = _document_df(root)
+    if ndoc <= 0:
+        return set()
+    cap = max(1, int(ndoc * ANCHOR_DF_FRACTION))
+    return {
+        term for term in set(_tokenize(question))
+        if len(term) > 2 and 0 < df.get(term, 0) <= cap
+    }
+
 
 def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits: List[Any],
                              source_root: Optional[Path] = None) -> str:
     from .query import _strip_frontmatter  # noqa: PLC0415 — avoid import cycle at module load
+    from .retrieval.hybrid import _tokenize  # noqa: PLC0415 — heavy module
 
     parts = [
         "Answer the following question strictly from the supplied sources. "
@@ -884,6 +979,31 @@ def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits
                 parts.append("</source>")
         except Exception:  # noqa: BLE001 — never sink a plan on the extra lane
             pass
+
+    # ADMISSION. Everything below this line is the wiki over-fetch lane — a
+    # median of ~8 extra blocks and 30.7% of the prompt's evidence characters,
+    # ranked by BM25 over our own projections rather than by the fusion above.
+    # It is where the +47% context over the retrieval baseline comes from, and
+    # the abstention controls fabricate at 52.9% against that baseline's 38.2%.
+    #
+    # A block from this lane that shares no rare term with the question cannot
+    # answer it. Scoring well is not the same as being about the question: with
+    # ~20 blocks of 4,000 characters in the prompt, some passage somewhere pairs
+    # any two named things, which is exactly how a relation nothing asserts gets
+    # assembled. So admit on term SCARCITY, which the corpus can measure, rather
+    # than on rank, which it cannot (RRF encodes order, not relevance —
+    # discrimination on it measured AUC 0.474, chance).
+    #
+    # The lanes above are deliberately exempt: the fusion top-10 is byte-for-byte
+    # what the hybrid baseline answers from, and the kg: blocks are the graph's
+    # own dated evidence. Neither is over-fetch.
+    _anchors: set = set()
+    if _source_root is not None and question.strip():
+        try:
+            _anchors = _anchor_terms(Path(_source_root), question)
+        except Exception:  # noqa: BLE001 — a gate that raises must not lose the answer
+            _anchors = set()
+
     for hit in hits:
         body = ""
         if hit.page_text:
@@ -912,6 +1032,8 @@ def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits
                 body = _raw
                 _admit_unit = _unit
         body = (body or hit.excerpt)[:SYNTHESIS_SOURCE_CHARS]
+        if _anchors and not (_anchors & set(_tokenize(body))):
+            continue
         if _admit_unit:
             _docs_emitted.add(_admit_unit)
         parts.append(f'<source kind="{hit.kind}" title="{hit.title}" node_id="{hit.node_id or ""}">')
