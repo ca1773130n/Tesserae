@@ -20,6 +20,18 @@
 # `hop_rationale` records why a short generic path between the anchors is NOT
 # evidence for that question. It is documentation, not scoring input: the
 # ranked-retrieval metric this set was built for does not read it.
+# NOTE ON CONTROLS. `legacy_gameable: true` marks the original 48. They are kept
+# so earlier runs stay interpretable and MUST NOT be used to compute a
+# hallucination rate: at 31 words against the live set's 57, a rule with no
+# corpus access — "refuse anything under 40 tokens" — scored 2.1% hallucination
+# on them while beating every genuine knowledge signal. The number they produce
+# measures question style.
+#
+# The ctl2-* controls are length-matched (mean 56.1 vs 56.7) and that exploit
+# scores 100% on them. They carry `reason_class`, which separates two
+# capabilities that must not be pooled: absent-evidence probes test ABSTENTION,
+# while out-of-scope-claim probes carry a false premise whose correct answer is
+# a premise CORRECTION — substantive content, not silence.
 questions:
 
   # ---- slam ----
@@ -87,6 +99,7 @@ questions:
     text: "How does the Dense Bundle Adjustment layer solve jointly for camera pose and the covariances of anisotropic 3D Gaussians when the map is updated incrementally?"
     anchors: ["Dense Bundle Adjustment", "anisotropic 3D Gaussians"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "No paper in the 50-document corpus puts Gaussian primitives inside a Dense Bundle Adjustment layer. DROID-SLAM's DBA layer solves a Gauss-Newton step over per-pixel depth and per-frame pose on a co-visibility graph and predates 3D Gaussian Splatting by two years; it never mentions Gaussians. Both GS-SLAM and Gaussian Splatting SLAM optimise Gaussians through a splatting-based photometric-and-depth re-rendering loss and neither mentions bundle adjustment of covariances. Covariance is optimised in 3DGS only by offline gradient descent with known poses. The question is unanswerable, but the anchors are grounded and the path DROID-SLAM to SLAM to GS-SLAM to 3D Gaussian Splatting is short and inviting."
     hop_rationale: "This control exists precisely because a three-hop path does exist and is worthless: both anchors sit one hop from the SLAM hub, and GS-SLAM co-mentions SLAM and Gaussians while DROID-SLAM co-mentions SLAM and DBA. Any checker that accepts hub traversal as evidence will report this answered, and every other number it produces is then suspect."
@@ -94,6 +107,7 @@ questions:
     text: "What does one-blob encoding contribute to the photometric calibration of exposure time and lens vignetting in direct visual odometry?"
     anchors: ["one-blob encoding", "photometric calibration"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "One-blob encoding appears only in Co-SLAM, where it is a smooth coordinate encoding added to a multi-resolution hash grid to encourage surface coherence and hole filling in unobserved regions. Photometric calibration appears only in Direct Sparse Odometry, where it is a camera sensor model covering exposure time, lens vignetting and the non-linear response function. They are not the same kind of object — a scene-encoding basis versus a camera-response model — and no document in the corpus relates them; DSO predates one-blob encoding by seven years and no neural SLAM paper in the corpus models exposure or vignetting at all. Both anchors are grounded, and both papers carry the same sub_topic, Visual SLAM and MVS, so a short path through that shared classification exists while no evidence does."
     hop_rationale: "Shared sub_topic plus the SLAM hub puts these two anchors within three hops for free, and both papers legitimately concern robustness of camera tracking, which makes a spurious connection sound reasonable when narrated. That is the trap: the corpus supports a plausible-sounding sentence about both terms without supporting a single sentence relating them."
@@ -163,12 +177,14 @@ questions:
     text: "How is mip-NeRF's integrated positional encoding adapted to a multiresolution hash grid so that grid-based radiance fields stay anti-aliased across scales?"
     anchors: ["integrated positional encoding", "multi-resolution hash grid"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Both anchors are grounded — IPE is defined only in Mip-NeRF, the hash grid in Instant-NGP with grounded uses in MonoSDF and Co-SLAM — but no document in the 50-paper corpus discusses aliasing in any grid, hash, or primitive representation: 'alias' occurs only in NeRF, Mip-NeRF and Mip-NeRF 360, none of which mention hash grids, and none of the grid papers mention scale, mipmapping, or supersampling. The work that actually performed this adaptation (Zip-NeRF) exists in the corpus solely as a bare name in one closing sentence of Mip-NeRF 360 — an ungrounded Paper node with no content behind it. Any path scored answerable here is running through that citation stub, which is precisely the false positive the instrument exists to catch."
   - id: nerf-found-control-in-the-wild-splatting
     text: "Which Gaussian Splatting method adopts NeRF-W's per-image appearance embedding to reconstruct landmarks from unconstrained tourist photo collections, and how does it deal with transient occluders?"
     anchors: ["appearance embedding", "3D Gaussian Splatting"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "'appearance embedding' occurs in exactly one document in the corpus (NeRF-W), and no Gaussian Splatting paper here touches illumination variation, exposure, unconstrained photo collections, or transient occluders — that vocabulary is confined to NeRF-W plus a few image-to-3D papers. Methods of this kind exist outside the corpus (GS-W, SWAG, VastGaussian), which is what makes the question sound answerable. With more than twenty Gaussian papers and NeRF-W all hanging off 'radiance field' and 'novel view synthesis', a plausible short path is certain to exist; following it would report a connection that no document in the corpus supports."
 
@@ -237,6 +253,7 @@ questions:
     text: "Which method replaced the Eikonal regulariser with a depth-distortion term to stabilise signed distance fields on unbounded captures?"
     anchors: ["Eikonal", "depth distortion"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the full 50-paper corpus. 'Eikonal' occurs only in IGR and VolSDF; 'depth distortion' only in 2DGS, which uses no SDF and no Eikonal loss anywhere. Mip-NeRF 360's distortion regulariser is applied to a density field, never to a distance field, and no corpus paper proposes this substitution or evaluates on unbounded captures with an SDF. Both anchors are real and both sit inside the surface-reconstruction neighbourhood, so a checker scoring topical proximity will manufacture the link."
     hop_rationale: "Eikonal → signed distance function → geometric regularisation → depth distortion is a short, entirely generic path that exists because every one of these papers regularises geometry somehow. Any path reported here is spurious by construction: no document asserts a replacement, so there is nothing for a path to be evidence of."
@@ -244,6 +261,7 @@ questions:
     text: "How does SuGaR's Poisson reconstruction step consume the monocular geometric cues it uses to orient its Gaussians?"
     anchors: ["Poisson reconstruction", "monocular geometric cues"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the full corpus, and the premise is false. SuGaR orients its Gaussians with its own regulariser penalising deviation from the local tangent plane suggested by neighbouring primitives — no monocular predictor is involved anywhere in the paper. MonoSDF, the only source of 'monocular geometric cues', never extracts a mesh by Poisson reconstruction. No other corpus paper mentions Poisson reconstruction at all. The pairing is maximally tempting because both anchors concern surface orientation and normals, which is exactly the spurious connection this control is meant to catch."
     hop_rationale: "Both anchors are within two hops of 'surface normal' and of 'mesh reconstruction', so a graph will offer a short path and could dress it up as an answer. There is no evidence to be had: the question presupposes a pipeline stage no document in the corpus performs, so a reported connection is a false positive regardless of how short the path is."
@@ -313,12 +331,14 @@ questions:
     text: "How does temporal slicing of 4D Gaussians improve camera tracking in dense SLAM, and what does it do to the tracking drift reported for deforming scenes?"
     anchors: ["temporal slicing", "dense SLAM"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the whole 50-paper corpus. 'temporal slicing' occurs only in 4D-Rotor GS and 'dense SLAM' only in NICE-SLAM and GS-SLAM; not one of the six SLAM papers here (DSO, DeepV2D, DROID-SLAM, NICE-SLAM, Point-SLAM, Co-SLAM, GS-SLAM, Gaussian Splatting SLAM) so much as contains the word 'dynamic' — all of them assume a static scene. No document connects dynamic 4D primitives to camera tracking or reports drift on deforming scenes. Both anchors are real and both sit under 3D Gaussian Splatting, so a checker that walks the 3DGS hub will find a short path; that path is the false positive this control is built to catch."
   - id: dyn4d-control-sds-animates-warp
     text: "How is score distillation sampling used to supervise a deformation field so that a text prompt produces an animated 4D scene, and what stops the resulting motion from collapsing to a static result?"
     anchors: ["score distillation", "deformation field"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the whole corpus. 'score distillation' appears in six generation papers (DreamFusion, Magic3D, Zero-1-to-3, ProlificDreamer, DreamGaussian, Instant3D) and 'deformation field' in four dynamic papers (Nerfies, BARF, 4D-GS, 4D-Rotor GS), but the two sets are disjoint: none of the generation papers contains '4D', 'temporal' or any word for animation, and none of the dynamic papers uses a diffusion prior. There is no text-to-4D work in this corpus at all. The question is plausible because text-to-4D is a real research direction and because both anchors are well grounded — which is exactly why a checker that scores co-existence rather than a documented relationship will answer it."
 
@@ -381,12 +401,14 @@ questions:
     text: "How is bundle adjustment used inside feed-forward reconstruction models to refine the input camera poses before the triplane is predicted, and how much does that refinement improve reconstruction quality?"
     anchors: ["bundle adjustment", "triplane"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Both anchors are well grounded in the corpus but in disjoint literatures that no document links. Bundle adjustment appears only in pose-estimation and SLAM work (DeepV2D, BARF, DROID-SLAM, Co-SLAM); the triplane parameterisation appears only in LRM and TripoSR, neither of which contains any pose-refinement stage — they assume the input framing and, in the sparse-view case, canonicalised layouts with known relative poses. No paper in the 50-document corpus places a bundle-adjustment step inside a feed-forward reconstruction model, so any reported connection is a spurious path through generic camera-pose or 3D-reconstruction nodes."
   - id: t23d-control-rotor-sds
     text: "How is the geometric-algebra rotor parameterisation of dynamic Gaussians supervised by score distillation to produce animated text-to-3D assets, and what does it replace in the canonical-plus-deformation formulation?"
     anchors: ["geometric algebra", "Score Distillation Sampling"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "The rotor/geometric-algebra parameterisation appears in exactly one corpus paper (4D-Rotor Gaussian Splatting), which is a reconstruction method for captured dynamic scenes and contains no generative component, no text conditioning and no distillation of any kind. Score distillation appears only in the generation papers, none of which model time or motion. The corpus contains no 4D or animated generation paper at all, so the bridge the question presupposes does not exist; a positive answer means the checker connected 'dynamic Gaussians' to 'generative Gaussians' through shared representation nodes."
 
@@ -455,6 +477,7 @@ questions:
     text: "How does the cap on the total number of primitives in revised Adaptive Density Control interact with the collision behaviour of a multiresolution hash encoding when Gaussian primitives are stored in the hash table?"
     anchors: ["Adaptive Density Control", "multiresolution hash encoding"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Both anchors are genuine and unique: Adaptive Density Control appears only in Revising Densification, the multiresolution hash encoding only in Instant-NGP. But no paper in the 50-document corpus stores Gaussian primitives in a hash table, and none relates a primitive budget to hash collisions — Instant-NGP's collisions are disambiguated by gradient updates on a fixed-size table, a mechanism with no primitive count in it at all. The question is answerable only by inventing a system the corpus does not contain."
     hop_rationale: "A 2-3 hop path exists trivially: both papers are radiance-field methods that discuss speed/quality trade-offs and both are cited as baselines across the corpus, so a checker following 'radiance field' or 'training efficiency' will connect them. That path is exactly the spurious connection this control is designed to expose; only a document describing hashed Gaussian storage would count, and there is none."
@@ -462,6 +485,7 @@ questions:
     text: "Which total-variation prior from the voxel-grid radiance field line is carried over to regularise the neural Gaussians predicted per anchor, and what does that prior do to the level-of-detail behaviour?"
     anchors: ["total-variation", "neural Gaussians"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Plenoxels really does replace the MLP's implicit smoothing with explicit total-variation and sparsity priors, and Scaffold-GS really does predict neural Gaussians per anchor and report level-of-detail gains — but no corpus document transfers a total-variation prior onto a Gaussian representation. Scaffold-GS's anchors are grown and pruned by rendering contribution, and its level-of-detail behaviour comes from view-conditioned attribute prediction, not from any smoothness term. The question presupposes an inheritance the corpus never records."
     hop_rationale: "The anchors sit close together by construction: 'total-variation' occurs in Plenoxels (and, unrelatedly, in Direct Sparse Odometry) while 'neural Gaussians' occurs in Scaffold-GS, and both papers connect within a couple of hops through explicit-representation and regularisation vocabulary. Short-path evidence would therefore confirm a transfer that does not exist, which is precisely the failure mode being probed."
@@ -585,6 +609,7 @@ questions:
     text: "On the TartanAir sequences, how much of DROID-SLAM's robustness advantage survives once DSO is supplied with full photometric calibration for those sequences, and what trajectory-error gap remains between the two after that correction?"
     anchors: ["TartanAir", "photometric calibration"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the 50-paper corpus. TartanAir appears only as one of DROID-SLAM's evaluation benchmarks and photometric calibration only as a DSO component; no paper evaluates DSO on TartanAir, no paper reports numeric trajectory errors of any kind (the corpus records only PSNR/SSIM/LPIPS as metric labels), and no paper contains a calibration ablation. Verified: the string 'absolute trajectory error' occurs nowhere in the corpus."
     hop_rationale: "Both anchors are one hop from their respective papers and those papers cite each other, so a retrieval system will return a short, confident path and still have no numbers to answer with. This control exists to show that a short anchor-to-anchor path is not evidence of answerability."
@@ -592,6 +617,7 @@ questions:
     text: "Which place-recognition module does DROID-SLAM use to propose loop closures over its keyframe graph, and how does its acceptance threshold compare with the keyframe-selection rule used by NICE-SLAM when it advances its sliding window of keyframes?"
     anchors: ["keyframe graph", "sliding window of keyframes"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the 50-paper corpus on both halves. Verified by exhaustive string search: neither 'loop closure' nor 'place recognition' occurs anywhere in the 50 papers, and no paper states any keyframe-selection or acceptance threshold. The anchors themselves are genuine corpus terms — 'keyframe graph' from DeepV2D's description of DROID-SLAM, 'sliding window of keyframes' from NICE-SLAM — so the question sounds like a normal cross-paper systems comparison."
     hop_rationale: "The anchors are two well-connected keyframe terms in the same sub-topic, so the graph offers a short path and plausible neighbours; the missing content is a mechanism that no document contains, which no amount of path quality can supply."
@@ -599,6 +625,7 @@ questions:
     text: "What functional form does BARF's coarse-to-fine annealing schedule take over the positional encoding bands — linear or exponential in training iteration — and what does its ablation report about pose error when the schedule is run twice as fast?"
     anchors: ["coarse-to-fine annealing schedule", "positional encoding"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the 50-paper corpus. The corpus describes the annealing only qualitatively (high-frequency bands masked early, progressively re-enabled) and gives no functional form, no iteration counts, and no schedule-rate ablation; Nerfies, which uses the same trick, is equally qualitative, and no other paper discusses annealing rates. The anchors both occur in several corpus papers, so the question looks answerable."
     hop_rationale: "'positional encoding' is a hub token spanning five papers and sits adjacent to the annealing anchor in both BARF and Nerfies, so the shortest possible path exists between the anchors. The question fails on granularity rather than connectivity — the corpus stores the mechanism but not its parameters — which is exactly the case where path length misleads."
@@ -728,6 +755,7 @@ questions:
     text: "At a matched ray-sampling budget, does Co-SLAM's one-blob encoding or Point-SLAM's point anchoring yield lower absolute trajectory error on the EuRoC MAV sequences, and how does the gap change between the difficult and easy sequences?"
     anchors: ["one-blob encoding", "EuRoC"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the whole corpus. EuRoC appears only in the DSO and DROID-SLAM entries; neither Co-SLAM nor Point-SLAM is reported on it, no absolute trajectory error figures appear anywhere in the corpus, and no matched-sampling-budget head-to-head between these two systems is described. Both anchors occur, which makes the question look answerable by association."
     hop_rationale: "A path from the one-blob anchor to the EuRoC anchor is short — Co-SLAM to SLAM hub to DSO or DROID-SLAM, both of which carry EuRoC — so a graph will happily surface a two- or three-hop route. The route is real and the answer still does not exist, which is exactly the false positive this control is meant to catch."
@@ -735,6 +763,7 @@ questions:
     text: "How much GPU memory does GS-SLAM's adaptive expansion strategy consume per Replica scene compared with NICE-SLAM's hierarchical feature grid at equivalent reconstruction quality, and at what scene size does the ordering reverse?"
     anchors: ["adaptive expansion strategy", "hierarchical feature grid"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable: no paper in the corpus reports absolute memory figures for any SLAM system. Point-SLAM claims memory reduction only qualitatively and relative to grid encodings; GS-SLAM and NICE-SLAM report no footprint at all, and no crossover analysis versus scene size exists anywhere."
     hop_rationale: "Both anchors are strong, well-connected concepts within the neural SLAM neighbourhood and share the Replica dataset node, so retrieval will return exactly the two right documents with high confidence. Retrieving the right documents is not the same as the documents containing quantitative memory numbers, which they do not."
@@ -742,6 +771,7 @@ questions:
     text: "To which spherical harmonics degree does Gaussian Splatting SLAM truncate its primitives during live monocular tracking, and how does that truncation interact with its geometric verification step when the camera revisits a specular surface?"
     anchors: ["spherical harmonics", "geometric verification"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable: spherical harmonics appear in the corpus only as the view-dependent colour encoding of 3DGS and in the PlenOctrees/Plenoxels entries. No SLAM paper here states an SH degree, no truncation is described, and no interaction between colour-basis order and geometric verification or specular revisits is discussed anywhere."
     hop_rationale: "The two anchors are separated by a plausible short path — MonoGS to Gaussian representation to 3DGS's spherical-harmonic colour — so the graph can connect them confidently in two hops. The connection encodes only that MonoGS uses Gaussians whose colour is generally SH-encoded; the specific hyper-parameter and its interaction are absent from every document, so any confident answer is fabrication."
@@ -865,6 +895,7 @@ questions:
     text: "Which method combines NeRF-W's per-image appearance embedding with a Nerfies-style deformation field, so that an unconstrained collection of photographs of a subject that also moves non-rigidly is reconstructed with illumination variation and deformation handled together?"
     anchors: ["appearance embedding", "deformation field"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "'Appearance embedding' occurs in exactly one document of the 50-paper corpus (NeRF-W), and no deformable or dynamic paper here - Nerfies, HyperNeRF, Gao et al., 4D-GS, 4D-Rotor - mentions illumination, exposure, appearance variation or unconstrained photo collections; that vocabulary is confined to NeRF-W (with 'illumination' appearing elsewhere only in DreamFusion, and 'exposure' only in Direct Sparse Odometry). No document describes a method that combines the two, so the question is unanswerable from the corpus while naming two capabilities it really does contain."
     hop_rationale: "Both anchors hang directly off NeRF, so 'appearance embedding -> NeRF-W -> NeRF -> Nerfies -> deformation field' is a guaranteed four-hop path and shorter ones exist through 'radiance field' or 'novel view synthesis'. A path that certain is worthless as evidence for a combined method: it certifies only that both mechanisms are NeRF extensions. Scoring this answerable is precisely the co-occurrence false positive the control exists to catch."
@@ -872,6 +903,7 @@ questions:
     text: "When NeRF-W is evaluated on a held-out photograph from an internet collection, that image's appearance latent code was never optimised during training. How is the code obtained at evaluation time, and how does the reported PSNR account for the portion of the image used to fit it?"
     anchors: ["latent code", "PSNR"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "The corpus says what NeRF-W's latent code is for, but no document states any evaluation-time procedure for obtaining one: 'test-time', 'held out', 'evaluation protocol', 'ablation' and 'ablate' occur nowhere across the 50 papers (only DROID-SLAM contains 'test time', about something else), and NeRF-W's prose reports no numeric results at all. The real answer - fitting the embedding on part of the test image and scoring the remainder - exists only outside the corpus, so any answer here is fabricated or a refusal."
     hop_rationale: "PSNR is reported by nearly every document in the corpus and 'latent code' sits in NeRF-W, which is one hop from the metric through its own results paragraph, so a path is trivially found and is always about shared evaluation infrastructure. The question asks for a protocol, which no path length can supply when no document contains one; a short path here measures only that both anchors are grounded."
@@ -879,6 +911,7 @@ questions:
     text: "How many dimensions does HyperNeRF's ambient space use, and what does the ablation over that dimensionality show about the trade-off between interpolation plausibility and reconstruction sharpness?"
     anchors: ["ambient coordinate", "level set methods"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Both anchors are grounded in HyperNeRF and occur in no other document, so they resolve inside one paper and a path is certain. But the corpus contains no ablation of anything: the strings 'ablation' and 'ablate' appear in none of the 50 papers, and the only quantities in HyperNeRF's text are the 4.1% and 8.6% LPIPS reductions over Nerfies. The dimensionality of the ambient space and any sweep over it exist only in the original publication, so the corpus cannot support an answer."
     hop_rationale: "A same-document co-occurrence gives distance zero between the anchors, the strongest signal a path-based scorer can see, while the question asks for a hyperparameter and an ablation curve that the document does not contain. This is the case where path length is maximally misleading: the connection is real and the answer is absent, so any 'answerable' verdict is measuring grounding of the anchors rather than availability of the evidence."
@@ -1002,6 +1035,7 @@ questions:
     text: "Zip-NeRF combines a multiresolution hash encoding with anti-aliasing. How many multisamples does it draw per conical frustum, and what downweighting rule does it apply to hash-grid features so that the result approximates Mip-NeRF's integrated positional encoding?"
     anchors: ["integrated positional encoding", "multiresolution hash"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Zip-NeRF appears exactly once in the corpus, as a name in a list of later users of the mipnerf360 benchmark inside Mip-NeRF 360's prose; no corpus document describes its method. Both ingredients the question names are present (IPE in Mip-NeRF, the hash encoding in Instant-NGP), which makes the question sound answerable, but the multisample count and the feature-downweighting rule are properties of a paper that is not among the 50 and appear nowhere in any document."
     hop_rationale: "The two anchors are two hops apart via NeRF and via the shared unbounded-scene benchmark, so retrieval will happily return a confident-looking path between IPE and hash encodings. Any such path is spurious here: it connects the ingredients without touching the method that combines them, and no traversal length recovers content the corpus does not contain."
@@ -1009,6 +1043,7 @@ questions:
     text: "At which hash-table size does Instant-NGP's reconstruction quality stop improving on outdoor 360-degree captures, and how much resident memory does MERF's sparse feature grid need to reach the same quality on those scenes?"
     anchors: ["multiresolution hash", "sparse feature grid"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Both anchors are real corpus concepts in papers that are in the pool, but every document in this corpus is prose: there are no hyperparameter sweeps, no per-scene tables, and no memory measurements anywhere. Instant-NGP's table-size knee and any MERF megabyte figure are simply absent, so the comparison cannot be produced no matter how well the two papers are retrieved."
     hop_rationale: "Instant-NGP and MERF are one or two hops apart through the unbounded-scene and efficient-representation clusters, so a graph will return a strong, short, entirely genuine connection between the anchors — and it still yields nothing, because the missing content is numeric detail below the granularity of every document, not a missing link between them."
@@ -1016,6 +1051,7 @@ questions:
     text: "Which 3D smoothing filter and screen-space dilation does the anti-aliased Gaussian-splatting variant apply so that densification stays stable when test images are rendered at a resolution different from the training images?"
     anchors: ["anti-aliasing", "densification"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "The corpus treats anti-aliasing only on the radiance-field side (Mip-NeRF, Mip-NeRF 360) and treats splatting densification only through 3DGS and Revising Densification, neither of which discusses resolution-change aliasing or any smoothing or dilation filter. Scale-aware splatting methods are not among the 50 papers, so the filter named in the question does not exist anywhere in the corpus."
     hop_rationale: "'Anti-aliasing' and 'densification' are each one hop from the novel-view-synthesis hub and both appear in papers that cite one another's lineage, so a short plausible path is guaranteed. That path is precisely the false positive to catch: co-occurrence of the two topics in one corpus is not the same as a document describing a method that joins them, and none does."
@@ -1145,6 +1181,7 @@ questions:
     text: "For the octree-baked radiance representation, how many spherical-harmonic bands are retained per leaf, and how does reconstruction quality fall off as the stored coefficients are truncated to shrink the payload for in-browser delivery?"
     anchors: ["SH coefficients", "in-browser rendering"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus. The corpus records that the method stores a fixed set of SH coefficients per voxel and that the representation is amenable to in-browser rendering, but it never states the SH degree or band count, never gives a per-leaf coefficient budget, and contains no truncation ablation or quality-versus-coefficient-count curve. No other corpus document supplies SH degrees either -- the splatting papers and the gsplat supplement mention SH colour and basis conventions without any degree, byte budget, or truncation study -- so the numeric answer exists nowhere in the 50 documents, while both anchors do occur."
     hop_rationale: "Control: the two anchors are one hop apart inside a single document, so any retriever will connect them confidently and surface that document, which is exactly the trap. Short distance here is evidence only of co-mention of SH storage and browser delivery; it is not evidence that a band count or a truncation curve exists anywhere, and no gold set can be assigned."
@@ -1152,6 +1189,7 @@ questions:
     text: "At a matched memory budget, where does the sparse-voxel representation overtake the planar-factorised one in PSNR, and how large is the gap at the budget where the planar method reports its 1000x compression?"
     anchors: ["sparse 3D voxel grid", "1000x compression"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus. Both anchors occur -- the voxel method is described as a sparse 3D voxel grid and the planar method quotes 1000x compression against a dense 4D grid -- but the corpus contains no per-method metric tables at all, only qualitative parity claims against NeRF. The two methods are never evaluated against each other, never at a controlled memory budget, and no corpus document reports a memory-versus-PSNR curve for either, so no crossover point or gap magnitude can be derived."
     hop_rationale: "Control: these two explicit-representation papers share authors, a lineage edge and a metrics list, so the anchors will sit a hop or two apart and a graph will look highly confident. That closeness reflects shared infrastructure -- both report PSNR, both are explicit fields -- and not the existence of the controlled comparison being requested, which is the precise false positive this control is meant to catch."
@@ -1159,6 +1197,7 @@ questions:
     text: "In the documented backward pass of the splatting library, what numerical safeguards are applied when a primitive's anisotropic covariance degenerates toward zero scale, and at what threshold are the resulting gradients clamped?"
     anchors: ["backward pass", "anisotropic covariance"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus. The corpus states which quantities the forward and backward passes cover -- opacity, colour, position, scale, rotation, SH colour, covariance propagation through the projection -- but records no numerical-stability handling: no epsilon clamping, no degenerate-scale guard, no gradient threshold. No other corpus document specifies kernel-level numerical safeguards for splatting either, so the specific safeguard and threshold asked for appear in none of the 50 documents, while both anchors are common corpus vocabulary."
     hop_rationale: "Control: covariance and the backward pass are adjacent within the splatting-mathematics document and across every 3DGS-family paper, so the path is as short as it gets. Proximity here certifies only that the library differentiates covariance parameters; the question asks for implementation-level guards and a numeric threshold that no document records, so a confident short-path retrieval would be a pure false positive."
@@ -1288,6 +1327,7 @@ questions:
     text: "Across the DTU scans, which Eikonal loss weight does VolSDF report as optimal, and how much chamfer distance does halving that weight cost?"
     anchors: ["Eikonal", "chamfer"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "The corpus documents are prose summaries and CC0 abstracts; none of them contains a hyperparameter table, a loss-weight sweep, or a single chamfer distance value. 'Chamfer' appears in the corpus only inside IGR's phrase 'chamfer-style fitting', and no per-scan DTU numbers exist anywhere, so no weight and no cost can be recovered even by combining every document."
     hop_rationale: "Control: the anchors are genuinely present and close together in the SDF cluster, which is what makes the question look answerable. Any short path found here is evidence of topical proximity only; the quantities asked for are absent from the corpus, so retrieval quality cannot help."
@@ -1295,6 +1335,7 @@ questions:
     text: "Voxurf is listed as one of the works extending NeuS. What does it change about NeuS's logistic density formulation in order to run on a voxel grid, and what accuracy does that cost on the standard benchmarks?"
     anchors: ["Voxurf", "logistic function"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Voxurf appears in the corpus only as a name in the downstream-work lists of NeuS and VolSDF. There is no Voxurf document among the 50, so nothing about its representation, its modification to the opacity formulation, or any number it reports exists in the corpus to be retrieved."
     hop_rationale: "Control: 'Voxurf' and 'logistic density' co-occur inside the NeuS document itself, giving a zero-to-one-hop path that is maximally misleading. The path proves only that NeuS named a successor; the mechanism asked about is nowhere in the corpus."
@@ -1302,6 +1343,7 @@ questions:
     text: "IDR is the mask-supervised baseline that UNISURF, NeuS, and VolSDF all measure themselves against. What is IDR's own differentiable surface-rendering objective composed of, and how does its mask term interact with its Eikonal term during optimisation?"
     anchors: ["IDR", "Eikonal"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "IDR is referenced across four corpus documents, but always and only as a baseline characterised by needing masks; the IDR paper is not in the 50-document corpus. Its loss composition, its mask term, and any interaction with an Eikonal term are never stated, so the question cannot be answered from the corpus at any retrieval depth."
     hop_rationale: "Control: both anchors occur in the same documents — VolSDF names IDR and states it uses the Eikonal loss — so a one-hop path exists and looks like strong evidence. It supports only the fact that both terms belong to this literature, not the internal composition of a method the corpus never describes."
@@ -1431,6 +1473,7 @@ questions:
     text: "On DTU, what Chamfer distance does SuGaR's Poisson reconstruction achieve compared with 2DGS trained with its depth distortion term switched off?"
     anchors: ["Poisson reconstruction", "depth distortion"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus: no document reports numeric per-scene or per-dataset reconstruction metrics of any kind — the material carries only qualitative claims and metric *names* (PSNR, SSIM, LPIPS) in front matter — and no ablation that disables 2DGS's depth-distortion term appears anywhere. Chamfer distance is never reported for any method, and DTU is mentioned only as an evaluation set for NeuS/UNISURF/VolSDF."
     hop_rationale: "Control. Both anchors occur in the corpus and their papers are one hop apart as sibling surface-aware Gaussian methods, so a short, confident path certainly exists — that is the trap. The path carries the two methods but no numbers and no ablation, so any retrieval that scores this question as answerable is producing a false positive on topical adjacency."
@@ -1438,6 +1481,7 @@ questions:
     text: "How does Scaffold-GS's view-conditioned MLP over anchor points behave when its neural Gaussians are replaced by planar disks rendered with ray-splat intersection — does the anchor growing-and-pruning procedure still converge?"
     anchors: ["anchor points", "ray-splat intersection"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus: no document proposes, implements, or evaluates a hybrid of anchor-based structuring with 2D disk primitives. Scaffold-GS predicts attributes of volumetric neural Gaussians and 2DGS changes the primitive without any anchor structure; nothing in the 50 papers reports convergence behaviour for the combination, so any answer would be invention dressed in corpus vocabulary."
     hop_rationale: "Control. Both anchors are real concept strings whose papers share a sub-topic, so they are two hops apart at most via the Gaussian-splatting neighbourhood, and the retrieved context will look highly relevant. Relevance is exactly what is misleading here: the corpus supports each half and says nothing about their composition, so a short path is evidence of a plausible-sounding non-question."
@@ -1445,6 +1489,7 @@ questions:
     text: "Which network does MonoSDF's monocular surface-normal predictor use, and how much does the normal consistency term degrade when that predictor is replaced by a weaker one?"
     anchors: ["monocular surface-normal predictor", "normal consistency"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus on two counts: no document names any specific monocular predictor architecture — MonoSDF's are described only as general-purpose off-the-shelf estimators — and 'normal consistency' is 2DGS's self-supervised term, which is not driven by MonoSDF's predictor at all, so the question also asserts a dependency that no document supports. No predictor-swap study exists anywhere in the 50 papers."
     hop_rationale: "Control. The two anchors both concern surface normals and sit one hop from any generic normal-supervision node, so a short path is essentially guaranteed and will retrieve both MonoSDF and 2DGS. The path cannot expose that the question fuses two unrelated mechanisms and asks for an architecture name and an ablation the corpus never records — precisely the false positive the controls are meant to catch."
@@ -1568,6 +1613,7 @@ questions:
     text: "At matched reconstruction quality on dynamic scenes, how many parameters does HexPlane's own four-dimensional decomposition use compared with K-Planes' six-plane factorisation, and which of the two reports the better memory-to-quality ratio?"
     anchors: ["HexPlane", "six planes"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus: HexPlane is named only as the inspiration for 4D-GS's decomposed neural voxel encoding and has no paper of its own in the 50-document set, so no HexPlane parameter count, quality figure, or memory ratio exists anywhere. K-Planes reports only a roughly 1000x compression against a dense 4D grid, never a parameter-level comparison against HexPlane, and no other corpus paper benchmarks the two against each other."
     hop_rationale: "Both anchors are one or two hops apart in any graph built from this corpus, since 4D-GS mentions HexPlane and shares the planar-factorisation concept with K-Planes, so a retriever will find a short, confident path and be tempted to answer. That path carries only the inspiration relation, not any parameter budget for a paper the corpus does not contain — making short-path proximity actively misleading here, which is what this control is for."
@@ -1575,6 +1621,7 @@ questions:
     text: "On the D-NeRF synthetic dynamic benchmark, what PSNR do 4D Gaussian Splatting and 4D-Rotor Gaussian Splatting each report, and by what margin does the winner lead?"
     anchors: ["D-NeRF", "4D-Rotor Gaussian Splatting"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus: D-NeRF appears only as a named baseline inside the Nerfies text, with no dataset description or numbers, and neither dynamic Gaussian paper in the corpus records any dataset or reconstruction-quality figure — both list FPS as their only metric (82 FPS at 800x800 for 4D-GS; 277 and 583 FPS for 4D-Rotor GS). No corpus document contains a PSNR value for either method on any named dynamic benchmark, so no head-to-head margin can be derived."
     hop_rationale: "'D-NeRF' and '4D-Rotor Gaussian Splatting' are both inside the dynamic sub_topic and both attach to evaluation vocabulary, so a two-hop path through the dynamic-scene or metric nodes is easy to produce and looks like support for a benchmark comparison. It is not: proximity through a benchmark-flavoured hub is precisely the false positive this control catches, since the corpus stores no dataset entries and no PSNR values for either method."
@@ -1582,6 +1629,7 @@ questions:
     text: "By how much does LPIPS degrade when the elastic regularization is ablated from HyperNeRF's ambient-slice model, and does removing it hurt moment interpolation or novel-view synthesis more?"
     anchors: ["elastic regularization", "ambient slice"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus: HyperNeRF's text states only that Nerfies' elastic regularization and coarse-to-fine positional encoding are reused, and reports aggregate improvements over Nerfies of 4.1% LPIPS for moment interpolation and 8.6% for novel-view synthesis. No corpus document reports an ablation of the elastic term in either Nerfies or HyperNeRF, so neither the magnitude nor the per-task split of its removal can be recovered."
     hop_rationale: "The two anchors co-occur inside a single paper's description — HyperNeRF reuses the elastic regulariser and performs the ambient slice — so the shortest possible path exists and a retriever will return that passage with high confidence. A zero-hop co-occurrence is still no evidence for an ablation number that was never measured in the corpus, which makes this the strongest form of the plausible-but-unanswerable trap."
@@ -1699,6 +1747,7 @@ questions:
     text: "How many particles does ProlificDreamer's Variational Score Distillation ensemble maintain in its reported experiments, and how far does sample diversity fall as the particle count is reduced toward the single-particle limit?"
     anchors: ["Variational Score Distillation", "particle-based variational framework"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus: ProlificDreamer is described as updating 'a small ensemble' of 3D parameterisations and SDS is identified as the single-particle/delta-posterior limit, but no particle count is stated anywhere, and no measurement — no table, metric or qualitative trend — relates diversity to particle count. No other paper in the 50-document corpus reruns VSD or ablates it, so the number and the trend exist nowhere in the text."
     hop_rationale: "Both anchors occur in the same paper and are effectively zero hops apart, so any retriever returns a confident, tightly connected neighbourhood. That is exactly the false positive to catch: topical adjacency at maximum strength while the requested quantity is absent from both endpoints. A short path here is evidence of nothing but shared vocabulary."
@@ -1706,6 +1755,7 @@ questions:
     text: "Over which diffusion timestep range does ProlificDreamer's distillation time schedule anneal from slow to fast, and at what grid resolution does Magic3D's sparse 3D hash grid stop subdividing during the coarse stage?"
     anchors: ["distillation time schedule", "sparse 3D hash grid"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus: both techniques are named and their purpose described — a slow-to-fast annealing of distillation timesteps, and an Instant-NGP-style hash grid used to accelerate the coarse stage — but no hyperparameter values appear for either. The corpus states Instant-NGP's typical level count in general terms only, never Magic3D's configuration, and gives no timestep bounds, noise levels or schedules for any distillation method."
     hop_rationale: "The two anchors are joined within two hops through the DreamFusion-successor lineage and through the shared 'faster/better text-to-3D optimisation' framing, so a plausible path is guaranteed. Retrieval will surface both methods' descriptive paragraphs and look authoritative, yet neither paragraph contains a single numeric setting. Path length is uninformative precisely because the missing content is numeric detail the prose never carried."
@@ -1713,6 +1763,7 @@ questions:
     text: "In the head-to-head user study comparing GALA3D's controllable editing against LucidDreamer's generated scenes, what percentage of raters preferred GALA3D, and which prompt set was used?"
     anchors: ["controllable editing", "user study"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus: the only human-preference number in the 50 papers is Magic3D's 61.7% preference over DreamFusion. GALA3D and LucidDreamer are described only as contemporaries in open-domain scene generation that differ in whether structure comes from an inpainting-driven point cloud or an LLM layout; no head-to-head comparison, no rater study, and no shared prompt set between them appears anywhere."
     hop_rationale: "'User study' retrieves Magic3D's genuine study and 'controllable editing' retrieves GALA3D, and the two are within two hops through the text-to-3D lineage, so a short, plausible path exists and will tempt an answer that transplants Magic3D's 61.7% onto a comparison that was never run. The path is real; the study is not, which is exactly the confusion this control is meant to expose."
@@ -1824,6 +1875,7 @@ questions:
     text: "When AGG's 3D Gaussian super-resolution module is applied to an anchor-based structured Gaussian field rather than a free Gaussian set, how much of the primitive-count reduction survives, and what happens to view-adaptive rendering quality?"
     anchors: ["3D Gaussian super-resolution", "anchor points"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus. AGG's super-resolution module is described only as a cascade stage over its own coarse Gaussian prediction and is never applied to a structured or anchored field; the anchor-based variant appears only as a one-line mention of a follow-on reconstruction method. No corpus document reports any combination of the two, nor any primitive-count or view-adaptive-quality measurement for such a combination. Both anchor strings do occur, in different papers, so retrieval will surface plausible-looking neighbours."
     hop_rationale: "The two anchors are two hops apart through GaussianSplatting, and that path is precisely the trap: it records representation-family co-membership, not the existence of a measured combination. A retriever that treats the short path as evidence will return AGG and the structured-Gaussian material and appear to support an answer that no document contains."
@@ -1831,6 +1883,7 @@ questions:
     text: "How many Dreaming and Alignment iterations does LucidDreamer need before the aggregated point cloud stops improving the final Gaussian optimisation, and what quality plateau does that ablation report?"
     anchors: ["Dreaming and Alignment", "point cloud"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus. The Dream/Align loop is described only qualitatively — project, inpaint, lift, merge — with no iteration counts, no convergence curve, and no ablation numbers of any kind; no other corpus paper measures LucidDreamer's loop either. The question sounds like a routine ablation lookup and both anchors occur in the same paper, which is what makes it a good false-positive probe."
     hop_rationale: "Here the anchors are one hop apart inside a single document, so path distance is minimal and maximally misleading: the retrieved paper is the right paper and still contains no quantity that answers the question. Any scoring that equates short paths with answerability will mark this confidently answerable."
@@ -1838,6 +1891,7 @@ questions:
     text: "How does Zero-1-to-3's elevation, azimuth and radius conditioning degrade when the input photograph contains several distinct objects, measured against a layout-guided compositional baseline?"
     anchors: ["elevation, azimuth, and radius", "layout-guided"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus. Zero-1-to-3 is described purely as a single-object method and is never evaluated on multi-object inputs; the layout-guided compositional pipeline in the corpus is text-to-3D, targets scene generation from an LLM-emitted layout, and is never compared with Zero-1-to-3 on any input. No document relates the two, and no multi-object degradation measurement for viewpoint conditioning exists anywhere in the 50 papers."
     hop_rationale: "Both anchors are reachable from generative-3D hubs such as Diffusion and GaussianSplatting within two or three hops, so a path exists and would look like cross-paper support. The path only expresses that both papers generate 3D content with diffusion priors; a comparison between a single-object viewpoint model and a compositional layout pipeline is asserted nowhere, so short-path proximity is exactly the wrong evidence."
@@ -1955,6 +2009,7 @@ questions:
     text: "At which classifier-free-guidance weights do the multi-view diffusion models used by LGM and Instant3D stop producing consistent view grids, and what does the reported sweep show about the trade-off against final 3D quality?"
     anchors: ["classifier-free-guidance", "multi-view diffusion models"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Both anchors genuinely occur in the corpus — ProlificDreamer discusses classifier-free-guidance weights and the standard 7.5 setting, and LGM and Instant3D both rely on multi-view diffusion — but no paper in the 50-paper corpus reports a guidance-weight sweep for a multi-view generator or any consistency-versus-3D-quality curve. The only CFG discussion is about VSD inside a per-scene optimisation, a different pipeline with a different failure mode, so the question cannot be answered at any hop distance."
     hop_rationale: "Unanswerable, so no gold set exists. The anchors are two hops apart through the diffusion literature, which is exactly what makes the question look retrievable: a retriever can reach both endpoints and assemble a plausible-looking neighbourhood while no document contains the measurement being asked for."
@@ -1962,6 +2017,7 @@ questions:
     text: "How many Gaussian primitives does LGM's asymmetric U-Net emit per object at 512 training resolution, and how does that budget compare with the count 3D Gaussian Splatting converges to on a comparable object after densification?"
     anchors: ["asymmetric U-Net", "densification"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "The anchors are real and specific: the asymmetric U-Net is LGM's backbone and densification is the 3DGS schedule, revisited by the densification-revision paper. But no document in the corpus states a primitive count for any method — not LGM, not 3DGS, not the densification revision — so the comparison is unavailable regardless of how well retrieval performs."
     hop_rationale: "Unanswerable, so no gold set exists. Both anchors sit close to the Gaussian-splatting hub and are within two hops, so any retriever will confidently return LGM and 3DGS; the trap is that reaching the right documents still yields no number, which is precisely the false positive the controls are meant to expose."
@@ -1969,6 +2025,7 @@ questions:
     text: "What triplane resolution do LRM and TripoSR use, and which TripoSR ablation isolates the gain from quality-aware filtering against the gain from the rebalanced training objective?"
     anchors: ["triplane", "quality-aware filtering"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "The triplane and quality-aware filtering are both described in the corpus, but only qualitatively: no numeric triplane resolution appears in any document, and TripoSR's entry reports no ablation separating data filtering from the objective change. The question presumes measurements and a table that the corpus does not contain anywhere."
     hop_rationale: "Unanswerable, so no gold set exists. Both anchors occur inside TripoSR itself, giving a zero- or one-hop path that will make any retriever return the right paper with high confidence; the paper simply does not report resolutions or an ablation, so short hop distance here is maximally misleading."
@@ -2074,6 +2131,7 @@ questions:
     text: "MVSplat reports ten times fewer parameters than pixelSplat while building an explicit cost volume. How does pixelSplat's own epipolar-attention depth parameterisation place its Gaussians, and which part of that design accounts for the parameter gap?"
     anchors: ["pixelSplat", "cost volume"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus: there is no pixelSplat paper among the 50 documents. pixelSplat appears only as a named comparison inside MVSplat, latentSplat, AGG and LGM, and always for parameter count, inference speed or output quality. Its epipolar sampling, its depth parameterisation and the internal reason for its size are described nowhere, so the parameter gap cannot be attributed to any component."
     hop_rationale: "Both anchors occur in MVSplat's own text, one sentence apart, so the graph will show them adjacent and a retriever will happily return MVSplat as if it answered. That adjacency is precisely the trap: it certifies that the comparison was made, not that the compared design was ever described in the corpus."
@@ -2081,6 +2139,7 @@ questions:
     text: "In Scaffold-GS, how are CLIP-LSeg features predicted per anchor point alongside opacity and colour, and what modification to anchor growing keeps those distilled channels stable as new anchors appear?"
     anchors: ["CLIP-LSeg", "anchor points"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus: Scaffold-GS's per-anchor MLP predicts only position offset, opacity, colour and scale, and its growing rule scores rendering contribution, never a semantic channel. Feature 3DGS distils CLIP-LSeg onto unstructured 3DGS primitives, not onto anchors. No document in the 50-paper corpus combines anchor-based structure with foundation-model distillation, so neither the per-anchor feature prediction nor its growing rule exists to be reported."
     hop_rationale: "Both anchors are two hops apart through the 3D Gaussian Splatting hub, and both papers are late-2023 3DGS variants that any topical graph will place side by side, so a plausible-looking path is guaranteed. The question tests whether that path is mistaken for a described mechanism: the hybrid it names has never been built in this corpus."
@@ -2088,6 +2147,495 @@ questions:
     text: "How well calibrated is the uncertainty carried by latentSplat's variational 3D Gaussians compared with the uncertainty field NeRF-W predicts through its transient head, when both are measured on the same held-out views?"
     anchors: ["variational 3D Gaussians", "uncertainty field"]
     control: true
+    legacy_gameable: true
     requires: []
     note: "Unanswerable from the corpus: neither paper reports any calibration measurement, the two target different settings (sparse-view generalisable reconstruction from video versus unconstrained tourist photo collections) with no shared benchmark, and no third document compares them. The corpus contains no per-pixel or per-primitive uncertainty numbers from which calibration could be computed."
     hop_rationale: "'Uncertainty' is a shared concept node linking NeRF-W and latentSplat in two hops, and both papers do model uncertainty explicitly, so the path looks strongly supportive. It is not: an existing concept edge says the two papers both represent uncertainty, while the question asks for a joint quantitative comparison that no document performs."
+
+  # ---- ctl2: length-matched controls (2026-08-20) ----
+  # The original 48 controls were separable from live questions by a
+  # corpus-free rule: 31 words against 57. 'Refuse anything under 40
+  # tokens' scored 2.1% hallucination and beat every knowledge signal, so
+  # the number measured question style. These are length-matched (mean
+  # 56.1 against live 56.7) and that exploit now scores 100%.
+  #
+  # reason_class splits two DIFFERENT capabilities and they must not be
+  # pooled: absent-evidence probes test abstention; out-of-scope-claim
+  # probes carry a false premise whose correct answer is a premise
+  # CORRECTION — substantive content, not silence.
+  - id: ctl2-slam-nerf-elastic-prior-and-pose-basin
+    text: "Nerfies stabilised its deformation field with an elastic energy regulariser alongside a coarse-to-fine annealing schedule, and BARF's account names that work as the concurrent source of the schedule it carries over to extrinsic pose. What does the elastic term do to the pose-gradient landscape once the schedule is transplanted, and how does its role there differ?"
+    anchors: ["elastic energy regularizer", "coarse-to-fine annealing schedule"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'elastic' occurs in only two documents (Nerfies, HyperNeRF), always about deformation. BARF never mentions elastic energy; Nerfies never optimises camera extrinsics. The corpus asserts only that BARF reused Nerfies' frequency-annealing schedule for pose - it says nothing about the elastic term outside a deformation field, so no document supports any claim about its effect on a pose-gradient landscape. Both anchors are grounded and both papers sit under coarse-to-fine annealing, so a short path is guaranteed while no evidence is."
+  - id: ctl2-slam-nerf-transient-uncertainty-in-tracking
+    text: "NeRF in the Wild predicts a transient density and an uncertainty field that downweights per-pixel loss wherever tourists and vehicles appear. NICE-SLAM's tracking thread and DROID-SLAM's Dense Bundle Adjustment layer both minimise residuals against whatever the sensor delivers. Which stage in each of those pipelines consumes such an estimate, and what does this corpus say the omission costs?"
+    anchors: ["uncertainty field", "Dense Bundle Adjustment"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'uncertainty' occurs in exactly two documents, NeRF-W and latentSplat. No SLAM paper in the corpus mentions uncertainty weighting, transient occluders, moving objects or dynamic scenes ('transient' appears in SLAM only in Point-SLAM's reliability check on candidate points, which is not an uncertainty field). Neither NICE-SLAM's tracking thread nor DROID-SLAM's DBA layer is described as consuming any per-pixel confidence, and nothing states what omitting one costs."
+  - id: ctl2-slam-nerf-sh-baking-a-slam-decoder
+    text: "PlenOctrees dropped the viewing-direction input by baking a spherical-harmonic expansion into octree leaves, then fine-tuned those leaves against the photometric loss; NICE-SLAM and Co-SLAM instead keep a small shared decoder MLP evaluated at every queried point. What has to stop changing before either SLAM decoder could be tabulated that way, and which of the two does this corpus say would lose less by it?"
+    anchors: ["spherical-harmonic expansion", "shared decoder MLP"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'spherical harmonic' occurs only in PlenOctrees, Plenoxels and 3DGS; 'baking' only in PlenOctrees, MERF, 2DGS and TripoSR. No SLAM paper in the corpus mentions spherical harmonics or baking at all. Nothing discretises, tabulates or bakes a SLAM decoder, and neither NICE-SLAM nor Co-SLAM discusses removing its decoder from the query path. The shared 'decoder' vocabulary makes the pairing sound tractable while no document relates the two."
+  - id: ctl2-slam-nerf-proposal-sampler-while-mapping
+    text: "Mip-NeRF 360 distils a small proposal MLP out of a larger radiance network so that hierarchical sampling concentrates on visible content, while Co-SLAM tunes a ray sampling strategy purely to keep its global bundle adjustment tractable at interactive rates. What supervises the Co-SLAM allocation while the map is still incomplete, and how does that change the per-ray cost of the first few keyframes?"
+    anchors: ["proposal MLP", "ray sampling"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'proposal MLP' and 'online distillation' occur only in Mip-NeRF 360. Co-SLAM's sampler is named in a single clause - 'a ray sampling strategy tuned to the hybrid representation keeps the bundle adjustment tractable at interactive rates' - with no account of what supervises it, no per-ray cost figure, and no keyframe-indexed behaviour. No document relates distillation-based sample allocation to incremental mapping."
+  - id: ctl2-slam-nerf-contraction-over-a-metric-map
+    text: "Mip-NeRF 360 contracts unbounded coordinates into a bounded domain, and MERF swapped that rule for one preserving cheap ray-box intersection. NICE-SLAM's hierarchical feature grid and Point-SLAM's anchors are laid out in metric world space instead. What happens to far-field detail in each of those maps under either contraction, and which variant fits which?"
+    anchors: ["contraction function", "hierarchical feature grid"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'contraction' occurs only in Mip-NeRF 360 and MERF (plus one daily digest). No SLAM paper in the corpus mentions contraction, unbounded scenes, or far-field parameterisation - the neural-SLAM papers are all indoor, room-scale and metric. NICE-SLAM's grid and Point-SLAM's anchors are never discussed under any coordinate warp, so the effect on far-field detail is asserted nowhere."
+  - id: ctl2-slam-nerf-nothing-left-to-anneal
+    text: "Plenoxels has no positional encoding at all: the smoothing an MLP used to supply was replaced by explicit total-variation and sparsity priors on voxel values. BARF blames NeRF's pose failures on the high-frequency bands of exactly that encoding. Which Plenoxels prior inherits the role BARF assigns to the masked bands, and why does the substitution not carry?"
+    anchors: ["total-variation and sparsity priors", "high-frequency bands"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "The Plenoxels paper contains no occurrence of pose, camera, extrinsic, tracking or registration - verified by exhaustive search over both its files. BARF never mentions voxel grids, total variation or sparsity. The corpus relates the total-variation and sparsity priors only to the smoothing an MLP used to supply, never to a pose-gradient landscape, so no document licenses a mapping from either prior onto BARF's masked bands."
+  - id: ctl2-slam-nerf-occupancy-sharpening-online
+    text: "UNISURF sharpens opacity around its occupancy boundary as training proceeds, so a uniform sampler ends up concentrated on the surface. NICE-SLAM's decoder emits occupancy and color throughout a live capture that never has a fixed training schedule. What sets the sharpening rate when frames arrive one at a time, and where does that leave the sampler?"
+    anchors: ["occupancy boundary", "occupancy and color"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "UNISURF's sharpening is described only as an early-to-late progression inside a fixed offline training run, with no rate, schedule or controlling parameter given. The NICE-SLAM paper contains no occurrence of 'sampl', so it has no sampler for a schedule to act on. Both papers share the word occupancy, which is exactly the spurious bridge; no document states what would govern sharpening under incremental frame arrival."
+  - id: ctl2-slam-nerf-leaf-finetuning-between-keyframes
+    text: "After baking, PlenOctrees fine-tuned octree leaf coefficients against the photometric loss and typically beat the NeRF it distilled. GS-SLAM's adaptive expansion strategy keeps growing a map that every incoming frame is simultaneously tracked against. What blocks an equivalent refinement pass between keyframes, and which of the two — the tracker or the map — objects first?"
+    anchors: ["octree leaf coefficients", "adaptive expansion strategy"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "PlenOctrees' leaf fine-tuning is described only as a post-hoc step on an already baked octree, offline and with poses fixed. GS-SLAM's adaptive expansion is described only as adding Gaussians where the map fails to explain incoming pixels and pruning those drifting off the surface. No document considers a refinement pass scheduled between keyframes, names anything that would block one, or attributes such an obstacle to a tracker rather than a map."
+  - id: ctl2-slam-nerf-normal-prior-into-tracking
+    text: "MonoSDF matches an off-the-shelf monocular predictor against the rendered surface normal its distance field yields analytically. The shallow MLP in Co-SLAM predicts signed distance and colour for every point a live RGB-D loop queries, but never renders a normal. What would such a prior add to camera tracking rather than to reconstruction, and how would the two systems weight it?"
+    anchors: ["rendered surface normal", "signed distance and colour"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'surface normal' occurs in only three documents - IGR, MonoSDF and 2DGS - and in every case as reconstruction supervision, never as a tracking term. Co-SLAM renders no normal. No corpus document connects a monocular normal prior to camera tracking, to a tracking residual, or to any weighting against a photometric term, so the contrast being asked for is asserted nowhere."
+  - id: ctl2-slam-nerf-baking-a-live-map
+    text: "MERF bakes a trained field into a sparse grid plus three high-resolution 2D feature planes, so an unbounded scene streams into a browser in real time. The explicit primitive map of GS-SLAM can be displayed at any moment with no separate decoder pass. What would a mid-capture bake freeze in each case, and which of the three artefacts — grid, planes, primitives — survives a later pose correction?"
+    anchors: ["2D feature planes", "explicit primitive"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "Baking appears in the corpus only as an offline post-training step on a converged model (PlenOctrees, MERF, 2DGS, TripoSR). GS-SLAM's claim is narrower than it sounds: only that its explicit map needs no extra decoder pass to visualise. Nothing in the corpus discusses a mid-capture bake, what such a bake would have to freeze, or how a later pose correction would interact with baked structure."
+  - id: ctl2-slam-nerf-dso-keeps-the-tv-prior
+    text: "Direct Sparse Odometry keeps the total-variation smoothness prior that dense direct methods place on depth and layers photometric calibration over it; Plenoxels later put total variation back on voxel values after removing the network. What is each prior actually smoothing, and which failure did this corpus attribute to switching it off?"
+    anchors: ["total-variation smoothness prior", "photometric calibration"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "The premise is contradicted by the source: DSO 'drops the total-variation smoothness prior on depth and instead samples a fixed budget of pixels uniformly across regions of non-zero intensity gradient'. Plenoxels genuinely uses total-variation and sparsity priors, but the corpus contains no removal ablation for either prior - 'ablation' occurs once, in an unrelated repo README - and the two uses are never related to each other."
+  - id: ctl2-slam-nerf-sdf-and-occupancy-swapped
+    text: "NICE-SLAM's shared decoder predicts a signed distance field that Co-SLAM later traded for an occupancy field to gain speed, and both systems read their features out of voxel or hash grids rather than from a point set. What does that trade cost in surface sharpness, and why does each system name a different bottleneck?"
+    anchors: ["occupancy and color", "signed distance and colour"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "The roles are inverted. NICE-SLAM's shared decoder turns trilinearly interpolated features into 'occupancy and color'; Co-SLAM's shallow MLP 'predicts signed distance and colour'. No swap or trade between the two fields is described anywhere in the corpus, neither paper attributes a bottleneck to the other's field choice, and no surface-sharpness cost is reported for either."
+  - id: ctl2-slam-nerf-barf-keeps-colmap
+    text: "BARF keeps the COLMAP stage that NeRF depends on — refining those extrinsics only locally — whereas Gaussian Splatting SLAM removed the offline Structure from Motion pass that vanilla splatting requires. What consumes the incoming pose estimate in each case, and which system tolerates the worse initialisation?"
+    anchors: ["COLMAP", "Structure from Motion"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "Directly contradicted: BARF 'removes this requirement' for accurate poses from an upstream structure-from-motion pipeline such as COLMAP, and recovers reconstructions 'even from heavily perturbed or completely uninitialized cameras', enabling pose-free NeRF training. The corpus reports no tolerance figure or initialisation-error threshold for either system, so the comparison asked for has no source even after the premise is corrected."
+  - id: ctl2-slam-nerf-plenoxels-keeps-a-tiny-mlp
+    text: "Plenoxels keeps a tiny MLP after its trilinear voxel lookup, just as Instant-NGP keeps one after its hash lookup, and both resolve grid collisions explicitly before decoding, so neither network ever sees a feature it cannot attribute. What does the collision-resolution step hand the two decoders, and where does the cost of a small network land?"
+    anchors: ["tiny MLP", "hash collisions"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "Both halves of the premise are contradicted. Plenoxels matches NeRF-quality view synthesis 'with no neural network at all' - there is no decoder to hand anything to. Instant-NGP states 'there is no explicit collision resolution'; fine-level collisions are settled implicitly by gradient updates that prefer to place visible content where collisions are absent. The collision-resolution step the question presupposes exists in neither system."
+  - id: ctl2-slam-nerf-gaussian-slam-sensors-swapped
+    text: "Gaussian Splatting SLAM is the RGB-D member of the pair and GS-SLAM the monocular one, so only GS-SLAM has to suppress scale drift while its counterpart reads depth straight off the sensor. What does the depth channel remove from the tracking objective, and why was a wider basin of convergence reported by only one of them?"
+    anchors: ["scale drift", "basin of convergence"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "The two systems are swapped. Gaussian Splatting SLAM (MonoGS) is the monocular system - 'the first SLAM system to use 3D Gaussian Splatting as its sole scene representation in the difficult monocular setting' - which suppresses scale drift and reports the wide basin of convergence, accepting RGB-D only as optional extra supervision. GS-SLAM is the RGB-D system. No corpus document reports any basin measurement with a depth channel ablated."
+  - id: ctl2-slam-nerf-raft-correlation-lookup
+    text: "DeepV2D's release was described as a starting point for later work on learned multi-view stereo and recurrent optical flow, and DROID-SLAM built its update operator on the iterative-refinement primitive that RAFT introduced. What does the RAFT correlation lookup supply that a plane-sweep cost volume does not, and which variable does each system point it at?"
+    anchors: ["RAFT", "plane-sweep cost volume"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "RAFT appears only as a bare name in DeepV2D, DROID-SLAM and the DROID-SLAM repo blurb, always as the source of an 'iterative refinement primitive'. The string 'correlation lookup' has zero occurrences across all 135 corpus files. No document describes RAFT's architecture or contrasts it with a plane-sweep cost volume; DROID-SLAM's own 4D correlation volume is a tempting substitute that answers a different question."
+  - id: ctl2-slam-nerf-dvgo-tensorf-empty-space
+    text: "Instant-NGP placed itself between two lines: the explicit-grid line of Plenoxels and DVGO, and the coordinate-MLP line of NeRF. MERF described its own plane decomposition as mirroring the TensoRF and K-Planes factorisation. What does each cited ancestor do about empty space, and which half of the trade-off is it invoked for here?"
+    anchors: ["DVGO", "TensoRF"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "DVGO and TensoRF are citation stubs - bare names in Instant-NGP, Plenoxels, MERF and K-Planes with no document behind either. Empty-space handling is described in the corpus only for PlenOctrees (octree skipping), Plenoxels (aggressive pruning), MERF (pruned sparse grid), Point-SLAM and 3DGS. Neither named ancestor has a stated factorisation, empty-space policy, or trade-off half to be invoked for."
+  - id: ctl2-slam-nerf-orbslam-map-points
+    text: "DSO was reported to beat ORB-SLAM-style indirect baselines under rolling shutter and exposure change, and DROID-SLAM is credited with avoiding the catastrophic tracking failures that hit ORB-SLAM and DSO alike. What does the ORB-SLAM map-point management contribute to either failure, and why do the two papers blame different stages?"
+    anchors: ["ORB-SLAM", "catastrophic tracking failures"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "ORB-SLAM appears only as a bare comparison name in DSO and DROID-SLAM; the string 'map point' has zero occurrences across the corpus. Neither paper describes ORB-SLAM's internals - keypoints, map points, keyframe culling - and neither localises the failure to a named stage of it. DSO attributes its advantage to photometric calibration and DROID-SLAM to a learned front end, but neither claim is about ORB-SLAM's mechanism."
+  - id: ctl2-slam-nerf-360-contribution-shares
+    text: "Mip-NeRF 360 credited a 57% mean-squared-error reduction to three changes at once: a non-linear contraction, online distillation into a proposal MLP, and a distortion-based regulariser. Apportion that reduction across the three, and say which of them this corpus reports as carrying more weight on unbounded captures than on object-centric ones."
+    anchors: ["distortion-based regularizer", "online distillation"]
+    control: true
+    requires: []
+    reason_class: absent-quantity
+    note: "The 57% figure appears twice, both times attributed to the three contributions combined ('the combination reduces mean-squared error by 57% relative to Mip-NeRF'). The corpus contains no ablation table anywhere - 'ablation' occurs only in an unrelated repo README - so no per-contribution share exists. Mip-NeRF 360 is also evaluated only on its own 360-degree benchmark, so no unbounded-versus-object-centric breakdown is available either."
+  - id: ctl2-surface-dyn-eikonal-elastic-tradeoff
+    text: "IGR's Eikonal term holds a distance field metric everywhere in the ambient space, while the elastic energy regulariser of Nerfies, borrowed from physical-simulation literature, keeps a learned warp near-rigid by penalising distortion of its Jacobian. The two constrain different derivatives of one coordinate network, so explain how a model carrying both weights them, and say which is relaxed first."
+    anchors: ["Eikonal regularizer", "elastic energy regularizer"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "No corpus document pairs an SDF with a deformation field. 'Eikonal' occurs only in IGR, VolSDF and the 2026-04-20 digest; 'elastic' only in Nerfies and HyperNeRF; zero documents contain both, and no paper states a weighting or an ordering between the two regularisers."
+  - id: ctl2-surface-dyn-slice-then-mesh
+    text: "4D-Rotor Gaussian Splatting recovers each frame by temporal slicing through anisotropic 4D Gaussians, so the effective primitives at any instant are not the ones the optimiser holds, and SuGaR's mesh comes instead from Poisson reconstruction over the oriented centres of a static cloud. State which orientation Poisson is handed where its input is slice-dependent, and what the corpus says about tracking connectivity across frames."
+    anchors: ["temporal slicing", "Poisson reconstruction"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "No document extracts a mesh from a dynamic Gaussian field. 'Poisson reconstruction' occurs only in SuGaR and the 2026-04-25 digest, and no document containing it contains 'dynamic', 'temporal', '4D' or 'deformation'. Mesh connectivity across frames is discussed nowhere in the corpus."
+  - id: ctl2-surface-dyn-distortion-under-deformation
+    text: "2DGS's depth distortion term collapses the depth distribution along a ray onto a single disk; 4D-GS decodes per-primitive offsets of position, rotation and scale from a HexPlane-style grid through a lightweight MLP. What happens to that distortion term after the deformation has displaced each primitive, and which of the two quantities is recomputed first?"
+    anchors: ["depth distortion", "HexPlane"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "Zero documents contain both a 2DGS regulariser ('depth distortion' / 'normal consistency') and any of 'deformation', 'dynamic', '4D' or 'timestamp'. 2DGS is static throughout the corpus and no paper applies its geometric regularisers to deforming primitives."
+  - id: ctl2-surface-dyn-sampler-bound-under-motion
+    text: "VolSDF's bound on the opacity approximation error, stated in terms of the Laplace bandwidth, is what lets its importance sampler skip empty space, so name what plays that role where the surface has moved between timestamps and what the corpus gives as the bound's dynamic counterpart."
+    anchors: ["opacity approximation error", "deformation field"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "Zero documents contain both 'opacity approximation error' and any of 'deformation', 'dynamic' or '4D'. VolSDF's bound is stated only for a static ray, and no dynamic method in the corpus bounds its sampling error at all."
+  - id: ctl2-surface-dyn-backbone-study-for-warp
+    text: "MonoSDF compares monolithic MLPs, single-grid representations and multi-resolution grid encodings as SDF backbones, and reports that the monocular cues improve all of them; 4D-GS keeps its deformation field in a HexPlane-style decomposed voxel grid. Which of those three does the equivalent study rank first for a deformation field, and what does each gain there?"
+    anchors: ["multi-resolution grid", "HexPlane"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "MonoSDF's representation study covers SDF backbones only. Zero documents contain both 'HexPlane' and a hash-grid or monolithic-MLP comparison, and no corpus paper ablates deformation-field backbones, so there is no ranking to report."
+  - id: ctl2-surface-dyn-linear-decoder-on-sdf
+    text: "K-Planes' linear decoder over a learned global colour basis matches a nonlinear black-box MLP, while IGR decodes geometry from a network whose gradient the Eikonal term holds at unit norm everywhere in the ambient space. Say what the corpus reports when that factorised decoder is placed on an SDF, and which of the two constraints is dropped."
+    anchors: ["linear decoder", "Eikonal"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "Zero documents contain both 'linear decoder' and any of 'signed distance', 'SDF' or 'Eikonal'. K-Planes carries no SDF and the surface papers carry no factorised decoder; the corpus contains no factorised-SDF method at all."
+  - id: ctl2-surface-dyn-vanishing-content
+    text: "UNISURF relaxes occupancy to a probability early in training and sharpens it into surface rendering late, while 4D-Rotor Gaussian Splatting represents content that appears or disappears with 4D Gaussians of narrow temporal extent. State what the corpus reports when that annealing meets a boundary present for only part of a capture, and which of the two constructions is re-tuned."
+    anchors: ["occupancy field", "narrow temporal extent"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "Zero documents contain both 'occupancy' and any of 'dynamic', 'temporal', '4D' or 'deformation'. UNISURF's annealing is described only for static multi-view capture and is never related to appearing or disappearing content."
+  - id: ctl2-surface-dyn-mesh-handles-vs-warp
+    text: "SuGaR's final stage binds each Gaussian to a mesh face by a barycentric coordinate so sculpting, rigging and animation happen in conventional tools, and Nerfies instead learns a warp into a canonical template straight from monocular video. What does an editing pipeline keep from each of those two motion sources, and what does the binding forbid the warp from expressing?"
+    anchors: ["barycentric coordinate", "canonical template"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "Zero documents contain both SuGaR's mesh binding and any of 'deformation field', 'canonical template', 'Nerfies' or 'HyperNeRF'. SuGaR's animation claim concerns conventional graphics tools acting on a mesh, never a learned deformation field."
+  - id: ctl2-surface-dyn-benchmark-transfer
+    text: "NeuS and UNISURF report multi-view reconstruction on DTU and BlendedMVS, both of them mask-free. Nerfies validates differently — with a two-phone rig, one phone recording the training video and the second recording time-synchronized validation frames from another viewpoint. Name the protocol under which the deformable and the multi-view surface lines have been compared head to head, and state what it found."
+    anchors: ["BlendedMVS", "time-synchronized"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "Zero documents contain both a surface benchmark ('DTU' / 'BlendedMVS') and any of 'dynamic', 'deform', 'Nerfies' or 'HyperNeRF'. No cross-evaluation between the two lines exists anywhere in the corpus."
+  - id: ctl2-surface-dyn-anneal-vs-bandwidth
+    text: "Nerfies anneals its deformation network's encoding frequencies coarse-to-fine so the optimiser sees near-rigid motion first — VolSDF's learnable bandwidth on the Laplace CDF decides instead how tightly density sits on the zero level set. What settles first, and which of the two waits on the other?"
+    anchors: ["coarse-to-fine", "bandwidth"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "Zero documents contain both 'bandwidth' and any annealing or coarse-to-fine schedule. VolSDF's bandwidth is learnable but never described as scheduled, and no paper relates it to the encoding anneal of Nerfies or BARF."
+  - id: ctl2-surface-dyn-hypernerf-drops-warp
+    text: "Nerfies maps every observed point into a single canonical template, and HyperNeRF's per-frame ambient coordinate makes each input image a slice of a higher-dimensional field. HyperNeRF drops the canonical warp once that ambient axis is in place. What becomes of the elastic term it inherited, and which regulariser replaces it?"
+    anchors: ["canonical template", "ambient coordinate"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "False premise. HyperNeRF's paper states the opposite: 'The deformation field is retained from Nerfies — the network first warps observed points into the canonical 3D coordinates, then performs the ambient slice.' The warp is never dropped and no regulariser replaces the elastic term."
+  - id: ctl2-surface-dyn-kplanes-gate-network
+    text: "K-Planes' six feature planes carry a decomposition of static and dynamic content, while Gao et al. composite a time-invariant static NeRF against a time-varying dynamic one, each of the two deciding what counts as static through its own learned gating network. Which gate is the larger, and what capacity does the corpus say it needs before the split is reliable?"
+    anchors: ["feature planes", "static NeRF"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "False premise. K-Planes' split is parameter-free: 'static-dynamic decomposition is induced by initializing the time-involving planes to the identity'. Only Gao et al. predict a blending weight, so there is no second gating network and no capacity figure for either."
+  - id: ctl2-surface-dyn-monosdf-per-scene-finetune
+    text: "MonoSDF adds monocular geometric cues — a depth estimate converted into a scale-and-shift-invariant loss, and a normal estimate matched against the analytic SDF gradient — supplying dense supervision exactly where the photometric loss is weakest, on large textureless regions. Each predictor is fine-tuned on the target scene before the surface fit begins. What does that adaptation add beyond the off-the-shelf prediction, and which cue depends on it more?"
+    anchors: ["monocular geometric cues", "textureless"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "False premise. MonoSDF's cues come from 'general-purpose off-the-shelf predictors that were never trained on the target scenes'. There is no per-scene adaptation step, so the premise contradicts the only document describing the pipeline."
+  - id: ctl2-surface-dyn-igr-supervision
+    text: "IGR fits a neural distance function directly to raw point clouds, with a zero-set term on the input points and an Eikonal term encouraging unit-norm gradient everywhere else, and both losses are scored against pre-computed ground-truth signed distance samples. What supplies those samples, and why is the Eikonal term still credited with ruling out degenerate solutions?"
+    anchors: ["zero-set term", "raw point clouds"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "False premise. IGR fits raw point clouds 'without supervised ground-truth occupancy' and is explicitly contrasted with DeepSDF-style methods 'that require pre-computed ground-truth SDF samples'. The premise asserts the supervision the paper exists to remove."
+  - id: ctl2-surface-dyn-marching-cubes-mesh
+    text: "SuGaR regularises Gaussians toward the local tangent plane suggested by their neighbours and extracts a clean watertight triangle mesh, and 2DGS collapses each primitive to an oriented disk so that its geometry is view-consistent from every camera. Both reach a mesh by running marching cubes over an implicit level set. What does each hand the extractor, and which level set is noisier?"
+    anchors: ["marching cubes", "watertight"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "False premise. SuGaR states 'Marching Cubes, the default for Neural SDFs, does not apply directly because Gaussians do not implicitly define a level set' and uses Poisson reconstruction instead; 2DGS never mentions marching cubes. Neither method runs it."
+  - id: ctl2-surface-dyn-dynamic-followup-stubs
+    text: "Gao et al. name DyNeRF and NSFF as follow-ups to their static-and-dynamic decomposition, in which a blending weight predicted by the dynamic network composites the two fields, and Nerfies reports that D-NeRF baselines blur on expressive motion. What does each of those three use where that weight would be, and why does the choice explain the blurring?"
+    anchors: ["DyNeRF", "D-NeRF"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "DyNeRF and NSFF appear once each, in Gao et al.'s follow-up list; D-NeRF appears as an unexplained baseline in Nerfies and as a dataset directory name in the 4DGaussians README. No document states the time encoding of any of the three."
+  - id: ctl2-surface-dyn-tensorf-inheritance
+    text: "K-Planes calls its d-choose-2 construction a generalisation of TensoRF's planar factorization, and MERF says its own three feature planes mirror the same factorization, geared to low-memory baking rather than fast training. What components of that decomposition does each one keep, and which did the original need that neither retains?"
+    anchors: ["TensoRF", "planar factorization"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "TensoRF is named in Plenoxels, K-Planes and MERF but never described. 'vector-matrix', 'VM decomposition' and 'tensor decomposition' have zero corpus hits, so TensoRF's components — and what each successor keeps or drops — are stated nowhere."
+  - id: ctl2-surface-dyn-dtu-reconstruction-error
+    text: "UNISURF and NeuS report mask-free reconstruction on DTU and BlendedMVS, NeuS on thin structures and self-occlusion, and VolSDF claims an advantage over IDR, which needs masks, on standard multi-view benchmarks. What reconstruction error does each of the three record on DTU, and which pair is separated by less than the run-to-run spread?"
+    anchors: ["DTU", "foreground masks"]
+    control: true
+    requires: []
+    reason_class: absent-quantity
+    note: "The corpus carries no reconstruction numbers for DTU at all: 'chamfer' has one hit, in IGR, describing 'chamfer-style fitting' rather than a metric, and no document reports a per-method error, a table, or any run-to-run variation for the surface line."
+  - id: ctl2-gen3d-layout-inside-reconstructor
+    text: "Scene structure in GALA3D comes from an LLM-generated layout of named objects and bounding boxes, which the compositional stage later adjusts so that scale and contact become plausible. Instant3D hands four canonicalised views to a sparse-view reconstructor and takes them whole, with no notion of an object. What happens to object separation when GALA3D's layout prior is placed inside such a reconstructor, and what does the substitution cost?"
+    anchors: ["LLM-generated layout", "sparse-view reconstructor"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "Both premises are verbatim corpus (GALA3D abstract/paper; Instant3D paper). 'layout' occurs in only two papers across all 135 files -- GALA3D's LLM layout and Instant3D's canonicalised view layout -- and no document places an object-decomposition prior inside a feed-forward reconstructor, nor reports any cost for doing so. LRM, Instant3D, TripoSR and LGM never discuss multi-object inputs at all."
+  - id: ctl2-gen3d-costvolume-into-lrm
+    text: "MVSplat argues that a plane-sweep cost volume localises Gaussian centres by scoring cross-view feature similarity at a discrete set of depth hypotheses, while Instant3D's second stage regresses a radiance field through cross-attention alone. Which work here fits a cost volume in front of an LRM-style reconstructor, and what came out of the geometry?"
+    anchors: ["cost volume", "cross-attention"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'cost volume' occurs in exactly three files: DeepV2D, and MVSplat's abstract and paper. 'cross-attention' occurs in two: LRM and TripoSR. The live question lrm-cost-volume-vs-attention-prior covers the stated *disagreement* between the two inductive biases; the *combination* -- a cost volume placed in front of an LRM-style reconstructor -- is built by no paper in the corpus, so there is no resulting geometry to report."
+  - id: ctl2-gen3d-variational-gaussians-vsd
+    text: "Uncertainty is carried two ways in this line: latentSplat encodes it as variational 3D Gaussians that a lightweight generative decoder turns back to pixels, and ProlificDreamer's Variational Score Distillation carries it as a particle ensemble updated by a learned variational score alongside the pretrained prior. Which paper treats one of those constructions as a limiting case of the other, and what does its argument actually rest on?"
+    anchors: ["variational 3D Gaussians", "Variational Score Distillation"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'special case', 'limiting case' and 'single-particle' occur only in ProlificDreamer, and only in the claim that SDS is a single-particle limit of VSD with a delta posterior -- never about latentSplat. latentSplat is never cited by ProlificDreamer and vice versa. No document derives either variational construction from the other; the corpus's own framing is that 'variational' denotes two different things here."
+  - id: ctl2-gen3d-anchor-vs-perpixel
+    text: "Scaffold-GS materialises its primitives from anchor points whose attributes a shared MLP emits per view, while LGM's per-pixel Gaussian features are produced once in image space and fused across a multi-view stack with no anchor structure at all. Identify the method that anchors an amortised Gaussian predictor to a view-conditioned grid, and what the hybrid reported at benchmark resolution."
+    anchors: ["anchor points", "per-pixel Gaussian"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'anchor point(s)' occurs in three files only: Scaffold-GS (abstract and paper) and Point-SLAM. None of the four feed-forward Gaussian predictors in the corpus -- AGG, LGM, MVSplat, latentSplat -- uses an anchor structure or a render-time shared MLP, and no document reports such a hybrid or any benchmark number for one. The hybrid does not exist to be measured."
+  - id: ctl2-gen3d-identity-token-feedforward
+    text: "Magic123 captures a reference image's identity in a token through textual inversion and regularises its radiance field by monocular depth, whereas LRM and TripoSR feed raw image encoder features to a transformer conditioned on no more than the picture in front of it. State what this line claims about adding Magic123's token to a feed-forward encoder, and which of the two gains by it."
+    anchors: ["textual inversion", "image encoder"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'textual inversion' occurs in two files, both Magic123; reference-image 'identity' occurs only there. LRM and TripoSR are described as conditioning on image-encoder features alone. No corpus document adds an identity token to a feed-forward encoder or claims anything about what such a change would buy, so the asked-for claim exists nowhere."
+  - id: ctl2-gen3d-janus-measurement
+    text: "Instant3D names the Janus artefact and pins it on single-image optimisation, while ProlificDreamer's diagnosis puts over-saturation and mode collapse on the shape of the posterior that score distillation optimises rather than on any hyperparameter. What measurement of Janus artefacts under Variational Score Distillation does this corpus carry, and which of the two diagnoses does it favour?"
+    anchors: ["Janus", "Variational Score Distillation"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'Janus' occurs in four files -- Instant3D's abstract and paper plus the zero123 and stable-dreamfusion READMEs -- and never once in ProlificDreamer, which discusses only over-saturation, over-smoothing and mode collapse. No document measures Janus artefacts under VSD, and the corpus carries no per-method metric tables of any kind, so no measurement can adjudicate the two diagnoses."
+  - id: ctl2-gen3d-cloud-to-objects
+    text: "Per-object grouping lets a GALA3D user move, resize or swap entities before re-optimisation, but LucidDreamer accumulates one undifferentiated point cloud through the Dreaming and Alignment loop that populates its scene. Which editing operations survive when such a cloud is regrouped into named objects, and what does that conversion actually lose?"
+    anchors: ["Dreaming and Alignment", "per-object"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'per-object' and 'controllable editing' occur only in GALA3D; 'Dreaming and Alignment' only in LucidDreamer. LucidDreamer's output is a single aggregated cloud converted wholesale into Gaussians, and no corpus document discusses regrouping it into named objects, which editing operations would survive that conversion, or what it would cost. The two scene pipelines are compared only on where structure comes from."
+  - id: ctl2-gen3d-object-model-on-scenes
+    text: "MVSplat trains on RealEstate10K and ACID scene captures by photometric supervision alone, and latentSplat on readily available real video with no explicit 3D supervision. LRM's regime is the opposite one: roughly a million objects mixing Objaverse renders with real MVImgNet captures, object-centric and not scene-scale. Spell out the cross-evaluation of that object-trained model on the two scene benchmarks, and how it came out."
+    anchors: ["RealEstate10K", "MVImgNet"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "'RealEstate10K' and 'ACID' occur only in MVSplat's two files; 'MVImgNet' only in LRM's two. No corpus document runs an object-trained reconstructor on a scene benchmark or reports any number from such a run, and the corpus's own open-question note on inference cost versus fidelity states explicitly that the head-to-head comparisons across these regimes do not exist."
+  - id: ctl2-gen3d-view-count-rationale
+    text: "Four structured views fix Instant3D's first stage, and their canonicalised layout gives the reconstructor known relative poses, while LGM feeds a small multi-view stack through an asymmetric U-Net predicting Gaussians directly per pixel, not from a volumetric grid. Why does each pipeline fix its view budget where it does, and what degradation does each report as views drop away?"
+    anchors: ["canonicalised", "asymmetric U-Net"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "Instant3D's four views are stated but never justified against any alternative count, and LGM's stack size is never given at all. 'ablat*' returns zero hits across all 100 paper markdown files, so no view-count sweep, degradation curve or sensitivity result exists anywhere in the corpus for either system. The rationale and the degradation are both absent."
+  - id: ctl2-gen3d-semantic-channel-generator
+    text: "AGG's predicted primitives carry opacity and spherical-harmonic colour alongside scale and rotation, while Feature 3DGS distils a 2D foundation model's features onto the same kind of Gaussian, a trick the weekly synthesis calls orthogonal to both generation axes. Identify the paper reporting a distilled semantic channel that improves the geometry an amortised generator predicts, and what each side conceded."
+    anchors: ["Feature 3DGS", "spherical-harmonic colour"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "Feature 3DGS is described purely as a per-scene reconstruction, segmentation and editing method; it contains no generative component, no text conditioning and no amortised inference. The 2026-W18 synthesis explicitly calls the distillation trick orthogonal to both generation axes. No document reports a distilled semantic channel affecting the geometry any generator predicts, so there is nothing for either side to have conceded."
+  - id: ctl2-gen3d-rasteriser-resolution-routes
+    text: "High-resolution supervision is reached two ways here: Magic3D renders its deformable mesh through a differentiable rasteriser fast enough to match the latent diffusion model's own resolution, and LGM instead reaches that resolution by keeping Gaussian features in image space. Which later work reuses one of those routes inside the other, and what does it report about supervision once the two are combined?"
+    anchors: ["differentiable rasteriser", "image space"]
+    control: true
+    requires: []
+    reason_class: absent-relation
+    note: "Magic3D's mesh rasteriser and LGM's image-space Gaussian features are each described only inside their own papers, and neither cites the other. The corpus contains no work that puts a mesh-stage rasteriser inside a feed-forward Gaussian predictor, nor any statement about supervision resolution for such a combination. The live resolution-bottleneck questions compare the routes; nothing merges them."
+  - id: ctl2-gen3d-triposr-gaussian-head
+    text: "TripoSR keeps LRM's image encoder and cross-attention transformer close to unchanged and puts its contribution into quality-aware filtering, augmentation and inference engineering. Explain what made it drop the triplane for a Gaussian head, and what each of its released checkpoints emits by way of replacement."
+    anchors: ["triplane", "image encoder"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "The premise is true but the question presupposes something the corpus contradicts. TripoSR is described as preserving LRM's template exactly -- 'an image encoder followed by a cross-attention transformer that predicts a triplane-parameterised volumetric representation' -- and its repo card confirms a triplane output. LGM, not TripoSR, is the paper that swaps the implicit field for Gaussians. TripoSR also has no per-checkpoint variants in the corpus."
+  - id: ctl2-gen3d-instant3d-third-stage
+    text: "Instant3D generates four view-consistent images with a fine-tuned diffusion model and then regresses a radiance field from them in one forward pass. The finished asset arrives in roughly twenty seconds, two orders of magnitude faster than the per-prompt pipelines it replaces, and the sampler's diversity propagates through. Explain why its third stage returns to per-prompt score distillation, and what that refinement adds which the regression step does not already produce."
+    anchors: ["score distillation", "view-consistent"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "The premise is verbatim from Instant3D, but the question presupposes a third stage the corpus denies. Instant3D is explicitly two-stage and its stated purpose is to sidestep the slow per-prompt optimisation of score-distillation methods entirely; there is no refinement loop, so no contribution to attribute to one. Nothing in the 135 files describes a distillation stage after an LRM-style regression."
+  - id: ctl2-gen3d-zero123-real-captures
+    text: "Zero-1-to-3 fine-tunes a Stable-Diffusion-style model to denoise a target view given an input image and a relative camera transformation in elevation, azimuth and radius, and that output is then reused as a score distillation prior with no further 3D supervision. Say what the real multi-view capture set was needed for beside the synthetic renders, and which of the two actually dominates."
+    anchors: ["azimuth", "score distillation"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "The premise is verbatim, but the presupposed real-capture set does not exist. Zero-1-to-3 trains only on rendered Objaverse triplets -- the paper states 'despite being trained only on synthetic data' and credits generalisation to the Stable Diffusion backbone. The synthetic-plus-real mixture belongs to LRM (Objaverse plus MVImgNet). There is no second data source of Zero-1-to-3's to weigh."
+  - id: ctl2-gen3d-luciddreamer-scan-supervision
+    text: "Inpainted images are lifted into a point cloud whose depth comes from a monocular estimator, and LucidDreamer's Dreaming and Alignment loop repeats that until the cloud can initialise a Gaussian Splatting optimisation. What keeps its indoor 3D scan supervision necessary, and which of the two steps would stop working without those scans?"
+    anchors: ["Dreaming and Alignment", "3D scan"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "The premise is accurate but the question presupposes exactly what LucidDreamer removes. Its abstract names training on 3D scan datasets as the domain limitation of prior work, and its whole claim is domain-free generation from an off-the-shelf 2D diffusion model with no scene-scale 3D data. There is no scan supervision in the pipeline, so nothing keeps it necessary."
+  - id: ctl2-gen3d-agg-single-stream
+    text: "AGG maps one image to a Gaussian set in a single forward pass and then upsamples the primitive count by a module that performs 3D Gaussian super-resolution, not through the score distillation loop its predecessors run. Explain why locations and appearance attributes share one undivided stream, and what the cascade gains by that coupling."
+    anchors: ["Gaussian super-resolution", "appearance attributes"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "The premise is verbatim, but the presupposed undivided stream is the opposite of what AGG reports. Both its abstract and paper state that AGG decomposes the generation of Gaussian locations from the other appearance attributes through a hybrid intermediate representation, arguing the split stabilises optimisation because locating primitives is the better-conditioned half. There is no coupling to explain or credit."
+  - id: ctl2-gen3d-zero123-followups
+    text: "Zero-1-to-3 turns a text-to-image model into a viewpoint-conditional one that knows where the camera sits relative to the input frame. This corpus names SyncDreamer, Wonder3D and One-2-3-45 as the follow-ups built directly on that formulation, rather than on the text-conditioned line DreamFusion started a year earlier. What multi-view consistency mechanism does each of the three add on top of it, and what does each give up in exchange?"
+    anchors: ["viewpoint-conditional", "SyncDreamer"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "All three names appear only as a citation stub in Zero-1-to-3's closing paragraph, with SyncDreamer repeated once in the zero123 repo card. None of the three has a paper among the 50, and no corpus document describes any mechanism, trade-off or result for them. Retrieval will land squarely on Zero-1-to-3 and still carry nothing about the follow-ups themselves."
+  - id: ctl2-gen3d-pixelsplat-internals
+    text: "MVSplat reports matching or surpassing pixelSplat on RealEstate10K and ACID by roughly a tenth of the parameters, but AGG and latentSplat both place pixelSplat in the same feed-forward Gaussian family they belong to. Spell out pixelSplat's own architecture as this line describes it, and what each design choice costs at that budget."
+    anchors: ["pixelSplat", "RealEstate10K"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "pixelSplat is named in five files -- MVSplat's abstract and paper, AGG, LGM and latentSplat -- always as a baseline or family member, never described. There is no pixelSplat paper among the 50. MVSplat's single structural remark, that its cost volume replaces 'learned attention alone', is a claim about MVSplat's own design, not an account of pixelSplat's architecture or the cost of any choice in it."
+  - id: ctl2-gen3d-fantasia3d-separation
+    text: "DreamFusion names Magic3D, Fantasia3D and ProlificDreamer among the works it seeded, and the stable-dreamfusion release lists Fantasia3D among the projects it points readers toward. Explain why Fantasia3D disentangles geometry from appearance where Magic3D instead separates resolution stages, and what each separation costs at the second step."
+    anchors: ["Fantasia3D", "stable-dreamfusion"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "Fantasia3D appears twice in the corpus: as a bare name in DreamFusion's lineage sentence and as a link title plus BibTeX entry in the stable-dreamfusion README. No paper for it is among the 50, so its geometry/appearance disentanglement is never described beyond that title, and no document states what either separation costs at a second stage. Magic3D's half is grounded; the comparison is not."
+  - id: ctl2-gen3d-dreamgaussian-backends
+    text: "The DreamGaussian release adds configurations for MVDream, ImageDream and Stable-Zero123 as alternative diffusion backends behind the same Gaussian optimisation loop that produced its two-minute result from a single image, not from a prompt. Say what geometry each backend recovers where the others fail, and what each costs in optimisation time."
+    anchors: ["MVDream", "Stable-Zero123"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "MVDream, ImageDream and Stable-Zero123 appear only in the DreamGaussian README, as news lines, config filenames and pip install commands. None has a paper in the corpus and no document describes what any of them changes about recovered geometry or optimisation time. The only timings in the corpus are DreamGaussian's own ~2 minutes and its README's 500/50-iteration stage figures."
+  - id: ctl2-gen3d-threestudio-consolidation
+    text: "Both the stable-dreamfusion and DreamGaussian releases point readers to threestudio as the consolidated implementation of this score distillation line, and the zero123 release credits it with a single-view reconstruction port that arrived later. Why does its unified guidance interface change what either reimplementation can reproduce, and where does the resulting behaviour stop matching the two papers?"
+    anchors: ["threestudio", "score distillation"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "threestudio appears in three README files as an outbound pointer only -- an advertisement line, an acknowledgement, and a note that it ported single-view reconstruction with zero123. The corpus contains no description of its guidance interface, no account of what it reproduces, and no divergence report against any paper. Every anchor resolves; the asked-for content is entirely outside the 50-paper boundary."
+  - id: ctl2-gen3d-preference-rates
+    text: "Magic3D reports 61.7% preference in a human user study over DreamFusion and delivers a textured mesh in roughly forty minutes, but DreamGaussian and LGM report only wall-clock figures. Which preference rate did each of those two systems report against its own predecessor, and which protocol did the three share?"
+    anchors: ["human user study", "textured mesh"]
+    control: true
+    requires: []
+    reason_class: absent-quantity
+    note: "'preference' and 'user study' each occur exactly once in all 135 files, in Magic3D's single 61.7% sentence. DreamGaussian reports only ~2 minutes and a ~10x acceleration; LGM only 5 seconds at 512 training resolution. Neither reports a preference rate, and no shared evaluation protocol is described anywhere, so both halves of the ask are missing quantities rather than missing reasoning."
+  - id: ctl2-gen3d-speedup-decomposition
+    text: "Between LRM's five-second reconstruction and TripoSR's half-second one lies a gap TripoSR credits to quality-aware filtering, new augmentations, a rebalanced objective and careful kernel scheduling, never to an architectural change. What share of the speedup does each of those four contribute, and which one was measured by itself?"
+    anchors: ["quality-aware filtering", "architectural change"]
+    control: true
+    requires: []
+    reason_class: absent-quantity
+    note: "TripoSR names its changes qualitatively and gives only the two endpoint timings; the corpus contains no per-change attribution, no isolated measurement and no ablation table. 'ablat*' has zero hits across the 100 paper markdown files, and the corpus holds 52 distinct numeric tokens in total, none of them a speedup decomposition. The qualitative attribution is answerable; the shares are not."
+  - id: ctl2-gsplat-feature-speedup-attribution
+    text: "Feature 3DGS reports being significantly faster to train and to render than NeRF-based feature distillation, and Scaffold-GS reports holding 3DGS rendering speed while cutting primitives. Give the training and rendering speed-ups each of them reports, and say whether the corpus attributes either gap to the rasteriser or to the representation."
+    anchors: ["2D foundation model", "rendering speed"]
+    control: true
+    requires: []
+    reason_class: absent-quantity
+    note: "Both papers report the claim only qualitatively — Feature 3DGS as 'significantly faster to both train and render' and 'a fraction of the training and inference cost', Scaffold-GS as 'without sacrificing the rendering speed'. No speed-up figure exists for either. Corpus-wide, PSNR/LPIPS/SSIM appear as frontmatter metric names with no values, and no numeric attribution to rasteriser-versus-representation exists."
+  - id: ctl2-gsplat-sugar-extraction-order
+    text: "SuGaR reaches an editable mesh within minutes, and its authors credit the choice of extraction algorithm for that. Since the paper runs Marching Cubes over the Gaussian opacity field first and reserves Poisson reconstruction for the later binding stage, what does each algorithm contribute at its own stage, and why can the ordering not be reversed?"
+    anchors: ["Marching Cubes", "Poisson reconstruction"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "False premise. arxiv-2311-12775 states the opposite: SuGaR extracts the mesh with Poisson reconstruction and explicitly contrasts that with Marching Cubes ('in contrast to the Marching Cubes algorithm usually applied to extract meshes from Neural SDFs'). SuGaR never runs Marching Cubes and never thresholds an opacity field; the two-stage ordering the question asserts does not exist, so the contribution-per-stage it asks for cannot be given."
+  - id: ctl2-gsplat-scaffold-bakes-harmonics
+    text: "Scaffold-GS predicts neural-Gaussian attributes on the fly from viewing direction and distance, while 3DGS stores view-dependent colour as spherical harmonics attached to each primitive. Once Scaffold-GS bakes its shared MLP into those harmonics at the end of training, why does the baked form still count as view-adaptive?"
+    anchors: ["spherical harmonics", "viewing direction"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "False premise. No baking step exists in Scaffold-GS — on-the-fly, view-conditioned prediction is the whole design, and baking would destroy it. Verified that 'bake|baked|baking' occurs only in PlenOctrees, MERF, the 2DGS abstract ('without baking') and the TripoSR readme; it never appears in arxiv-2312-00109. The question asks to justify a step the corpus contradicts."
+  - id: ctl2-gsplat-luciddreamer-runs-sfm
+    text: "LucidDreamer alternates Dreaming and Alignment to grow a point cloud out of inpainted views, and 3DGS starts from the sparse cloud that a camera-calibration pass leaves behind. Since LucidDreamer recovers its own poses by running that same structure-from-motion stage over its generated images, what does each pass contribute to the Gaussian initialisation, and which one can be skipped?"
+    anchors: ["inpainting", "camera calibration"]
+    control: true
+    requires: []
+    reason_class: out-of-scope-claim
+    note: "False premise. arxiv-2311-13384 says LucidDreamer lifts each inpainted image to 3D 'by combining a monocular depth estimate with the known camera pose' — poses are given by the sampling trajectory, not recovered. It runs no SfM or COLMAP stage; verified that 'LucidDreamer' co-occurs with 'structure|COLMAP|calibration' only in GALA3D's paper and the W18 weekly, neither attributing SfM to it."
+  - id: ctl2-gsplat-foundation-read-stage
+    text: "Feature 3DGS distils SAM and CLIP-LSeg into Gaussian primitives and blames the gap in spatial resolution and channel statistics between RGB images and foundation feature maps for the difficulty of the port. The two models expose features at different points in their own stacks. Which stage is read in either case, and what does that choice do to the resolution gap?"
+    anchors: ["CLIP-LSeg", "2D foundation model"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "The premise is Feature 3DGS's own stated obstacle. But neither SAM nor CLIP-LSeg is a corpus paper: 'CLIP-LSeg' occurs 3 times and SAM 4 times, always as named distillation sources. No document describes either model's architecture, so which internal stage supplies the distilled feature map — and how that choice governs the resolution gap — has no grounding anywhere in the 50 papers."
+  - id: ctl2-gsplat-3dgut-projection-swap
+    text: "The gsplat supplement derives projection of 3D Gaussians under a pinhole camera through a local affine approximation of the perspective transform, and the library later integrated 3DGUT as an alternative path through that same step. What does 3DGUT put in place of the affine approximation, and how does the substitution change the documented backward pass?"
+    anchors: ["3DGUT", "local affine approximation"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "Both anchors are real: 'local affine approximation' occurs once, in the gsplat supplement; '3DGUT' occurs only in the gsplat README, in three news lines that announce the integration and link out to NVIDIA. Nothing in the corpus explains what 3DGUT replaces in projection or how it interacts with the documented gradients — the answer lives entirely in an external page the corpus only links to."
+  - id: ctl2-gsplat-ppisp-appearance-correction
+    text: "Two per-view appearance corrections sit outside the Gaussian parameters in gsplat: a bilateral grid that compensates for varying training views, and PPISP, which the release notes record as an alternative to it. What does each correct, and why does the choice matter on a capture whose exposure or white balance drifts?"
+    anchors: ["PPISP", "bilateral grid"]
+    control: true
+    requires: []
+    reason_class: absent-entity
+    note: "'PPISP' and 'bilateral grid' occur in exactly one line of the whole corpus — a gsplat README news entry stating PPISP 'is integrated as an alternative way of bilateral grid to compensate the training views'. Neither mechanism is described. The premise is faithful to that line, which makes retrieval land on it, but the line carries no content to answer what either corrects."
+  - id: ctl2-gsplat-primitive-budget-numbers
+    text: "Scaffold-GS reports a substantial reduction in primitive count at equal rendering quality, and Revising Densification adds a mechanism capping the total number of primitives generated per scene. Report the primitive counts each ends up with on a shared benchmark, and say which of the two reductions the corpus credits as the larger."
+    anchors: ["primitive count", "Adaptive Density Control"]
+    control: true
+    requires: []
+    reason_class: absent-quantity
+    note: "Both claims are qualitative in the corpus: Scaffold-GS reports 'a substantial reduction in primitive count', Revising Densification 'a mechanism to control the total number of primitives generated per scene'. No count appears — a regex for a number adjacent to 'Gaussian|primitive' returns 0 hits across all 135 files, and the two papers are never evaluated on a shared benchmark, so no comparison of reduction size exists."
