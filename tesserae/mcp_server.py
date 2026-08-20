@@ -151,7 +151,14 @@ def load_graph(path: str | Path) -> ResearchGraph:
     """Load a ResearchGraph JSON file emitted by ``tesserae.cli``."""
 
     graph_path = Path(path)
-    payload = json.loads(graph_path.read_text(encoding="utf-8"))
+    # ``read_bytes``, not ``read_text``. This is the loader the MCP query path
+    # actually uses — it does not call ``project.load_graph_file``, it
+    # reimplements it — so the fix has to be made in both or the hot path
+    # silently misses it. One astral character in the file (the real graph.json
+    # has one at U+1FA38) makes CPython store the whole decoded string as UCS-4
+    # at 4 bytes/char: 682 MB peak versus 87 MB from bytes, for an identical
+    # object, since ``json.loads`` accepts bytes.
+    payload = json.loads(graph_path.read_bytes())
     nodes = [
         ResearchNode(
             id=str(raw["id"]),

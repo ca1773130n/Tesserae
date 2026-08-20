@@ -39,6 +39,7 @@ from typing import (Any, Callable, Dict, FrozenSet, List, Mapping, Optional,
 from .graph_filters import suppressed_ids
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 from .retrieval.hybrid import RetrievalProfile, hybrid_search
+from .retrieval.local_scope import LocalScope
 from .retrieval.ppr import personalized_pagerank
 from .wiki_projector import kind_for_node
 from .wiki_store import WikiPageStore
@@ -553,6 +554,7 @@ def compile_context(
     tame_hubs: bool = False,
     view: Optional[Union[str, Sequence[str]]] = None,
     explain: bool = False,
+    local: Optional[LocalScope] = None,
 ) -> ContextBundle:
     """Compile a tailored, cited context bundle for ``query`` / ``seeds``.
 
@@ -614,6 +616,19 @@ def compile_context(
     already happened. PPR expansion and multi-view fusion are deliberately not
     profiled: they run over an in-memory edge list at a cost the seed searches
     dominate, and reporting a "plan" for a fixed pipeline would be theatre.
+
+    ``local=<LocalScope>`` (default ``None``, byte-identical unset) is the
+    third producer of the same ``restrict`` set, sourced from lexical retrieval
+    rather than from the hierarchy sidecar — see
+    :mod:`tesserae.retrieval.local_scope`. It composes with ``scope`` and
+    ``strategy`` under the same rule they use on each other: intersect, and an
+    empty intersection keeps the explicit scope. Because it lands in
+    ``restrict``, everything downstream — seed search, PPR, the depth BFS,
+    selection — is already subgraph-local with no further change, including the
+    ``top_k=len(graph.nodes)`` PPR requests, which bound themselves once
+    ``graph`` is the induced subgraph. Its ``seed_weights`` are forwarded to
+    PPR as the personalization vector: a MAPPING keyed by seed id, so the first
+    stage's rank order cannot reach the walk.
 
     Both ``scope`` and ``strategy="hierarchical"`` require ``project_root``
     (the sidecar lives under it); the ``budget=0`` uncapped invariant is
@@ -769,6 +784,18 @@ def compile_context(
                 # is the harder contract of the two.
                 restrict = narrowed or restrict
 
+    if local is not None and local.node_ids:
+        # The lexical first stage, joining the same intersection. An EMPTY
+        # scope is skipped rather than applied: "the first stage matched
+        # nothing" must degrade to the unrestricted walk, not compile an empty
+        # graph — the same degradation the hierarchical branch makes above.
+        narrowed_local = (
+            set(local.node_ids) if restrict is None else restrict & local.node_ids
+        )
+        # Empty intersection -> the first stage landed entirely outside the
+        # caller's scope; keep the explicit scope, the harder contract.
+        restrict = narrowed_local or restrict
+
     if restrict is not None:
         graph = _induced_subgraph(graph, restrict)
 
@@ -828,6 +855,22 @@ def compile_context(
             retrieval_profiles=retrieval_profiles,
         )
 
+    # First-stage relevance mass for the walk's personalization vector. A
+    # MAPPING keyed by seed id, never a list: nothing about the first stage's
+    # rank ORDER can reach PPR through it, which is what makes this safe where
+    # an earlier walk/seed fusion was not.
+    local_seed_weights: Optional[Dict[str, float]] = None
+    if local is not None and local.seed_weights:
+        _mass = {sid: float(local.seed_weights.get(sid, 0.0)) for sid in seed_ids}
+        # A seed the first stage never scored — a neighbour that out-ranked the
+        # anchors once the search ran inside the induced subgraph — carries no
+        # first-stage mass, which is what a zero means. If NO seed carries any,
+        # the first stage has no opinion about this seed set at all, and uniform
+        # teleport is the honest answer: PPR refuses a personalization vector
+        # summing to zero, and is right to.
+        if any(w > 0.0 for w in _mass.values()):
+            local_seed_weights = _mass
+
     # --- Step 2: PPR expansion, bounded to the depth-hop neighbourhood -------
     # ``depth`` must bound hop-distance, not just scale ``top_k``: PPR runs over
     # the FULL connected component, so without this filter a depth=1 request can
@@ -868,6 +911,7 @@ def compile_context(
                 graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes)),
                 edge_type_weights=_vw,
                 tame_hubs=tame_hubs, hub_ids=hub_ids,
+                seed_weights=local_seed_weights,
             )
             _lane = {
                 nid: score
@@ -910,6 +954,7 @@ def compile_context(
             graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes)),
             edge_type_weights=edge_type_weights,
             tame_hubs=tame_hubs, hub_ids=hub_ids,
+            seed_weights=local_seed_weights,
         )
         pre_rank = [
             (nid, score)

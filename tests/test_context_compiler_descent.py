@@ -34,6 +34,7 @@ from tesserae.research_graph import (
     ResearchNodeType,
 )
 from tesserae.retrieval.hybrid import HashEmbeddingBackend
+from tesserae.retrieval.local_scope import LocalScope, local_scope_from_graph
 
 A_MEMBERS = ["Concept:a1", "Concept:a2", "Concept:a3"]
 B_MEMBERS = ["Concept:b1", "Concept:b2", "Concept:b3"]
@@ -519,3 +520,321 @@ def test_a_generous_budget_is_unchanged_by_redistribution(tmp_path):
     bodies = [b for _n, b in zip(bundle.selected_nodes, bundle.body.split("\n## "))]
     assert len(bundle.selected_nodes) >= 5
     assert bundle.char_budget_used <= 32_000
+
+
+# -- local=<LocalScope>: the lexical first stage as a third restrict producer -
+
+
+def _scope(ids, weights=None, hops: int = 1) -> LocalScope:
+    """A hand-built LocalScope, so the seam is tested without the producer."""
+    return LocalScope(
+        node_ids=frozenset(ids),
+        seed_weights=dict(weights or {}),
+        hops=hops,
+    )
+
+
+def test_local_none_is_byte_identical_to_the_default_path() -> None:
+    """The opt-in must not move the default path: spelling ``local=None`` out
+    is the same call, and still the pre-PR8 bytes."""
+    omitted = compile_context(
+        _fixture_graph(), project_root=None, query="alpha telemetry",
+        backend=_backend(),
+    )
+    explicit = compile_context(
+        _fixture_graph(), project_root=None, query="alpha telemetry",
+        backend=_backend(), local=None,
+    )
+    assert explicit.body == omitted.body
+    assert explicit.ranked_nodes == omitted.ranked_nodes
+    assert explicit.selected_nodes == omitted.selected_nodes
+    assert (
+        hashlib.sha256(explicit.body.encode("utf-8")).hexdigest()
+        == _PRE_DESCENT_BODY_SHA256
+    )
+
+
+def test_local_scope_restricts_the_walk_to_the_induced_subgraph() -> None:
+    """Same structural kill as ``scope=``, from lexical candidates instead of
+    the sidecar — and with no project_root, which ``scope=`` requires."""
+    graph = _fixture_graph()
+    unrestricted = compile_context(
+        graph, project_root=None, seeds=["Concept:a1"], depth=2,
+        backend=_backend(),
+    )
+    assert any(nid.startswith("Concept:b") for nid in unrestricted.ranked_nodes)
+
+    restricted = compile_context(
+        graph, project_root=None, seeds=["Concept:a1"], depth=2,
+        backend=_backend(),
+        local=_scope(A_MEMBERS, {"Concept:a1": 1.0}),
+    )
+    assert restricted.ranked_nodes
+    assert set(restricted.ranked_nodes) <= set(A_MEMBERS)
+    assert set(restricted.selected_nodes) <= set(A_MEMBERS)
+
+
+def test_local_scope_does_not_depend_on_first_stage_order() -> None:
+    """The whole point of the set/mapping typing. Two scopes carrying the same
+    anchors and the same masses in OPPOSITE insertion order must compile to
+    the same bytes — a previous walk/seed fusion was reverted for failing
+    exactly this."""
+    graph = _fixture_graph()
+    ids = list(A_MEMBERS)
+    masses = {"Concept:a1": 3.0, "Concept:a2": 2.0, "Concept:a3": 1.0}
+
+    forward = compile_context(
+        graph, project_root=None, query="alpha telemetry", depth=2,
+        backend=_backend(),
+        local=LocalScope(frozenset(ids), dict(masses), hops=1),
+    )
+    backward = compile_context(
+        graph, project_root=None, query="alpha telemetry", depth=2,
+        backend=_backend(),
+        local=LocalScope(
+            frozenset(reversed(ids)),
+            {k: masses[k] for k in reversed(list(masses))},
+            hops=1,
+        ),
+    )
+    assert forward.body == backward.body
+    assert forward.ranked_nodes == backward.ranked_nodes
+    assert forward.seeds_used == backward.seeds_used
+
+
+def test_local_seed_weights_reach_the_walk() -> None:
+    """Relevance mass is forwarded, not quietly dropped: two weightings of the
+    same anchor set rank the same nodes differently."""
+    graph = _fixture_graph()
+    kwargs = dict(
+        project_root=None, seeds=["Concept:a1", "Concept:a3"], depth=2,
+        backend=_backend(),
+    )
+    heavy_a1 = compile_context(
+        graph, local=_scope(A_MEMBERS, {"Concept:a1": 9.0, "Concept:a3": 1.0}),
+        **kwargs,
+    )
+    heavy_a3 = compile_context(
+        graph, local=_scope(A_MEMBERS, {"Concept:a1": 1.0, "Concept:a3": 9.0}),
+        **kwargs,
+    )
+    assert heavy_a1.ranked_nodes != heavy_a3.ranked_nodes
+
+
+def test_local_scope_with_no_mass_on_any_seed_falls_back_to_uniform() -> None:
+    """A scope whose anchors all lost seed resolution has no opinion about the
+    seed set. That must be uniform teleport, not the ValueError PPR raises for
+    a personalization vector summing to zero."""
+    graph = _fixture_graph()
+    kwargs = dict(
+        project_root=None, seeds=["Concept:a1"], depth=2, backend=_backend(),
+    )
+    stranded = compile_context(
+        graph, local=_scope(A_MEMBERS, {"Concept:nowhere": 5.0}), **kwargs
+    )
+    unweighted = compile_context(graph, local=_scope(A_MEMBERS), **kwargs)
+    assert stranded.body == unweighted.body
+    assert stranded.ranked_nodes == unweighted.ranked_nodes
+
+
+def test_empty_local_scope_degrades_to_the_unrestricted_walk() -> None:
+    """"The first stage matched nothing" must not compile an empty graph."""
+    graph = _fixture_graph()
+    default = compile_context(
+        graph, project_root=None, query="alpha telemetry", backend=_backend(),
+    )
+    empty = compile_context(
+        graph, project_root=None, query="alpha telemetry", backend=_backend(),
+        local=_scope([]),
+    )
+    assert empty.body == default.body
+    assert empty.ranked_nodes == default.ranked_nodes
+
+
+def test_local_scope_intersects_with_an_explicit_scope(tmp_path: Path) -> None:
+    root = _write_project(tmp_path)
+    bundle = compile_context(
+        _fixture_graph(), project_root=str(root), seeds=["Concept:a1"], depth=2,
+        backend=_backend(), scope=CID_A,
+        local=_scope(["Concept:a1", "Concept:a2"], {"Concept:a1": 1.0}),
+    )
+    assert bundle.ranked_nodes
+    assert set(bundle.ranked_nodes) <= {"Concept:a1", "Concept:a2"}
+
+
+def test_a_local_scope_outside_the_explicit_scope_keeps_the_scope(
+    tmp_path: Path,
+) -> None:
+    """Empty intersection -> the explicit scope wins, the harder contract. The
+    same rule the hierarchical branch already applies."""
+    root = _write_project(tmp_path)
+    bundle = compile_context(
+        _fixture_graph(), project_root=str(root), seeds=["Concept:a1"], depth=2,
+        backend=_backend(), scope=CID_A,
+        local=_scope(B_MEMBERS, {"Concept:b1": 1.0}),
+    )
+    assert bundle.ranked_nodes
+    assert set(bundle.ranked_nodes) <= set(A_MEMBERS)
+
+
+def test_local_scope_refuses_two_hops() -> None:
+    """hops is a bound, not a tunable: 2 hops from 200 lexical documents
+    reaches 62% of the real 62k graph."""
+    with pytest.raises(ValueError, match="hops=2"):
+        LocalScope(frozenset(A_MEMBERS), {}, hops=2)
+
+
+def test_local_scope_refuses_negative_mass() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        LocalScope(frozenset(A_MEMBERS), {"Concept:a1": -1.0})
+
+
+# -- the in-memory producer --------------------------------------------------
+
+
+def test_producer_induces_exactly_one_hop_around_its_anchors() -> None:
+    graph = _fixture_graph()
+    anchors_only = local_scope_from_graph(
+        graph, "alpha telemetry", top_n=1, hops=0, backend=_backend()
+    )
+    assert anchors_only.node_ids == frozenset(anchors_only.seed_weights)
+    assert len(anchors_only.node_ids) == 1
+
+    one_hop = local_scope_from_graph(
+        graph, "alpha telemetry", top_n=1, hops=1, backend=_backend()
+    )
+    assert one_hop.seed_weights == anchors_only.seed_weights
+    assert anchors_only.node_ids < one_hop.node_ids
+    # Every admitted node is the anchor or a direct neighbour of it.
+    anchor = next(iter(anchors_only.node_ids))
+    neighbours = {
+        other
+        for e in graph.edges
+        for this, other in ((e.source, e.target), (e.target, e.source))
+        if this == anchor
+    }
+    assert one_hop.node_ids <= {anchor} | neighbours
+
+
+def test_producer_scores_every_anchor_positively() -> None:
+    scope = local_scope_from_graph(
+        _fixture_graph(), "alpha telemetry", top_n=20, backend=_backend()
+    )
+    assert scope.seed_weights
+    assert all(w > 0.0 for w in scope.seed_weights.values())
+    assert frozenset(scope.seed_weights) <= scope.node_ids
+
+
+def test_producer_on_a_non_matching_query_returns_an_empty_scope() -> None:
+    scope = local_scope_from_graph(
+        _fixture_graph(), "quantum chromodynamics lattice",
+        top_n=20, backend=_backend(),
+    )
+    if scope.seed_weights:  # the hash backend can score anything nonzero
+        pytest.skip("the embedding lane matched; emptiness is not exercisable here")
+    assert scope.node_ids == frozenset()
+
+
+def test_producer_rejects_a_nonpositive_top_n() -> None:
+    with pytest.raises(ValueError, match="top_n"):
+        local_scope_from_graph(_fixture_graph(), "alpha", top_n=0)
+
+
+def _hub_graph() -> ResearchGraph:
+    """One high-degree hub plus a low-degree chain, both matching the query.
+
+    Stands in for the real graph's ``CommunitySummary`` nodes: measured there,
+    the five top-200 anchors above degree 1,000 add 15,760 nodes between them
+    while the other 168 anchors induce 758 in total.
+    """
+    nodes = [
+        ResearchNode(
+            id="Concept:hub", name="Hub",
+            type=ResearchNodeType.CONCEPT,
+            description="alpha telemetry hub " * 8,
+        ),
+        ResearchNode(
+            id="Concept:leaf", name="Leaf",
+            type=ResearchNodeType.CONCEPT,
+            description="alpha telemetry leaf " * 8,
+        ),
+        ResearchNode(
+            id="Concept:leafmate", name="Leafmate",
+            type=ResearchNodeType.CONCEPT,
+            description="unrelated neighbour of the leaf " * 4,
+        ),
+    ]
+    edges = [
+        ResearchEdge(
+            source="Concept:leaf", target="Concept:leafmate",
+            type="shares_concept_with",
+        )
+    ]
+    for i in range(40):
+        nid = f"Concept:spoke{i:02d}"
+        nodes.append(
+            ResearchNode(
+                id=nid, name=f"Spoke {i}", type=ResearchNodeType.CONCEPT,
+                description="a spoke hanging off the hub " * 4,
+            )
+        )
+        edges.append(
+            ResearchEdge(source="Concept:hub", target=nid, type="summarizes")
+        )
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_producer_refuses_to_expand_a_hub_anchor_past_the_budget() -> None:
+    """hops=1 alone does not bound: one degree-40 anchor is a second hop.
+
+    The hub stays IN scope — it is a destination, and it can still seed and be
+    cited — but it is refused as a thoroughfare, exactly the trade
+    ``personalized_pagerank(tame_hubs=True)`` makes.
+    """
+    graph = _hub_graph()
+    unbounded = local_scope_from_graph(
+        graph, "alpha telemetry", top_n=50, max_nodes=10_000, backend=_backend()
+    )
+    assert "Concept:hub" in unbounded.seed_weights
+    assert len(unbounded.node_ids) > 40  # the spokes came along
+
+    bounded = local_scope_from_graph(
+        graph, "alpha telemetry", top_n=50, max_nodes=12, backend=_backend()
+    )
+    assert len(bounded.node_ids) <= 12
+    # The anchors survive whether or not they were expanded...
+    assert frozenset(bounded.seed_weights) <= bounded.node_ids
+    assert "Concept:hub" in bounded.node_ids
+    # ...but the hub's spokes did not ride in on it.
+    assert not any(nid.startswith("Concept:spoke") for nid in bounded.node_ids)
+    # The cheap anchor still got its hop.
+    assert "Concept:leaf" in bounded.node_ids
+    assert "Concept:leafmate" in bounded.node_ids
+
+
+def test_producer_expansion_choice_is_independent_of_graph_order() -> None:
+    """Cheapest-first is keyed on (degree, id) — properties of the graph, not
+    of any list's order — so reversing the graph changes nothing."""
+    graph = _hub_graph()
+    reversed_graph = ResearchGraph(
+        nodes=list(reversed(graph.nodes)), edges=list(reversed(graph.edges))
+    )
+    a = local_scope_from_graph(
+        graph, "alpha telemetry", top_n=50, max_nodes=12, backend=_backend()
+    )
+    b = local_scope_from_graph(
+        reversed_graph, "alpha telemetry", top_n=50, max_nodes=12,
+        backend=_backend(),
+    )
+    assert a.node_ids == b.node_ids
+    # The anchor SET is the same. The individual masses are not pinned here:
+    # hybrid_search breaks fused-score ties by candidate index, so two nodes
+    # that tie swap scores when the graph is reversed. That is hybrid_search's
+    # own long-standing behaviour, and it is upstream of this boundary — what
+    # this boundary owes the walk is that the SCOPE does not move.
+    assert set(a.seed_weights) == set(b.seed_weights)
+
+
+def test_producer_rejects_a_nonpositive_max_nodes() -> None:
+    with pytest.raises(ValueError, match="max_nodes"):
+        local_scope_from_graph(_fixture_graph(), "alpha", max_nodes=0)
