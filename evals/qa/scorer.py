@@ -282,6 +282,32 @@ def _mean(values: Sequence[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
+def discrimination(refusal_rate: float, hallucination_rate: float) -> Optional[float]:
+    """Youden's J for unanswerability: P(refuse | unanswerable) - P(refuse | answerable).
+
+    The single number ``refusal_rate`` and ``hallucination_rate`` are only
+    meaningful as a pair — this module's own docstring says the unanswerable
+    rate "is worthless without refusal_rate on the answerable stratum beside
+    it" — and yet every report so far printed them in separate columns and left
+    the contrast to the reader. Nobody formed it, and a system was read as
+    having REGRESSED on fabrication when it had in fact improved sharply.
+
+    Worked example from this repository's own runs. Tesserae went from 59.9%
+    refusal / 4.2% hallucination to 2.5% / 12.5%, which reads as a 3x
+    fabrication regression column-by-column. As J: **+0.367 -> +0.854**, against
+    a retrieval baseline at +0.878. The system did not get more credulous; it
+    stopped refusing everything, and refusing everything had been flattering the
+    one column anyone was reading.
+
+    Returns None when either stratum is empty — a J computed over zero
+    unanswerable probes is not a low score, it is an absent measurement.
+    """
+    if refusal_rate is None or hallucination_rate is None:
+        return None
+    # P(refuse | unanswerable) is the complement of answering one of them.
+    return (1.0 - float(hallucination_rate)) - float(refusal_rate)
+
+
 def summarize(scored_rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     """Aggregate already-scored rows into one summary block.
 
@@ -386,8 +412,20 @@ def rank_systems(
     Returns one entry per system: ``{rank, system, score, tied}``.
     """
     getter = key if callable(key) else (lambda report: float(report["overall"][key]))
+    # Quantise to the measured run-to-run noise before ranking, not to a decimal
+    # place. Two systems 0.0014 apart on f1_macro are not ordered by this
+    # harness — its own replicates of one config differ by more than that — and
+    # printing them as 1st and 2nd states a result the data does not support.
+    # Rounding to 4 digits, which is what this did before, ordered exactly that
+    # pair and sent a day of work chasing a deficit a tenth the size of the
+    # noise floor.
+    quantum = SINGLE_RUN_F1_NOISE if (isinstance(key, str) and key.startswith("f1")) else None
+    def _bucket(value: float) -> float:
+        if quantum:
+            return round(round(value / quantum) * quantum, 6)
+        return round(value, ndigits)
     scored = sorted(
-        ((round(float(getter(r)), ndigits), str(r["system"])) for r in reports),
+        ((_bucket(float(getter(r))), str(r["system"])) for r in reports),
         key=lambda pair: (-pair[0], pair[1]),
     )
     out: List[Dict[str, Any]] = []
@@ -405,6 +443,30 @@ def rank_systems(
 #: system whose shape is not one of these declares its own string — the gate
 #: compares for equality and does not care what the word is, only that both
 #: sides wrote down the same one and that somebody wrote one down at all.
+#: Run-to-run noise on this harness, measured from two runs of the SAME config.
+#:
+#: `qa-codex/hybrid.json` and `qa-codex2/hybrid.json` are replicates: identical
+#: system, model, prompt, corpus and budget. They agree on only **18%** of answer
+#: strings and land at macro F1 0.3427 vs 0.3411. Per-question SD of the paired
+#: difference is 0.115, so SE(macro F1, n=284) = 0.0068 and a 95% band is about
+#: +/-0.0137.
+#:
+#: This exists because a whole day was spent treating a 0.0014 gap as a deficit
+#: to close. It was a tenth of the noise floor, and the baseline's own two runs
+#: straddled the system it was being compared to. Any single-run delta below this
+#: is not a result, and the report now says so rather than leaving it to a reader
+#: who has no way to know.
+SINGLE_RUN_F1_NOISE = 0.0137
+
+#: Minimum detectable change in the unanswerable-stratum rate, at n=48 probes.
+#:
+#: Clopper-Pearson 95% on 6/48 is [4.7%, 25.2%] — a 20-point interval. 6/48 vs
+#: 2/48 is Fisher p = 0.268. Detecting 12.5% -> 6.2% at 80% power needs ~338
+#: probes per arm; at 48 that comparison has 18% power. In practice only a move
+#: to ZERO is distinguishable, and a report that prints 12.5% without that
+#: context invites optimising against noise.
+UNANSWERABLE_PROBE_FLOOR = 48
+
 ANSWER_SHAPES: Dict[str, str] = {
     "short-span": (
         "the shortest exact answer — a name, a date, a number, yes/no. What "

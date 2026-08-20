@@ -1084,3 +1084,44 @@ def test_answer_text_normalizes_every_envelope_shape():
     assert answer_text({"backend": "raganything", "answer": None}) == ""
     assert answer_text({"backend": "wiki", "hits": []}) == ""
     assert is_refusal(answer_text({"answer": None})), "no answer reads as a refusal"
+
+
+def test_two_systems_inside_the_noise_floor_are_ranked_TIED():
+    """A day was spent closing a 0.0014 "deficit" that was a tenth of this
+    harness's measured run-to-run noise, while the baseline's own two runs
+    straddled the system being compared to it."""
+    from evals.qa.scorer import SINGLE_RUN_F1_NOISE, rank_systems
+
+    reports = [
+        {"system": "Tesserae", "overall": {"f1_macro": 0.3247}},
+        {"system": "Hybrid", "overall": {"f1_macro": 0.3261}},
+    ]
+    ranked = rank_systems(reports)
+    assert all(r["rank"] == 1 for r in ranked), "0.0014 apart is not an ordering"
+    assert all(r["tied"] for r in ranked)
+
+    # A gap comfortably outside the floor must still order.
+    clear = rank_systems([
+        {"system": "A", "overall": {"f1_macro": 0.40}},
+        {"system": "B", "overall": {"f1_macro": 0.20}},
+    ])
+    assert [r["system"] for r in clear] == ["A", "B"]
+    assert not any(r["tied"] for r in clear)
+    assert SINGLE_RUN_F1_NOISE > 0.01, "the floor is measured, not nominal"
+
+
+def test_discrimination_reads_the_two_strata_together():
+    """Printed as separate columns, 59.9%/4.2% -> 2.5%/12.5% reads as a 3x
+    fabrication regression. It is a large IMPROVEMENT in telling answerable from
+    unanswerable, and only the paired statistic shows it."""
+    from evals.qa.scorer import discrimination
+
+    ancestor = discrimination(refusal_rate=0.599, hallucination_rate=0.042)
+    current = discrimination(refusal_rate=0.025, hallucination_rate=0.125)
+    baseline = discrimination(refusal_rate=0.063, hallucination_rate=0.062)
+
+    assert current > ancestor + 0.4, "the 'regression' was an improvement"
+    assert abs(current - baseline) < 0.05, "and it lands level with the baseline"
+    # A refuse-everything system scores badly, which is the point.
+    assert discrimination(refusal_rate=1.0, hallucination_rate=0.0) <= 0.0
+    assert discrimination(None, 0.1) is None, "absent stratum is not a zero score"
