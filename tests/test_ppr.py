@@ -415,3 +415,88 @@ def test_graph_ppr_mcp_call_rejects_zero_alpha(tmp_path) -> None:
             "graph_ppr",
             {"seed_node_id": "insight_a", "top_k": 5, "alpha": 0},
         )
+
+
+# ---------------------------------------------------------------------------
+# seed_weights: relevance-proportional teleport mass
+# ---------------------------------------------------------------------------
+
+
+def _weighted_fixture() -> ResearchGraph:
+    """Two disjoint chains, one seed on each, so mass cannot leak between them."""
+    nodes = [
+        ResearchNode(id=c, name=c, type=ResearchNodeType.CONCEPT, description=c)
+        for c in "ABCDE"
+    ]
+    edges = [
+        ResearchEdge(source="A", target="B", type="uses"),
+        ResearchEdge(source="C", target="D", type="uses"),
+        ResearchEdge(source="D", target="E", type="uses"),
+    ]
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_equal_seed_weights_reproduce_uniform_exactly():
+    """The default path must stay byte-for-byte what it was."""
+    graph = _weighted_fixture()
+    assert personalized_pagerank(graph, ["A", "C"], top_k=5) == personalized_pagerank(
+        graph, ["A", "C"], top_k=5, seed_weights={"A": 1.0, "C": 1.0}
+    )
+
+
+def test_equal_seed_weights_reproduce_uniform_with_dangling_nodes():
+    """Dangling mass is redistributed over the personalization vector, so a
+    graph with sinks is where a 1/len(seeds) shortcut would diverge."""
+    nodes = [
+        ResearchNode(id=c, name=c, type=ResearchNodeType.CONCEPT, description=c)
+        for c in "ABCDE"
+    ]
+    graph = ResearchGraph(
+        nodes=nodes, edges=[ResearchEdge(source="A", target="B", type="uses")]
+    )
+    assert personalized_pagerank(graph, ["A", "C"], top_k=5) == personalized_pagerank(
+        graph, ["A", "C"], top_k=5, seed_weights={"A": 1.0, "C": 1.0}
+    )
+
+
+def test_seed_weights_shift_mass_toward_the_heavier_seed():
+    graph = _weighted_fixture()
+    skewed = dict(personalized_pagerank(
+        graph, ["A", "C"], top_k=5, seed_weights={"A": 9.0, "C": 1.0}
+    ))
+    even = dict(personalized_pagerank(graph, ["A", "C"], top_k=5))
+    assert skewed["A"] > even["A"]
+    assert skewed["C"] < even["C"]
+    # ...and the effect propagates along A's chain, not just to A itself.
+    assert skewed["B"] > even["B"]
+
+
+def test_seed_weights_only_ratios_matter():
+    graph = _weighted_fixture()
+    a = personalized_pagerank(graph, ["A", "C"], top_k=5, seed_weights={"A": 3.0, "C": 1.0})
+    b = personalized_pagerank(graph, ["A", "C"], top_k=5, seed_weights={"A": 300.0, "C": 100.0})
+    assert a == b
+
+
+def test_seed_weights_summing_to_zero_raises():
+    """Falling back to uniform would answer a different question than the caller
+    asked; returning [] would read as "the graph knows nothing"."""
+    graph = _weighted_fixture()
+    with pytest.raises(ValueError, match="summed to zero"):
+        personalized_pagerank(graph, ["A", "C"], seed_weights={"A": 0.0, "C": 0.0})
+
+
+def test_negative_seed_weights_raise():
+    graph = _weighted_fixture()
+    with pytest.raises(ValueError, match="non-negative"):
+        personalized_pagerank(graph, ["A", "C"], seed_weights={"A": -1.0, "C": 2.0})
+
+
+def test_unnamed_seeds_get_zero_mass_not_an_equal_share():
+    """A caller who weights some seeds and not others gets what they asked for:
+    the named ones carry the walk. Silently topping up the unnamed would make a
+    broad seed set behave like a narrow one without saying so."""
+    graph = _weighted_fixture()
+    only_a = personalized_pagerank(graph, ["A", "C"], top_k=5, seed_weights={"A": 1.0})
+    just_a = personalized_pagerank(graph, ["A"], top_k=5)
+    assert dict(only_a)["A"] == pytest.approx(dict(just_a)["A"])

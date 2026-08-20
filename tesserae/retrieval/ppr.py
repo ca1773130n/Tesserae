@@ -105,6 +105,7 @@ def personalized_pagerank(
     tol: float = 1.0e-6,
     tame_hubs: bool = False,
     hub_ids: Optional[Sequence[str]] = None,
+    seed_weights: Optional[Mapping[str, float]] = None,
 ) -> List[Tuple[str, float]]:
     """Run Personalized PageRank seeded at ``seed_ids``.
 
@@ -121,6 +122,16 @@ def personalized_pagerank(
             reverse edge (typical for relevance walks over a Tesserae graph).
         max_iter: Power-iteration cap.
         tol: Convergence tolerance on L1 score-vector delta.
+        seed_weights: Optional relevance mass per seed id. ``None`` (the
+            default) spreads mass uniformly and is byte-for-byte the previous
+            behaviour. Supplying weights is what makes BROAD seeding meaningful:
+            uniform mass over every node is not a personalized walk at all, it
+            is plain PageRank, so "seed everything" only works when the seeds
+            carry how relevant each one is. Ids absent from the map get ZERO
+            mass rather than a fallback share — topping them up would make a
+            broad seed set quietly behave like a narrow one. Negative weights
+            raise, as does a set whose weights all sum to zero. Weights are
+            normalised, so only their ratios matter.
         tame_hubs: Hub-poisoning mitigation (Descent PR1), default OFF so
             existing consumers are byte-for-byte unchanged. When ``True``:
             (a) ``PROVENANCE_EDGE_TYPES`` weights are multiplied by
@@ -203,14 +214,33 @@ def personalized_pagerank(
             continue
         out_norm[src] = [(dst, w / total) for dst, w in dst_map.items()]
 
-    # Personalization vector: uniform over surviving seeds.
-    seed_indices = [node_index[s] for s in seed_ids if s in node_index]
+    # Personalization vector: uniform over surviving seeds, or proportional to
+    # ``seed_weights`` when given.
+    surviving = [s for s in seed_ids if s in node_index]
+    seed_indices = [node_index[s] for s in surviving]
     if not seed_indices:
         return []
     p = [0.0] * n
-    seed_mass = 1.0 / len(seed_indices)
-    for idx in seed_indices:
-        p[idx] += seed_mass
+    if seed_weights is None:
+        seed_mass = 1.0 / len(seed_indices)
+        for idx in seed_indices:
+            p[idx] += seed_mass
+    else:
+        raw = [float(seed_weights.get(s, 0.0)) for s in surviving]
+        if any(w < 0.0 for w in raw):
+            raise ValueError("seed_weights must be non-negative")
+        total = sum(raw)
+        if total <= 0.0:
+            # Every named weight was zero. Falling back to uniform would
+            # silently answer a different question than the caller asked, and
+            # returning [] would read as "the graph knows nothing". Neither is
+            # honest, so refuse.
+            raise ValueError(
+                "seed_weights summed to zero over the surviving seeds — "
+                "no node would receive teleport mass"
+            )
+        for idx, w in zip(seed_indices, raw):
+            p[idx] += w / total
 
     # Start from the personalization vector — converges faster than uniform.
     rank = list(p)
@@ -230,9 +260,14 @@ def personalized_pagerank(
                 new_rank[dst] += spread * w
         if dangling_mass > 0.0:
             # Redistribute dangling mass over the personalization vector
-            # (HippoRAG / standard PR convention).
+            # (HippoRAG / standard PR convention). Read the mass straight off
+            # ``p`` rather than recomputing it as 1/len(seeds): the two agree
+            # only in the uniform case, and under ``seed_weights`` the uniform
+            # form would hand every seed an equal share of the dangling mass
+            # while the teleport term gave them unequal shares — a walk
+            # personalised two different ways at once.
             for idx in seed_indices:
-                new_rank[idx] += dangling_mass * seed_mass
+                new_rank[idx] += dangling_mass * p[idx]
 
         delta = sum(abs(a - b) for a, b in zip(new_rank, rank))
         rank = new_rank
