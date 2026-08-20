@@ -976,3 +976,68 @@ def test_a_run_whose_every_arm_refuses_still_skips_and_writes_nothing(
 
     assert capsys.readouterr().out.startswith("SKIP: the dense arm's embedder")
     assert not (tmp_path / "report.md").exists()
+
+
+# --------------------------------------------------------------------------- protocol gate
+
+
+def test_a_hand_written_declaration_cannot_unlock_a_comparable_table():
+    """The gate used to accept typing.
+
+    Measured before the fix: an answers.json asserting all four controls
+    returned NO blockers, and the report printed the comparable section
+    captioned "in the same units as the published table" — with no key, no
+    judge, and no run behind it.
+    """
+    from evals.lme_mab.adapter import protocol_blockers
+
+    typed = {
+        "llm_model": "gpt-5.4-mini",
+        "embedding_model": "text-embedding-3-small",
+        "judge": "gpt-4o-mini",
+        "evidence_budget": 10,
+    }
+    blockers = protocol_blockers(typed)
+    assert blockers, "a declaration with no run behind it must not be quotable"
+    assert any("evidence" in b for b in blockers)
+
+
+def test_an_honest_openai_run_is_not_the_only_thing_that_fails():
+    """The inversion this fixes.
+
+    `active_embedding_backend("openai")` names itself
+    `openai:text-embedding-3-small`; the protocol constant is bare. Comparing
+    raw strings made the one honest configuration the only one that could never
+    pass, while a fabricated declaration sailed through.
+    """
+    from evals.lme_mab.adapter import protocol_blockers
+
+    honest = {
+        "llm_model": "gpt-5.4-mini",
+        "embedding_model": "openai:text-embedding-3-small",
+        "judge": "gpt-4o-mini",
+        "evidence_budget": 10,
+        "evidence": {"answer_calls": 300, "judge_calls": 300},
+    }
+    assert protocol_blockers(honest) == []
+
+    # A different model behind the same provider must still fail.
+    wrong = {**honest, "embedding_model": "openai:text-embedding-3-large"}
+    assert any("embedding_model" in b for b in protocol_blockers(wrong))
+
+
+def test_the_judge_control_cannot_be_met_without_a_judge_running():
+    """There is no judge implementation in this repository. Until one exists,
+    no run can legitimately claim the protocol's accuracy metric, and naming
+    the model in a flag is not judging."""
+    from evals.lme_mab.adapter import protocol_blockers
+
+    unjudged = {
+        "llm_model": "gpt-5.4-mini",
+        "embedding_model": "openai:text-embedding-3-small",
+        "judge": "gpt-4o-mini",
+        "evidence_budget": 10,
+        "evidence": {"answer_calls": 300, "judge_calls": 0},
+    }
+    blockers = protocol_blockers(unjudged)
+    assert any("judge_calls" in b for b in blockers)
