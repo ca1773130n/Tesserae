@@ -438,3 +438,64 @@ sentence that licenses no conclusion.
 Does not license: extending this to another corpus. It is one split of one
 group, n=60, and the relevant claim is only that this knob is not where the
 remaining 0.091 to BM25 is hiding.
+
+## §16. Semantic reach pays where words do not match — the graph does not
+
+Every question set used against Tesserae was authored FROM its documents, so
+questions quote their sources. Measured on the 284: the median question already
+contains **30%** of its gold answer's content words (IDF-weighted 26%), and only
+**12 of 284 (4.2%)** share none. That is the regime where lexical matching is
+strongest and structure is dead weight, and it is where every comparison in this
+document was run.
+
+The claim worth testing is an INTERACTION, not a level: does non-lexical
+retrieval pay MORE as the question stops sharing vocabulary with its answer?
+Stratifying the same 284 into overlap quartiles (n=71 each, mean overlap 0.104 /
+0.244 / 0.358 / 0.534) and scoring gold-document recall@10, paired bootstrap
+5,000 resamples:
+
+| stratum | overlap | BM25 | Hybrid − BM25 | Graph − BM25 |
+|---|---|---|---|---|
+| Q1 words don't match | 0.104 | 0.740 | **+0.076 [+0.029, +0.126]** | −0.007 [−0.064, +0.054] |
+| Q2 | 0.244 | 0.867 | +0.022 [−0.014, +0.058] | **−0.085 [−0.146, −0.025]** |
+| Q3 | 0.358 | 0.906 | +0.023 [−0.005, +0.052] | −0.038 [−0.085, +0.005] |
+| Q4 words do match | 0.534 | 0.930 | +0.019 [−0.005, +0.042] | **−0.097 [−0.146, −0.052]** |
+
+**The trend is confirmed: +0.058 [+0.006, +0.110].** The hybrid's edge over BM25
+is four times larger where words do not match, and the CI on the difference of
+gaps excludes zero. This is the first statistically significant win for
+non-lexical retrieval anywhere in this document.
+
+Two things follow, and they point opposite ways.
+
+**The regime is real.** Fusion beats BM25 significantly in Q1 and nowhere else —
+every other stratum's CI straddles zero. The +0.035 fusion win recorded earlier
+was an average over a set that is 96% lexically-assisted; it is not a uniform
+gain, it is a large gain on a quarter of the questions and nothing on the rest.
+
+**The graph is not what delivers it.** The graph re-ranker is statistically tied
+with BM25 in Q1 and significantly WORSE in Q2 and Q4. It is least harmful
+exactly where the ontology argument predicts it should be strongest, and it
+costs −0.097 on the questions BM25 already answers. What buys semantic reach
+today is a 256-dimension static embedding, not concepts and relationships.
+
+This refines §1's "graph contribution −0.002 [−0.025, +0.022]". That average hid
+a real structure: not uniformly flat, but tied where lexical fails and clearly
+harmful where it succeeds.
+
+Two experiments follow directly, neither needing a recompile:
+
+1. **Gate the graph on lexical confidence.** −0.097 in Q4 is the price of
+   consulting it when BM25 is already right. A gate cannot help Q1 but it makes
+   the re-ranker conditionally neutral instead of uniformly negative.
+2. **Seed PPR the way HippoRAG 2 does.** `curve.SEED_K = 25`, and §12 measured
+   the planner's walk delivering exactly ONE node. HippoRAG 2 seeds PPR with
+   ALL passage nodes and says why: activating a broad set is what uncovers
+   multi-hop chains. That is the largest architectural divergence from the
+   system that wins this benchmark family.
+
+Does not license: a claim that a knowledge graph cannot buy semantic reach. It
+licenses only that THIS graph, at THIS seeding, on THIS corpus, does not — while
+a 256-dimension embedding does, significantly, in the quarter of questions where
+it matters. Reproduce with
+`~/.blackhole/Tesserae/2026-08-21/lexical_strata.py` and `strata_ci.py`.
