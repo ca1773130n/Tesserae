@@ -156,7 +156,7 @@ def load_graph(path: str | Path) -> ResearchGraph:
     # reimplements it — so the fix has to be made in both or the hot path
     # silently misses it. One astral character in the file (the real graph.json
     # has one at U+1FA38) makes CPython store the whole decoded string as UCS-4
-    # at 4 bytes/char: 682 MB peak versus 87 MB from bytes, for an identical
+    # at 4 bytes/char: 895 MB peak versus 595 MB from bytes, for an identical
     # object, since ``json.loads`` accepts bytes.
     payload = json.loads(graph_path.read_bytes())
     nodes = [

@@ -639,3 +639,70 @@ def test_scalar_fallback_is_used_when_numpy_is_missing() -> None:
     ranked = _scalar_ppr(graph, seed_ids=["insight_a"], top_k=5)
     assert ranked
     assert ranked[0][0] == "insight_a"
+
+
+def _tie_heavy_fixture(components: int = 300) -> ResearchGraph:
+    """Many ISOMORPHIC components, so corresponding nodes score exactly alike.
+
+    The random `_sparse_fixture` produces zero tied scores, which makes its
+    ordering assertion non-discriminating: an ordering divergence is impossible
+    on it, so only the score assertion has teeth. The real 62k graph has 36% of
+    scored nodes sitting on exactly-tied scores, in blocks up to 141 nodes, and
+    that tail is load-bearing — `context_compiler` asks for
+    `top_k=len(graph.nodes)` and derives candidate order from the full ranking.
+
+    A naive vectorisation reproduces scores to ~1 ULP and still permutes tens of
+    thousands of rank positions. That is the failure this fixture exists to
+    catch, and structural symmetry is how ties are made on purpose.
+    """
+    nodes: List[ResearchNode] = []
+    edges: List[ResearchEdge] = []
+    for c in range(components):
+        for k in ("a", "b", "c"):
+            nodes.append(
+                ResearchNode(
+                    id=f"c{c}{k}",
+                    name=f"component {c} {k}",
+                    type=ResearchNodeType.CONCEPT,
+                    description="symmetric",
+                )
+            )
+        edges.append(ResearchEdge(source=f"c{c}a", target=f"c{c}b", type="references"))
+        edges.append(ResearchEdge(source=f"c{c}b", target=f"c{c}c", type="references"))
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_the_tie_fixture_actually_produces_ties() -> None:
+    """Guards the guard: if this fixture ever stops tying, the ordering test
+    below silently stops testing anything, which is the exact defect it was
+    written to repair."""
+    graph = _tie_heavy_fixture()
+    scores = [s for _n, s in personalized_pagerank(
+        graph, [f"c{c}a" for c in range(0, 300, 3)], top_k=len(graph.nodes)
+    )]
+    distinct = len(set(scores))
+    assert distinct < len(scores) / 10, (
+        f"expected heavy ties; got {distinct} distinct values over {len(scores)} nodes"
+    )
+
+
+def test_numpy_and_scalar_orderings_agree_where_scores_tie() -> None:
+    """Ordering parity on a graph where ties are the common case, not absent."""
+    graph = _tie_heavy_fixture()
+    seeds = [f"c{c}a" for c in range(0, 300, 3)]
+    cases = [
+        dict(seed_ids=seeds, top_k=len(graph.nodes)),
+        dict(seed_ids=seeds, top_k=len(graph.nodes), directed=True),
+        dict(
+            seed_ids=seeds,
+            top_k=len(graph.nodes),
+            seed_weights={s: 1.0 for s in seeds},
+        ),
+    ]
+    for case in cases:
+        fast = personalized_pagerank(graph, **case)
+        slow = _scalar_ppr(graph, **case)
+        assert [i for i, _ in fast] == [i for i, _ in slow], (
+            f"ordering diverged on tied scores for {case!r}"
+        )
+        assert [s for _i, s in fast] == [s for _i, s in slow]

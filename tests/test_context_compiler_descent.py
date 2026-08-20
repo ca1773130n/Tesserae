@@ -838,3 +838,36 @@ def test_producer_expansion_choice_is_independent_of_graph_order() -> None:
 def test_producer_rejects_a_nonpositive_max_nodes() -> None:
     with pytest.raises(ValueError, match="max_nodes"):
         local_scope_from_graph(_fixture_graph(), "alpha", max_nodes=0)
+
+
+def test_max_nodes_bounds_the_scope_even_with_more_anchors_than_budget():
+    """`max_nodes` was documented as a bound but only refused EXPANSION.
+
+    Seeding the budget with `spent = len(anchors)` means an anchor set larger
+    than `max_nodes` is already over before the loop starts, and nothing trims
+    it: 500 matching anchors against max_nodes=10 returned a scope of 500,
+    fifty times the documented bound.
+    """
+    from tesserae.retrieval.local_scope import local_scope_from_graph
+
+    nodes = [
+        ResearchNode(
+            id=f"c{i}",
+            name=f"alpha telemetry {i}",
+            type=ResearchNodeType.CONCEPT,
+            description="alpha telemetry subsystem",
+        )
+        for i in range(500)
+    ]
+    graph = ResearchGraph(nodes=nodes)  # no edges: expansion cannot be the cause
+
+    for cap in (10, 50, 200):
+        scope = local_scope_from_graph(
+            graph, "alpha telemetry", top_n=500, max_nodes=cap, backend=_backend()
+        )
+        assert len(scope.node_ids) <= cap, (
+            f"max_nodes={cap} is documented as a bound; got {len(scope.node_ids)}"
+        )
+        assert set(scope.seed_weights) <= scope.node_ids, (
+            "weights must not name nodes the trim removed from the scope"
+        )

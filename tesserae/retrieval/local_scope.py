@@ -13,18 +13,35 @@ retrieval instead of the hierarchy sidecar, so no new walk plumbing exists.
 **Why the types are what they are.** ``node_ids`` is a set and
 ``seed_weights`` is a mapping, deliberately. ``_induced_subgraph`` filters
 ``graph.nodes`` in GRAPH order, so membership alone determines the induced
-graph; ``personalized_pagerank`` looks weights up BY SEED ID, so relevance mass
-is position-free. First-stage rank ORDER is therefore discarded at this
-boundary *by construction* rather than by care — which is the invariant a
-previous walk/seed fusion broke and was reverted for.
+graph; ``personalized_pagerank`` looks weights up BY SEED ID, so relevance mass is
+position-free.
 
-**Why ``hops`` is a bound and not a tunable.** Measured on the real
-62,366-node graph, 1-hop induction from top-N lexical DOCUMENTS is a
-per-document structural constant (~7.4 nodes/doc, sublinear in N because
-neighbourhoods overlap): N=200 induces 1,478 nodes, 2.4% of the graph. Two hops
-is a hub explosion in the same measurement — N=10 already reaches 13,636 nodes
-and N=200 reaches 38,848, i.e. 62% of the entire graph. So ``hops`` above 1 is
-refused here rather than left to a caller's judgement. This does not conflict
+That makes the result independent of seed LIST POSITION, which is the invariant
+a previous walk/seed fusion broke and was reverted for. It does NOT mean rank
+order is discarded: ``seed_weights`` carry the hybrid fused score, and that
+score is reciprocal-rank fusion (``fused[idx] += weight / (RRF_K + rank)``,
+hybrid.py:1010), so first-stage RANK is present in the mass even though
+POSITION is not. An earlier version of this docstring claimed the stronger
+property; it was false, and the weaker one is the one that matters.
+
+**Why ``hops`` is a bound and not a tunable, and why ``max_nodes`` is not
+optional.** The "~7.4 nodes per document" figure this module was first written
+against holds only for RANDOMLY chosen SourceDocuments. It does not hold for the
+documents retrieval actually returns, which are high-degree by selection:
+measured on the real 62,366-node graph, raw 1-hop induction from the true
+top-200 hybrid anchors reaches **19,020-38,561 nodes (30.5-61.8% of the
+graph)** — 13-26x the original estimate. The single largest hub has degree
+6,105 and its 1-hop neighbourhood alone is 9.8% of the graph; the top five
+hubs' union is 31.0%, the top fifty 65.4%.
+
+So 1 hop is not self-limiting and ``max_nodes`` is what makes the scope bounded
+at all. With it, realised scope stays 683-3,790 nodes across every query
+tested, and holds at 636 / 1,400 / 3,718 / 3,790 as the corpus is scaled
+N=6,236 -> 15,591 -> 31,183 -> 62,366 — which is the corpus-independence this
+module exists for. It buys that by DROPPING expansion for expensive anchors,
+and the drop rate grows with N (100% -> 100% -> 99% -> 88% of anchors expanded
+across that sweep), so at a much larger corpus most anchors will contribute
+themselves and no neighbourhood. That is a real limitation, not a tuning knob. This does not conflict
 with ``compile_context(depth=2)``: that depth is measured from the PPR seeds
 AFTER induction and is bounded by the induced graph. Order of operations is
 load-bearing.
@@ -168,8 +185,19 @@ def local_scope_from_graph(
 
     # Cheapest-first by (degree, id). Nothing here reads the retrieval order.
     ordered = sorted(weights, key=lambda nid: (degree.get(nid, 0), nid))
+    # The anchors themselves count against the budget, and when there are more
+    # anchors than budget the anchor set is TRIMMED rather than the bound
+    # silently exceeded. Seeding `spent = len(ordered)` and only refusing
+    # expansion afterwards left `max_nodes` documented as a bound it did not
+    # enforce: with 500 isolated matching anchors and max_nodes=10 the scope
+    # came back at 500, fifty times over. Cheapest-first ordering means the
+    # trim keeps the low-degree anchors, which are also the ones that could
+    # still afford to expand.
+    if len(ordered) > max_nodes:
+        ordered = ordered[:max_nodes]
+        weights = {nid: weights[nid] for nid in ordered}
     expandable: List[str] = []
-    spent = len(ordered)  # the anchors themselves are already in the scope
+    spent = len(ordered)
     for nid in ordered:
         cost = degree.get(nid, 0)
         if spent + cost > max_nodes:
