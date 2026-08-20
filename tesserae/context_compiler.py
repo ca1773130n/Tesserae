@@ -198,6 +198,37 @@ def _empty_pool_reservations() -> Dict[str, Optional[Dict[str, object]]]:
 #: the reference the number is chosen against rather than a guess.
 SOURCE_EXCERPT_CHARS = 4_000
 
+#: How many nodes the budget walk aims to fit before any one of them may take
+#: the whole thing.
+#:
+#: Without this, a single node's ``SOURCE_EXCERPT_CHARS`` body (4,000) exceeds
+#: the ask path's ``_CONTEXT_BUDGET`` (1,800) on its own, so the first ranked
+#: node was truncated to fill the budget and the walk broke immediately.
+#: Measured over 31 questions, the bundle delivered exactly ONE node in 31/31
+#: runs, and in 28/31 that node's source document was ALREADY among the ten the
+#: fusion lane had ranked — the graph was contributing essentially no text the
+#: prompt did not already have.
+#:
+#: Raising the budget is not the fix: 1,800 is sized to survive ``_EVIDENCE_CLIP``
+#: (2,500) downstream, so a larger bundle is computed and then thrown away.
+#: Spending the SAME budget across several nodes costs no extra prompt bytes.
+_TARGET_BUNDLE_NODES = 5
+
+#: The smallest per-node share worth redistributing into. Below it, splitting
+#: the budget produces fragments rather than evidence — at ``budget=400`` a
+#: five-way split leaves 80 characters per node, which is a sentence opening
+#: and not a fact — so a budget this tight keeps the original behaviour of
+#: letting the first ranked body take what it needs. Multi-pool reservation
+#: tests run at exactly that budget and depend on it.
+_MIN_NODE_SHARE = 300
+
+#: Below this many chars a raw source excerpt is worse evidence than the
+#: extracted body it would replace: the first few hundred characters of a paper
+#: are title, authors and boilerplate, where the extracted description is dense
+#: and already about the thing that matched. So the substitution is skipped
+#: rather than performed badly when the per-node share cannot afford it.
+_MIN_SOURCE_EXCERPT = 900
+
 
 def _source_text(node: ResearchNode, cache: Dict[str, str],
                  root: Optional[str] = None) -> str:
@@ -1039,6 +1070,13 @@ def compile_context(
     chars_used = 0
     _source_cache: Dict[str, str] = {}
     _docs_emitted: set = set()
+    # The share any one node may claim. ``budget <= 0`` is uncapped, and a
+    # budget generous enough that the share exceeds SOURCE_EXCERPT_CHARS leaves
+    # every body exactly as it was — so the default 32,000 path is unchanged
+    # and only a tight budget (the ask path's 1,800) is redistributed.
+    _per_node = budget // _TARGET_BUNDLE_NODES if budget > 0 else 0
+    if _per_node < _MIN_NODE_SHARE:
+        _per_node = 0  # too tight to split; first body takes what it needs
     for node_id, _score in ranked:
         node = node_index.get(node_id)
         if node is None:
@@ -1049,7 +1087,8 @@ def compile_context(
         # from one document and repeating it would spend the budget on copies
         # instead of on coverage.
         _sp = getattr(node, "source_path", None)
-        if _sp and _sp not in _docs_emitted:
+        _can_afford_source = _per_node == 0 or _per_node >= _MIN_SOURCE_EXCERPT
+        if _sp and _sp not in _docs_emitted and _can_afford_source:
             _raw = _source_text(node, _source_cache, project_root)
             if _raw:
                 _docs_emitted.add(_sp)
@@ -1064,7 +1103,11 @@ def compile_context(
                 # The node's own name is kept as the heading so the extracted
                 # layer still says WHY this document was retrieved, which is the
                 # part the graph contributes.
-                body = f"{_raw[:SOURCE_EXCERPT_CHARS]}"
+                _cap = min(SOURCE_EXCERPT_CHARS, _per_node or SOURCE_EXCERPT_CHARS)
+                body = f"{_raw[:_cap]}"
+        # Hold every body to its share so the first node cannot spend the walk.
+        if _per_node and len(body) > _per_node:
+            body = _truncate_to_budget(body, _per_node)
         if budget > 0 and chars_used + len(body) > budget:
             # A valid query must never yield an empty bundle just because the
             # first ranked body overflows the budget: always include the FIRST

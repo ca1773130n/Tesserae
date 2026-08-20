@@ -558,3 +558,53 @@ there until the budget is fixed too. Nor does it license a claim about
 LongMemEval: this is the demo corpus, gold-DOCUMENT recall, n=71 in the stratum
 that matters. Reproduce with `~/.blackhole/Tesserae/2026-08-21/broad_seed.py`
 and `seed_k_cv.py`.
+
+## §18. The bundle delivered one node because the first body ate the budget
+
+§12 measured the ask path's `compile_context` bundle delivering exactly ONE node
+in 31/31 runs, and in 28/31 that node's source document was already among the
+ten the fusion lane had ranked — so the graph contributed essentially no text
+the prompt did not already have. §17's better seeding could not reach a user
+through that.
+
+The cause is an arithmetic mismatch, not a design choice.
+`SOURCE_EXCERPT_CHARS = 4_000` is the per-node body; `_CONTEXT_BUDGET = 1_800`
+is the ask path's whole bundle. The first ranked body overflows the budget on
+its own, hits the "always include the FIRST selectable node, truncating to fit"
+branch, and breaks the walk.
+
+**Raising the budget is the wrong fix.** 1,800 is sized so the assembled bundle
+survives `_EVIDENCE_CLIP = 2_500` downstream; a larger bundle is computed, paid
+for, and thrown away. Spending the SAME budget across several nodes costs no
+extra prompt bytes — which matters, because §12 blames prompt VOLUME for the
+52.9% fabrication rate.
+
+Each node now claims at most `budget // _TARGET_BUNDLE_NODES` (5), and the raw
+source substitution is skipped when that share falls under `_MIN_SOURCE_EXCERPT`
+(900) — below which the first few hundred characters of a paper are title and
+boilerplate, while the extracted description is dense and already about what
+matched. Measured over the same 31 questions, budget unchanged:
+
+| | before | after |
+|---|---|---|
+| nodes per bundle | 1 in 31/31 | min 5, **median 7**, max 14 |
+| bundles adding a document the fusion top-10 missed | 3/31 (9.7%) | **19/31 (61.3%)** |
+| chars used | ~1,800 | 1,698 (cap 1,800) |
+
+A 6.3x rise in novel-document contribution at zero prompt cost.
+
+**A floor was required, and finding it was the useful part.** The first version
+capped every body unconditionally, which broke 10 multi-pool reservation tests.
+Those tests run at `budget=400`, where a five-way split leaves 80 characters per
+node — a sentence opening, not evidence. The tests were not stale: they were
+right, and the change was wrong for tight budgets. Below `_MIN_NODE_SHARE`
+(300) the original first-body-takes-what-it-needs behaviour stands. That keeps
+`budget=400` byte-identical, leaves the default 32,000 path untouched (its share
+exceeds `SOURCE_EXCERPT_CHARS`, so nothing is capped), and redistributes only in
+the band the ask path actually occupies.
+
+Does not license: any claim about answer quality. This measures what reaches the
+prompt, not what the model does with it. Whether seven documents at 360
+characters beat one at 1,800 for token F1 — or for fabrication, where more
+distinct near-miss material is exactly the mechanism §12 blames — is unrun.
+Reproduce with `~/.blackhole/Tesserae/2026-08-21/bundle_nodes.py`.

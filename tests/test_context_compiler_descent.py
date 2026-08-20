@@ -455,3 +455,67 @@ def test_a_charter_on_disk_does_not_move_the_default_path(tmp_path: Path) -> Non
         depth=2, backend=_backend(),
     )
     assert after.body == before.body
+
+
+# ---------------------------------------------------------------------------
+# Budget redistribution: the first body must not spend the whole walk
+# ---------------------------------------------------------------------------
+
+
+def _many_document_graph(tmp_path) -> ResearchGraph:
+    """Six anchor nodes, each with a source file longer than the whole budget."""
+    nodes = []
+    for i in range(6):
+        f = tmp_path / f"doc{i}.md"
+        f.write_text(f"document {i} " + ("filler " * 900), encoding="utf-8")
+        nodes.append(
+            ResearchNode(
+                id=f"doc-{i}",
+                name=f"deployment topic {i}",
+                type=ResearchNodeType.SOURCE_DOCUMENT,
+                description="how the service is deployed and operated",
+                source_path=str(f),
+            )
+        )
+    return ResearchGraph(nodes=nodes)
+
+
+def test_a_tight_budget_is_spread_across_the_walk_not_eaten_by_the_first_node(tmp_path):
+    """At the ask path's 1,800 the bundle used to deliver exactly ONE node: a
+    single 4,000-char source body overflowed the budget, was truncated to fill
+    it, and the walk broke. Same budget, same prompt bytes, more documents."""
+    graph = _many_document_graph(tmp_path)
+    bundle = compile_context(
+        graph, project_root=str(tmp_path), query="how do we deploy the service",
+        budget=1_800, backend=_backend(),
+    )
+    assert len(bundle.selected_nodes) > 1, (
+        f"the walk still stops at the first node: {bundle.selected_nodes}"
+    )
+    assert bundle.char_budget_used <= 1_800
+
+
+def test_a_budget_too_tight_to_split_keeps_the_first_body_intact(tmp_path):
+    """Splitting 400 chars five ways leaves 80 per node, which is a sentence
+    opening and not evidence. Below _MIN_NODE_SHARE the original behaviour
+    stands — multi-pool reservation depends on it."""
+    graph = _many_document_graph(tmp_path)
+    bundle = compile_context(
+        graph, project_root=str(tmp_path), query="how do we deploy the service",
+        budget=400, backend=_backend(),
+    )
+    assert len(bundle.selected_nodes) == 1
+    assert bundle.char_budget_used <= 400
+
+
+def test_a_generous_budget_is_unchanged_by_redistribution(tmp_path):
+    """When the per-node share exceeds SOURCE_EXCERPT_CHARS nothing is capped,
+    so the default 32,000 path must be byte-identical to before."""
+    graph = _many_document_graph(tmp_path)
+    bundle = compile_context(
+        graph, project_root=str(tmp_path), query="how do we deploy the service",
+        budget=32_000, backend=_backend(),
+    )
+    bodies = [b for _n, b in zip(bundle.selected_nodes, bundle.body.split("\n## "))]
+    assert len(bundle.selected_nodes) >= 5
+    assert bundle.char_budget_used <= 32_000
