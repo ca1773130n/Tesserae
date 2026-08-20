@@ -397,3 +397,44 @@ text-embedding-3-small, no answering was done, and the retrieval unit is this
 harness's choice. Nor does it license enabling `source_root` on the product
 query path: this raises prompt volume, and §12's audit blames volume for the
 52.9% fabrication rate. That measurement has not been run.
+
+## §15. The lane weights were already right
+
+`DEFAULT_WEIGHTS = {bm25: 1.0, lexical: 1.0, embedding: 1.0}` is a default that
+predates any measurement, and on group 0 the BM25 lane scores 0.911 alone while
+the dense lane scores 0.425 — an obvious-looking case for reweighting. It is
+not one.
+
+Swept over 32 configurations (bm25 pinned at 1.0; lexical and embedding each
+over {0, 0.25, 0.5, 1.0}), scored two ways: full-set, and 2-fold cross-validated
+by even/odd question index — tune on one fold, report the held-out other, both
+directions. Script:
+`~/.blackhole/Tesserae/2026-08-21/weight_sweep.py`.
+
+| | equal weights (CV) | best (CV) | full-set argmax | optimism gap |
+|---|---|---|---|---|
+| before #213 | 0.705 | 0.706 | 0.744 | **+0.037** |
+| with #213 | 0.820 | 0.824 | 0.861 | **+0.037** |
+
+Reweighting buys **+0.001 and +0.004** cross-validated. The optimism gap is
++0.037 in both blocks, which almost exactly accounts for the "+0.039 from
+reweighting alone" that the benchmark-first design proposal reported and that
+this document previously repeated. That figure was a full-set argmax over 32
+configurations scored on the same 60 questions. It does not survive a held-out
+split and should not be quoted again.
+
+The two folds do not even agree on the winner: tuning on even picks
+`1/0.25/0.5`, tuning on odd picks `1/0.0/0.5`. An argmax unstable across a
+coin-flip split is noise being read as structure.
+
+What the grid does establish, against the intuition that a weak lane dilutes a
+strong one: **both non-BM25 lanes pay for themselves.** With #213 on, removing
+the embedding lane (`1/1.0/0.0`) gives 0.758 and removing the lexical lane
+(`1/0.0/0.0`) gives 0.802, both below equal weights' 0.820. RRF fuses RANKS, so
+a lane with a worse average still contributes on the questions where it is
+right. "We fuse a 0.911 lane with a 0.425 lane at equal weight" is a true
+sentence that licenses no conclusion.
+
+Does not license: extending this to another corpus. It is one split of one
+group, n=60, and the relevant claim is only that this knob is not where the
+remaining 0.091 to BM25 is hiding.
