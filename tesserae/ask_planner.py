@@ -631,6 +631,9 @@ def _document_corpus(root: Path) -> Tuple[List[str], List[str], Any]:
 
     cache: Dict[str, str] = {}
     seen: Dict[str, str] = {}
+    #: unit -> its individual file texts. The dense lane scores these SEPARATELY
+    #: and takes the unit's best; see _rank_source_documents for why.
+    members: Dict[str, List[str]] = {}
     for page in wiki.rglob("*.md"):
         try:
             head = page.read_text(encoding="utf-8", errors="ignore")[:2000]
@@ -651,7 +654,10 @@ def _document_corpus(root: Path) -> Tuple[List[str], List[str], Any]:
         unit = str(Path(sp).parent)
         if unit in seen:
             continue
-        body = _read_source(sp, cache, root)
+        parts_ = []
+        first = _read_source(sp, cache, root)
+        if first:
+            parts_.append(first)
         try:
             siblings = sorted(
                 q for q in Path(sp).parent.glob("*.md") if str(q) != sp
@@ -661,11 +667,26 @@ def _document_corpus(root: Path) -> Tuple[List[str], List[str], Any]:
         for sib in siblings:
             extra = _read_source(str(sib), cache, root)
             if extra:
-                body = f"{body}\n\n{extra}" if body else extra
-        if body:
-            seen[unit] = body
+                parts_.append(extra)
+        if parts_:
+            seen[unit] = "\n\n".join(parts_)
+            members[unit] = parts_
     paths, texts = list(seen), [seen[p] for p in seen]
 
+    # The dense lane embeds each FILE and later takes the unit's best, rather
+    # than embedding the pooled text.
+    #
+    # model2vec mean-pools one vector per input, so concatenating abstract.md
+    # into paper.md averages the abstract's focused signal into the paper's
+    # mass. Measured on 284 questions, lane by lane, same corpus:
+    #
+    #     lane        file-level R@10   unit-pooled R@10
+    #     bm25            0.8607            0.8695   pooling helps
+    #     lexical         0.6757            0.6976   pooling helps
+    #     embedding       0.7857            0.6578   pooling DESTROYS it
+    #
+    # An earlier check concluded pooling was fine because it compared the FUSED
+    # score, where two improving lexical lanes masked a collapsing dense one.
     vectors = None
     try:
         from .retrieval.hybrid import active_embedding_backend
@@ -673,7 +694,13 @@ def _document_corpus(root: Path) -> Tuple[List[str], List[str], Any]:
 
         backend = active_embedding_backend("model2vec")
         if backend.name.startswith("model2vec:") and texts:
-            vectors = (backend, embed_texts(backend, texts))
+            flat: List[str] = []
+            owner: List[int] = []
+            for i, unit in enumerate(paths):
+                for member in members.get(unit) or [seen[unit]]:
+                    flat.append(member)
+                    owner.append(i)
+            vectors = (backend, embed_texts(backend, flat), owner)
     except Exception:  # noqa: BLE001 — a missing embedder degrades to 2 lanes
         vectors = None
 
@@ -703,15 +730,18 @@ def _rank_source_documents(root: Path, query: str, k: int) -> List[Tuple[str, st
         "lexical": _lexical_scores(query, texts),
     }
     if vectors is not None:
-        backend, vecs = vectors
+        backend, vecs, owner = vectors
         import math
 
         qv = backend.embed([query])[0]
         qn = math.sqrt(sum(v * v for v in qv)) or 1.0
-        lanes["embedding"] = [
-            sum(a * b for a, b in zip(qv, dv)) / ((math.sqrt(sum(v * v for v in dv)) or 1.0) * qn)
-            for dv in vecs
-        ]
+        best = [float("-inf")] * len(texts)
+        for vec, unit_i in zip(vecs, owner):
+            dn = math.sqrt(sum(v * v for v in vec)) or 1.0
+            sim = sum(a * b for a, b in zip(qv, vec)) / (dn * qn)
+            if sim > best[unit_i]:
+                best[unit_i] = sim
+        lanes["embedding"] = [0.0 if b == float("-inf") else b for b in best]
     weights = {name: DEFAULT_WEIGHTS.get(name, 1.0) for name in lanes}
     fused, _ = _fuse(lanes, weights, len(texts))
     order = sorted(range(len(fused)), key=lambda i: (-fused[i], i))
