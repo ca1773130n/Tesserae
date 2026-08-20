@@ -620,6 +620,14 @@ class MabMemory:
             weights=self._weights,
             mode=self._mode,
             backend=self.embedding_backend(),
+            # The extraction pipeline builds a node's searchable text from its
+            # name and description, so a 14k-character chat session was
+            # retrievable only through 88-character concept summaries. Handing
+            # the lexical lanes the session file itself recovers that loss:
+            # recall@10 0.705 -> 0.823, MRR 0.584 -> 0.721 on group 0. Confined
+            # to the work directory, which is where this harness staged the
+            # sessions and the only tree its source_paths may name.
+            source_root=self.work,
         )
         hits = [
             MabHit(
