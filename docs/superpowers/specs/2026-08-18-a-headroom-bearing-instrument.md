@@ -499,3 +499,62 @@ licenses only that THIS graph, at THIS seeding, on THIS corpus, does not — whi
 a 256-dimension embedding does, significantly, in the quarter of questions where
 it matters. Reproduce with
 `~/.blackhole/Tesserae/2026-08-21/lexical_strata.py` and `strata_ci.py`.
+
+## §17. The graph beats BM25 — once the walk is seeded the way the field seeds it
+
+§16 found the regime (questions whose words do not match their answer) but also
+found the graph tied-to-harmful inside it. That was a property of the SEEDING,
+not of the graph.
+
+`personalized_pagerank` spread teleport mass uniformly over its seeds, so the
+only way to seed widely was to seed badly: uniform mass over every node is not a
+personalized walk, it is plain PageRank. The shipped caller compensated by
+seeding narrowly — top 25 — which can re-rank what lexical search already found
+and cannot reach past it. `seed_weights` (committed 9921206c) is the half of
+HippoRAG 2's design Tesserae could not express.
+
+Measured on Q1, the 71 lowest-overlap questions, R@10 against BM25's 0.740,
+paired bootstrap 4,000 resamples:
+
+| seeding | R@10 | gap vs BM25 |
+|---|---|---|
+| k=25, uniform (what shipped) | 0.733 | −0.007 [−0.065, +0.056] |
+| **k=200, weighted** | **0.814** | **+0.075 [+0.019, +0.133]** |
+| ALL nodes, weighted | 0.622 | −0.118 [−0.199, −0.042] |
+| ALL nodes, uniform | 0.130 | −0.609 [−0.681, −0.539] |
+
+**The two controls carry the argument.** Broad + uniform collapses to 0.130 —
+the predicted degeneration to plain PageRank, and the reason "just seed
+everything" is not the lesson. The same broad seeds, weighted, recover ~+0.49.
+Breadth is worthless without the personalization; the personalization is what
+makes breadth affordable. And breadth past ~300 stops paying regardless.
+
+**It survives a held-out split**, which the lane-weight lever in §15 did not:
+
+| seed k | 50 | 100 | 150 | 200 | 300 | 400 | 600 |
+|---|---|---|---|---|---|---|---|
+| gap | +0.062 | +0.078 | +0.070 | +0.075 | +0.063 | +0.031 | −0.008 |
+| CI excludes 0 | yes | yes | yes | yes | yes | no | no |
+
+Cross-validated gap **+0.063** against a full-set argmax of +0.078 — an optimism
+gap of +0.015, versus §15's +0.037 which consumed its whole effect. A smooth
+plateau from 50 to 300 with graceful decay past 400 is what a real effect looks
+like; a spike at one k would not have been one.
+
+`SEED_K` is therefore 150 — the CENTRE of the plateau, deliberately not the
+k=100 argmax, because picking the argmax on the questions you score is the error
+§15 records.
+
+**This is the first time in this document that the graph beats a lexical
+baseline on anything.** It is also narrow: the win lives in one stratum, and in
+the high-overlap stratum the walk still costs −0.060. The honest claim is
+conditional — structure pays where vocabulary fails, and should not be consulted
+where it does not.
+
+Does not license: enabling this on the product ask path. That path's PPR is
+budget-capped at `_CONTEXT_BUDGET = 1_800` against 4,000-character bodies and
+§12 measured it delivering exactly ONE node, so the seeding change cannot help
+there until the budget is fixed too. Nor does it license a claim about
+LongMemEval: this is the demo corpus, gold-DOCUMENT recall, n=71 in the stratum
+that matters. Reproduce with `~/.blackhole/Tesserae/2026-08-21/broad_seed.py`
+and `seed_k_cv.py`.
