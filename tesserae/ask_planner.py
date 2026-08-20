@@ -613,6 +613,34 @@ _SOURCE_PATH_RE = re.compile(r"^source_path:\s*(.+?)\s*$", re.MULTILINE)
 _DOC_CORPUS_CACHE: Dict[Tuple[str, float], Tuple[List[str], List[str], Any]] = {}
 
 
+def _corpus_key(root: Path) -> Tuple[str, float]:
+    """Cache key for everything derived from this project's source documents.
+
+    The wiki is the document index, so its newest page is what says whether a
+    derived table is stale. Shared by every cache below so they can never
+    disagree about which corpus they describe.
+    """
+    wiki = Path(root) / ".tesserae" / "wiki"
+    try:
+        stamp = max((p.stat().st_mtime for p in wiki.rglob("*.md")), default=0.0)
+    except OSError:
+        stamp = 0.0
+    return (str(root), stamp)
+
+
+def _unit_of(source_path: str) -> str:
+    """The retrieval UNIT a source file belongs to — the directory holding it.
+
+    :func:`_document_corpus` indexes a DIRECTORY of markdown as one document
+    (a paper is ``abstract.md`` plus ``paper.md``), while
+    :func:`_source_path_of` hands back a FILE. Mixing the two in one dedupe set
+    means the guard can never fire, and the same document is pasted into the
+    prompt twice — measured at 15.6% of every absent-relation prompt on the
+    demo corpus. One key space, computed here, is what makes it fire.
+    """
+    return str(Path(source_path).parent)
+
+
 def _document_corpus(root: Path) -> Tuple[List[str], List[str], Any]:
     """(paths, texts, vectors) for every source document the wiki points at.
 
@@ -620,15 +648,11 @@ def _document_corpus(root: Path) -> Tuple[List[str], List[str], Any]:
     source each page was projected from, so no new artifact and no recompile.
     Reads are confined by :func:`_read_source`.
     """
-    wiki = Path(root) / ".tesserae" / "wiki"
-    try:
-        stamp = max((p.stat().st_mtime for p in wiki.rglob("*.md")), default=0.0)
-    except OSError:
-        stamp = 0.0
-    key = (str(root), stamp)
+    key = _corpus_key(root)
     if key in _DOC_CORPUS_CACHE:
         return _DOC_CORPUS_CACHE[key]
 
+    wiki = Path(root) / ".tesserae" / "wiki"
     cache: Dict[str, str] = {}
     seen: Dict[str, str] = {}
     #: unit -> its individual file texts. The dense lane scores these SEPARATELY
@@ -874,16 +898,22 @@ def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits
         # by only 2 points (41.2% -> 39.1%). More of the wrong text does not help.
         #
         # The wiki frontmatter carries `source_path`, so the source is reachable
-        # here without a recompile. Deduplicated per document: several hits
-        # routinely project from one paper, and repeating it spends the budget on
-        # copies instead of coverage.
+        # here without a recompile. Deduplicated per document UNIT, not per
+        # file: the document lane above records what it emitted under the unit
+        # directory `_document_corpus` indexes it by, so comparing a file path
+        # against that set never matched and every document the lane had
+        # already pasted was pasted a second time, verbatim.
         _sp = _source_path_of(hit)
-        if _sp and _sp not in _docs_emitted:
+        _unit = _unit_of(_sp) if _sp else ""
+        _admit_unit = ""
+        if _unit and _unit not in _docs_emitted:
             _raw = _read_source(_sp, _source_cache, _source_root)
             if _raw:
-                _docs_emitted.add(_sp)
                 body = _raw
+                _admit_unit = _unit
         body = (body or hit.excerpt)[:SYNTHESIS_SOURCE_CHARS]
+        if _admit_unit:
+            _docs_emitted.add(_admit_unit)
         parts.append(f'<source kind="{hit.kind}" title="{hit.title}" node_id="{hit.node_id or ""}">')
         parts.append(body)
         parts.append("</source>")

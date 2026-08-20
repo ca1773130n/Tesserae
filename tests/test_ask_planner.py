@@ -712,3 +712,85 @@ def test_bundle_anchors_are_rewritten_to_resolvable_node_ids(tmp_path):
     assert "[Concept:retrieval]" in evidence or "[Concept:fusion]" in evidence
     # And a citation the model copied from the evidence resolves to a name.
     assert "[Rank fusion]" in envelope["answer"]
+
+
+# ---------------------------------------------------------------------------
+# Synthesis prompt: what is admitted into it, and once
+# ---------------------------------------------------------------------------
+
+
+class _Hit:
+    """The shape `_build_synthesis_message` reads off a wiki search hit."""
+
+    def __init__(self, kind, title, node_id, page_text, excerpt=""):
+        self.kind = kind
+        self.title = title
+        self.node_id = node_id
+        self.page_text = page_text
+        self.excerpt = excerpt
+
+
+def _make_source_project(tmp_path: Path):
+    """A project whose wiki pages point at real source documents.
+
+    Two units, because `_document_corpus` indexes a DIRECTORY as one document
+    and a term's document frequency is what the admission gate reads. `alpha`
+    carries a rare vocabulary; `beta` carries none of it.
+    """
+    project = tmp_path / "demo"
+    wiki_dir = project / ".tesserae" / "wiki" / "concepts"
+    wiki_dir.mkdir(parents=True)
+
+    alpha = project / "corpus" / "alpha"
+    beta = project / "corpus" / "beta"
+    alpha.mkdir(parents=True)
+    beta.mkdir(parents=True)
+    (alpha / "paper.md").write_text(
+        "SENTINEL-ALPHA-BODY. Zygomorphic flange calibration is how the rig "
+        "settles. It does work when the plate is warm.\n",
+        encoding="utf-8",
+    )
+    (beta / "paper.md").write_text(
+        "SENTINEL-BETA-BODY. A plate warms and it does work. Nothing here "
+        "settles anything else.\n",
+        encoding="utf-8",
+    )
+    (wiki_dir / "alpha.md").write_text(
+        "---\ntitle: Alpha\nsource_path: %s\n---\n"
+        "# Alpha\nZygomorphic calibration, summarised.\n" % (alpha / "paper.md"),
+        encoding="utf-8",
+    )
+    (wiki_dir / "beta.md").write_text(
+        "---\ntitle: Beta\nsource_path: %s\n---\n"
+        "# Beta\nThe plate warms.\n" % (beta / "paper.md"),
+        encoding="utf-8",
+    )
+    return project, alpha, beta
+
+
+def _hits_for(alpha: Path, beta: Path):
+    return [
+        _Hit("concepts", "Alpha", "Concept:alpha",
+             "---\ntitle: Alpha\nsource_path: %s\n---\n"
+             "# Alpha\nZygomorphic calibration, summarised.\n" % (alpha / "paper.md")),
+        _Hit("concepts", "Beta", "Concept:beta",
+             "---\ntitle: Beta\nsource_path: %s\n---\n"
+             "# Beta\nThe plate warms.\n" % (beta / "paper.md")),
+    ]
+
+
+def test_a_document_the_fusion_lane_already_pasted_is_not_pasted_again(tmp_path):
+    """The two lanes keyed their dedupe set differently — the document lane by
+    unit DIRECTORY, the hit lane by FILE path — so the guard could never match
+    and every ranked document was emitted twice, verbatim."""
+    from tesserae.ask_planner import _build_synthesis_message
+
+    project, alpha, beta = _make_source_project(tmp_path)
+
+    message = _build_synthesis_message(
+        "how does it work", [], _hits_for(alpha, beta), source_root=project
+    )
+
+    assert message.count('kind="document"') == 2  # the fusion lane ran
+    assert message.count("SENTINEL-ALPHA-BODY") == 1
+    assert message.count("SENTINEL-BETA-BODY") == 1
