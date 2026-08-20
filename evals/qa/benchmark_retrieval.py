@@ -89,7 +89,15 @@ class QABenchmarkRetrieval(QABenchmarkRAG):  # type: ignore[misc,valid-type]
         #: The corpus this arm actually indexes. Unlike the null model, which
         #: discards every document, this one keeps them — that difference is
         #: the whole point of running both.
-        self.documents: List[str] = []
+        #:
+        #: Seeded from the constructor rather than waiting for
+        #: :meth:`insert_document`. The harness only calls that during a staging
+        #: phase, and ``--answer`` alone skips it: the first real run of this arm
+        #: retrieved from an empty index for all 332 questions and reported token
+        #: F1 of 0.009-0.057, which is the null model wearing a retrieval label.
+        #: `documents_indexed: 0` was printed in the fairness declarations and is
+        #: the only reason it was caught.
+        self.documents: List[str] = [d for d in (corpus or []) if isinstance(d, str)]
         self.prompts_sent: List[Dict[str, str]] = []
         self.client_factory = None
         self._index: Optional[Dict[str, Any]] = None
@@ -121,12 +129,19 @@ class QABenchmarkRetrieval(QABenchmarkRAG):  # type: ignore[misc,valid-type]
         return None
 
     async def insert_document(self, document: str, document_id: int) -> None:
-        """Keep the document. The index is built lazily on the first query, so
-        that every document is present before any lane is fitted — a lane fitted
-        incrementally would score early questions against a smaller corpus."""
+        """Accept a document the harness feeds us, if it feeds us any.
+
+        Idempotent against constructor seeding: a document already held is not
+        stored twice, so a staged run and an ``--answer``-only run index the
+        same corpus and produce comparable numbers. The index is invalidated
+        rather than extended, so every lane is fitted once over the whole corpus
+        — a lane fitted incrementally would score early questions against a
+        smaller corpus than late ones.
+        """
         del document_id
-        self.documents.append(document)
-        self._index = None
+        if document not in self.documents:
+            self.documents.append(document)
+            self._index = None
 
     def _build_index(self) -> Dict[str, Any]:
         from tesserae.retrieval.hybrid import _tokenize
@@ -173,6 +188,16 @@ class QABenchmarkRetrieval(QABenchmarkRAG):  # type: ignore[misc,valid-type]
         return [i for i in order[: self.config.top_k] if scores[i] > 0.0]
 
     async def query_rag(self, question: str) -> str:
+        if not self.documents:
+            # A retrieval arm with no documents is a null model with a
+            # misleading name. Refusing here costs one question; answering
+            # produces a full table of numbers that look like retrieval and are
+            # not, which is the failure this whole benchmark exists to avoid.
+            raise RuntimeError(
+                "retrieval arm has no documents to retrieve from — the corpus "
+                "never reached it (check --corpus, and that the harness either "
+                "stages or passes it to the constructor)"
+            )
         picked = self._rank(question)
         blocks = [
             f"<source id=\"{i}\">\n{self.documents[i][: self.config.doc_chars]}\n</source>"
@@ -192,8 +217,26 @@ class QABenchmarkRetrieval(QABenchmarkRAG):  # type: ignore[misc,valid-type]
         return answer.strip()
 
     def declared_meta(self) -> Dict[str, Any]:
+        # embedding_model / embedding_dim are FAIRNESS_KEYS: without them the
+        # scorer withholds the ranking, and correctly — the hybrid lane and the
+        # graph arm both embed, and if either silently fell back to the
+        # hash-bucket stub the comparison would measure embedders rather than
+        # memories. Read from the LIVE backend, never hardcoded: a hardcoded
+        # declaration passes the gate while the run used something else.
+        model, dim = "none", "none"
+        if self.config.lane == "hybrid":
+            try:
+                from tesserae.retrieval.hybrid import active_embedding_backend
+
+                backend = (self._index or {}).get("backend") or active_embedding_backend("model2vec")
+                model = getattr(backend, "name", "unknown")
+                dim = getattr(backend, "dim", None) or len(backend.embed(["x"])[0])
+            except Exception as exc:  # pragma: no cover - environment-dependent
+                model, dim = f"unresolved: {exc}", "unknown"
         return {
             "answer_shape": self.config.answer_shape,
+            "embedding_model": model,
+            "embedding_dim": dim,
             "llm_model": self.config.model,
             "llm_provider": self.config.provider,
             "retrieval_lane": self.config.lane,

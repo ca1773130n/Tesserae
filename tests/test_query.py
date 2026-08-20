@@ -703,7 +703,7 @@ def _planner_wiki(tmp_path):
 def _record_planner(monkeypatch):
     calls = []
 
-    def fake_plan_and_answer(wiki, question, *, top_k=5):
+    def fake_plan_and_answer(wiki, question, *, top_k=5, answer_style="prose-cited"):
         calls.append(question)
         return {"answer": "planned", "hits": [], "plan": {"steps": []}}
 

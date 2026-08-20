@@ -193,6 +193,58 @@ def _empty_pool_reservations() -> Dict[str, Optional[Dict[str, object]]]:
     return {pool.value: None for pool in _pool_order()}
 
 
+#: Characters of RAW SOURCE text carried per distinct document. The retrieval
+#: baseline this bundle is measured against pastes 4,000 per document, and it is
+#: the reference the number is chosen against rather than a guess.
+SOURCE_EXCERPT_CHARS = 4_000
+
+
+def _source_text(node: ResearchNode, cache: Dict[str, str],
+                 root: Optional[str] = None) -> str:
+    """The raw source document behind ``node``, read once per path.
+
+    Why this exists. The bundle used to carry only EXTRACTED text — the node's
+    wiki projection or its description — and measurement showed exactly what
+    that costs: on 284 questions the right documents were cited for 91% of the
+    questions Tesserae refused, while only **38%** of the gold answer's content
+    words appeared anywhere in the bundle. The retriever was finding the
+    document and the bundle was then handing the model everything about it
+    except what it says.
+
+    This is the shape cognee reaches from the other direction: its
+    ``DocumentChunk`` is a first-class graph node carrying raw ``text``, so an
+    entity hit drags its whole source chunk into the context and extraction
+    never has to survive on its own. Ours replaced the text with the index.
+
+    Degrades silently to "" — a missing or unreadable source must never sink a
+    bundle (PITFALL 2), and 21% of real-graph nodes are derived and have no
+    source document by construction.
+    """
+    path = getattr(node, "source_path", None)
+    if not path:
+        return ""
+    key = f"{root}\x00{path}"
+    if key in cache:
+        return cache[key]
+    # CONFINED to the project root. `source_path` rides on a node minted from an
+    # ingested document, and Tesserae ingests from outside the project — so the
+    # value is not trusted. Unconfined, a crafted path is read and pasted into an
+    # LLM prompt, which exfiltrates it through the answer. Resolving both sides
+    # before comparing defeats `..` and symlinks alike; no root means read
+    # nothing rather than read anything.
+    text = ""
+    if root is not None:
+        try:
+            resolved = Path(path).resolve()
+            base = Path(root).resolve()
+            if resolved.is_relative_to(base) and resolved.is_file():
+                text = resolved.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, ValueError, RuntimeError):
+            text = ""
+    cache[key] = text
+    return text
+
+
 def _fetch_body(node: ResearchNode, store: Optional[WikiPageStore]) -> str:
     """Return the best available body text for ``node``, degrading gracefully.
 
@@ -833,6 +885,16 @@ def compile_context(
             for nid, score in full_ranked
             if nid in in_neighborhood and nid not in suppressed
         ]
+        # NOT fused with the seed ranking, deliberately. Letting the walk
+        # reorder is measurably wrong on R@1 (0.2295 vs 0.2620) and MRR (0.7963
+        # vs 0.8578) — it evicts 2.20 seed-ranked documents per question on 237
+        # of 284 — but the fix is worth only +0.001 R@10, which is the operating
+        # point, and three attempts at it each broke an invariant this module
+        # holds on purpose: PPR is insensitive to seed ORDER (multi_pool unions
+        # sub-queries and would otherwise change the answer) and mcp_server pins
+        # the walk's own ordering. A +0.001 change is not worth weakening either.
+        # Revisit only with a fusion that is seed-order-independent BY
+        # CONSTRUCTION and leaves the walk's contract intact.
         if view_names:
             # Single view: every walked node was reached by that view.
             via_map = {nid: view_names for nid, _ in pre_rank}
@@ -975,11 +1037,34 @@ def compile_context(
 
     selected: List[tuple] = []  # (node, body)
     chars_used = 0
+    _source_cache: Dict[str, str] = {}
+    _docs_emitted: set = set()
     for node_id, _score in ranked:
         node = node_index.get(node_id)
         if node is None:
             continue
         body = _fetch_body(node, store)
+        # Carry the SOURCE text for each distinct document the bundle touches,
+        # once. Deduplicated by path because several nodes routinely extract
+        # from one document and repeating it would spend the budget on copies
+        # instead of on coverage.
+        _sp = getattr(node, "source_path", None)
+        if _sp and _sp not in _docs_emitted:
+            _raw = _source_text(node, _source_cache, project_root)
+            if _raw:
+                _docs_emitted.add(_sp)
+                # REPLACE the extracted body with the source, do not append it.
+                # Appending pays for the same document twice: the first version
+                # of this change pushed the mean bundle from 17,106 to 34,307
+                # chars past a 32,000 default budget, so FEWER documents fit and
+                # the budget walk started evicting nodes — a multi-pool test
+                # caught it selecting a different node entirely. cognee does not
+                # pay twice either: its DocumentChunk's text IS the body.
+                #
+                # The node's own name is kept as the heading so the extracted
+                # layer still says WHY this document was retrieved, which is the
+                # part the graph contributes.
+                body = f"{_raw[:SOURCE_EXCERPT_CHARS]}"
         if budget > 0 and chars_used + len(body) > budget:
             # A valid query must never yield an empty bundle just because the
             # first ranked body overflows the budget: always include the FIRST

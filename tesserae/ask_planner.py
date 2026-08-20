@@ -13,7 +13,9 @@ caller falls back to the classic BM25 path unchanged.
 from __future__ import annotations
 
 import json
+import re
 import sys
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -266,8 +268,30 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
     if action == "wiki_search":
         from .query import WikiQuery
 
-        wq = WikiQuery(ctx.wiki.project_root, top_k=_as_int(args.get("top_k"), top_k, 8))
-        hits = wq.search(str(args.get("query") or ""))
+        # Retrieve to a budget of DISTINCT SOURCE DOCUMENTS, not of wiki pages.
+        #
+        # Several wiki pages routinely project from one paper, so a top_k of 10
+        # pages collapses to 7.2 distinct documents and 0.696 gold coverage,
+        # where the retrieval baseline delivers 10 documents at 0.896 — measured
+        # on 40 questions. Over-fetching pages and stopping at `k` distinct
+        # documents makes the two budgets the same thing, which is the only way
+        # the comparison is about the memory rather than about the unit each
+        # side happens to count in.
+        _k = _as_int(args.get("top_k"), top_k, 8)
+        wq = WikiQuery(ctx.wiki.project_root, top_k=_k * DOC_OVERFETCH)
+        _all = wq.search(str(args.get("query") or ""))
+        hits, _docs = [], set()
+        for _h in _all:
+            _sp = _source_path_of(_h)
+            if _sp is None:
+                hits.append(_h)          # no source to dedupe on; keep as-is
+                continue
+            if _sp in _docs:
+                continue                 # same paper, already represented
+            if len(_docs) >= _k:
+                break
+            _docs.add(_sp)
+            hits.append(_h)
         lines = [f"- [{h.kind}] {h.title}: {h.excerpt}" for h in hits]
         return _clip("\n".join(lines) or "(no wiki matches)"), hits
 
@@ -580,7 +604,193 @@ def _validated_proposal(raw: Any) -> Optional[Dict[str, Any]]:
     }
 
 
-def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits: List[Any]) -> str:
+_SOURCE_PATH_RE = re.compile(r"^source_path:\s*(.+?)\s*$", re.MULTILINE)
+
+
+#: Cached document corpora, keyed on (project_root, wiki mtime). Built once per
+#: project: reading every source on every query is 377 KB on the demo corpus but
+#: 8.7 MB at repo scale, which is not a per-query cost worth paying.
+_DOC_CORPUS_CACHE: Dict[Tuple[str, float], Tuple[List[str], List[str], Any]] = {}
+
+
+def _document_corpus(root: Path) -> Tuple[List[str], List[str], Any]:
+    """(paths, texts, vectors) for every source document the wiki points at.
+
+    The wiki's own frontmatter is the document index — it already records which
+    source each page was projected from, so no new artifact and no recompile.
+    Reads are confined by :func:`_read_source`.
+    """
+    wiki = Path(root) / ".tesserae" / "wiki"
+    try:
+        stamp = max((p.stat().st_mtime for p in wiki.rglob("*.md")), default=0.0)
+    except OSError:
+        stamp = 0.0
+    key = (str(root), stamp)
+    if key in _DOC_CORPUS_CACHE:
+        return _DOC_CORPUS_CACHE[key]
+
+    cache: Dict[str, str] = {}
+    seen: Dict[str, str] = {}
+    for page in wiki.rglob("*.md"):
+        try:
+            head = page.read_text(encoding="utf-8", errors="ignore")[:2000]
+        except OSError:
+            continue
+        m = _SOURCE_PATH_RE.search(head)
+        if not m:
+            continue
+        sp = m.group(1).strip().strip('"').strip("'")
+        if not sp:
+            continue
+        # Pool by UNIT, not by file. A paper is a directory holding abstract.md
+        # and paper.md, and a page names only one of them — indexing that file
+        # alone leaves the other invisible to ranking. The retrieval baseline
+        # pools every markdown in the unit, and that difference is the residue
+        # between 0.829 gold coverage here and its 0.896. Keyed on the directory
+        # so the two halves of one paper are one retrievable document.
+        unit = str(Path(sp).parent)
+        if unit in seen:
+            continue
+        body = _read_source(sp, cache, root)
+        try:
+            siblings = sorted(
+                q for q in Path(sp).parent.glob("*.md") if str(q) != sp
+            )
+        except (OSError, ValueError):
+            siblings = []
+        for sib in siblings:
+            extra = _read_source(str(sib), cache, root)
+            if extra:
+                body = f"{body}\n\n{extra}" if body else extra
+        if body:
+            seen[unit] = body
+    paths, texts = list(seen), [seen[p] for p in seen]
+
+    vectors = None
+    try:
+        from .retrieval.hybrid import active_embedding_backend
+        from .retrieval.vector_cache import embed_texts
+
+        backend = active_embedding_backend("model2vec")
+        if backend.name.startswith("model2vec:") and texts:
+            vectors = (backend, embed_texts(backend, texts))
+    except Exception:  # noqa: BLE001 — a missing embedder degrades to 2 lanes
+        vectors = None
+
+    _DOC_CORPUS_CACHE.clear()  # one project at a time; never grow unbounded
+    _DOC_CORPUS_CACHE[key] = (paths, texts, vectors)
+    return paths, texts, vectors
+
+
+def _rank_source_documents(root: Path, query: str, k: int) -> List[Tuple[str, str]]:
+    """Top-k (path, text) by three-lane fusion over RAW document text.
+
+    This is the configuration that measured best of everything tried: raw
+    markdown ranked by bm25 + lexical + embedding RRF scored 0.896 gold coverage
+    against 0.781 for wiki pages ranked by BM25 over projections, which is what
+    this path used before. The graph still decides WHICH documents exist to be
+    ranked — the wiki frontmatter is the index — it just no longer forces the
+    model to read our summary of a paper instead of the paper.
+    """
+    from .retrieval.hybrid import (DEFAULT_WEIGHTS, _bm25_scores, _fuse,
+                                   _lexical_scores, _tokenize)
+
+    paths, texts, vectors = _document_corpus(root)
+    if not paths:
+        return []
+    lanes = {
+        "bm25": _bm25_scores(_tokenize(query), [_tokenize(t) for t in texts]),
+        "lexical": _lexical_scores(query, texts),
+    }
+    if vectors is not None:
+        backend, vecs = vectors
+        import math
+
+        qv = backend.embed([query])[0]
+        qn = math.sqrt(sum(v * v for v in qv)) or 1.0
+        lanes["embedding"] = [
+            sum(a * b for a, b in zip(qv, dv)) / ((math.sqrt(sum(v * v for v in dv)) or 1.0) * qn)
+            for dv in vecs
+        ]
+    weights = {name: DEFAULT_WEIGHTS.get(name, 1.0) for name in lanes}
+    fused, _ = _fuse(lanes, weights, len(texts))
+    order = sorted(range(len(fused)), key=lambda i: (-fused[i], i))
+    return [(paths[i], texts[i]) for i in order[:k] if fused[i] > 0.0]
+
+
+def _source_path_of(hit: Any) -> Optional[str]:
+    """The source document a wiki hit was projected from, or None.
+
+    Read from the page's own frontmatter (`source_path:`), which the projector
+    already writes. The search index keys hits on wiki slugs like
+    ``entities:droid-slam`` that do not exist in ``graph.json``, so there is no
+    node to ask — the frontmatter is the only bridge back to the source, and it
+    needs no recompile.
+    """
+    text = getattr(hit, "page_text", None)
+    if not text:
+        return None
+    m = _SOURCE_PATH_RE.search(text[:2000])
+    if not m:
+        return None
+    return m.group(1).strip().strip('"').strip("'") or None
+
+
+def _read_source(path: str, cache: Dict[str, str], root: Optional[Path] = None) -> str:
+    """Read a source document once, CONFINED to ``root``. Degrades to "".
+
+    ``source_path`` comes out of a wiki page's frontmatter, and that value is not
+    trusted: Tesserae ingests documents and URLs from outside the project, a
+    document can carry its own frontmatter, and a wiki page is an ordinary file
+    a user or a tool can edit. Without this guard a crafted
+    ``source_path: /etc/ssh/id_rsa`` is read and pasted verbatim into an LLM
+    prompt — an arbitrary-file-read that exfiltrates through the answer.
+
+    So the resolved path must sit inside the project root. ``..`` is defeated by
+    resolving first and comparing the resolved forms; a symlink pointing out of
+    the tree is defeated by the same resolution. ``root=None`` means "no root to
+    confine to" and reads nothing rather than reading everything.
+    """
+    key = f"{root}\x00{path}"
+    if key in cache:
+        return cache[key]
+    text = ""
+    if root is not None:
+        try:
+            resolved = Path(path).resolve()
+            base = Path(root).resolve()
+            if resolved.is_relative_to(base) and resolved.is_file():
+                text = resolved.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, ValueError, RuntimeError):
+            text = ""
+    cache[key] = text
+    return text
+
+
+#: How many wiki pages to fetch per distinct source document wanted. Pages
+#: project from documents many-to-one, so retrieving `k` pages yields fewer than
+#: `k` documents; 3x over-fetch reaches a 10-document budget on this corpus with
+#: room to spare, and the loop stops at the budget rather than at the fetch.
+DOC_OVERFETCH = 3
+
+#: Characters of each retrieved source handed to the synthesis step.
+#:
+#: Was an unnamed `[:1000]` literal. On the 284-question benchmark the retrieval
+#: baseline pastes 4,000 characters per document and answered 93.7% of the
+#: questions; Tesserae clipped every source to a QUARTER of that and refused
+#: 41.2% of them — and 91% of those refusals had the right document cited, with
+#: only 38% of the gold answer's content words present anywhere in the prompt.
+#: A model cannot answer from evidence it was not shown, and refusing was the
+#: correct response to what it received.
+#:
+#: 4,000 is the baseline's allowance, so the two are now asked to answer from
+#: the same amount of text. It is a per-source cap, not a total: the number of
+#: sources is bounded upstream by top_k.
+SYNTHESIS_SOURCE_CHARS = 4_000
+
+
+def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits: List[Any],
+                             source_root: Optional[Path] = None) -> str:
     from .query import _strip_frontmatter  # noqa: PLC0415 — avoid import cycle at module load
 
     parts = [
@@ -599,11 +809,51 @@ def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits
         parts.append(ev["content"])
         parts.append("</source>")
         parts.append("")
+    _source_cache: Dict[str, str] = {}
+    _docs_emitted: set = set()
+    _source_root = source_root
+
+    # Rank the SOURCE DOCUMENTS for this question by three-lane fusion over
+    # their raw text, and lead with them. Measured gold coverage on 40
+    # questions: 0.829, against 0.781 for the wiki-page BM25 ordering these
+    # hits carry. The hits still supply citations and the graph still decides
+    # which documents exist to be ranked — this only stops the ORDER being
+    # decided by a BM25 pass over our own summaries.
+    if source_root is not None and question.strip():
+        try:
+            for _p, _t in _rank_source_documents(Path(source_root), question, 10):
+                if _p in _docs_emitted:
+                    continue
+                _docs_emitted.add(_p)
+                parts.append(f'<source kind="document" title="{Path(_p).name}">')
+                parts.append(_t[:SYNTHESIS_SOURCE_CHARS])
+                parts.append("</source>")
+        except Exception:  # noqa: BLE001 — never sink a plan on the extra lane
+            pass
     for hit in hits:
         body = ""
         if hit.page_text:
             body = _strip_frontmatter(hit.page_text).strip()
-        body = (body or hit.excerpt)[:1000]
+        # Prefer the SOURCE document over the wiki projection.
+        #
+        # `hit.page_text` is the wiki page — a projection of the extracted node —
+        # so this path never showed the model the prose it was extracted FROM.
+        # Measured: 91% of Tesserae's refusals had the right document cited while
+        # only 38% of the gold answer's content words appeared in the prompt, and
+        # raising the clip from 1,000 to 4,000 chars of PROJECTION moved refusals
+        # by only 2 points (41.2% -> 39.1%). More of the wrong text does not help.
+        #
+        # The wiki frontmatter carries `source_path`, so the source is reachable
+        # here without a recompile. Deduplicated per document: several hits
+        # routinely project from one paper, and repeating it spends the budget on
+        # copies instead of coverage.
+        _sp = _source_path_of(hit)
+        if _sp and _sp not in _docs_emitted:
+            _raw = _read_source(_sp, _source_cache, _source_root)
+            if _raw:
+                _docs_emitted.add(_sp)
+                body = _raw
+        body = (body or hit.excerpt)[:SYNTHESIS_SOURCE_CHARS]
         parts.append(f'<source kind="{hit.kind}" title="{hit.title}" node_id="{hit.node_id or ""}">')
         parts.append(body)
         parts.append("</source>")
@@ -618,13 +868,15 @@ def plan_and_answer(
     top_k: int = 5,
     history: Optional[List[Dict[str, Any]]] = None,
     client: Any = None,
+    answer_style: str = "prose-cited",
 ) -> Optional[Dict[str, Any]]:
     """Full plan→execute→synthesize pass. Returns an ``ask_project``-shaped
     envelope, or None when no LLM backend is usable / planning fails — the
     caller then falls back to the classic BM25 path."""
 
     try:
-        return _plan_and_answer(wiki, question, top_k=top_k, history=history, client=client)
+        return _plan_and_answer(wiki, question, top_k=top_k, history=history,
+                                client=client, answer_style=answer_style)
     except Exception as exc:  # noqa: BLE001 — planner bugs must never sink `ask`
         print(f"(ask planner error: {type(exc).__name__}: {exc} — falling back to wiki search)", file=sys.stderr)
         return None
@@ -637,6 +889,7 @@ def _plan_and_answer(
     top_k: int,
     history: Optional[List[Dict[str, Any]]],
     client: Any,
+    answer_style: str = "prose-cited",
 ) -> Optional[Dict[str, Any]]:
     if client is None:
         from .llm_json import build_rotating_client
@@ -691,10 +944,18 @@ def _plan_and_answer(
     from .query import WikiQuery
 
     wq = WikiQuery(wiki.project_root, top_k=top_k)
+    # The planner builds its OWN WikiQuery, so ask_project's answer_style has to
+    # be handed over explicitly. Without this the graph route — the main route —
+    # silently ignored the parameter and answered in cited prose while the run
+    # DECLARED short-span, which is exactly the mismatch the fairness gate
+    # exists to catch. Measured: 87.5 words mean against 10-15 for every other
+    # arm in the same benchmark.
+    wq.answer_style = answer_style
     system_text = "\n\n".join(
         str(b.get("text", "")) for b in wq._system_blocks() if isinstance(b, dict) and b.get("text")
     )
-    message = _build_synthesis_message(question, evidence, hits)
+    message = _build_synthesis_message(question, evidence, hits,
+                                       source_root=getattr(wiki, 'project_root', None))
     if history:
         prior = "\n\n".join(
             f"{t.get('role')}: {t.get('content')}"
@@ -711,8 +972,14 @@ def _plan_and_answer(
         return None
     if not body or not body.strip():
         return None
-    if not NODE_CITATION_RE.search(body):
-        return None  # ungrounded prose — let the classic path report honestly
+    if answer_style != "short-span" and not NODE_CITATION_RE.search(body):
+        # Ungrounded prose — let the classic path report honestly.
+        #
+        # Skipped for short-span, whose preamble FORBIDS citations: applying it
+        # there would reject every planner answer and silently fall back to a
+        # different retrieval path, so the two answer styles would differ in
+        # what they retrieved and not only in how they phrased it.
+        return None
 
     id_to_name: Dict[str, str] = {h.node_id: h.title for h in hits if h.node_id and h.title}
     id_to_name.update(ctx.citation_names)

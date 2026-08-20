@@ -155,7 +155,8 @@ def _build_benchmark(system: str, corpus: Sequence[str], questions: Sequence[Map
                 list(corpus), qa_pairs,
                 TesseraeConfig(
                     project_root=str(Path(args.project).expanduser()),
-                    backend=args.backend, route=args.route, top_k=args.top_k,
+                    backend=args.backend,
+                answer_style=args.answer_style, route=args.route, top_k=args.top_k,
                     no_llm=args.no_llm, print_results=False,
                     results_file=str(args.answers_out) if args.answers_out else "",
                 ),
@@ -529,6 +530,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Tesserae retrieval only — measures excerpts, not answers")
     parser.add_argument("--model", default=None,
                         help="answering LLM model id, for every arm that takes one")
+    parser.add_argument("--answer-style", default="short-span",
+                        choices=("short-span", "prose-cited"),
+                        help="the shape EVERY arm is asked for. Defaults to short-span because EM and token F1 run over the whole answer string; prose-cited reproduces the product default and is not comparable with the baselines.")
     parser.add_argument("--provider", default=None,
                         help="answering LLM provider (claude|codex). MUST match "
                              "across arms: scorer.FAIRNESS_KEYS blocks a "
