@@ -342,3 +342,58 @@ recall. A bundle of twenty citations from eight documents may serve an agent
 better than twenty documents' worth of shallower evidence — that is a different
 experiment (`evals/qa/` has the scorer) and it has not been run. Nor does it
 license a conclusion beyond one corpus, one embedder, and K = 10.
+
+## §14. Extraction text loss, not the retrieval unit
+
+§13 blamed `merge_node_group`'s singular `source_path` for the LongMemEval
+deficit. That was real but it was the smaller half. Decomposed on group 0:
+
+| what is retrieved | recall@10 |
+|---|---|
+| whole session documents (BM25) | 0.911 |
+| each session's concatenated GRAPH text, unit still the session | 0.756 |
+| graph nodes | 0.710 |
+
+The first step, **−0.155, is pure extraction text loss**; the second, −0.046,
+is the node-not-session retrieval unit that §13 named. Extraction loss is over
+three times larger.
+
+The cause is `_node_text` (`tesserae/retrieval/hybrid.py`): a node's searchable
+string is id + name + type + description + aliases + metadata. A 14k-character
+chat session was therefore reachable only through 88-character concept
+summaries. One question asked what speed a new internet plan was; the extractor
+minted 66 nodes for that session and not one mentions Mbps. The raw file does,
+and it was on disk the whole time at `node.source_path`.
+
+Giving document-anchor nodes their own file back, in the BM25 and lexical lanes
+only (PR #213), measured through the shipped adapter:
+
+| method | recall@10 | MRR |
+|---|---|---|
+| BM25 | 0.911 | 0.803 |
+| Tesserae, patched | **0.820** | **0.707** |
+| Tesserae, before | 0.705 | 0.584 |
+
++0.115 / +0.123, 8.4x the noise floor, 56% of the gap to BM25 closed on both
+metrics. The BM25 and Dense rows are bit-identical across the two runs, which
+is the control that the change touched only the arm that opted in.
+
+**The lexical-only gate is load-bearing.** Raw text in all three lanes scores
+0.803/0.612 — worse than lexical-only's 0.820/0.707 — because 8k characters
+mean-pooled into 256 dimensions is the per-file pooling failure already on
+record at 0.7857 -> 0.6578. A version of this change that "just adds the source
+text" would have measured as a smaller win and hidden the reason.
+
+This is the shape the competitor audit found everywhere: HippoRAG 2 adds
+passage nodes and says why in the paper ("concepts are concise but often entail
+information loss"); cognee keeps `DocumentChunk` text verbatim; A-Mem keeps the
+original interaction. The three systems that replace text with an extracted
+fact string — Zep, Mem0, Graphiti/MegaMem — report no LongMemEval retrieval
+recall at all. Structure should select text, not replace it.
+
+Does not license: any comparison to a published LongMemEval figure. The
+protocol here uses a local 256-dimension embedder where the published one fixes
+text-embedding-3-small, no answering was done, and the retrieval unit is this
+harness's choice. Nor does it license enabling `source_root` on the product
+query path: this raises prompt volume, and §12's audit blames volume for the
+52.9% fabrication rate. That measurement has not been run.
