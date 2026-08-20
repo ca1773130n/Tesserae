@@ -429,6 +429,63 @@ def test_vector_cache_scores_are_identical_cold_warm_and_uncached(tmp_path):
     assert warm_backend.calls == 0
 
 
+
+def test_vector_cache_scores_do_not_depend_on_the_order_texts_are_asked_for(tmp_path):
+    """The sidecar read sorts its hashes; no score may move because of it.
+
+    ``read_node_vector_blobs`` looks its hashes up in sorted order so a
+    corpus-sized read walks the primary key forwards rather than seeking around
+    it (241 ms unsorted against 179 ms sorted on this project's own 65,190-row
+    sidecar). The order a caller asks in is a node order, so sorting reshuffles
+    which key lands in which bound-parameter chunk — an ordering change deep
+    under the scoring path.
+
+    "Results must not depend on list position" is an invariant this repo has
+    reverted a change for before, so it is pinned here at the level that
+    matters: the same nodes, presented in a different order, must produce the
+    same per-node embedding score to the bit, and the ranked ids and scores
+    must be unchanged against the same query served with no cache at all.
+    """
+    from tesserae.retrieval.vector_cache import VectorCache
+
+    graph = _eight_node_graph()
+    query = "gaussian splatting"
+
+    cache = VectorCache.for_project(_project(tmp_path, "proj"))
+    hybrid_search(graph, query, backend=_CountingBackend(), vector_cache=cache)
+
+    warm_backend = _CountingBackend()
+    forwards = hybrid_search(
+        graph,
+        query,
+        top_k=len(graph.nodes),
+        backend=warm_backend,
+        vector_cache=cache,
+        candidate_filter=list(graph.nodes),
+    )
+    assert warm_backend.calls == 0  # the sidecar really did serve this run
+    backwards = hybrid_search(
+        graph,
+        query,
+        top_k=len(graph.nodes),
+        backend=_CountingBackend(),
+        vector_cache=cache,
+        candidate_filter=list(reversed(graph.nodes)),
+    )
+
+    def _embedding_by_node(result):
+        return {item.node.id: item.per_lane["embedding"] for item in result.scored}
+
+    assert _embedding_by_node(forwards) == _embedding_by_node(backwards)
+    assert forwards.total_matches == backwards.total_matches
+
+    # ...and the cached ranking is still the uncached ranking, ids and scores.
+    uncached = hybrid_search(graph, query, backend=_CountingBackend())
+    assert _scores(hybrid_search(
+        graph, query, backend=_CountingBackend(), vector_cache=cache
+    )) == _scores(uncached)
+
+
 def test_vector_cache_reembeds_changed_text_but_not_a_relocated_project(tmp_path):
     """The key is the embedded TEXT, not the node id or the project path.
 

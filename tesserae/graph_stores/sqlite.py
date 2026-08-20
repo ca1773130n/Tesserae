@@ -966,6 +966,24 @@ class SqliteGraphStore:
         :meth:`read_node_vectors` is the decoding wrapper for callers that want
         floats, so both share ONE query.
 
+        The hashes are looked up in SORTED order, and that is the whole of
+        this method's cost story on a corpus-sized read. The primary key is
+        ``(backend_name, backend_dim, text_sha256)``, so a sorted batch walks
+        that index forwards; the order a caller asks in is a NODE order, which
+        against a sha256 is effectively random, and every chunk of it seeks
+        somewhere new in a multi-hundred-megabyte file. Measured on this
+        project's own 65,190-row sidecar, warm: 241 ms unsorted against 179 ms
+        sorted, which is 15% of the embedding lane.
+
+        Sorting cannot move a score. The return is a mapping the caller
+        indexes by key — no caller iterates it, and the vectorised lane
+        rebuilds its matrix in the order of its OWN text list, not this one.
+        ``tests/test_sqlite_graph_store.py`` pins that the mapping is
+        identical whichever order it was asked in, and
+        ``tests/test_hybrid_search.py`` pins it at the score level, because
+        "results must not depend on list position" is an invariant this repo
+        has already had to revert a change for.
+
         Only rows matching BOTH ``backend_name`` and ``backend_dim`` are
         returned — a vector produced by another model lives in another space
         and must never be served as this one's.
@@ -973,7 +991,7 @@ class SqliteGraphStore:
         The hash list is queried in chunks so a corpus-sized read stays under
         SQLite's bound-parameter limit instead of raising on large graphs.
         """
-        wanted = [h for h in dict.fromkeys(text_hashes) if h]
+        wanted = sorted({h for h in text_hashes if h})
         if not wanted:
             return {}
         out: Dict[str, bytes] = {}

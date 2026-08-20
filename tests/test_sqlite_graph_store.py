@@ -321,3 +321,48 @@ def test_node_vectors_read_handles_more_than_one_chunk(tmp_path: Path) -> None:
     got = store.read_node_vectors("model:a", 2, [key for key, _ in rows])
     assert len(got) == 1200
     assert got["hash-1199"] == [1199.0, 0.5]
+
+
+
+def test_node_vectors_read_does_not_depend_on_requested_order(tmp_path: Path) -> None:
+    """The read sorts its hashes, and that must be invisible in the answer.
+
+    Sorted lookups walk the ``(backend_name, backend_dim, text_sha256)``
+    primary key forwards instead of seeking around it: 241 ms unsorted against
+    179 ms sorted on this project's own 65,190-row sidecar, warm. Sorting is
+    only allowed to change what that read COSTS, so the mapping has to be
+    identical whichever order it was asked in — including for a batch that
+    spans several bound-parameter chunks, where sorting moves keys between
+    chunks rather than only within one.
+    """
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+    rows = [(f"hash-{i:04d}", [float(i), 0.5]) for i in range(1200)]
+    store.write_node_vectors_many("model:a", 2, rows)
+
+    keys = [key for key, _ in rows]
+    shuffled = keys[7::13] + keys[:7] + keys[8::13]
+    forwards = store.read_node_vector_blobs("model:a", 2, keys)
+    backwards = store.read_node_vector_blobs("model:a", 2, list(reversed(keys)))
+    scattered = store.read_node_vector_blobs("model:a", 2, shuffled)
+
+    assert len(forwards) == 1200
+    assert forwards == backwards
+    assert {k: forwards[k] for k in scattered} == scattered
+    assert store.read_node_vectors("model:a", 2, reversed(keys))["hash-1199"] == [
+        1199.0,
+        0.5,
+    ]
+
+
+def test_node_vectors_read_ignores_duplicate_and_empty_hashes(tmp_path: Path) -> None:
+    """Deduplication survived the switch from ``dict.fromkeys`` to a set.
+
+    ``dict.fromkeys`` was doing two jobs — dedupe and preserve order — and only
+    one of them was load-bearing. Dropping the wrong one would send duplicate
+    bound parameters into a chunk and silently shrink the batch.
+    """
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+    store.write_node_vectors_many("model:a", 2, [("k1", [1.0, 2.0]), ("k2", [3.0, 4.0])])
+
+    got = store.read_node_vector_blobs("model:a", 2, ["k2", "k1", "k2", "", "k1"])
+    assert set(got) == {"k1", "k2"}
