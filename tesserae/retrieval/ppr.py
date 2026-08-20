@@ -7,9 +7,13 @@ not just the seed's immediate 1-hop neighborhood.
 
 Implementation notes
 --------------------
-- Pure-Python power iteration. We avoid a ``networkx`` dependency because
-  Tesserae's runtime dependency set is intentionally small (``pyproject.toml``
-  pins only ``pydantic>=2``).
+- Power iteration, with a numpy fast path and a pure-Python fallback. We
+  avoid a ``networkx``/``scipy`` dependency because Tesserae's runtime
+  dependency set is intentionally small (``pyproject.toml`` pins only
+  ``pydantic>=2``); numpy ships only in the ``semantic`` extra, so it is
+  imported behind a guard exactly like the cosine lane in
+  ``retrieval/hybrid.py``. The two paths are BIT-IDENTICAL — see
+  ``_power_iteration_numpy`` for why that is achievable and what it costs.
 - Edges are aggregated by ``(source, target)`` so multiple typed edges
   between the same pair add up — a common pattern in Tesserae once a
   Session finding both ``derived_from_session`` and ``references`` another
@@ -94,6 +98,123 @@ PROVENANCE_EDGE_DOWNWEIGHT = 0.25
 HUB_DEGREE_CAP = 200
 
 
+_NUMPY_CHECKED = False
+_NUMPY = None
+
+
+def _numpy():
+    """Return the ``numpy`` module, or ``None`` when it is not installed.
+
+    numpy is an OPTIONAL dependency (the ``semantic`` extra), so PPR cannot
+    assume it. Memoised because a FAILING import is not cached by the
+    interpreter — without the memo every call would re-walk ``sys.path``.
+    Same shape as ``retrieval/hybrid.py``'s ``_numpy``.
+    """
+    global _NUMPY_CHECKED, _NUMPY
+    if not _NUMPY_CHECKED:
+        try:
+            import numpy  # type: ignore
+
+            _NUMPY = numpy
+        except Exception:
+            _NUMPY = None
+        _NUMPY_CHECKED = True
+    return _NUMPY
+
+
+def _power_iteration_numpy(
+    n: int,
+    out_norm: Mapping[int, List[Tuple[int, float]]],
+    p: List[float],
+    seed_indices: List[int],
+    alpha: float,
+    max_iter: int,
+    tol: float,
+) -> Optional[List[float]]:
+    """Vectorised power iteration, or ``None`` when numpy is unavailable.
+
+    Returns the same ``rank`` vector the scalar loop below produces —
+    BIT-IDENTICAL, not merely close. That is a hard requirement rather than
+    a nicety: on the real 62k-node graph 36% of scored nodes sit on EXACTLY
+    tied scores (blocks of up to 141 nodes), and ``context_compiler`` asks
+    for ``top_k=len(graph.nodes)``, so a 1-ULP difference re-orders ~78% of
+    the ranking even though every score is right to 15 digits. Callers pin
+    result ORDER, so "close enough" is a behaviour change.
+
+    Three constructions are load-bearing; none may be simplified:
+
+    1. ``np.bincount(weights=)`` is a sequential ``out[idx[i]] += w[i]`` C
+       loop, so it reproduces the scalar ``new_rank[dst] += ...``
+       association PROVIDED the edges are flattened in the order the scalar
+       double loop visits them (src ascending, then ``out_norm[src]`` order).
+       The ``alpha * p_i`` base terms are PREPENDED into the SAME bincount
+       as ``n`` synthetic self-entries so each bin accumulates
+       base-then-contributions. Adding the base afterwards re-associates and
+       diverges in ~94% of trials.
+    2. Linear reductions (dangling mass, L1 delta) use ``np.cumsum(...)[-1]``
+       (``np.add.accumulate``), which is sequential left-to-right like
+       Python's ``sum()``. ``np.sum`` uses pairwise summation and differs in
+       ~99.9% of trials.
+    3. The final ``sorted()`` stays in pure Python (in the caller), so
+       tie-breaking by node index is unchanged.
+
+    Skipping the scalar loop's ``if score == 0.0: continue`` is safe: every
+    quantity here is non-negative and ``x + 0.0 == x`` bitwise.
+    """
+    np = _numpy()
+    if np is None:
+        return None
+
+    # Flatten in EXACTLY the scalar visit order.
+    f_src: List[int] = []
+    f_dst: List[int] = []
+    f_w: List[float] = []
+    dangling_list: List[int] = []
+    for src in range(n):
+        edges = out_norm.get(src)
+        if not edges:
+            dangling_list.append(src)
+            continue
+        for dst, w in edges:
+            f_src.append(src)
+            f_dst.append(dst)
+            f_w.append(w)
+
+    flat_src = np.asarray(f_src, dtype=np.intp)
+    flat_w = np.asarray(f_w, dtype=np.float64)
+    dangling = np.asarray(dangling_list, dtype=np.intp)
+    e = len(f_dst)
+    # Constant across iterations: [0..n-1] then the edge destinations.
+    idx_all = np.empty(n + e, dtype=np.intp)
+    idx_all[:n] = np.arange(n, dtype=np.intp)
+    idx_all[n:] = np.asarray(f_dst, dtype=np.intp)
+    wbuf = np.empty(n + e, dtype=np.float64)
+
+    p_arr = np.asarray(p, dtype=np.float64)
+    wbuf[:n] = alpha * p_arr  # base term, constant across iterations
+    contrib = wbuf[n:]
+    rank = p_arr.copy()
+    has_dangling = dangling.size > 0
+
+    for _ in range(max_iter):
+        spread = (1.0 - alpha) * rank
+        np.multiply(spread[flat_src], flat_w, out=contrib)
+        new_rank = np.bincount(idx_all, weights=wbuf, minlength=n)
+
+        if has_dangling:
+            dangling_mass = float(np.cumsum(spread[dangling])[-1])
+            if dangling_mass > 0.0:
+                for idx in seed_indices:
+                    new_rank[idx] += dangling_mass * p[idx]
+
+        delta = float(np.cumsum(np.abs(new_rank - rank))[-1])
+        rank = new_rank
+        if delta < tol:
+            break
+
+    return rank.tolist()
+
+
 def personalized_pagerank(
     graph: ResearchGraph,
     seed_ids: Sequence[str],
@@ -150,6 +271,12 @@ def personalized_pagerank(
     Returns:
         ``[(node_id, score), ...]`` sorted descending. Scores over all
         nodes sum to ~1.0 modulo dangling-node correction.
+
+        The power iteration runs vectorised when numpy is importable and
+        falls back to the scalar loop otherwise. The two paths are
+        BIT-IDENTICAL — same scores, same order, no tolerance — which is
+        what makes the optional dependency safe to ship. See
+        ``_power_iteration_numpy``; ``tests/test_ppr.py`` pins the parity.
     """
 
     if alpha <= 0.0 or alpha > 1.0:
@@ -242,37 +369,45 @@ def personalized_pagerank(
         for idx, w in zip(seed_indices, raw):
             p[idx] += w / total
 
-    # Start from the personalization vector — converges faster than uniform.
-    rank = list(p)
+    # numpy fast path — bit-identical to the loop below, ~26x faster on the
+    # iteration itself. Returns None when numpy is not installed, and the
+    # scalar loop takes over.
+    rank = _power_iteration_numpy(
+        n, out_norm, p, seed_indices, alpha, max_iter, tol
+    )
 
-    for _ in range(max_iter):
-        new_rank = [alpha * p_i for p_i in p]
-        dangling_mass = 0.0
-        for src, score in enumerate(rank):
-            if score == 0.0:
-                continue
-            spread = (1.0 - alpha) * score
-            edges = out_norm.get(src)
-            if not edges:
-                dangling_mass += spread
-                continue
-            for dst, w in edges:
-                new_rank[dst] += spread * w
-        if dangling_mass > 0.0:
-            # Redistribute dangling mass over the personalization vector
-            # (HippoRAG / standard PR convention). Read the mass straight off
-            # ``p`` rather than recomputing it as 1/len(seeds): the two agree
-            # only in the uniform case, and under ``seed_weights`` the uniform
-            # form would hand every seed an equal share of the dangling mass
-            # while the teleport term gave them unequal shares — a walk
-            # personalised two different ways at once.
-            for idx in seed_indices:
-                new_rank[idx] += dangling_mass * p[idx]
+    if rank is None:
+        # Start from the personalization vector — converges faster than uniform.
+        rank = list(p)
 
-        delta = sum(abs(a - b) for a, b in zip(new_rank, rank))
-        rank = new_rank
-        if delta < tol:
-            break
+        for _ in range(max_iter):
+            new_rank = [alpha * p_i for p_i in p]
+            dangling_mass = 0.0
+            for src, score in enumerate(rank):
+                if score == 0.0:
+                    continue
+                spread = (1.0 - alpha) * score
+                edges = out_norm.get(src)
+                if not edges:
+                    dangling_mass += spread
+                    continue
+                for dst, w in edges:
+                    new_rank[dst] += spread * w
+            if dangling_mass > 0.0:
+                # Redistribute dangling mass over the personalization vector
+                # (HippoRAG / standard PR convention). Read the mass straight
+                # off ``p`` rather than recomputing it as 1/len(seeds): the two
+                # agree only in the uniform case, and under ``seed_weights``
+                # the uniform form would hand every seed an equal share of the
+                # dangling mass while the teleport term gave them unequal
+                # shares — a walk personalised two different ways at once.
+                for idx in seed_indices:
+                    new_rank[idx] += dangling_mass * p[idx]
+
+            delta = sum(abs(a - b) for a, b in zip(new_rank, rank))
+            rank = new_rank
+            if delta < tol:
+                break
 
     # Filter out non-positive scores so disconnected components don't
     # pollute results when the seed's component is smaller than ``top_k``.

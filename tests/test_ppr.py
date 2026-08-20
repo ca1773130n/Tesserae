@@ -500,3 +500,142 @@ def test_unnamed_seeds_get_zero_mass_not_an_equal_share():
     only_a = personalized_pagerank(graph, ["A", "C"], top_k=5, seed_weights={"A": 1.0})
     just_a = personalized_pagerank(graph, ["A"], top_k=5)
     assert dict(only_a)["A"] == pytest.approx(dict(just_a)["A"])
+
+
+# --- numpy fast path vs pure-Python fallback -------------------------------
+#
+# ``personalized_pagerank`` runs a vectorised power iteration when numpy is
+# importable and falls back to the scalar loop otherwise. The two MUST agree
+# bit-for-bit, not approximately: on the real graph a large fraction of nodes
+# sit on exactly-tied scores, and callers such as ``context_compiler`` derive
+# candidate ORDER from the full ranking, so a 1-ULP difference silently
+# re-orders results. These tests are the ratchet that turns a future numpy
+# reduction-order change into a red test instead of a silent reordering.
+
+
+def _scalar_ppr(graph: ResearchGraph, **kwargs):
+    """Run PPR with the numpy fast path forced off."""
+    import tesserae.retrieval.ppr as ppr_mod
+
+    original = ppr_mod._numpy
+    ppr_mod._numpy = lambda: None
+    try:
+        return personalized_pagerank(graph, **kwargs)
+    finally:
+        ppr_mod._numpy = original
+
+
+def _sparse_fixture(n_nodes: int = 3000, seed: int = 20260821) -> ResearchGraph:
+    """A graph big enough to exercise the sparse/flattened path.
+
+    Deliberately includes the shapes that break a naive vectorisation:
+    multi-edges between the same pair (they aggregate), several edge types
+    with different default weights, a hub with a large fanout, and a block of
+    dangling nodes carrying no edges at all.
+    """
+    import random
+
+    rng = random.Random(seed)
+    edge_types = [
+        "references",
+        "derived_from_session",
+        "mentioned_in",
+        "supports_claim",
+        "part_of",
+    ]
+    nodes = [
+        ResearchNode(
+            id=f"n{i}",
+            name=f"Node {i}",
+            type=ResearchNodeType.CONCEPT,
+        )
+        for i in range(n_nodes)
+    ]
+    edges = []
+    connected = int(n_nodes * 0.9)  # last 10% stay dangling
+    for i in range(connected):
+        for _ in range(rng.randint(1, 4)):
+            j = rng.randrange(connected)
+            if j == i:
+                continue
+            edges.append(
+                ResearchEdge(
+                    source=f"n{i}",
+                    target=f"n{j}",
+                    type=rng.choice(edge_types),
+                )
+            )
+    # One deliberate hub, above HUB_DEGREE_CAP so tame_hubs has work to do.
+    for j in range(HUB_DEGREE_CAP + 250):
+        edges.append(
+            ResearchEdge(source="n0", target=f"n{j + 1}", type="mentioned_in")
+        )
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_numpy_and_scalar_paths_are_bit_identical_on_a_sparse_graph() -> None:
+    graph = _sparse_fixture()
+    n = len(graph.nodes)
+    seeds = [f"n{i}" for i in range(0, 400, 7)]
+
+    cases = [
+        dict(seed_ids=seeds, top_k=n),
+        dict(seed_ids=seeds, top_k=n, directed=True),
+        dict(seed_ids=seeds, top_k=n, alpha=0.5),
+        dict(seed_ids=seeds, top_k=n, tame_hubs=True),
+        dict(seed_ids=seeds, top_k=n, tame_hubs=True, hub_ids=["n0"]),
+        dict(seed_ids=seeds, top_k=n, edge_type_weights={"mentioned_in": 0.0}),
+        dict(seed_ids=seeds, top_k=n, max_iter=3),
+        dict(
+            seed_ids=seeds,
+            top_k=n,
+            seed_weights={s: float(i + 1) for i, s in enumerate(seeds)},
+        ),
+        # Dangling seeds: the last 10% of nodes have no edges at all, so all
+        # of their mass goes through the dangling redistribution over p[idx].
+        dict(seed_ids=[f"n{n - 1 - i}" for i in range(20)], top_k=n),
+        dict(
+            seed_ids=[f"n{n - 1 - i}" for i in range(20)],
+            top_k=n,
+            seed_weights={f"n{n - 1 - i}": float(i + 1) for i in range(20)},
+        ),
+    ]
+
+    for case in cases:
+        fast = personalized_pagerank(graph, **case)
+        slow = _scalar_ppr(graph, **case)
+        assert [node_id for node_id, _ in fast] == [
+            node_id for node_id, _ in slow
+        ], f"ordering diverged for {case!r}"
+        for (fid, fscore), (sid, sscore) in zip(fast, slow):
+            assert fid == sid
+            # Bit-identical, not approximate. If this ever has to become
+            # pytest.approx, the ordering assertion above is no longer safe.
+            assert fscore == sscore, f"score diverged for {fid} in {case!r}"
+
+
+def test_numpy_and_scalar_paths_agree_on_the_dangling_seed_weights_case() -> None:
+    """The case a naive vectorisation gets wrong: equal seed_weights must
+    reproduce uniform seeding exactly even when dangling mass is in play, on
+    BOTH paths. Mirrors
+    ``test_equal_seed_weights_reproduce_uniform_with_dangling_nodes``."""
+    graph = _sparse_fixture(n_nodes=800, seed=7)
+    seeds = ["n10", "n20", "n799"]  # n799 is dangling
+    for runner in (personalized_pagerank, _scalar_ppr):
+        uniform = runner(graph, seed_ids=seeds, top_k=800)
+        weighted = runner(
+            graph,
+            seed_ids=seeds,
+            top_k=800,
+            seed_weights={s: 3.0 for s in seeds},
+        )
+        assert uniform == weighted
+
+
+def test_scalar_fallback_is_used_when_numpy_is_missing() -> None:
+    """The fallback is not dead code: forcing the guard to report numpy as
+    absent still produces a full ranking."""
+    graph = _make_graph()
+    ranked = _scalar_ppr(graph, seed_ids=["insight_a"], top_k=5)
+    assert ranked
+    assert ranked[0][0] == "insight_a"
