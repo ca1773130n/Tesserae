@@ -18,6 +18,7 @@ evals/*
 !evals/growth/
 !evals/qa/
 !evals/lme_mab/
+!evals/locomo/
 !evals/tck/
 !evals/selfimprove/
 
