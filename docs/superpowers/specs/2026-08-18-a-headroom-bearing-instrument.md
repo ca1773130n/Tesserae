@@ -672,3 +672,58 @@ Does not license: any claim that the retrieval work was wasted. It is
 measurable on LongMemEval, where retrieval is NOT saturated. It licenses only
 that this corpus cannot see retrieval improvements, and that every comparison
 published here before 615352ee understated Tesserae by roughly 0.028 F1.
+
+## §20. The 2026 literature says we benchmarked the wrong half
+
+Two independent June-2026 results, both against the thesis this project is
+built on, and both consistent with everything measured here.
+
+**"Exploring Cross-Scenario Generality of Agentic Memory Systems: Diagnostics
+and a Strong Baseline"** (arXiv 2606.04315, Chen et al.) revisits EIGHT memory
+systems across five scenarios — single-turn QA, multi-session chat,
+agentic-trajectory QA, memory stress tests, long-horizon agentic tasks. Their
+finding, quoted: *"The harness, which self-manages flat text-file storage via
+tool calls, achieves the best cross-task ranking, suggesting that memory
+performance hinges on giving the agent active control over storage and
+retrieval rather than on a passive store behind a fixed pipeline."* They ship it
+as AutoMEM.
+
+**Memanto** (arXiv 2604.22085) reaches SOTA with a vector-only design that
+"eliminates graph infrastructure and LLM-mediated ingestion entirely", using a
+typed schema of thirteen semantic categories and zero-cost ingestion.
+
+Flat files plus tool calls beat eight engineered systems; vectors without a
+graph beat the graph systems. Both agree that structure is not where the win is.
+
+**Everything measured in this document agrees.** The graph as a re-ranker:
+-0.002 [-0.025, +0.022]. Raw source text over extracted summaries: +0.115 on
+LongMemEval. BM25 over Tesserae on BOTH foreign conversational benchmarks
+(LoCoMo MRR 0.785 vs 0.626; LongMemEval 0.803 vs 0.707). Extraction text loss
+was three times the retrieval-unit loss. Every one of those is the same result
+the field just published.
+
+**But the conclusion is not "Tesserae is beaten", because of what the paper
+identifies as the deciding variable.** It is not structure versus text. It is
+AGENT CONTROL versus a passive pipeline. And Tesserae already has the former:
+an MCP server exposing ~24 tools — graph_map, node_context, search_facts,
+compile_context, timeline, verify_claim — through which an agent decides what
+to fetch and when.
+
+Every benchmark arm in this repository bypasses it. `evals/lme_mab/adapter.py`
+and `evals/locomo/adapter.py` both call `hybrid_search` directly and hand the
+result to a backbone: one search, fixed K, no agency. Runtime-verified on
+LongMemEval — 0 calls to compile_context, 0 to local_scope, 0 to PPR over 60
+real queries. That is precisely the passive-store configuration the paper
+measures as the LOSING one, and it is the only configuration this project has
+ever benchmarked.
+
+So the retrieval deficits recorded here are real and are measurements of the
+wrong artifact. They compare a fixed pipeline against BM25. They say nothing
+about the product surface, which no number in this document describes.
+
+Does not license: a claim that the tool-driven path would do better. It has
+never been run, and the honest prior from this document is that it will
+disappoint — five improvements were shipped today and one transferred. What it
+licenses is that the next measurement should be an AGENT holding the MCP tools
+against the same LoCoMo questions, scored the same way, because that is the
+system we ship and the configuration the field says decides the outcome.
