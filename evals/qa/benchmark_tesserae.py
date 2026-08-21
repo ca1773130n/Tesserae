@@ -198,24 +198,31 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
     def _below_grounding_gate(self, question: str, answer: str, envelope: Any) -> bool:
         """True when the answer adds too little novel, source-attested vocabulary.
 
-        The score is taken from the envelope when ``tesserae.query`` already
-        computed it, because that one was measured against the bundle the model
-        actually read. Recomputing from the hit excerpts is the fallback for
-        backends that do not carry it, and it measures a slightly different
-        thing — the excerpt is a clip of the page, not the page.
-        """
-        from tesserae.retrieval.grounding import (
-            grounding_tau, novel_grounded_evidence,
-        )
+        The score comes from the envelope, which measured it against the
+        evidence the model actually read. There is deliberately NO fallback.
 
-        idf, n_docs = self._corpus_idf()
-        tau = grounding_tau(idf, self.config.grounding_quantile)
+        There was one, and it recomputed the score from ``hit["excerpt"]`` —
+        200-character clips of wiki pages — while the planner had pasted
+        4,000-character raw source documents into the prompt. Every one of the
+        352 benchmark questions routes through the planner, whose envelope did
+        not carry the score, so the fallback ran on every question and refused
+        71.1% of ANSWERABLE ones: Youden J +0.289, WORSE than the +0.505 of not
+        gating at all. The measured +0.617 described an offline proxy no shipped
+        path ran. Two independent reviews caught it; neither the unit tests nor
+        the implementer's own numbers did, because both exercised the branch
+        that never executes.
+
+        So a missing score means DO NOT GATE, never "gate on a substitute".
+        Scoring against different evidence is not a weaker version of the same
+        measurement, it is a different measurement wearing its name.
+        """
+        from tesserae.retrieval.grounding import grounding_tau
+
         score = envelope.get("grounding") if isinstance(envelope, dict) else None
         if score is None:
-            hits = envelope.get("hits") or [] if isinstance(envelope, dict) else []
-            sources = [str(h.get("excerpt") or "") for h in hits if isinstance(h, dict)]
-            score = novel_grounded_evidence(answer, question, sources, idf, n_docs)
-        return float(score) < tau
+            return False
+        idf, _n_docs = self._corpus_idf()
+        return float(score) < grounding_tau(idf, self.config.grounding_quantile)
 
     # ------------------------------------------------------------------- meta
 

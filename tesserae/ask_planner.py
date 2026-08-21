@@ -819,6 +819,23 @@ DOC_OVERFETCH = 3
 SYNTHESIS_SOURCE_CHARS = 4_000
 
 
+#: The ``<source>`` blocks of a synthesis message, as separate strings.
+#:
+#: The abstention gate scores an answer against the evidence THE MODEL ACTUALLY
+#: READ. Scoring it against something else is not a smaller version of the same
+#: measurement, it is a different one: a fallback that scored 200-character wiki
+#: excerpts, where the planner had pasted 4,000-character source documents,
+#: refused 71.1% of ANSWERABLE questions and drove Youden J to +0.289 — below
+#: the +0.505 of not gating at all. So the planner computes its own score here,
+#: from its own message, rather than leaving a consumer to reconstruct it.
+_SOURCE_BLOCK_RE = re.compile(r"<source\b[^>]*>(.*?)</source>", re.DOTALL)
+
+
+def source_blocks_of(message: str) -> List[str]:
+    """The evidence texts inside ``message``'s ``<source>`` elements."""
+    return [m.strip() for m in _SOURCE_BLOCK_RE.findall(message or "") if m.strip()]
+
+
 def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits: List[Any],
                              source_root: Optional[Path] = None,
                              answer_style: str = "prose-cited") -> str:
@@ -1033,9 +1050,25 @@ def _plan_and_answer(
         id_to_name[f"kg-step-{i}-{ev['action']}"] = ev["action"].replace("_", " ")
     body = rewrite_citations(body, id_to_name)
 
+    # Grounding, measured against the source blocks this message actually
+    # carried. Consumers must never recompute it from hit excerpts — see
+    # ``source_blocks_of``. ``None`` when it cannot be computed, which a gate
+    # must treat as "do not gate" rather than as a low score.
+    _grounding: Optional[float] = None
+    try:
+        from .retrieval.grounding import corpus_idf, novel_grounded_evidence
+
+        _sources = source_blocks_of(message)
+        if _sources:
+            _idf, _n = corpus_idf(_sources)
+            _grounding = novel_grounded_evidence(body, question, _sources, _idf, _n)
+    except Exception:  # pragma: no cover - a scoring aid must never fail a query
+        _grounding = None
+
     envelope: Dict[str, Any] = {
         "hits": [h.to_dict() for h in hits],
         "answer": body.strip() + "\n",
+        "grounding": _grounding,
         "model": "cli-oauth",
         "used_llm": True,
         "fallback_reason": None,

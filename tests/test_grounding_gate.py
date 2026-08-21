@@ -260,14 +260,43 @@ def test_the_tesserae_arm_prefers_the_score_the_query_layer_already_computed():
     assert arm._below_grounding_gate("alpha beta", "zephyrine", poor) is True
 
 
-def test_the_tesserae_arm_falls_back_to_the_hit_excerpts():
+def test_a_missing_score_does_not_gate_on_a_substitute():
+    """No score means DO NOT GATE — never "gate on whatever is to hand".
+
+    There was a fallback here that recomputed the score from ``hit["excerpt"]``,
+    200-character clips, while the planner had pasted 4,000-character source
+    documents into the prompt. Every one of the 352 benchmark questions routes
+    through the planner, whose envelope did not then carry a score, so the
+    fallback ran on ALL of them and refused 71.1% of ANSWERABLE questions:
+    Youden J +0.289 against +0.505 for not gating at all. The gate made the
+    product worse while its unit tests passed, because they exercised the branch
+    that never executed.
+
+    A restatement with no score must pass, however obviously ungrounded it looks
+    on the excerpts — the arm has nothing to judge it with.
+    """
     arm = _tesserae_arm(quantile=0.25)
     hits = [{"excerpt": "alpha beta gamma delta zephyrine corpus filler text"}]
-    restatement = {"hits": hits}
-    assert arm._below_grounding_gate("alpha beta gamma", "alpha beta gamma",
-                                     restatement) is True
-    assert arm._below_grounding_gate("alpha beta gamma", "zephyrine",
-                                     restatement) is False
+    assert arm._below_grounding_gate(
+        "alpha beta gamma", "alpha beta gamma", {"hits": hits}
+    ) is False
+    assert arm._below_grounding_gate("q", "a", {}) is False
+    assert arm._below_grounding_gate("q", "a", None) is False
+
+
+def test_the_planner_envelope_carries_a_grounding_score():
+    """The planner scores its OWN message, so the gate has something real to
+    read on the path every benchmark question actually takes."""
+    from tesserae.ask_planner import source_blocks_of
+
+    message = (
+        'preamble\n<source kind="wiki" node_id="n1">alpha zephyrine beta</source>\n'
+        '<source kind="kg:x" node_id="n2">gamma delta</source>\n'
+    )
+    blocks = source_blocks_of(message)
+    assert blocks == ["alpha zephyrine beta", "gamma delta"]
+    assert source_blocks_of("") == []
+    assert source_blocks_of("no sources here") == []
 
 
 def test_the_tesserae_arm_measures_rarity_over_the_corpus_not_the_bundle():
