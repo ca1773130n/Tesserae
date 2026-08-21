@@ -634,3 +634,56 @@ def test_the_shortfall_section_does_not_claim_completeness_it_cannot_see():
     short = "\n".join(_shortfall_section([], 199, {}, n_searched=150))
     assert "49 of 199" in short
     assert "missing data" in short
+
+
+def test_the_declining_phrase_is_accepted_by_both_graders():
+    """A phrasing choice turned over an entire benchmark category.
+
+    The reference grader accepts exactly "no information available" and "not
+    mentioned"; ``evals.qa.scorer.is_refusal`` accepts those plus "I don't
+    know". An answerer told to say "I don't know" therefore abstains correctly
+    under our rule and wrongly under the published one — measured on conv-26's
+    141 adversarial questions, the same answers scored 66.7% ours and 0.0%
+    theirs.
+
+    The prompt must name a phrase BOTH accept, so the score reflects whether the
+    model abstained rather than which words it happened to use.
+    """
+    from evals.qa.scorer import is_refusal
+    from evals.locomo.judge import _REFERENCE_ABSTENTION
+
+    prompt = runner._SYSTEM_PROMPT
+    phrase = prompt.rsplit("reply exactly:", 1)[1].strip().rstrip(".").strip()
+
+    assert is_refusal(phrase), f"{phrase!r} is not a refusal under our own rule"
+    assert any(a in phrase.casefold() for a in _REFERENCE_ABSTENTION), (
+        f"{phrase!r} is not one of the reference grader's accepted phrases "
+        f"{_REFERENCE_ABSTENTION} — an abstention in this wording scores zero "
+        f"on the adversarial category however correct the decision was"
+    )
+
+
+def test_the_prompt_permits_inference_and_still_requires_abstention():
+    """Abstention is for UNSUPPORTED, not for UNSTATED.
+
+    An extraction-only instruction ("use exact words from the evidence", decline
+    when "the evidence does not contain the answer") made the model refuse 21 of
+    21 open-domain questions whose gold session it had retrieved. That category
+    is inference — "Would Caroline likely have Dr. Seuss books?" -> "Yes, since
+    she collects classic children's books" — so the answer is entailed by the
+    evidence and appears nowhere in it verbatim.
+
+    Both halves must hold: reasoning from evidence is permitted, and abstention
+    on genuinely unsupported questions is still demanded.
+    """
+    prompt = runner._SYSTEM_PROMPT.casefold()
+
+    assert "reason from it" in prompt, "inference is not permitted"
+    assert "likely" in prompt or "implied" in prompt, "inference is not named"
+    assert "supports no answer" in prompt, "abstention is no longer required"
+    assert "not mentioned" in prompt, "the accepted declining phrase is gone"
+
+    # The instruction that caused the 21/21 failure must not come back.
+    assert "does not contain the answer" not in prompt, (
+        "an extraction-only abstention rule refuses every inference question"
+    )

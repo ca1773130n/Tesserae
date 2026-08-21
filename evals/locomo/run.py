@@ -132,12 +132,44 @@ ANSWER_SHAPE = "short-span"
 #: That protocol's answerer is told never to say "not mentioned", which on a
 #: benchmark whose adversarial category rewards exactly that would be scoring a
 #: system for following an instruction rather than for remembering.
+#:
+#: THE DECLINING PHRASE IS "Not mentioned." AND THAT IS NOT COSMETIC.
+#: The reference grader accepts exactly two phrases — "no information available"
+#: and "not mentioned" (:data:`evals.locomo.judge._REFERENCE_ABSTENTION`).
+#: ``evals.qa.scorer.is_refusal`` accepts all three, "I don't know" included.
+#: So an answerer told to say "I don't know" abstains correctly under OUR rule
+#: and WRONGLY under the published one: measured on conv-26's 141 adversarial
+#: questions, the same answers scored 66.7% ours and 0.0% theirs. An entire
+#: category turned over on a phrasing choice that carries no meaning.
+#:
+#: Picking a phrase both rules accept costs nothing and removes the artifact.
+#: It is NOT teaching to the test: the model still decides WHETHER to abstain,
+#: which is the thing being measured; only the word it declines in is fixed, and
+#: it is fixed to the benchmark's own vocabulary rather than to ours.
+#: ABSTENTION IS FOR UNSUPPORTED, NOT FOR UNSTATED. An earlier wording asked for
+#: "the shortest exact answer ... use exact words from the evidence" and to
+#: decline when "the evidence does not contain the answer". The model obeyed,
+#: and refused 21 of 21 open-domain questions whose gold session it had
+#: retrieved — 100%, which is a categorical failure and never a quality one.
+#:
+#: LoCoMo's open-domain category is INFERENCE: "Would Caroline likely have
+#: Dr. Seuss books?" -> "Yes, since she collects classic children's books". The
+#: answer is entailed by the evidence and appears nowhere in it verbatim, so an
+#: extraction-only instruction cannot answer the category at all. Measured
+#: across every answerable category, 111 of 420 questions (26%) were refused
+#: with the gold session retrieved — a synthesis failure, not a retrieval one,
+#: and open-domain was the whole of one end of it.
+#:
+#: This is not loosening the guard. Reasoning FROM retrieved evidence is the
+#: task; abstaining when the evidence supports no answer is still required, and
+#: the adversarial category still rewards it.
 _SYSTEM_PROMPT = (
-    "You answer questions about a long conversation using only the evidence "
-    "given. Reply with the shortest exact answer — a name, a date, a number, "
-    "yes/no — and nothing else. Use exact words from the evidence wherever you "
-    "can. If the evidence does not contain the answer, reply exactly: "
-    "I don't know."
+    "You answer questions about a long conversation using the evidence given. "
+    "Reply with the shortest answer that the evidence supports — a name, a "
+    "date, a number, yes/no, or a short phrase — and nothing else. Prefer the "
+    "evidence's own words for facts it states outright, and reason from it when "
+    "the question asks what is likely, implied, or would follow. If the "
+    "evidence supports no answer at all, reply exactly: Not mentioned."
 )
 
 #: The canary's planted evidence. The question and the expected token are
