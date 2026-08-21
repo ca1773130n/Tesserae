@@ -541,12 +541,18 @@ def _default_compile(work: Path) -> None:
 #: * ``tesserae.ask_planner._EVIDENCE_CLIP`` is 2,500 — the house figure for
 #:   chars per evidence block fed to synthesis.
 #:
-#: The cost is stated rather than hidden, and it is REAL. Measured on group 0's
-#: 53 gold answers that appear verbatim in their aligned session, truncating to
-#: 2,400 keeps 38 of them (71.7%); 4,000 keeps 84.9%, 8,000 keeps 92.5%, and
-#: only 12,000 keeps all 53. So this cap loses spans the ranking cap never paid
-#: for, and 4,000 is the obvious sensitivity arm if the answering measurement
-#: comes out below what retrieval says it should be. What it buys is a budget
+#: The cost is REAL, and its size is NOT established. A gold-answer survival
+#: ladder once stood here (53 verbatim golds, 71.7% surviving 2,400 chars,
+#: 84.9% at 4,000, 92.5% at 8,000). It does not reproduce: an independent
+#: review measured 36 verbatim and 58.3% under three normalisations, and a
+#: third implementation found 0 verbatim. Three methods, three answers — which
+#: means "appears verbatim in its aligned session" is not a well-defined
+#: predicate at this precision, not that one count is right. The numbers are
+#: removed rather than replaced with whichever is newest.
+#:
+#: What survives that disagreement: truncation loses answer spans the ranking
+#: cap never paid for, so 4,000 is the sensitivity arm if answering ever comes
+#: out below what retrieval predicts. What it buys is a budget
 #: that stays the same ORDER as the published top-10-rounds one rather than six
 #: times it: measured over the same 60 questions, K=10 costs 22,800 prompt
 #: characters on average (max 26,629) against 2,420 before.
