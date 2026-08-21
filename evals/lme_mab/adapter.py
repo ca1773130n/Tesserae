@@ -401,11 +401,59 @@ class IngestResult:
     #: :func:`sessions_agree` — ``None`` when there was nothing to cross-check.
     views_agree: Optional[bool]
     compiled: bool
+    #: True when a compiled graph already in ``work`` was reused instead of
+    #: rebuilt. ``compiled`` is then False — no compile ran in THIS run — and
+    #: the two flags together separate "never compiled" from "compiled
+    #: earlier", which the report must not print as the same thing.
+    reused: bool = False
 
     @property
     def approx_tokens(self) -> int:
         """Chars/4, as crude here as it is in :class:`MabGroup`."""
         return self.chars // 4
+
+
+def _verify_staged(corpus: Path, sessions: Sequence[Any]) -> tuple:
+    """``(turns, chars)`` of ``sessions``, having proved they are already staged.
+
+    Raises unless every session renders byte for byte to the file already in
+    ``corpus``, and unless ``corpus`` holds nothing else. Both halves matter:
+    a CHANGED document means the compiled graph was built from text this run
+    would not stage, and an EXTRA document means the graph indexes a session
+    this group does not contain — retrievable evidence from a haystack the
+    questions were never asked about. Either way the reused graph is not this
+    group's graph, and the run must stop rather than report a number for it.
+    """
+    if not corpus.is_dir():
+        raise FileNotFoundError(
+            f"--reuse-compile: no staged corpus at {corpus}. There is nothing "
+            f"to reuse; run without the flag to stage and compile."
+        )
+    turns = chars = 0
+    mismatched: List[str] = []
+    for session in sessions:
+        body = session.render()
+        staged = corpus / session.document_name
+        if not staged.is_file():
+            mismatched.append(f"{session.document_name} (missing)")
+        elif staged.read_bytes() != body.encode("utf-8"):
+            mismatched.append(f"{session.document_name} (differs)")
+        turns += len(session.turns)
+        chars += len(body)
+    extra = sorted(
+        p.name for p in corpus.glob("*.md")
+        if p.name not in {s.document_name for s in sessions}
+    )
+    if mismatched or extra:
+        raise ValueError(
+            f"--reuse-compile: {corpus} is not this group's corpus — "
+            f"{len(mismatched)} document(s) missing or changed"
+            f"{': ' + ', '.join(mismatched[:5]) if mismatched else ''}"
+            f"{f'; {len(extra)} unexpected: ' + ', '.join(extra[:5]) if extra else ''}. "
+            f"The compiled graph there answers about a different haystack. "
+            f"Re-run without --reuse-compile to rebuild it."
+        )
+    return turns, chars
 
 
 def _default_compile(work: Path) -> None:
@@ -515,6 +563,7 @@ class MabMemory:
         *,
         work: Path,
         compile_project: bool = True,
+        reuse_compiled: bool = False,
     ) -> IngestResult:
         """Stage the group as one document per session, then compile in ``work``.
 
@@ -522,22 +571,40 @@ class MabMemory:
         documents from a previous group — a stale ``session-0113.md`` from a
         larger group would be retrievable evidence from a haystack this run
         never saw.
+
+        ``reuse_compiled`` measures against a graph a PREVIOUS run compiled,
+        which is the only way to re-measure a group without paying its compile
+        again. It writes nothing: rather than rebuild the corpus it VERIFIES
+        that every document this group would stage is already on disk byte for
+        byte, and raises if one differs. That check is the whole safety of the
+        flag — a graph compiled from a different corpus would answer questions
+        about a haystack this run never staged, and would look like a valid
+        measurement while doing it. It overrides ``compile_project``.
         """
         resolved = guard_work_dir(work)
         sessions = split_sessions(group)
 
         corpus = resolved / "corpus"
-        shutil.rmtree(corpus, ignore_errors=True)
-        corpus.mkdir(parents=True, exist_ok=True)
-        turns = chars = 0
-        for session in sessions:
-            body = session.render()
-            (corpus / session.document_name).write_text(body, encoding="utf-8")
-            turns += len(session.turns)
-            chars += len(body)
+        if reuse_compiled:
+            turns, chars = _verify_staged(corpus, sessions)
+            graph_path = resolved / ".tesserae" / "graph.json"
+            if not graph_path.is_file():
+                raise FileNotFoundError(
+                    f"--reuse-compile: no compiled graph at {graph_path}. There "
+                    f"is nothing to reuse; run without the flag to compile."
+                )
+        else:
+            shutil.rmtree(corpus, ignore_errors=True)
+            corpus.mkdir(parents=True, exist_ok=True)
+            turns = chars = 0
+            for session in sessions:
+                body = session.render()
+                (corpus / session.document_name).write_text(body, encoding="utf-8")
+                turns += len(session.turns)
+                chars += len(body)
 
-        if compile_project:
-            self._compile_fn(resolved)
+            if compile_project:
+                self._compile_fn(resolved)
         self.work = resolved
         self._graph = None  # a new corpus invalidates any graph already loaded
 
@@ -553,7 +620,8 @@ class MabMemory:
                 "context" if _sessions_from_context(group.context) else "haystack_sessions"
             ),
             views_agree=sessions_agree(group, sessions),
-            compiled=compile_project,
+            compiled=compile_project and not reuse_compiled,
+            reused=reuse_compiled,
         )
 
     # ------------------------------------------------------------------- query

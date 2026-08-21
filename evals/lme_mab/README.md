@@ -109,6 +109,17 @@ comparable to the published baselines. Say that plainly if anyone quotes it.
     uv run python -m evals.lme_mab.run --parquet <p> --groups 0 \
         --arms bm25,dense --retrieval-only
 
+    # re-measure all three arms against a group ALREADY compiled in --work.
+    # A compile is ~an hour of 13 concurrent workers per group, so a retrieval
+    # change is measured this way rather than by paying it again. The flag
+    # writes nothing: it proves every document this group would stage is
+    # already there byte for byte and refuses otherwise, because a graph
+    # compiled from other text answers about a haystack these questions were
+    # never asked about — and would print a number while doing it.
+    uv run python -m evals.lme_mab.run --parquet <p> --groups 0 \
+        --work <already-compiled> --arms tesserae,bm25,dense \
+        --retrieval-only --reuse-compile --i-know-this-costs-money --yes
+
 `--arms` takes a comma list of `tesserae`, `bm25`, `dense` and defaults to
 `tesserae`. One predicate — is `tesserae` among them — gates every money layer:
 the cost banner, the consent flag, the typed confirmation and the answering

@@ -514,7 +514,8 @@ def _corpus_section(ingests: Sequence[IngestResult]) -> List[str]:
         str(r.group_index), f"{r.documents:,}", f"{r.turns:,}", f"{r.chars:,}",
         f"{r.dated_sessions:,}", r.session_source,
         {True: "yes", False: "**NO**", None: "n/a"}[r.views_agree],
-        "yes" if r.compiled else "**staged only**",
+        "yes" if r.compiled else ("reused (earlier run)" if r.reused
+                                  else "**staged only**"),
     ] for r in ingests]
     lines = _table(
         ["group", "documents (sessions)", "turns", "chars", "dated sessions",
@@ -933,6 +934,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retrieval-only", action="store_true",
                         help="score recall@K and MRR of the gold session and skip "
                              "answering entirely — no backbone, no judge")
+    parser.add_argument("--reuse-compile", action="store_true",
+                        help="measure against the graph ALREADY compiled in "
+                             "--work instead of compiling again. Verifies the "
+                             "staged corpus is byte-identical to what this "
+                             "group would stage and refuses otherwise; writes "
+                             "nothing. A compile is ~an hour per group, so this "
+                             "is how a retrieval change is re-measured on a "
+                             "group that has already been built")
     parser.add_argument("--stage-only", action="store_true",
                         help="write the session documents and stop: no compile, "
                              "no LLM, no network")
@@ -1024,6 +1033,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "index Session.render() in memory and stage nothing",
             )
 
+        if args.reuse_compile and args.stage_only:
+            print("SKIP: --reuse-compile and --stage-only contradict each other — "
+                  "one measures against an existing graph, the other refuses to "
+                  "build or use one")
+            return 0
+
         # Guard 2 — the estimate, before any input is read. Group selection is
         # not known yet, so the banner is scaled off the REQUEST, which is what
         # the operator is being asked to approve.
@@ -1081,7 +1096,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         for group in groups:
             if memory is not None:
                 ingests.append(memory.ingest(group, work=work,
-                                             compile_project=not args.stage_only))
+                                             compile_project=not args.stage_only,
+                                             reuse_compiled=args.reuse_compile))
                 print(f"group {group.index}: staged {ingests[-1].documents} sessions "
                       f"to {ingests[-1].corpus_dir}", file=sys.stderr)
             if args.stage_only:

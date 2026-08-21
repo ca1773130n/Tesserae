@@ -603,3 +603,109 @@ def test_the_banner_is_printed_before_any_input_is_read(monkeypatch, capsys, tmp
 
     out = capsys.readouterr().out
     assert out.index("ESTIMATED COST") < out.index("SKIP:")
+
+
+# ---------------------------------------------------------- reuse_compiled
+#
+# A compile is ~an hour per group, so re-measuring a retrieval change on a
+# group that has already been built has to be possible without paying it
+# again. The flag's whole safety is that it refuses when the staged corpus is
+# not the one this group would stage: a graph compiled from other text would
+# answer about a haystack the questions were never asked about, and would
+# look like a valid measurement while doing it.
+
+
+def _already_compiled(work, group, *, graph=True):
+    """Stage ``group`` in ``work`` the way a previous run would have."""
+    memory = MabMemory(compile_fn=lambda w: None)
+    memory.ingest(group, work=work)
+    if graph:
+        tess = work / ".tesserae"
+        tess.mkdir(parents=True, exist_ok=True)
+        (tess / "graph.json").write_text("{}", encoding="utf-8")
+    return memory
+
+
+def test_reuse_compiled_does_not_compile(tmp_path):
+    _already_compiled(tmp_path, _group())
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    result = memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+    assert result.reused is True
+    assert result.compiled is False
+    assert result.documents == 3
+    assert result.turns == 4
+
+
+def test_reuse_compiled_writes_nothing(tmp_path):
+    """The compiled group is a read-mostly measurement target, not scratch."""
+    _already_compiled(tmp_path, _group())
+    corpus = tmp_path / "corpus"
+    before = {p.name: (p.read_bytes(), p.stat().st_mtime_ns)
+              for p in sorted(corpus.glob("*.md"))}
+
+    MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway")).ingest(
+        _group(), work=tmp_path, reuse_compiled=True)
+
+    after = {p.name: (p.read_bytes(), p.stat().st_mtime_ns)
+             for p in sorted(corpus.glob("*.md"))}
+    assert before == after
+
+
+def test_reuse_compiled_refuses_when_a_staged_document_differs(tmp_path):
+    _already_compiled(tmp_path, _group())
+    (tmp_path / "corpus" / "session-0001.md").write_text("something else\n",
+                                                         encoding="utf-8")
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    with pytest.raises(ValueError, match="not this group's corpus"):
+        memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+
+def test_reuse_compiled_refuses_when_the_corpus_holds_an_extra_session(tmp_path):
+    """The graph would index a session this group does not contain."""
+    _already_compiled(tmp_path, _group())
+    (tmp_path / "corpus" / "session-0099.md").write_text("# stray\n",
+                                                         encoding="utf-8")
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    with pytest.raises(ValueError, match="unexpected"):
+        memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+
+def test_reuse_compiled_refuses_a_smaller_group_against_a_bigger_corpus(tmp_path):
+    _already_compiled(tmp_path, _group())
+    small = _group(context=repr(["Chat Time: 2024/01/01 (Mon) 09:00",
+                                 [{"role": "user", "content": "hello"}]]))
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    with pytest.raises(ValueError, match="unexpected"):
+        memory.ingest(small, work=tmp_path, reuse_compiled=True)
+
+
+def test_reuse_compiled_refuses_when_there_is_no_graph(tmp_path):
+    _already_compiled(tmp_path, _group(), graph=False)
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    with pytest.raises(FileNotFoundError, match="nothing to reuse"):
+        memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+
+def test_reuse_compiled_refuses_when_there_is_no_corpus(tmp_path):
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    with pytest.raises(FileNotFoundError, match="nothing to reuse"):
+        memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+
+def test_the_default_ingest_still_compiles_and_is_not_marked_reused(tmp_path):
+    """Every existing caller must be byte-identical: the flag is opt-in."""
+    compiled = []
+    memory = MabMemory(compile_fn=compiled.append)
+
+    result = memory.ingest(_group(), work=tmp_path)
+
+    assert compiled == [tmp_path.resolve()]
+    assert result.compiled is True
+    assert result.reused is False
