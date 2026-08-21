@@ -294,8 +294,22 @@ def _graph_missing_sessions(graph_path: Path, corpus: Path) -> set:
 
     try:
         payload = _json.loads(graph_path.read_bytes())
-    except (OSError, ValueError):
-        return set()
+    except (OSError, ValueError) as exc:
+        # An UNREADABLE graph is not an empty one. Returning set() here made the
+        # caller read "no missing documents" — i.e. "the graph indexes every
+        # staged document" — from a file it could not parse. Measured: a
+        # truncated graph.json ('{"nodes": [{"source_path": "corp') was ACCEPTED
+        # by --reuse-compile, and only the well-formed '{}' case that the tests
+        # exercise was refused.
+        #
+        # This is the identical defect fixed in evals/lme_mab/adapter.py, and it
+        # was reproduced here by copying the shape without the reasoning. Refuse
+        # loudly: a graph that cannot be read cannot be reused.
+        raise ValueError(
+            f"--reuse-compile: {graph_path} could not be parsed "
+            f"({type(exc).__name__}: {exc}). A graph that cannot be read cannot "
+            f"be verified against the staged corpus; recompile."
+        ) from exc
     indexed = set()
     for node in payload.get("nodes") or []:
         source = node.get("source_path") if isinstance(node, dict) else None

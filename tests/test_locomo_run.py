@@ -34,6 +34,15 @@ def _question(category: int = 4, answer="teal", conversation="conv-test"):
                           answer=answer)
 
 
+def _conversation_with(n_questions: int):
+    """A minimal Conversation carrying ``n_questions`` questions."""
+    from evals.locomo.dataset import Conversation
+
+    return Conversation(
+        sample_id="conv-test", speaker_a="A", speaker_b="B", sessions=[],
+        questions=[_question() for _ in range(n_questions)],
+    )
+
 def _row(arm: str, key: str, *, correct: bool = False, refused: bool = False,
          errored: bool = False, score: float = 0.0, category: int = 4,
          replicate: int = 0, reference_correct=None) -> GradedRow:
@@ -562,3 +571,66 @@ def test_regrading_against_a_different_dataset_refuses(monkeypatch, capsys,
     assert runner.main(["--data", str(_dataset(tmp_path)),
                         "--score", str(answers)]) == 0
     assert "SKIP:" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# A broken run must not be able to report success
+# ---------------------------------------------------------------------------
+
+
+def test_a_retriever_that_never_returns_aborts_instead_of_scoring_zero():
+    """A wholly dead retriever produced a complete, exit-0, byte-reproducible
+    report with a clean 0.000-recall table on all 199 conv-26 questions.
+
+    Recall of zero is a publishable claim about a memory. A retriever that never
+    returned is not, and the report could not tell them apart — there was a
+    mandatory canary for the backbone and none at all for retrieval.
+    """
+    from evals.locomo.run import _RETRIEVAL_CANARY, search_conversation
+
+    class _Dead:
+        def query_hits(self, *a, **k):
+            raise RuntimeError("graph.json is truncated")
+        def documents_of(self, hits):
+            return []
+        def answer_evidence(self, hits, **k):
+            return []
+
+    conv = _conversation_with(n_questions=_RETRIEVAL_CANARY + 4)
+    with pytest.raises(RuntimeError, match="retrieval canary"):
+        search_conversation(_Dead(), conv, k=10)
+
+
+def test_a_retriever_that_degrades_partway_is_still_scored():
+    """The canary guards TOTAL death, not difficulty. A retriever that works and
+    then fails on some questions is a real result and must still be scored."""
+    from evals.locomo.run import _RETRIEVAL_CANARY, search_conversation
+
+    class _Flaky:
+        def __init__(self): self.n = 0
+        def query_hits(self, *a, **k):
+            self.n += 1
+            if self.n > _RETRIEVAL_CANARY:
+                raise RuntimeError("degraded")
+            return []
+        def documents_of(self, hits): return []
+        def answer_evidence(self, hits, **k): return []
+
+    conv = _conversation_with(n_questions=_RETRIEVAL_CANARY + 4)
+    documents, _evidence, errors = search_conversation(_Flaky(), conv, k=10)
+    assert len(documents) == _RETRIEVAL_CANARY + 4
+    assert sum(1 for e in errors if e) == 4
+
+
+def test_the_shortfall_section_does_not_claim_completeness_it_cannot_see():
+    """`shortfalls` increments only after a search RETURNS, so an empty list
+    means "no returning search was short" — never "every query succeeded"."""
+    from evals.locomo.run import _shortfall_section
+
+    text = "\n".join(_shortfall_section([], 199, {}))
+    assert "Every one of the" not in text
+    assert "incremented on return" in text
+
+    short = "\n".join(_shortfall_section([], 199, {}, n_searched=150))
+    assert "49 of 199" in short
+    assert "missing data" in short

@@ -367,6 +367,27 @@ def search_conversation(
             documents.append([])
             evidence.append([])
             errors.append(f"Error: {exc}")
+            # A RETRIEVAL canary, the counterpart of the backbone one. Without
+            # it, a retriever whose every search raised produced a complete,
+            # exit-0, byte-reproducible report with a clean 0.000-recall table —
+            # measured, on all 199 conv-26 questions. A recall of zero is a
+            # publishable claim about a memory; a broken retriever is not, and
+            # the report could not tell them apart.
+            #
+            # The first _RETRIEVAL_CANARY searches must not ALL fail. Beyond
+            # that a run is scored and per-question errors are reported, because
+            # a retriever that works and then degrades is a real result.
+            # "The first N searches ALL failed" — not "N have failed". Both
+            # lists grow on success and failure alike, so comparing their
+            # lengths was always true and would have aborted a merely flaky
+            # retriever on its Nth failure, whenever that came.
+            if len(errors) >= _RETRIEVAL_CANARY and all(errors):
+                raise RuntimeError(
+                    f"retrieval canary: the first {len(errors)} searches all "
+                    f"failed (last: {exc}). Refusing to score a run whose "
+                    f"retriever never returned — a 0.000 recall table would be "
+                    f"indistinguishable from a memory that found nothing."
+                ) from exc
             continue
         documents.append(memory.documents_of(hits))
         if build_evidence:
@@ -812,12 +833,50 @@ def _comparable_section(decomposition: Any, blockers: Sequence[str]) -> List[str
     ]
 
 
+#: Consecutive failed searches, from the start of a run, that abort it. Small on
+#: purpose: the failure this guards is TOTAL retriever death, and three is
+#: enough to distinguish that from a hard question.
+_RETRIEVAL_CANARY = 3
+
+
 def _shortfall_section(shortfalls: Sequence[Mapping[str, Any]],
-                       n_questions: int, meta: Mapping[str, Any]) -> List[str]:
+                       n_questions: int, meta: Mapping[str, Any],
+                       n_searched: Optional[int] = None) -> List[str]:
+    """Evidence-budget shortfalls, and never silence read as success.
+
+    ``shortfalls`` is appended only AFTER a search returns, so a search that
+    RAISES never increments it — and zero successful queries produced exactly
+    the same empty list as 199 successful ones. Measured: with every search
+    raising, this section printed "Every one of the 199 queries returned the
+    full evidence budget." The absence of a complaint was being reported as
+    proof of success.
+
+    ``n_searched`` is how many searches actually returned. When it is short of
+    ``n_questions`` the reassuring sentence is withheld and the gap is named.
+    """
     lines: List[str] = []
-    if not shortfalls:
-        lines.append(f"Every one of the {n_questions:,} queries returned the "
-                     f"full evidence budget.")
+    if n_searched is not None and n_searched < n_questions:
+        lines.append(
+            f"**{n_questions - n_searched:,} of {n_questions:,} queries did not "
+            f"complete a search.** No shortfall can be reported for them: this "
+            f"counter only increments after a search returns, so its silence "
+            f"here is missing data, not a full evidence budget."
+        )
+    elif not shortfalls:
+        # Deliberately NOT "every one of the N queries returned the full
+        # budget". This counter increments only after a search RETURNS, so an
+        # empty list means "no returning search was short" and says nothing
+        # about searches that raised. The retrieval canary (_RETRIEVAL_CANARY)
+        # makes total retriever death unreachable, but a run that degrades
+        # part-way would still land here, and the old sentence asserted
+        # completeness the counter cannot see.
+        lines.append(
+            f"No search that returned was short of its evidence budget. This "
+            f"counter is incremented on return, so it reports nothing about a "
+            f"search that raised; per-question failures are in §3's error "
+            f"column, and a run whose retriever never returned aborts before "
+            f"this section is reached."
+        )
     else:
         rows = [[str(s["question"])[:70], str(s.get("conversation") or "—"),
                  str(s["requested"]), str(s["returned"]),
@@ -916,8 +975,19 @@ def build_report(
                "an `--arms` list without `tesserae`. The result is §3."])
     lines += ["", f"## 5. Category {ADVERSARIAL_CATEGORY} "
                   f"({CATEGORY_NAMES[ADVERSARIAL_CATEGORY]}) — scored apart", ""]
-    lines += (_adversarial_section(decomposition) if decomposition is not None else
-              ["Nothing was answered, so nothing was scored here."])
+    # Gate on completeness exactly as §7 does. Rendering whenever a
+    # decomposition merely EXISTS printed a clean 100.0% adversarial rate with
+    # no answerable number beside it — the scenario this module's docstring
+    # names as the nightmare — for a backbone that returned "" to every real
+    # question after passing the canary.
+    if decomposition is None:
+        lines += ["Nothing was answered, so nothing was scored here."]
+    elif not getattr(decomposition, "complete", True):
+        lines += ["**Withheld.** The like-for-like subset is empty, so an "
+                  "adversarial rate here would have no answerable rate to be "
+                  "read against. See §4."]
+    else:
+        lines += _adversarial_section(decomposition)
     lines += ["", "## 6. Replicate spread", ""]
     lines += _replicate_section(spreads or {}, replicates)
     lines += ["", "## 7. Published-comparable result", ""]
@@ -931,7 +1001,8 @@ def build_report(
     lines += (_table(["key", "value"], [[k, str(meta[k])] for k in keys]) if keys
               else ["Nothing declared — an undeclared run cannot be published."])
     lines += ["", "## 9. Retrieval shortfalls and evidence size", ""]
-    lines += _shortfall_section(shortfalls, questions, meta)
+    lines += _shortfall_section(shortfalls, questions, meta,
+                                n_searched=meta.get('n_searched'))
     return "\n".join(lines) + "\n"
 
 
