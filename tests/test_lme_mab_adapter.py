@@ -20,6 +20,7 @@ wrong number:
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
@@ -615,14 +616,29 @@ def test_the_banner_is_printed_before_any_input_is_read(monkeypatch, capsys, tmp
 # look like a valid measurement while doing it.
 
 
-def _already_compiled(work, group, *, graph=True):
-    """Stage ``group`` in ``work`` the way a previous run would have."""
+def _already_compiled(work, group, *, graph=True, indexes=True):
+    """Stage ``group`` in ``work`` the way a previous run would have.
+
+    ``indexes=False`` writes a graph that indexes NO staged document — the
+    foreign-graph case. The original helper always wrote the literal "{}",
+    which means every reuse test exercised the corpus half of the check and
+    none of them could see the graph half; a graph indexing a different group
+    passed all nine.
+    """
     memory = MabMemory(compile_fn=lambda w: None)
     memory.ingest(group, work=work)
     if graph:
         tess = work / ".tesserae"
         tess.mkdir(parents=True, exist_ok=True)
-        (tess / "graph.json").write_text("{}", encoding="utf-8")
+        nodes = []
+        if indexes:
+            nodes = [
+                {"id": p.stem, "source_path": str(p)}
+                for p in sorted((work / "corpus").glob("*.md"))
+            ]
+        (tess / "graph.json").write_text(
+            json.dumps({"nodes": nodes, "edges": []}), encoding="utf-8"
+        )
     return memory
 
 
@@ -709,3 +725,43 @@ def test_the_default_ingest_still_compiles_and_is_not_marked_reused(tmp_path):
     assert compiled == [tmp_path.resolve()]
     assert result.compiled is True
     assert result.reused is False
+
+
+def test_reuse_refuses_a_graph_compiled_from_a_different_corpus(tmp_path):
+    """Verifying the CORPUS is not verifying the GRAPH.
+
+    ``ingest`` restages the corpus BEFORE compiling, so a work dir can hold one
+    group's freshly staged documents beside another group's graph — and the
+    corpus check passes on both. Reuse would then print "reused (earlier run)"
+    while retrieving from a different haystack than the one being scored, which
+    is the exact failure the flag's docstring claims to prevent.
+    """
+    _already_compiled(tmp_path, _group(), indexes=False)
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("must refuse, not compile"))
+
+    with pytest.raises(ValueError, match="does not index"):
+        memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+
+def test_reuse_accepts_a_graph_that_indexes_the_staged_corpus(tmp_path):
+    """The positive half — the guard must not refuse a legitimate reuse."""
+    _already_compiled(tmp_path, _group())
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    result = memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+    assert result.reused is True
+
+
+def test_reuse_tolerates_a_relocated_work_directory(tmp_path):
+    """Source paths are compared by BASENAME, so a work dir moved between runs
+    reads as reusable rather than foreign — relocation is not corruption."""
+    _already_compiled(tmp_path, _group())
+    graph = tmp_path / ".tesserae" / "graph.json"
+    payload = json.loads(graph.read_text())
+    for node in payload["nodes"]:
+        node["source_path"] = "/somewhere/else/corpus/" + Path(node["source_path"]).name
+    graph.write_text(json.dumps(payload), encoding="utf-8")
+
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+    assert memory.ingest(_group(), work=tmp_path, reuse_compiled=True).reused is True

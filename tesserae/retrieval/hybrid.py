@@ -549,7 +549,7 @@ def _node_text(node: ResearchNode) -> str:
 #: Deliberately NOT the embedding text. A 256-dimension mean-pooled vector over
 #: 8k characters is the per-file pooling failure that cost the dense lane
 #: 0.7857 -> 0.6578 in lane ablation; measured on LongMemEval-MAB group 0, raw
-#: text in ALL THREE lanes scores 0.803/0.612 against 0.823/0.721 for the
+#: text in ALL THREE lanes scores 0.803/0.612 against 0.820/0.707 for the
 #: lexical lanes alone, so the gating below is load-bearing and not decoration.
 SOURCE_LEXICAL_CHARS = 8_000
 
@@ -1114,7 +1114,7 @@ def hybrid_search(
         nodes and reaches here without a schema change.
 
         Measured on LongMemEval-MAB group 0, K=10, weights untouched: recall@10
-        0.705 -> 0.823 and MRR 0.584 -> 0.721, against a BM25-over-whole-
+        0.705 -> 0.820 and MRR 0.584 -> 0.707, against a BM25-over-whole-
         -documents reference of 0.911/0.803. The extraction pipeline's own text
         loss is what this recovers — a 14k-character chat session was otherwise
         retrievable only through 88-character concept summaries.

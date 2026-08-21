@@ -413,6 +413,31 @@ class IngestResult:
         return self.chars // 4
 
 
+
+def _graph_missing_sessions(graph_path: Path, corpus: Path) -> set:
+    """Staged session documents that the compiled graph does not index.
+
+    Empty means every document under ``corpus`` is reachable through some
+    node's ``source_path``. Compares BASENAMES: the compile records absolute
+    paths, and a work dir moved between runs would otherwise read as foreign
+    when it is merely relocated.
+    """
+    import json as _json
+
+    try:
+        payload = _json.loads(graph_path.read_bytes())
+    except (OSError, ValueError):
+        # An unreadable graph is not a mismatch; the caller's is_file check
+        # already passed, so let the normal load path report it.
+        return set()
+    indexed = set()
+    for node in payload.get("nodes") or []:
+        sp = node.get("source_path") if isinstance(node, dict) else None
+        if sp:
+            indexed.add(Path(str(sp)).name)
+    staged = {p.name for p in corpus.glob("*.md")}
+    return staged - indexed
+
 def _verify_staged(corpus: Path, sessions: Sequence[Any]) -> tuple:
     """``(turns, chars)`` of ``sessions``, having proved they are already staged.
 
@@ -593,6 +618,25 @@ class MabMemory:
                     f"--reuse-compile: no compiled graph at {graph_path}. There "
                     f"is nothing to reuse; run without the flag to compile."
                 )
+            # Verifying the CORPUS is not verifying the GRAPH. ``ingest``
+            # restages the corpus BEFORE compiling, so a work dir can hold
+            # group 1's freshly staged documents beside group 0's graph, and
+            # the corpus check passes on both. Reuse would then report
+            # "reused (earlier run)" while retrieving from a different
+            # haystack than the one being scored — silently, which is the
+            # exact failure this flag's docstring claims to prevent.
+            #
+            # Tie them: every session document must be reachable as a
+            # source_path in the graph. Cheap (one load, a set difference) and
+            # it fails loudly rather than scoring the wrong corpus.
+            _missing = _graph_missing_sessions(graph_path, corpus)
+            if _missing:
+                raise ValueError(
+                    f"--reuse-compile: the graph at {graph_path} does not index "
+                    f"{len(_missing)} of the {len(sessions)} staged session "
+                    f"documents (e.g. {sorted(_missing)[:3]}). It was compiled "
+                    f"from a different group or an older corpus; recompile."
+                )
         else:
             shutil.rmtree(corpus, ignore_errors=True)
             corpus.mkdir(parents=True, exist_ok=True)
@@ -692,7 +736,7 @@ class MabMemory:
             # name and description, so a 14k-character chat session was
             # retrievable only through 88-character concept summaries. Handing
             # the lexical lanes the session file itself recovers that loss:
-            # recall@10 0.705 -> 0.823, MRR 0.584 -> 0.721 on group 0. Confined
+            # recall@10 0.705 -> 0.820, MRR 0.584 -> 0.707 on group 0. Confined
             # to the work directory, which is where this harness staged the
             # sessions and the only tree its source_paths may name.
             source_root=self.work,
