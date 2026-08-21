@@ -67,6 +67,25 @@ class TesseraeConfig(QABenchmarkConfig):  # type: ignore[misc,valid-type]
     answer_style: str = "prose-cited"
 
 
+    #: OPT-IN abstention gate. ``None`` — the default — is today's behaviour
+    #: exactly: no gate, nothing computed, no change to any number. Set it to a
+    #: quantile in [0, 1] and an answer whose Novel Grounded Evidence falls
+    #: below ``grounding_tau(corpus_idf, quantile)`` is replaced with ``""``,
+    #: which :func:`evals.qa.scorer.is_refusal` already reads as a refusal.
+    #:
+    #: A QUANTILE, never an absolute threshold. BM25 idf scales with
+    #: ``log(n_docs)``, so a constant tuned on a 135-document corpus means
+    #: something else entirely on a 62k-page graph — see
+    #: :func:`tesserae.retrieval.grounding.grounding_tau`.
+    #:
+    #: Measured at quantile 0.25 on 352 persisted answers, Tesserae arm:
+    #: Youden J +0.5048 -> +0.6172, refuse|unanswerable 0.529 -> 0.691,
+    #: refuse|answerable 0.025 -> 0.074. Honest leave-one-out J +0.5884
+    #: (dJ +0.0837, paired bootstrap 95%% CI [-0.0004, +0.1719]). It costs
+    #: token F1 0.3534 -> 0.3380 on the answerable stratum. Opt in per run;
+    #: it is not the product's behaviour and must not become it.
+    grounding_quantile: Optional[float] = None
+
     project_root: str = ""
     staging_dir: Optional[str] = None
     backend: str = "wiki"
@@ -159,7 +178,44 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
             route=self.config.route,
             answer_style=self.config.answer_style,
         )
-        return answer_text(envelope)
+        answer = answer_text(envelope)
+        if self.config.grounding_quantile is None:
+            return answer
+        return "" if self._below_grounding_gate(question, answer, envelope) else answer
+
+    # --------------------------------------------------------- abstention gate
+
+    def _corpus_idf(self):
+        """BM25 idf over the arm's whole corpus. Built once per run."""
+        cached = getattr(self, "_idf", None)
+        if cached is None:
+            from tesserae.retrieval.grounding import corpus_idf
+
+            cached = corpus_idf([d for d in (self.corpus or []) if isinstance(d, str)])
+            self._idf = cached
+        return cached
+
+    def _below_grounding_gate(self, question: str, answer: str, envelope: Any) -> bool:
+        """True when the answer adds too little novel, source-attested vocabulary.
+
+        The score is taken from the envelope when ``tesserae.query`` already
+        computed it, because that one was measured against the bundle the model
+        actually read. Recomputing from the hit excerpts is the fallback for
+        backends that do not carry it, and it measures a slightly different
+        thing — the excerpt is a clip of the page, not the page.
+        """
+        from tesserae.retrieval.grounding import (
+            grounding_tau, novel_grounded_evidence,
+        )
+
+        idf, n_docs = self._corpus_idf()
+        tau = grounding_tau(idf, self.config.grounding_quantile)
+        score = envelope.get("grounding") if isinstance(envelope, dict) else None
+        if score is None:
+            hits = envelope.get("hits") or [] if isinstance(envelope, dict) else []
+            sources = [str(h.get("excerpt") or "") for h in hits if isinstance(h, dict)]
+            score = novel_grounded_evidence(answer, question, sources, idf, n_docs)
+        return float(score) < tau
 
     # ------------------------------------------------------------------- meta
 
