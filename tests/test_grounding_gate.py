@@ -27,6 +27,26 @@ from tesserae.retrieval.grounding import (
     novel_grounded_evidence,
 )
 
+# The benchmark arms import the VENDORED cognee QA base, which is gitignored and
+# absent on a CI runner. Their imports here are function-local, so a missing
+# prerequisite surfaced as four test FAILURES rather than a collection error —
+# which is what it did on PR #213. `tests/test_qa_retrieval_arm.py` already
+# carries this idiom for the same prerequisite; the difference is that the pure
+# `tesserae.retrieval.grounding` tests in this file have no such dependency and
+# must keep running, so the skip is per-test rather than module-level.
+try:
+    from evals.qa.vendor_base import load_qa_benchmark_base
+
+    load_qa_benchmark_base()
+    _VENDORED_BASE = None
+except Exception as exc:  # pragma: no cover - environment-dependent
+    _VENDORED_BASE = str(exc)
+
+needs_vendored_base = pytest.mark.skipif(
+    _VENDORED_BASE is not None,
+    reason=f"vendored QA benchmark base unavailable: {_VENDORED_BASE}",
+)
+
 
 #: A bundle with a real frequency spread, because a corpus without one cannot
 #: exercise idf: in five documents where every term is a hapax, four common
@@ -195,6 +215,7 @@ def test_grounding_tau_is_monotone_in_its_quantile():
     assert grounding_tau({}, quantile=0.5) == 0.0
 
 
+@needs_vendored_base
 def test_gate_is_opt_in_for_both_benchmark_arms():
     """An eval-only behaviour must never become the product default.
 
@@ -239,6 +260,7 @@ def _tesserae_arm(quantile=None):
     )
 
 
+@needs_vendored_base
 def test_the_tesserae_arm_prefers_the_score_the_query_layer_already_computed():
     """Recomputing from excerpts measures a different bundle than the model read.
 
@@ -260,6 +282,7 @@ def test_the_tesserae_arm_prefers_the_score_the_query_layer_already_computed():
     assert arm._below_grounding_gate("alpha beta", "zephyrine", poor) is True
 
 
+@needs_vendored_base
 def test_a_missing_score_does_not_gate_on_a_substitute():
     """No score means DO NOT GATE — never "gate on whatever is to hand".
 
@@ -299,6 +322,7 @@ def test_the_planner_envelope_carries_a_grounding_score():
     assert source_blocks_of("no sources here") == []
 
 
+@needs_vendored_base
 def test_the_tesserae_arm_measures_rarity_over_the_corpus_not_the_bundle():
     """A single shown document caps BM25 idf near 0.9 — every term looks alike.
 
