@@ -143,6 +143,24 @@ is the only reason a test can execute it at all.
 Query returns exactly K=10 evidence items via `hybrid_search`. When the graph
 holds fewer it records a shortfall and returns short. It never pads.
 
+**An evidence item is not the same size on the two paths, and that is
+deliberate.** `MabHit.text` — what retrieval scoring and `--retrieval-only`
+see — is the node's own `name — description — source: path`, measured at mean
+234 characters over group 0's 600 hits. Answering reads
+`MabMemory.answer_evidence` instead, which appends the first
+`EVIDENCE_SOURCE_CHARS` (2,400) of a hit's own session file when — and only
+when — the hit is the node that *is* that session. Before that, the backbone
+read 1.7% of the text the retriever had already scored to rank it, which is the
+substitution arXiv:2410.10813 §5.2 measures as a loss. Two gates, both
+load-bearing: node **type** cannot tell an anchor from the 103 nodes that merely
+inherited a transcript's path, so identity with the document's own H1 does it;
+and a session's text goes to the first hit that stands for it, because 17
+sessions carry two such nodes and 11 of the 60 questions retrieve both. The cap
+is *not* `hybrid.SOURCE_LEXICAL_CHARS` — ranking and answering are different
+questions and `adapter.EVIDENCE_SOURCE_CHARS` derives its own. Retrieval is
+untouched by any of it: `recall@10 0.8197 / MRR 0.7068` on group 0 before and
+after, to four decimals, over identical rankings.
+
 **The retrieval unit is a session, not a turn window.** ~112 documents per
 group rather than ~1,290. K=10 is a fixed control, so the unit size is one too:
 ten sessions and ten turns are different amounts of evidence, and picking the

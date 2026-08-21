@@ -65,6 +65,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 from ..qa.run_qa_eval import Skip, _num, _rate, _table, load_answers_file
 from ..qa.scorer import score_system
 from .adapter import (
+    EVIDENCE_SOURCE_CHARS,
     PROTOCOL_BACKBONE,
     PROTOCOL_CONTROLS,
     PROTOCOL_EMBEDDING_MODEL,
@@ -407,7 +408,10 @@ def answer_group(
         except Exception as exc:  # recorded, not raised: one bad question
             hits, evidence, answer = [], [], f"Error: {exc}"  # keep the other 59
         else:
-            evidence = [hit.text for hit in hits]
+            # NOT ``[hit.text ...]``. That handed the backbone a 234-character
+            # node summary of a 14,042-character session it had just ranked on
+            # 8,000 of those characters — see ``MabMemory.answer_evidence``.
+            evidence = memory.answer_evidence(hits)
             try:
                 answer = answer_fn(question, evidence)
             except Exception as exc:  # the backbone failed, the search did not
@@ -421,6 +425,12 @@ def answer_group(
             "stratum": types[i] if i < len(types) else "unspecified",
             "group": group.index,
             "n_evidence": len(evidence),
+            # Items stopped being a description of the budget the moment they
+            # stopped carrying comparable amounts of text. Given that an
+            # IDENTICAL generative config has swung 0.043 token F1 between two
+            # runs in this repo, what the backbone actually read is the one
+            # thing worth persisting per row.
+            "evidence_chars": sum(len(text) for text in evidence),
         })
     return rows, retrieved
 
@@ -638,10 +648,65 @@ def _controls_section(meta: Mapping[str, Any], blockers: Sequence[str]) -> List[
     return lines
 
 
-def _shortfall_section(shortfalls: Sequence[Mapping[str, Any]], n_questions: int) -> List[str]:
+def _evidence_chars(rows: Sequence[Mapping[str, Any]]) -> Dict[str, int]:
+    """Mean / median / max characters of evidence per question, as declarations.
+
+    Empty when no row recorded any, so a ``--score`` re-run of an answers file
+    written before this existed declares nothing rather than declaring zero.
+    """
+    sizes = sorted(int(r.get("evidence_chars") or 0) for r in rows
+                   if r.get("evidence_chars") is not None)
+    if not sizes:
+        return {}
+    mid = len(sizes) // 2
+    median = sizes[mid] if len(sizes) % 2 else (sizes[mid - 1] + sizes[mid]) // 2
+    return {
+        "evidence_chars_mean": round(sum(sizes) / len(sizes)),
+        "evidence_chars_median": median,
+        "evidence_chars_max": sizes[-1],
+    }
+
+
+def _evidence_budget_note(meta: Mapping[str, Any]) -> List[str]:
+    """What K=10 items actually cost in characters. See ``_evidence_chars``.
+
+    K counts ITEMS, and items stopped being interchangeable when the document
+    anchors among them started carrying their own session text. A reader
+    comparing this run's evidence budget with a published top-10 needs the
+    second number, so §5 prints it beside the shortfalls rather than leaving
+    "the full K=10 evidence items" to imply a budget it no longer describes.
+    """
+    mean = meta.get("evidence_chars_mean")
+    if mean is None:
+        return []
+    sentence = (
+        f"**Evidence size, in characters rather than items.** Mean "
+        f"{int(mean):,} per question, median "
+        f"{int(meta.get('evidence_chars_median') or 0):,}, max "
+        f"{int(meta.get('evidence_chars_max') or 0):,}."
+    )
+    cap = meta.get("evidence_source_chars")
+    if cap is not None:
+        sentence += (
+            f" An item is a retrieved node's name and description, PLUS — for "
+            f"the node that IS a staged session, and only for it — the first "
+            f"{int(cap):,} characters of that session's own file. Before that "
+            f"expansion the same K={PROTOCOL_K} was ~2,300 characters, 1.7% of "
+            f"the text the retriever had already scored in order to rank it; "
+            f"arXiv:2410.10813 §5.2 measures exactly that substitution — "
+            f"sessions replaced by summaries or facts — as a LOSS. The cap is "
+            f"not the ranking cap; `adapter.EVIDENCE_SOURCE_CHARS` says why "
+            f"2,400 rather than 8,000."
+        )
+    return ["", sentence]
+
+
+def _shortfall_section(shortfalls: Sequence[Mapping[str, Any]], n_questions: int,
+                       meta: Optional[Mapping[str, Any]] = None) -> List[str]:
+    meta = meta or {}
     if not shortfalls:
         return [f"Every one of the {n_questions} queries returned the full K="
-                f"{PROTOCOL_K} evidence items."]
+                f"{PROTOCOL_K} evidence items."] + _evidence_budget_note(meta)
     rows = [[str(s["question"])[:80], str(s["requested"]), str(s["returned"]),
              str(s.get("total_matches", "—"))] for s in shortfalls[:20]]
     lines = _table(["question", "requested", "returned", "candidates"], rows)
@@ -657,7 +722,7 @@ def _shortfall_section(shortfalls: Sequence[Mapping[str, Any]], n_questions: int
         "budget allows, so this run gave itself LESS context than the baselines "
         "had, not more.",
     ]
-    return lines
+    return lines + _evidence_budget_note(meta)
 
 
 def _retrieval_footnotes(reports: Sequence[Mapping[str, Any]]) -> List[str]:
@@ -893,7 +958,7 @@ def build_report(
     else:
         lines += ["Nothing declared — an undeclared run cannot be published."]
     lines += ["", "## 5. Retrieval shortfalls", ""]
-    lines += (_shortfall_section(shortfalls, n_questions) if tesserae_ran else
+    lines += (_shortfall_section(shortfalls, n_questions, meta) if tesserae_ran else
               ["The Tesserae arm did not run, and §5 is about ITS graph "
                "retrieval. The baseline arms' shortfalls are in §6."])
     lines += ["", "## 6. Retrieval comparison (this machine's protocol)", ""]
@@ -1183,6 +1248,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "embedding_dim": getattr(memory.embedding_backend(), "dim", None),
             "judge": args.judge,
             "evidence_budget": args.k,
+            # K alone no longer describes the budget: an evidence item is a
+            # node summary OR a node summary plus up to EVIDENCE_SOURCE_CHARS
+            # of its own session. Declaring the cap and the realised
+            # distribution is what keeps §4 checking the control it names —
+            # ``evidence_budget`` is a count of items, and a reader comparing
+            # this run to a published top-10 needs to know how big an item got.
+            "evidence_source_chars": EVIDENCE_SOURCE_CHARS,
+            **_evidence_chars(rows),
             "dataset": str(parquet),
             "groups": ",".join(str(g.index) for g in groups),
             "protocol": "arXiv:2606.04555 §5.2-5.3",

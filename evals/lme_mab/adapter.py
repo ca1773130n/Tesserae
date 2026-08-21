@@ -230,8 +230,7 @@ class Session:
         only exists in a filename or a heading level is a date the
         ``temporal-reasoning`` stratum cannot retrieve.
         """
-        header = f"# Session {self.index:04d}"
-        lines = [header, ""]
+        lines = [f"# {document_title(self.index)}", ""]
         if self.date:
             lines += [f"Chat Time: {self.date}", ""]
         else:
@@ -244,6 +243,20 @@ class Session:
             # retrieval key on "this is the answer" and score the leak.
             lines += [f"**{role}:**", "", content, ""]
         return "\n".join(lines).rstrip() + "\n"
+
+
+def document_title(index: int) -> str:
+    """The H1 of the staged document for session ``index``.
+
+    Written by :meth:`Session.render` and read back by
+    :attr:`MabHit.is_document_anchor`, and spelled out here so those two cannot
+    drift. A compile records this string as the name of the node that STANDS
+    FOR the document — ``tesserae.research_graph`` names a document anchor
+    ``extract_title(text, source_path)``, which for these documents is exactly
+    this heading — so equality with it is what distinguishes the anchor from
+    every other node the same file produced.
+    """
+    return f"Session {index:04d}"
 
 
 #: The inverse of :attr:`Session.document_name`. ``\d{4,}`` rather than ``\d+``
@@ -504,6 +517,47 @@ def _default_compile(work: Path) -> None:
         )
 
 
+#: How much of a document anchor's OWN session file joins its ANSWERING
+#: evidence. Deliberately a separate constant from
+#: :data:`tesserae.retrieval.hybrid.SOURCE_LEXICAL_CHARS` (8,000), because
+#: ranking and answering are different questions and sharing the number would
+#: couple the reproducible half of this benchmark to the unstable one.
+#:
+#: Ranking needs a query term to appear ANYWHERE in the scored prefix, and term
+#: presence saturates: a topically coherent session places itself on its first
+#: few thousand characters. Answering needs the answer SPAN itself, which is a
+#: different quantity — a session that ranks first on a term in its opening
+#: paragraph, with the answer at character 11,000, is a perfect retrieval and an
+#: unanswerable prompt.
+#:
+#: 2,400 is where three independent derivations land, within 5% of each other:
+#:
+#: * this corpus's own mean ROUND is 2,388 characters (642 rounds measured on
+#:   group 0; median 2,483, p90 3,300);
+#: * a round is the evidence unit of the published benchmark's best
+#:   configuration — arXiv:2410.10813 §E.5 provides "top-10 items" as rounds,
+#:   and §5.2 measures that replacing them with summaries or facts LOSES, which
+#:   is the substitution this adapter was making at 234 characters a hit;
+#: * ``tesserae.ask_planner._EVIDENCE_CLIP`` is 2,500 — the house figure for
+#:   chars per evidence block fed to synthesis.
+#:
+#: The cost is stated rather than hidden, and it is REAL. Measured on group 0's
+#: 53 gold answers that appear verbatim in their aligned session, truncating to
+#: 2,400 keeps 38 of them (71.7%); 4,000 keeps 84.9%, 8,000 keeps 92.5%, and
+#: only 12,000 keeps all 53. So this cap loses spans the ranking cap never paid
+#: for, and 4,000 is the obvious sensitivity arm if the answering measurement
+#: comes out below what retrieval says it should be. What it buys is a budget
+#: that stays the same ORDER as the published top-10-rounds one rather than six
+#: times it: measured over the same 60 questions, K=10 costs 22,800 prompt
+#: characters on average (max 26,629) against 2,420 before.
+#:
+#: Truncation is from the FRONT because the answer is front-loaded here: gold
+#: offsets have median 268 and the benchmark's own ``has_answer`` turn has mean
+#: relative position 0.15, median 0.00. No smarter windowing is justified by
+#: that distribution.
+EVIDENCE_SOURCE_CHARS = 2_400
+
+
 def evidence_text(node: Any) -> str:
     """One retrieved node as the evidence string handed to the backbone.
 
@@ -511,6 +565,10 @@ def evidence_text(node: Any) -> str:
     to feed the scoring lanes and includes the node id and every metadata pair.
     Those are retrieval features, not evidence: a backbone reading them spends
     its context on slugs.
+
+    This is the NODE's own text and stops there. The session behind it is
+    appended only on the answering path, by :meth:`MabMemory.answer_evidence`,
+    and only for the node that IS the session — see :data:`EVIDENCE_SOURCE_CHARS`.
     """
     parts = [str(getattr(node, "name", "") or "").strip()]
     description = str(getattr(node, "description", "") or "").strip()
@@ -532,16 +590,69 @@ class MabHit:
     retrieval comparison scores exactly the documents the answer was built on.
     """
 
-    #: What the backbone reads. :func:`evidence_text` of the node.
+    #: The node's own evidence string. :func:`evidence_text` of the node, and
+    #: what the backbone reads unless :meth:`MabMemory.answer_evidence` expands
+    #: it.
     text: str
     #: The node's ``source_path``, ``""`` when it has none.
     source_path: str
+    #: The node's ``name``. Carried because it is the only field that separates
+    #: the node that IS a document from the ~103 nodes that merely inherited its
+    #: path — see :attr:`is_document_anchor`.
+    name: str = ""
 
     @property
     def document(self) -> Optional[int]:
         """The staged session index, or ``None`` when the node's provenance is
         not one of this adapter's documents. See :func:`document_index`."""
         return document_index(self.source_path)
+
+    @property
+    def is_document_anchor(self) -> bool:
+        """Does this node STAND FOR its ``source_path``, or merely come from it?
+
+        The distinction decides who gets the session text on the answering path,
+        and getting it wrong is the failure
+        ``hybrid._SOURCE_ANCHOR_TYPES``' docstring documents for the ranking
+        side: every node extracted from one document would carry that
+        document's entire contents, so eleven concepts from one chat become
+        eleven identical 22kB evidence items and the budget collapses to one
+        session.
+
+        **Node TYPE cannot make this call on this graph, and the measurement
+        says so.** ``hybrid._SOURCE_ANCHOR_TYPES`` matches 214 nodes of the
+        compiled group-0 graph — 127 ``SourceDocument``, 60 ``Project``, 17
+        ``Repository``, 10 ``Paper`` — and all 214 carry a
+        ``session-NNNN.md`` path, because every node in this graph came out of
+        a chat transcript. Only 111 of them are the transcripts. The other 103
+        are things somebody talked about: "20-Gallon Community Tank",
+        "AuctionZip", and 16 ``SourceDocument`` nodes that are books mentioned
+        in a chat ("Banksy: Wall and Piece", ``source_path`` session-0015.md).
+        ``session-0077.md`` alone mints 11 of them. Under the lexical lane 219
+        of 600 retrieved hits are such impostors — a third of all evidence.
+
+        Identity with the file is the test that works: the compile names a
+        document's anchor after the document's own H1, and
+        :func:`document_title` is that H1. Measured on the compiled group-0
+        graph, this rejects all 103 impostors and admits all 111 anchors.
+
+        It admits **128** nodes, not 111, and that overshoot is why
+        :meth:`MabMemory.answer_evidence` de-duplicates. Seventeen sessions also
+        carry a ``Session``-typed summary node named exactly ``Session NNNN``
+        beside their ``SourceDocument`` anchor — same name, same file — so both
+        pass this test. They are still 128 nodes over 111 distinct files, and
+        the property that matters is per FILE, not per node: over group 0's 60
+        real queries, 11 of them retrieved two such twins in one top-10 and
+        would have spent 12 of 600 evidence items on bytes the prompt already
+        held.
+
+        Metadata is not an alternative: those 111 anchors carry 16 distinct
+        metadata key-sets (``chat_time``, ``chatTime``, ``chat_date``,
+        ``session_date``, ...). It is LLM-extracted and inconsistent by
+        construction.
+        """
+        index = self.document
+        return index is not None and self.name == document_title(index)
 
 
 class MabMemory:
@@ -745,6 +856,7 @@ class MabMemory:
             MabHit(
                 text=evidence_text(scored.node),
                 source_path=str(getattr(scored.node, "source_path", "") or ""),
+                name=str(getattr(scored.node, "name", "") or ""),
             )
             for scored in result.scored
         ][:k]
@@ -758,8 +870,73 @@ class MabMemory:
         return hits
 
     def query(self, question: str, *, k: int = PROTOCOL_K) -> List[str]:
-        """The evidence strings of :meth:`query_hits`. See it for the contract."""
+        """The evidence strings of :meth:`query_hits`. See it for the contract.
+
+        The NODE strings, unexpanded. Answering reads
+        :meth:`answer_evidence` instead; this stays cheap so the retrieval path
+        does no file I/O it has no use for.
+        """
         return [hit.text for hit in self.query_hits(question, k=k)]
+
+    def answer_evidence(self, hits: Sequence[MabHit]) -> List[str]:
+        """``hits`` as the strings the BACKBONE reads — the answering path only.
+
+        This closes a measured hole. ``query_hits`` passes ``source_root`` so
+        the lexical lanes rank a document anchor on the first 8,000 characters
+        of its own session file, and that text then dies as a local inside
+        ``hybrid_search``: the string that reached the backbone was
+        ``evidence_text``'s ``name — description — source: path``, measured over
+        group 0's 600 retrieved hits at mean 234.2 characters against source
+        files averaging 14,042. The backbone was reading **1.7% of the text the
+        retriever scored**, which is
+        ``tesserae.context_compiler``'s "the graph was contributing essentially
+        no text the prompt did not already have" transposed to the answering
+        side — except worse, because the prompt here has nothing else at all.
+        arXiv:2410.10813 §5.2 measured that exact substitution and found it
+        loses to raw dialogue text, so the arm was running the losing side of a
+        published ablation.
+
+        Two properties, both deliberate:
+
+        * **Only anchors expand, and each file at most once.** See
+          :attr:`MabHit.is_document_anchor`. A concept node keeps its summary,
+          which is honestly all the text it has. And a session's text goes to
+          the FIRST hit that stands for it, on the same rule
+          :meth:`documents_of` scores by — two nodes from one session are one
+          session, at the better rank. Without that, the 17 sessions carrying
+          both a ``SourceDocument`` anchor and a ``Session`` summary node of
+          the same name pay twice: measured, 11 of group 0's 60 questions
+          retrieved such a pair and would have spent 12 of 600 evidence items
+          re-sending bytes the prompt already had. No two evidence items in one
+          prompt can now be the same bytes, which is the whole point of the
+          gate.
+        * **Only the answering path calls this.** ``query_hits``,
+          :meth:`query`, :meth:`documents_of` and :meth:`search_documents` are
+          untouched, so recall@K and MRR cannot move by a byte and
+          ``--retrieval-only`` reads no session file it will not use.
+
+        ``source_path`` is UNTRUSTED — it arrives from document frontmatter —
+        and this side is where it matters most: ranking buries a stolen file in
+        a BM25 score, answering pastes it verbatim into an LLM prompt. So the
+        read goes through ``hybrid._confined_source``, rooted at the work
+        directory this adapter staged into, rather than a hand-rolled open().
+        """
+        from tesserae.retrieval.hybrid import _confined_source
+
+        root = self.work
+        cache: Dict[str, str] = {}
+        spent: set = set()
+        evidence: List[str] = []
+        for hit in hits:
+            raw = ""
+            if (root is not None and hit.is_document_anchor
+                    and hit.source_path not in spent):
+                raw = _confined_source(hit.source_path, root, cache)
+                if raw:
+                    spent.add(hit.source_path)
+            evidence.append(f"{hit.text}\n{raw[:EVIDENCE_SOURCE_CHARS]}"
+                            if raw else hit.text)
+        return evidence
 
     def search_documents(self, question: str, *, k: int = PROTOCOL_K) -> List[int]:
         """The session indices behind :meth:`query_hits`, ranked and de-duplicated.
@@ -809,6 +986,7 @@ class MabMemory:
 
 
 __all__ = [
+    "EVIDENCE_SOURCE_CHARS",
     "IngestResult",
     "MabHit",
     "MabMemory",
@@ -823,6 +1001,7 @@ __all__ = [
     "RefusedToCompileInRepo",
     "Session",
     "document_index",
+    "document_title",
     "evidence_text",
     "guard_work_dir",
     "protocol_blockers",
