@@ -119,12 +119,48 @@ _APOSTROPHES = str.maketrans({"'": "", "‘": "", "’": "", "ʼ": ""})
 _PUNCT_TABLE = {ord(c): " " for c in string.punctuation if c != "'"}
 
 
+#: Bracketed provenance citations. Deliberately ANY bracketed span, not the
+#: id-shaped character class of ``NODE_CITATION_RE``: the planner cites node
+#: NAMES, so 83% of the 822 citations measured on a real run contain a space —
+#: ``[Keyframe Graph]``, ``[MERF: Memory-Efficient Radiance Fields ...]``,
+#: ``[wiki search]``. An id-shaped pattern matched 17% of them and left the
+#: distortion in place.
+#:
+#: Safe to widen because brackets never appear in the content: across the
+#: 284-question set, 0 gold answers and 0 questions contain one. Checked before
+#: widening, precisely because a greedier pattern could otherwise eat real
+#: tokens.
+#:
+#: These are stripped before scoring because token F1 otherwise charges a system
+#: for citing its sources. Measured: 277 of 284 Tesserae short-span answers
+#: carried one, median 11 tokens on a median 19-token answer, while the
+#: retrieval baseline emitted none — so every citation token was a false
+#: positive on one arm only. Stripping moved that arm from F1 0.325 /
+#: precision 0.306 to 0.353 / 0.427, and turned a reported TIE with the
+#: baseline into +0.034 [+0.016, +0.051]. The tie was an artifact of the metric,
+#: not a property of the systems.
+#:
+#: Applied identically to every arm and to the gold, so it cannot favour one:
+#: a gold that genuinely contains a bracketed term loses it on both sides.
+_CITATION_RE = re.compile(r"\[[^\]]{2,}\]")
+
+
+def strip_citations(text: Optional[str]) -> str:
+    """``text`` without bracketed provenance citations."""
+    if not text:
+        return ""
+    return _CITATION_RE.sub(" ", str(text))
+
+
 def normalize_answer(text: Optional[str]) -> str:
     """SQuAD/HotpotQA answer normalization.
 
     Casefold, strip accents, drop apostrophes, replace the remaining punctuation
     with spaces, drop the English articles, collapse whitespace. ``None``
     normalizes to ``""``.
+
+    Bracketed provenance citations are removed first — see
+    :data:`_CITATION_RE` for why, and for the measurement that motivated it.
 
     Punctuation becomes a *space* rather than being deleted, so "gpt-5.4"
     tokenizes to ``["gpt", "5", "4"]`` instead of the single token "gpt54".
@@ -134,7 +170,7 @@ def normalize_answer(text: Optional[str]) -> str:
     """
     if not text:
         return ""
-    folded = unicodedata.normalize("NFKD", str(text)).casefold()
+    folded = unicodedata.normalize("NFKD", strip_citations(text)).casefold()
     folded = "".join(c for c in folded if not unicodedata.combining(c))
     folded = folded.translate(_APOSTROPHES)
     folded = folded.translate(_PUNCT_TABLE)

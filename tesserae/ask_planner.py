@@ -820,13 +820,28 @@ SYNTHESIS_SOURCE_CHARS = 4_000
 
 
 def _build_synthesis_message(question: str, evidence: List[Dict[str, Any]], hits: List[Any],
-                             source_root: Optional[Path] = None) -> str:
+                             source_root: Optional[Path] = None,
+                             answer_style: str = "prose-cited") -> str:
     from .query import _strip_frontmatter  # noqa: PLC0415 — avoid import cycle at module load
 
+    # The citation instruction is prose-cited ONLY. Asking for [<node_id>] in
+    # short-span mode contradicts _SHORT_SPAN_PREAMBLE_HEADER, which says "No
+    # explanation, no full sentence, no citations, no markdown" — and the model
+    # obeyed the user message over the system block: 277 of 284 short-span
+    # answers carried a bracketed footer, median 11 tokens on a median 19-token
+    # answer. Token F1 counts every one of those as a false positive, so the
+    # arm was scored 0.325 where its actual content scores 0.353, and a
+    # significant win over the retrieval baseline (+0.034 [+0.016, +0.051])
+    # read as a tie for the whole of this project's published comparison.
+    _cite = (
+        "Cite every factual claim with [<node_id>] using the node_id attribute "
+        "on each <source>. "
+        if answer_style != "short-span"
+        else ""
+    )
     parts = [
         "Answer the following question strictly from the supplied sources. "
-        "Cite every factual claim with [<node_id>] using the node_id attribute "
-        "on each <source>. Sources with kind starting 'kg:' are live knowledge-"
+        f"{_cite}Sources with kind starting 'kg:' are live knowledge-"
         "graph query results (dated evidence); prefer them for temporal claims.",
         "",
         f"QUESTION: {question.strip()}",
@@ -985,7 +1000,8 @@ def _plan_and_answer(
         str(b.get("text", "")) for b in wq._system_blocks() if isinstance(b, dict) and b.get("text")
     )
     message = _build_synthesis_message(question, evidence, hits,
-                                       source_root=getattr(wiki, 'project_root', None))
+                                       source_root=getattr(wiki, 'project_root', None),
+                                       answer_style=answer_style)
     if history:
         prior = "\n\n".join(
             f"{t.get('role')}: {t.get('content')}"
