@@ -105,6 +105,7 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
     def __init__(self, corpus, qa_pairs, config: TesseraeConfig):
         super().__init__(corpus, qa_pairs, config)
         self.config: TesseraeConfig = config
+        self.grounding_scores: Dict[str, Any] = {}
         if not config.project_root:
             raise ValueError("TesseraeConfig.project_root is required")
         self.project_root = Path(config.project_root).resolve()
@@ -179,6 +180,13 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
             answer_style=self.config.answer_style,
         )
         answer = answer_text(envelope)
+        # Record the score whether or not a gate is active. One run then
+        # supports sweeping EVERY quantile offline, instead of re-spending 352
+        # LLM calls per threshold — and it makes the shipped number auditable
+        # against the offline estimate rather than merely consistent with it.
+        self.grounding_scores[question] = (
+            envelope.get("grounding") if isinstance(envelope, dict) else None
+        )
         if self.config.grounding_quantile is None:
             return answer
         return "" if self._below_grounding_gate(question, answer, envelope) else answer
