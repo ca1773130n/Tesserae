@@ -788,3 +788,50 @@ was still running when this was written. The nondeterminism is also real — the
 same temporal question answered "Yesterday" on one run and "Last Friday" on the
 next, so replicates are mandatory for this path in a way they are not for the
 deterministic one.
+
+## §22. Replicates grew the effect instead of dissolving it
+
+§21 measured the planner's routing rule on one run per arm and recorded the
+quality effect as unresolved: blended token F1 0.274 -> 0.297 (+0.023), with
+-0.054 on previously-fine questions that could not be told from resampling. The
+prediction on record was that replicates would dissolve both.
+
+They did not. 3 replicates x 2 rules x 16 questions, identical code — the BEFORE
+arm reconstructed by swapping the rule paragraph back into `_PLANNER_SYSTEM`,
+which `ask_planner` reads as a module global at call time.
+
+| arm | replicate means | mean | within-arm sd | reached a document tool |
+|---|---|---|---|---|
+| before | 0.278, 0.256, 0.260 | 0.265 | **0.010** | 26/48 (54%) |
+| after | 0.303, 0.369, 0.296 | **0.323** | 0.033 | **48/48 (100%)** |
+
+The single-run estimate UNDERSTATED the effect: +0.023 became +0.058. Noise does
+not behave that way, and the within-arm spread (0.010 and 0.033) is smaller than
+the gap.
+
+**Two tests, and the disagreement is the finding.**
+
+Exact permutation over the six replicate means: 1 of 20 arrangements reaches the
+observed gap, p = 0.050 one-sided. All three BEFORE runs fall below all three
+AFTER runs. But 1/20 is the FLOOR of a 3v3 design — that p-value means "as
+extreme as this design can report", not "strong evidence". Five replicates per
+arm would give 1/252 if the separation held.
+
+Paired by question, each question a mean of its three replicates: **+0.0578
+[-0.0386, +0.1675]**, and the CI includes zero. 6 questions improved, 6 were
+unchanged, 4 got worse.
+
+Both are correct. The rule reliably helps the RUN AVERAGE and unreliably helps
+the INDIVIDUAL QUESTION, and 16 questions cannot resolve the second. This is the
+same shape as §15's lane weights and §17's seeding plateau: what separates a
+real effect from a fitted one here is consistency across resamples, not a single
+point estimate.
+
+The MECHANICAL claim is settled and needs no statistics: document-tool reach
+went 54% -> 100%, on every replicate.
+
+Does not license: quoting +0.058 as the rule's value. It is one conversation,
+16 questions, a nondeterministic path, and a design whose best possible p-value
+is 0.050. It licenses keeping the rule — the defect it fixes is real, the
+direction is consistent across every replicate, and the estimate grew rather
+than shrank under repetition.
