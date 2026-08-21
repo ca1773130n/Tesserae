@@ -366,3 +366,228 @@ def test_node_vectors_read_ignores_duplicate_and_empty_hashes(tmp_path: Path) ->
 
     got = store.read_node_vector_blobs("model:a", 2, ["k2", "k1", "k2", "", "k1"])
     assert set(got) == {"k1", "k2"}
+
+
+# --------------------------------------------------------------------------- #
+# Keyed-read surface: graph-ordered subgraphs, the suppression probe, and the  #
+# name index. These exist so a read can be served BY KEY instead of by loading #
+# the whole graph, which means each one has to reproduce what the in-memory    #
+# read path would have computed — not merely "something similar".              #
+# --------------------------------------------------------------------------- #
+
+
+def _seed_ordered_store(path: Path) -> tuple[SqliteGraphStore, ResearchGraph]:
+    """A store seeded in an order that is DELIBERATELY not the canonical one.
+
+    ``graph_order`` promises ``graph.json`` order, and ``graph.json`` is
+    written from a canonicalized graph. If the promise were implemented as
+    "insertion order" it would still pass on a fixture inserted canonically —
+    so the fixture inserts scrambled, and the tests assert the canonical
+    answer. Written through ``write_graph(replace=True)``, the same
+    truncate-and-reinsert a compile performs.
+    """
+    graph = ResearchGraph(
+        nodes=[_make_node(f"n{i}", f"Node {i}") for i in (3, 0, 5, 1, 4, 2)],
+        edges=[
+            ResearchEdge(source="n4", target="n0", type="extends"),
+            ResearchEdge(source="n0", target="n3", type="uses"),
+            ResearchEdge(source="n1", target="n5", type="uses"),
+            ResearchEdge(source="n0", target="n1", type="uses"),
+            ResearchEdge(source="n2", target="n0", type="extends"),
+        ],
+    )
+    SQLiteResearchGraphStore(path).write_graph(graph, replace=True)
+    return SqliteGraphStore(path), graph
+
+
+def test_query_subgraph_graph_order_matches_graph_json_order(tmp_path: Path) -> None:
+    """``graph_order=True`` returns what ``graph.json`` holds, in file order.
+
+    A read surface that scans ``graph.edges`` and slices the first N —
+    ``node_context`` does exactly that — gets a DIFFERENT N if the store hands
+    back edges in whatever order the query planner produced them. The expected
+    order is taken from ``canonicalized()`` rather than restated, because that
+    is the single call ``ProjectWiki._publish`` makes before writing every
+    artifact: if its sort key ever changes, this test changes with it instead
+    of quietly disagreeing.
+    """
+    store, graph = _seed_ordered_store(tmp_path / "graph.sqlite")
+    published = graph.canonicalized()
+
+    sub = store.query_subgraph(["n0"], depth=1, graph_order=True)
+    expected = [
+        (e.source, e.type, e.target)
+        for e in published.edges
+        if "n0" in (e.source, e.target)
+    ]
+    assert [(e.source, e.type, e.target) for e in sub.edges] == expected
+    assert [n.id for n in sub.nodes] == ["n0", "n1", "n2", "n3", "n4"]
+    # Not vacuous: the store was seeded in a different order than it answers in.
+    assert [(e.source, e.type, e.target) for e in graph.edges] != [
+        (e.source, e.type, e.target) for e in published.edges
+    ]
+
+
+def test_query_subgraph_graph_order_ignores_seed_list_position(tmp_path: Path) -> None:
+    """The same seed SET returns the same graph however the list is arranged.
+
+    Seed-position dependence is the specific defect an earlier walk/seed fusion
+    shipped and was reverted for, so it gets an explicit test rather than being
+    left to follow from the sort.
+    """
+    store, _graph = _seed_ordered_store(tmp_path / "graph.sqlite")
+    seeds = ["n0", "n1", "n4"]
+
+    forward = store.query_subgraph(seeds, depth=1, graph_order=True)
+    reversed_ = store.query_subgraph(list(reversed(seeds)), depth=1, graph_order=True)
+    duplicated = store.query_subgraph(seeds + seeds, depth=1, graph_order=True)
+
+    def shape(g: ResearchGraph):
+        return (
+            [n.id for n in g.nodes],
+            [(e.source, e.type, e.target) for e in g.edges],
+        )
+
+    assert shape(forward) == shape(reversed_) == shape(duplicated)
+
+
+def test_query_subgraph_default_still_returns_the_same_content(tmp_path: Path) -> None:
+    """The default (no ``graph_order``) keeps its historical contract.
+
+    ``_materialize_graph`` publishes ``subgraph.edges`` AS the graph's edge
+    list, so the flag must be strictly additive: same nodes, same edges, only
+    the ordering guarantee is new.
+    """
+    store, _graph = _seed_ordered_store(tmp_path / "graph.sqlite")
+
+    default = store.query_subgraph(["n0"], depth=1)
+    ordered = store.query_subgraph(["n0"], depth=1, graph_order=True)
+
+    assert {n.id for n in default.nodes} == {n.id for n in ordered.nodes}
+    assert {(e.source, e.type, e.target) for e in default.edges} == {
+        (e.source, e.type, e.target) for e in ordered.edges
+    }
+
+
+def test_read_suppression_edges_finds_the_edge_a_second_hop_would_cost(
+    tmp_path: Path,
+) -> None:
+    """The probe returns suppression edges that hang off the NEIGHBOUR.
+
+    This is the whole reason the probe exists. ``n1`` is superseded by ``n9``,
+    and that edge is incident to ``n1``, not to the focal ``n0`` — so a depth-1
+    neighbourhood cannot see it and would serve a superseded node as current
+    knowledge. Reaching it by BFS means a second hop, which on the real graph's
+    largest hub is a tenth of the corpus.
+    """
+    graph = ResearchGraph(
+        nodes=[_make_node(f"n{i}", f"Node {i}") for i in (0, 1, 2, 9)],
+        edges=[
+            ResearchEdge(source="n0", target="n1", type="uses"),
+            ResearchEdge(source="n0", target="n2", type="uses"),
+            ResearchEdge(source="n9", target="n1", type="supersedes"),
+        ],
+    )
+    SQLiteResearchGraphStore(tmp_path / "graph.sqlite").write_graph(graph, replace=True)
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+
+    depth_one = store.query_subgraph(["n0"], depth=1, graph_order=True)
+    assert ("n9", "supersedes", "n1") not in {
+        (e.source, e.type, e.target) for e in depth_one.edges
+    }
+
+    probed = store.read_suppression_edges({n.id for n in depth_one.nodes})
+    assert [(e.source, e.type, e.target) for e in probed] == [("n9", "supersedes", "n1")]
+
+
+def test_read_suppression_edges_covers_every_suppression_type(tmp_path: Path) -> None:
+    """Every type in ``SUPPRESSION_EDGE_TYPES``, and nothing else.
+
+    The probe decides which edges get FETCHED for ``suppressed_ids`` to read.
+    If the two sets ever disagree the filter silently stops filtering, so the
+    test asserts against the shared constant rather than a hand-written list.
+    """
+    from tesserae.graph_filters import SUPPRESSION_EDGE_TYPES
+
+    nodes = [_make_node(f"n{i}", f"Node {i}") for i in range(2 * len(SUPPRESSION_EDGE_TYPES) + 2)]
+    edges = [ResearchEdge(source="n0", target="n1", type="uses")]
+    for i, edge_type in enumerate(sorted(SUPPRESSION_EDGE_TYPES)):
+        edges.append(
+            ResearchEdge(source=f"n{2 * i}", target=f"n{2 * i + 1}", type=edge_type)
+        )
+    graph = ResearchGraph(nodes=nodes, edges=edges)
+    SQLiteResearchGraphStore(tmp_path / "graph.sqlite").write_graph(graph, replace=True)
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+
+    found = store.read_suppression_edges([n.id for n in nodes])
+    assert {e.type for e in found} == set(SUPPRESSION_EDGE_TYPES)
+    assert "uses" not in {e.type for e in found}
+
+
+def test_read_suppression_edges_is_order_free_and_ignores_empty_ids(
+    tmp_path: Path,
+) -> None:
+    """Same id SET, same answer — across chunk boundaries and duplicates.
+
+    The id list is chunked into bound-parameter batches, so an id's POSITION
+    decides which batch it lands in. If the result depended on that, a caller
+    passing its ids in a different order would get a different suppression set.
+    """
+    count = 1200  # spans several ``_SUPPRESSION_QUERY_CHUNK`` batches
+    nodes = [_make_node(f"n{i:04d}", f"Node {i}") for i in range(count)]
+    edges = [
+        ResearchEdge(source=f"n{i:04d}", target=f"n{i + 1:04d}", type="supersedes")
+        for i in range(0, count - 1, 200)
+    ]
+    graph = ResearchGraph(nodes=nodes, edges=edges)
+    SQLiteResearchGraphStore(tmp_path / "graph.sqlite").write_graph(graph, replace=True)
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+
+    ids = [n.id for n in nodes]
+    forward = store.read_suppression_edges(ids)
+    backward = store.read_suppression_edges(list(reversed(ids)))
+    noisy = store.read_suppression_edges(ids + ids + ["", None])  # type: ignore[list-item]
+
+    def shape(found):
+        return [(e.source, e.type, e.target) for e in found]
+
+    assert shape(forward) == shape(backward) == shape(noisy)
+    assert len(forward) == len(edges)
+
+
+def test_read_name_index_is_graph_ordered_and_keeps_non_ascii_case(
+    tmp_path: Path,
+) -> None:
+    """Graph order, and the fold left to Python.
+
+    SQLite's ``lower()`` is ASCII-only without ICU, so folding in SQL would
+    disagree with the in-memory ``name.casefold()`` index on exactly the names
+    a research corpus is full of. The store returns raw names and lets the
+    caller fold; ordering is rowid so a last-wins index picks the same node the
+    in-memory dict comprehension would.
+    """
+    graph = ResearchGraph(
+        nodes=[
+            _make_node("n3", "duplicate"),
+            _make_node("n1", "STRASSE"),
+            _make_node("n0", "Édouard"),
+            _make_node("n2", "Duplicate"),
+        ],
+        edges=[],
+    ).canonicalized()
+    SQLiteResearchGraphStore(tmp_path / "graph.sqlite").write_graph(graph, replace=True)
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+
+    pairs = store.read_name_index()
+    assert pairs == [
+        ("n0", "Édouard"),
+        ("n1", "STRASSE"),
+        ("n2", "Duplicate"),
+        ("n3", "duplicate"),
+    ]
+
+    keyed = {name.casefold(): node_id for node_id, name in pairs}
+    in_memory = {n.name.casefold(): n.id for n in graph.nodes}
+    assert keyed == in_memory
+    assert keyed["édouard"] == "n0"  # a SQL-side lower() would have missed this
+    assert keyed["duplicate"] == "n3"  # last wins, exactly like the comprehension

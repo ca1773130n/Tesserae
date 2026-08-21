@@ -1029,6 +1029,12 @@ class LLMWikiMCPServer:
         self.registry = ProjectRegistry(registry_path)
         self.graph_store = graph_store
         self._graph_cache: Dict[Path, Tuple[float, ResearchGraph]] = {}
+        # Keyed-read caches, both keyed on (graph_path -> (sqlite mtime, value)),
+        # deliberately separate from ``_graph_cache``: the whole point of the
+        # keyed path is to never hold the whole-graph object at all (616 MB
+        # resident on the real 62,366-node graph, against 9 MB keyed).
+        self._keyed_store_cache: Dict[Path, Tuple[float, Any]] = {}
+        self._keyed_name_index_cache: Dict[Path, Tuple[float, Dict[str, str]]] = {}
         # Per-alias content digests recorded when an ``<alias>::`` root card
         # set was built (§6.3) — the reference digest verification checks
         # descent calls against. In-memory by design: staleness is a property
@@ -1406,6 +1412,18 @@ class LLMWikiMCPServer:
                             "description": (
                                 "Rank neighbors via personalized PageRank seeded "
                                 "by this node instead of a 1-hop walk."
+                            ),
+                        },
+                        "keyed": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Read the neighbourhood by key from the project's "
+                                "SQLite mirror instead of loading the whole graph. "
+                                "Same answer, far less work on a large graph. "
+                                "Incompatible with use_ppr and agent=, which both "
+                                "need the whole graph; either one errors rather "
+                                "than quietly returning a different ranking."
                             ),
                         },
                         "budget_chars": budget_chars_prop,
@@ -2937,6 +2955,8 @@ class LLMWikiMCPServer:
                 limit=int(args.get("limit", 50)),
             )
         if name == "node_context":
+            if args.get("keyed"):
+                return self._node_context_keyed(args)
             graph, project_root = self._load_requested_graph_with_root(args)
             return self.node_context(
                 graph,
@@ -5846,6 +5866,292 @@ class LLMWikiMCPServer:
         if isinstance(result, dict) and result.get("status") != "gone":
             self._bump_nodes_access(root, [result.get("node_id")])
         return result
+
+    # ------------------------------------------------------------------ #
+    # Keyed reads — the same knowledge, fetched by key instead of loaded    #
+    # ------------------------------------------------------------------ #
+
+    def _resolve_graph_path(self, args: JSONDict) -> Optional[Path]:
+        """The ``graph.json`` a request resolves to, WITHOUT loading it.
+
+        Mirrors :meth:`_resolve_base_graph_with_root`'s branch order exactly —
+        explicit ``graph_path``, then registered ``project``, then cwd, then
+        ``--graph``. Returns ``None`` for the two sources that have no
+        ``graph.json`` on disk (an injected ``--graph-store-url`` store, and
+        the no-source error case); a keyed read cannot be served from either,
+        and the caller says so rather than silently loading the whole graph.
+
+        Kept as a separate walk rather than refactoring the loader to return a
+        path, because the loader is the hot path for ~24 tools and this change
+        must not alter a single byte of what they already do.
+        """
+        raw_path = args.get("graph_path")
+        if raw_path:
+            graph_path = Path(str(raw_path))
+            return graph_path if graph_path.is_file() else None
+        project = args.get("project")
+        if project:
+            resolved = self.registry.resolve_graph_path(str(project))
+            if resolved is None:
+                return None
+            resolved_path = Path(resolved)
+            return resolved_path if resolved_path.is_file() else None
+        cwd_root = self.registry.resolve_project_by_cwd()
+        if cwd_root is not None:
+            cwd_graph = cwd_root / ".tesserae" / "graph.json"
+            if cwd_graph.is_file():
+                return cwd_graph
+        if self.graph_store is not None:
+            return None
+        if self.default_graph_path and Path(self.default_graph_path).is_file():
+            return Path(self.default_graph_path)
+        return None
+
+    def _keyed_store(self, graph_path: Path):
+        """The ``sqlite.db`` mirror beside ``graph_path``, or raise.
+
+        ``.tesserae/sqlite.db`` is not a cache of ``graph.json`` — it is
+        written from the SAME in-memory union graph, in the same
+        ``ProjectWiki._publish`` call, by
+        ``SQLiteResearchGraphStore.write_graph(replace=True)``, which TRUNCATES
+        both tables and re-inserts. That is what makes a keyed read safe:
+        the mirror cannot drift by accumulating rows a later compile dropped,
+        on a full compile or an incremental one.
+
+        The one way it CAN be wrong is if something wrote ``graph.json``
+        without going through a compile. ``graph.json`` is published first and
+        the mirror second, so on any successful compile the mirror's mtime is
+        the later of the two. A ``graph.json`` newer than its mirror therefore
+        means exactly one thing — the two no longer came from the same
+        compile — and we refuse rather than answer from a stale mirror. Being
+        slow is recoverable; answering confidently from superseded knowledge is
+        not.
+
+        This guard is mtime-based, so it cannot see a mirror that was written
+        by a compile that then crashed before finishing. It is a staleness
+        guard, not a content checksum.
+        """
+        from .graph_stores.sqlite import SqliteGraphStore
+
+        db_path = graph_path.parent / "sqlite.db"
+        if not db_path.is_file():
+            raise ValueError(
+                f"keyed reads need the SQLite mirror at {db_path}, which does not exist. "
+                f"Recompile the project (`tesserae compile`) to write it, or drop keyed=true."
+            )
+        db_mtime = db_path.stat().st_mtime
+        if graph_path.stat().st_mtime > db_mtime:
+            raise ValueError(
+                f"refusing a keyed read: {graph_path} is NEWER than its SQLite mirror "
+                f"{db_path}, so they did not come from the same compile and the mirror "
+                f"may be stale. Recompile, or drop keyed=true to read graph.json."
+            )
+        cached = self._keyed_store_cache.get(graph_path)
+        if cached and cached[0] == db_mtime:
+            return cached[1]
+        store = SqliteGraphStore(db_path)
+        self._keyed_store_cache[graph_path] = (db_mtime, store)
+        return store
+
+    def _keyed_name_index(self, graph_path: Path) -> Dict[str, str]:
+        """``{casefolded name: node id}`` built from the mirror, last-wins.
+
+        Reproduces ``{n.name.casefold(): n for n in graph.nodes}`` from
+        :meth:`_find_node` exactly: same fold (Python's, not SQLite's
+        ASCII-only ``lower()``), same graph order, so the same node wins a
+        name collision. Two columns and no JSON decoding, and cached against
+        the mirror's mtime — built only when a caller actually resolves BY
+        NAME, since resolving by id needs no index at all.
+        """
+        store = self._keyed_store(graph_path)
+        db_mtime = (graph_path.parent / "sqlite.db").stat().st_mtime
+        cached = self._keyed_name_index_cache.get(graph_path)
+        if cached and cached[0] == db_mtime:
+            return cached[1]
+        index = {name.casefold(): node_id for node_id, name in store.read_name_index()}
+        self._keyed_name_index_cache[graph_path] = (db_mtime, index)
+        return index
+
+    def _keyed_find_node(
+        self,
+        graph_path: Path,
+        node_id: Optional[str],
+        node_name: Optional[str],
+        project_root: Optional[Path],
+    ) -> Optional[ResearchNode]:
+        """:meth:`_find_node`, resolved by key instead of by scanning the graph.
+
+        Same three steps in the same order — exact id, then the merge ledger on
+        a miss, then exact case-insensitive name — so a keyed lookup and an
+        in-memory lookup agree on which node they land on, including which one
+        wins a name collision and which survivor a retired id redirects to.
+        """
+        store = self._keyed_store(graph_path)
+        if node_id:
+            node = store.get_node(node_id)
+            if node is not None or project_root is None:
+                return node
+            survivor_id = load_merge_ledger(project_root).resolve(node_id)
+            return store.get_node(survivor_id) if survivor_id else None
+        if node_name:
+            resolved = self._keyed_name_index(graph_path).get(str(node_name).casefold())
+            return store.get_node(resolved) if resolved else None
+        return None
+
+    def _keyed_neighbourhood(
+        self,
+        graph_path: Path,
+        seed_ids: Sequence[str],
+        project_root: Optional[Path],
+    ) -> ResearchGraph:
+        """A graph that answers 1-hop questions about ``seed_ids`` identically.
+
+        Not "a smaller graph" — a graph on which the 1-hop read path computes
+        the SAME answer it would on the whole graph. Three pieces, each of
+        which exists because dropping it would change an answer:
+
+        * the depth-1 subgraph in ``graph.json`` order, which holds every edge
+          incident to a seed and every node at the far end of one. That is
+          exactly what ``node_context`` scans and slices, and the ordering is
+          what makes its ``[:limit]`` slice pick the same edges;
+        * the suppression edges incident to those neighbours. A neighbour is
+          superseded or retracted by an edge that hangs off the NEIGHBOUR, not
+          off the seed, so depth 1 cannot see it and the neighbour would be
+          served as current knowledge. Depth 2 would see it and also drag in
+          the entire second ring — 9.8% of this graph for its largest hub
+          alone — so the probe fetches just those edges by key instead;
+        * the discovered-connection overlay, applied here for the same reason
+          :meth:`_load_base_graph_with_root` applies it to the whole graph.
+          ``apply_overlay`` SKIPS any edge whose endpoints are absent from the
+          view it is given, so applying it to a bare subgraph would silently
+          drop overlay edges the whole-graph path keeps. The seeds' overlay
+          partners are therefore folded into the seed set BEFORE the query,
+          which is what makes the overlay behave the same on both paths.
+
+        Edges are deduplicated on ``(source, type, target)`` against the
+        subgraph before being appended, and every fetch is key-sorted and
+        content-ordered, so the result depends on the seed SET and never on the
+        position of a seed within the list.
+        """
+        store = self._keyed_store(graph_path)
+        seeds = sorted({sid for sid in seed_ids if sid})
+        if not seeds:
+            return ResearchGraph(nodes=[], edges=[])
+
+        overlay_edges: List[ResearchEdge] = []
+        if project_root is not None:
+            try:
+                from .memory.associate import load_overlay_edges
+
+                overlay_edges = list(load_overlay_edges(project_root) or [])
+            except Exception:
+                _LOG.debug("load_overlay_edges failed for %s", project_root, exc_info=True)
+                overlay_edges = []
+        seed_set = set(seeds)
+        if overlay_edges:
+            partners = {
+                (edge.target if edge.source in seed_set else edge.source)
+                for edge in overlay_edges
+                if edge.source in seed_set or edge.target in seed_set
+            }
+            seeds = sorted(seed_set | partners)
+
+        subgraph = store.query_subgraph(list(seeds), depth=1, graph_order=True)
+        edge_keys = {(e.source, e.type, e.target) for e in subgraph.edges}
+        neighbour_ids = {n.id for n in subgraph.nodes}
+        extra = [
+            edge
+            for edge in store.read_suppression_edges(neighbour_ids)
+            if (edge.source, edge.type, edge.target) not in edge_keys
+        ]
+        graph = ResearchGraph(
+            nodes=list(subgraph.nodes), edges=list(subgraph.edges) + extra
+        )
+        if project_root is not None:
+            try:
+                from .memory.associate import apply_overlay
+
+                graph = apply_overlay(project_root, graph)
+            except Exception:
+                _LOG.debug("apply_overlay failed for %s", project_root, exc_info=True)
+        return graph
+
+    def _node_context_keyed(self, args: JSONDict) -> JSONDict:
+        """``node_context`` served from the keyed store instead of graph.json.
+
+        Same answer, far less work: the 1-hop payload depends on the focal
+        node's incident edges and its neighbours' suppression status, and both
+        of those are lookups, not scans. The whole-graph path pays a 980 ms,
+        616 MB load to answer a question about a few dozen rows — measured on
+        the real 62,366-node graph at 980 ms / 616 MB against 46 ms / 9 MB.
+
+        The win is in the load, not the arithmetic, so it shrinks with the
+        neighbourhood: warm, with the whole graph already resident, a keyed
+        read of a low-degree node is ~10x faster and a read of the graph's
+        largest hub (6,105 incident edges) is slightly SLOWER, because fetching
+        6,105 rows costs more than scanning a list already in memory.
+
+        Two shapes are refused outright rather than approximated, because for
+        each of them a subgraph would return a DIFFERENT answer and the caller
+        would have no way to tell:
+
+        * ``use_ppr=true`` ranks the neighbourhood by personalized PageRank
+          over the graph it is given. PPR is a global quantity — mass flows in
+          from the whole graph — so running it over a 1-hop neighbourhood does
+          not approximate the whole-graph ranking, it computes a different one.
+        * ``agent=`` resolves an agent view, which filters and rewrites the
+          graph before the read. Reproducing that on a subgraph is a separate
+          piece of work and silently skipping it would widen what an agent can
+          see, which is the one direction a visibility filter must never fail.
+
+        The focal node is resolved by key FIRST, then handed a neighbourhood
+        built around it — so a name lookup does not scan and a retired id still
+        redirects through the merge ledger. ``node_id`` is passed through
+        unchanged so the ``status='merged'`` disclosure still fires.
+        """
+        if args.get("use_ppr"):
+            raise ValueError(
+                "node_context(keyed=true) does not support use_ppr=true: personalized "
+                "PageRank ranks against the WHOLE graph, so scoring it over a 1-hop "
+                "neighbourhood would return a different ranking, not a cheaper one. "
+                "Drop keyed=true for PPR ranking, or drop use_ppr for the keyed read."
+            )
+        if args.get("agent"):
+            raise ValueError(
+                "node_context(keyed=true) does not support agent= views: the agent view "
+                "filters the graph before the read, and it is not yet reproducible over a "
+                "keyed neighbourhood. Drop keyed=true to use an agent view."
+            )
+        graph_path = self._resolve_graph_path(args)
+        if graph_path is None:
+            raise ValueError(
+                "keyed=true needs a project on disk with a .tesserae/sqlite.db mirror. "
+                "Pass graph_path or project, cd into a registered project, or drop keyed=true "
+                "(--graph-store-url sources have no graph.json to key against)."
+            )
+        project_root = _project_root_for_graph_path(graph_path)
+        node_id = args.get("node_id")
+        node_name = args.get("name")
+        focal = self._keyed_find_node(graph_path, node_id, node_name, project_root)
+        if focal is None:
+            raise ValueError("Node not found; provide an exact node_id or node name")
+        neighbourhood = self._keyed_neighbourhood(graph_path, [focal.id], project_root)
+        return self.node_context(
+            neighbourhood,
+            project_root,
+            # Pass the id the CALLER asked for when they asked by id, so a
+            # ledger redirect still surfaces as status='merged'. When they
+            # asked by name, pass the resolved id rather than the name: the
+            # neighbourhood's own name index covers only the neighbourhood, and
+            # a neighbour sharing the focal node's casefolded name could
+            # otherwise win the last-wins lookup.
+            node_id=str(node_id) if node_id else focal.id,
+            node_name=None,
+            limit=int(args.get("limit", 50)),
+            include_superseded=bool(args.get("include_superseded", False)),
+            use_ppr=False,
+            budget_chars=_budget_chars_arg(args),
+        )
 
     def _load_graph_cached(self, graph_path: Path) -> ResearchGraph:
         """Load graph.json, returning a cached copy when mtime is unchanged."""

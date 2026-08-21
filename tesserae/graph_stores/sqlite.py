@@ -41,6 +41,13 @@ from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode, Research
 # key, so 500 leaves room without a per-build feature check.
 _VECTOR_QUERY_CHUNK = 500
 
+# Bound-parameter chunk for the suppression probe. Smaller than the vector
+# chunk because that query binds each id TWICE — once against ``source``, once
+# against ``target`` — plus one parameter per suppression edge type, so 500
+# would spend 1,003 variables and trip the same 999 cap the constant above
+# exists to stay under.
+_SUPPRESSION_QUERY_CHUNK = 400
+
 
 def _encode_vector(vector: Sequence[float]) -> bytes:
     """Pack a vector as little-endian float64 for the ``node_vectors`` blob.
@@ -178,13 +185,42 @@ class SqliteGraphStore:
         for row in rows:
             yield _row_to_node(row)
 
-    def query_subgraph(self, seeds: List[str], depth: int = 1) -> ResearchGraph:
+    def query_subgraph(
+        self,
+        seeds: List[str],
+        depth: int = 1,
+        *,
+        graph_order: bool = False,
+    ) -> ResearchGraph:
         """Return the subgraph reachable from ``seeds`` within ``depth`` hops.
 
         BFS is performed in Python: at each step, all edges incident to
         the current frontier (in either direction) are fetched, the new
         endpoints become the next frontier, and edges are accumulated.
         Edges are deduplicated on ``(source, target, type)``.
+
+        ``graph_order`` (opt-in; the default is the historical BFS-arrival
+        order, byte-identical for every existing caller) returns nodes and
+        edges in :meth:`ResearchGraph.canonicalized` order — nodes by ``id``,
+        edges by ``(source, type, target)``. That IS ``graph.json`` order:
+        ``ProjectWiki._publish`` canonicalizes the union graph once and then
+        writes every artifact from it, so both the file and this mirror carry
+        the same content-derived order (verified against the real 62,366-node
+        graph, whose edge list is exactly sorted).
+
+        Sorting by CONTENT rather than by ``rowid`` is deliberate even though
+        the two coincide today. rowid order is insertion order, which only
+        matches the file because the writer happens to insert canonically; a
+        future writer that inserted in any other order would silently break
+        the guarantee with nothing to catch it. The content sort cannot drift.
+
+        It matters because a read surface that scans ``graph.edges`` and slices
+        the first N — ``node_context`` does exactly that — returns a DIFFERENT
+        N if the store hands edges back in query-planner order, and the MCP
+        surface pins result ordering. The default's arrival order also depends
+        on where a seed sits in the BFS frontier, which is a seed-POSITION
+        dependency; with this flag, two permutations of one seed list return
+        byte-identical graphs.
         """
         if depth < 0:
             raise ValueError("depth must be >= 0")
@@ -200,11 +236,21 @@ class SqliteGraphStore:
             for _ in range(depth):
                 if not frontier:
                     break
-                placeholders = ",".join("?" for _ in frontier)
+                # Sorted keys walk the index forwards instead of seeking at
+                # random (the same reason ``read_node_vector_blobs`` sorts) —
+                # but ONLY on the ``graph_order`` path, where the final content
+                # sort makes result order independent of parameter order
+                # anyway. The default path keeps the historical parameter
+                # order untouched, because ``_materialize_graph`` publishes
+                # ``subgraph.edges`` AS the graph's edge list and the MCP
+                # surface pins result ordering: a faster scan is not worth
+                # risking a silent reordering of an existing caller.
+                keys = sorted(frontier) if graph_order else list(frontier)
+                placeholders = ",".join("?" for _ in keys)
                 rows = con.execute(
                     f"select source, target, type, evidence, metadata_json"
                     f" from edges where source in ({placeholders}) or target in ({placeholders})",
-                    list(frontier) + list(frontier),
+                    keys + keys,
                 ).fetchall()
                 next_frontier: Set[str] = set()
                 for source, target, edge_type, evidence, metadata_json in rows:
@@ -230,15 +276,98 @@ class SqliteGraphStore:
             # Fetch every visited node in one shot.
             if not visited:
                 return ResearchGraph(nodes=[], edges=[])
-            placeholders = ",".join("?" for _ in visited)
+            node_keys = sorted(visited) if graph_order else list(visited)
+            placeholders = ",".join("?" for _ in node_keys)
             node_rows = con.execute(
                 f"select id, name, type, aliases_json, description, source_path, metadata_json"
                 f" from nodes where id in ({placeholders})",
-                list(visited),
+                node_keys,
             ).fetchall()
 
         nodes = [_row_to_node(row) for row in node_rows]
+        if graph_order:
+            nodes = sorted(nodes, key=lambda node: node.id)
+            edges = sorted(edges, key=lambda edge: (edge.source, edge.type, edge.target))
         return ResearchGraph(nodes=nodes, edges=edges)
+
+    def read_suppression_edges(self, node_ids: Iterable[str]) -> List[ResearchEdge]:
+        """Every suppression edge incident to any of ``node_ids``, in graph order.
+
+        "Suppression edge" means one of :data:`SUPPRESSION_EDGE_TYPES` — the
+        edges :func:`tesserae.graph_filters.suppressed_ids` reads to decide
+        which nodes a default read must not serve. The type set is imported
+        from that module rather than restated, so the probe and the filter can
+        never disagree about which edges matter.
+
+        This exists so a keyed read can answer "is this neighbour superseded?"
+        WITHOUT a second BFS hop. A depth-1 neighbourhood contains the focal
+        node's own suppression edges but not its neighbours' — those hang off
+        the neighbour, not off the focal node — and going to depth 2 to reach
+        them costs the full second ring, which on this graph's largest hub is
+        tens of thousands of nodes. Restricted to a known id set and served by
+        ``idx_edges_source`` / ``idx_edges_target``, this is bounded by the
+        answer's size instead.
+
+        Returns edges in ``graph.json`` order — the same content sort
+        :meth:`query_subgraph` uses under ``graph_order`` — so a caller that
+        concatenates them onto a subgraph gets a deterministic result that does
+        not depend on the order ``node_ids`` arrived in, nor on which
+        bound-parameter batch an id happened to land in.
+        """
+        from ..graph_filters import SUPPRESSION_EDGE_TYPES
+
+        wanted = sorted({nid for nid in node_ids if nid})
+        if not wanted:
+            return []
+        types = sorted(SUPPRESSION_EDGE_TYPES)
+        type_ph = ",".join("?" for _ in types)
+        collected: Dict[Tuple[str, str, str], ResearchEdge] = {}
+        with self._connect() as con:
+            for start in range(0, len(wanted), _SUPPRESSION_QUERY_CHUNK):
+                chunk = wanted[start : start + _SUPPRESSION_QUERY_CHUNK]
+                placeholders = ",".join("?" for _ in chunk)
+                rows = con.execute(
+                    f"select source, target, type, evidence, metadata_json"
+                    f" from edges where type in ({type_ph})"
+                    f" and (source in ({placeholders}) or target in ({placeholders}))",
+                    types + chunk + chunk,
+                ).fetchall()
+                for source, target, edge_type, evidence, metadata_json in rows:
+                    key = (source, target, edge_type)
+                    if key in collected:
+                        continue
+                    collected[key] = ResearchEdge(
+                        source=source,
+                        target=target,
+                        type=edge_type,
+                        evidence=evidence,
+                        metadata=json.loads(metadata_json or "{}"),
+                    )
+        return sorted(
+            collected.values(), key=lambda edge: (edge.source, edge.type, edge.target)
+        )
+
+    def read_name_index(self) -> List[Tuple[str, str]]:
+        """``(id, name)`` for every node, in ``graph.json`` order.
+
+        Two columns instead of seven, and no JSON decoding: the whole point is
+        to resolve a node NAME without paying the whole-graph load a name lookup
+        would otherwise force (measured: 980 ms and 616 MB of resident memory
+        on the 62,366-node graph, against 40 MB for this index). The caller folds the names itself
+        (Python ``str.casefold``) rather than asking SQLite to — SQLite's
+        ``lower()`` is ASCII-only without ICU, so a SQL-side fold would silently
+        disagree with the in-memory read path on any non-ASCII name.
+
+        Order is by ``id``, which is ``graph.json`` node order (the compile
+        canonicalizes before writing), so a caller building a last-wins name
+        index lands on exactly the node the in-memory
+        ``{n.name.casefold(): n for n in graph.nodes}`` comprehension would.
+        """
+        with self._connect() as con:
+            return [
+                (str(nid), str(name or ""))
+                for nid, name in con.execute("select id, name from nodes order by id")
+            ]
 
     def find_canonical(self, name: str, node_type: str) -> Optional[ResearchNode]:
         """Look up a canonical node by display name and type, case-insensitive."""
