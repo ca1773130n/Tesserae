@@ -727,3 +727,64 @@ disappoint — five improvements were shipped today and one transferred. What it
 licenses is that the next measurement should be an AGENT holding the MCP tools
 against the same LoCoMo questions, scored the same way, because that is the
 system we ship and the configuration the field says decides the outcome.
+
+## §21. The agentic path cannot be scored by the retrieval metric
+
+§20 concluded the next measurement should be an agent holding the MCP tools
+rather than a fixed pipeline. `ask_planner.plan_and_answer` already IS that
+configuration — eight primitives, up to `MAX_STEPS = 5`, sequence chosen by the
+LLM per question. Run against the compiled LoCoMo conv-26 project it works, at
+about 25 s and several LLM calls per question against the one-shot path's one.
+
+Four questions, one per category, showed a clean split — and the obvious reading
+of it is wrong.
+
+| category | tools chosen | hits | answer |
+|---|---|---|---|
+| temporal | timeline | 0 | "Last Friday" vs *7 May 2023* — wrong |
+| multi-hop | recent_sessions, session_findings x2 | 0 | wrong |
+| open-domain | wiki_search, search_facts | 8 | substantially right |
+| single-hop | wiki_search, search_facts | 3 | right |
+
+The tempting conclusion — that the non-wiki tools are EMPTY on a chat corpus and
+the planner wastes its budget on them — is FALSE, and measuring it directly is
+what shows that. Executing each primitive by hand against the same question:
+
+| tool | evidence chars | hits |
+|---|---|---|
+| wiki_search | 912 | **8** |
+| compile_context | 2,500 | 0 |
+| timeline | 2,500 | 0 |
+| search_facts | 2,500 | 0 |
+| session_findings | 2,500 | 0 |
+| recent_sessions | 1,317 | 0 |
+
+Every tool returns substantial evidence. What only `wiki_search` returns is
+`hits` — the wiki-page objects that carry `source_path`, and `source_path` is
+the ONLY thing that maps a result back to a session.
+
+So `hits = 0` means "no page objects", never "no evidence". And the retrieval
+metric — recall@K and MRR of the gold session — reads exclusively from hits.
+
+**An agentic arm scored by that metric would report recall near zero on every
+question where the planner chose a non-wiki tool, for a reason that has nothing
+to do with how well it remembered.** Roughly half of the sampled questions.
+That number would have been published as the agentic path losing badly, and it
+would have been an artifact of the instrument, not a property of the system.
+
+This is the same class of error as the citation footer in §19: a metric charging
+a system for a behaviour that is not what the metric claims to measure. It was
+caught here only because the tools were executed individually instead of the
+"hits=0 means nothing came back" reading being trusted.
+
+What follows: an agentic arm needs a retrieval metric defined over the evidence
+it ACTUALLY consumed, not over wiki hits. Either every primitive carries
+provenance, or the agentic arm is scored on answers alone and its retrieval
+column is declared NOT MEASURABLE rather than printed as zero.
+
+Does not license: any claim about agentic-path quality. n = 4 for the tool
+split, and the 16-question probe measuring the tool-choice/quality correlation
+was still running when this was written. The nondeterminism is also real — the
+same temporal question answered "Yesterday" on one run and "Last Friday" on the
+next, so replicates are mandatory for this path in a way they are not for the
+deterministic one.
