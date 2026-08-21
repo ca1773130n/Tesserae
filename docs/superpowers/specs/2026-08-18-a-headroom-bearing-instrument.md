@@ -608,3 +608,67 @@ prompt, not what the model does with it. Whether seven documents at 360
 characters beat one at 1,800 for token F1 — or for fabrication, where more
 distinct near-miss material is exactly the mechanism §12 blames — is unrun.
 Reproduce with `~/.blackhole/Tesserae/2026-08-21/bundle_nodes.py`.
+
+## §19. Retrieval was saturated, and the tie was the metric
+
+Three findings from reading the persisted per-question answers, and each
+overturns something this document previously asserted.
+
+**Retrieval had no headroom.** The gold document reaches the top 10 for
+**282 of 284 questions (99.3%)**. Going from "at least one gold document
+retrieved" to "all gold documents retrieved" is worth **+0.006 token F1**
+(0.326 -> 0.332). Every retrieval improvement recorded in §14 through §18 was
+optimising a stage with two questions of headroom. That is why none of them
+converted, and it is the honest explanation for a pattern this document
+previously attributed to synthesis.
+
+**§16's stratification used the wrong variable.** It split questions by
+question-to-ANSWER content-word overlap. The retriever matches the question
+against the DOCUMENT, so that split was never a proxy for retrieval difficulty.
+On the answer side the predicted interaction does not merely fail to appear, it
+inverts: Tesserae's edge over the baseline is SMALLEST in the lowest-overlap
+quartile (-0.040 [-0.075, -0.004]) and largest in the highest, trend
+-0.062 [-0.113, -0.012]. Gold length is flat across quartiles, so it is not a
+length proxy. §16's retrieval measurement stands as measured; its
+INTERPRETATION as a vocabulary-mismatch regime does not.
+
+**The 0.325-vs-0.326 tie was an artifact of the scorer.** 277 of 284 short-span
+answers carried a bracketed provenance citation — median 11 tokens on a median
+19-token answer — which the retrieval baseline never emits. Token F1 counted
+every one as a false positive, on one arm only.
+
+| | macro F1 | precision |
+|---|---|---|
+| as scored | 0.3254 | 0.306 |
+| citations not scored as content | **0.3534** | **0.427** |
+| retrieval baseline | 0.320 | — |
+
+Against the baseline that is **+0.034 [+0.016, +0.051]** — a significant win
+that read as a tie for the whole of this project's published comparison.
+
+The root cause was a self-contradicting prompt: `_SHORT_SPAN_PREAMBLE_HEADER`
+forbids citations while the synthesis user message demanded them, and the model
+obeyed the user message. Both halves are fixed (615352ee): the citation
+instruction is prose-cited only, and `normalize_answer` strips bracketed spans
+before scoring, identically for every arm and for the gold.
+
+Widening the pattern beyond `NODE_CITATION_RE`'s id-shaped class was necessary
+and had to be checked rather than assumed: the planner cites node NAMES, so 83%
+of the 822 citations in a real run contain a space. Brackets appear in 0 of 284
+gold answers and 0 of 284 questions, which is what makes the wider pattern safe.
+
+**Two more corrections to the record.** Reading the 20 lowest-F1 answers whose
+retrieval succeeded: 12/20 are right-fact-wrong-form, 3/20 right-document-wrong-
+span, 5/20 genuine synthesis failures — so most of the residual gap is still
+shape, not knowledge. And the baseline buys part of its apparent parity by
+refusing: 24/284 (8.5%) refusals against Tesserae's 7/284 (2.5%), each scoring
+0.000. Excluding each arm's own refusals: baseline 0.349, Tesserae 0.362.
+
+A compliant short-span system's ceiling on this set is about **0.603**, not 1.0
+— the prompt asks for the shortest span while 84.9% of golds are two-clause
+prose over 20 tokens. 0.353 is 59% of achievable, not 35% of perfect.
+
+Does not license: any claim that the retrieval work was wasted. It is
+measurable on LongMemEval, where retrieval is NOT saturated. It licenses only
+that this corpus cannot see retrieval improvements, and that every comparison
+published here before 615352ee understated Tesserae by roughly 0.028 F1.
