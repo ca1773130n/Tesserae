@@ -885,3 +885,53 @@ def test_keyed_node_context_is_advertised_in_the_tool_listing(tmp_path):
     keyed = spec["inputSchema"]["properties"]["keyed"]
     assert keyed["default"] is False
     assert "use_ppr" in keyed["description"]
+
+
+def test_keyed_node_context_does_not_leak_the_code_layer(tmp_path):
+    """graph.json is the RESEARCH partition; sqlite.db is the UNION.
+
+    ``project.py`` partitions the compiled graph and publishes only the research
+    half to graph.json, while the SQLite mirror is written from the union. A
+    keyed read that trusts the mirror therefore answers with ``CodeFunction``
+    nodes and cross-layer edges the whole-graph path provably cannot return —
+    silently, with no error.
+
+    Every existing keyed test passed WITH that bug, because this project's own
+    corpus carries zero code nodes. So the fixture here has to mint one.
+    """
+    graph = ResearchGraph(
+        nodes=[
+            ResearchNode(id="Paper:focal", name="Focal Paper",
+                         type=ResearchNodeType.PAPER, description="focal"),
+            ResearchNode(id="Method:live", name="Live Method",
+                         type=ResearchNodeType.METHODOLOGICAL_CONCEPT, description="live"),
+            ResearchNode(id="Code:fn", name="parse_tokens",
+                         type=ResearchNodeType.CODE_FUNCTION, description="a code symbol"),
+        ],
+        edges=[
+            ResearchEdge(source="Paper:focal", target="Method:live", type="uses"),
+            ResearchEdge(source="Code:fn", target="Paper:focal", type="mentioned_in"),
+        ],
+    )
+    _root, graph_path = _keyed_project(tmp_path, graph)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    keyed = server._dispatch_tool(
+        "node_context",
+        {"graph_path": str(graph_path), "node_id": "Paper:focal", "keyed": True},
+    )
+    surfaced = {n["id"] for n in keyed["neighbors"]}
+    assert "Code:fn" not in surfaced, (
+        f"a CodeFunction reached a keyed research payload: {surfaced}"
+    )
+    assert surfaced == {"Method:live"}
+    assert all(
+        e["source"] != "Code:fn" and e["target"] != "Code:fn" for e in keyed["edges"]
+    ), f"a cross-layer edge survived: {keyed['edges']}"
+
+    # Deliberately NOT asserting keyed == full here. ``_keyed_project`` writes
+    # the graph to graph.json unpartitioned, so the whole-graph path in THIS
+    # fixture still sees the code node; production partitions before publishing
+    # (project.py:3843/:3852). Equality would therefore assert the harness's
+    # shortcut rather than the behaviour, and the property that matters is the
+    # one above: a keyed read never surfaces the code layer.

@@ -1034,7 +1034,6 @@ class LLMWikiMCPServer:
         # keyed path is to never hold the whole-graph object at all (616 MB
         # resident on the real 62,366-node graph, against 9 MB keyed).
         self._keyed_store_cache: Dict[Path, Tuple[float, Any]] = {}
-        self._keyed_name_index_cache: Dict[Path, Tuple[float, Dict[str, str]]] = {}
         # Per-alias content digests recorded when an ``<alias>::`` root card
         # set was built (§6.3) — the reference digest verification checks
         # descent calls against. In-memory by design: staleness is a property
@@ -5959,18 +5958,22 @@ class LLMWikiMCPServer:
         Reproduces ``{n.name.casefold(): n for n in graph.nodes}`` from
         :meth:`_find_node` exactly: same fold (Python's, not SQLite's
         ASCII-only ``lower()``), same graph order, so the same node wins a
-        name collision. Two columns and no JSON decoding, and cached against
-        the mirror's mtime — built only when a caller actually resolves BY
-        NAME, since resolving by id needs no index at all.
+        name collision. Two columns and no JSON decoding — built only when a
+        caller actually resolves BY NAME, since resolving by id needs no index
+        at all.
+
+        NOT cached. It was, keyed on ``sqlite.db``'s mtime, and that cache
+        could never hit: ``node_context`` itself writes to that same file on
+        every read (``_bump_nodes_access`` -> ``node_memory``), as do the vector
+        cache and the BM25 index, so the mtime had always advanced by the time
+        the next call looked. Keeping a cache that cannot hit costs a stat and
+        tells the next reader something false about the cost of this path. If
+        the full-index rebuild ever shows up in a profile, key it on a value
+        that only a COMPILE moves — a graph hash or a schema version row — not
+        on the mtime of a file the read path writes to.
         """
         store = self._keyed_store(graph_path)
-        db_mtime = (graph_path.parent / "sqlite.db").stat().st_mtime
-        cached = self._keyed_name_index_cache.get(graph_path)
-        if cached and cached[0] == db_mtime:
-            return cached[1]
-        index = {name.casefold(): node_id for node_id, name in store.read_name_index()}
-        self._keyed_name_index_cache[graph_path] = (db_mtime, index)
-        return index
+        return {name.casefold(): node_id for node_id, name in store.read_name_index()}
 
     def _keyed_find_node(
         self,
@@ -6064,8 +6067,27 @@ class LLMWikiMCPServer:
             for edge in store.read_suppression_edges(neighbour_ids)
             if (edge.source, edge.type, edge.target) not in edge_keys
         ]
+        # sqlite.db mirrors the UNION graph; graph.json is only the RESEARCH
+        # partition (project.py:3843 partitions, :3852 publishes the research
+        # half, :3885 writes the union). Without this filter the keyed path
+        # answers with CodeFunction nodes and cross-layer edges that the
+        # whole-graph path provably cannot return, silently and with no error —
+        # reproduced by review on a graph carrying a code layer. This corpus has
+        # zero code nodes, which is why a 62,366-node field-by-field comparison
+        # passed and the divergence still shipped.
+        # Mirrors ``wiki_projector.partition_graph``: drop code-layer NODES,
+        # and drop edges where either endpoint IS one. Edges whose partner
+        # simply falls outside the returned node set are kept — the whole-graph
+        # path keeps them too, and filtering on set membership instead of on
+        # code-ness silently truncated the payload (caught by the parity test).
+        _code = {n.id for n in subgraph.nodes if is_code_graph_node(n)}
         graph = ResearchGraph(
-            nodes=list(subgraph.nodes), edges=list(subgraph.edges) + extra
+            nodes=[n for n in subgraph.nodes if n.id not in _code],
+            edges=[
+                e
+                for e in list(subgraph.edges) + extra
+                if e.source not in _code and e.target not in _code
+            ],
         )
         if project_root is not None:
             try:
