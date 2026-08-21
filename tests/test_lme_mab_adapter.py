@@ -474,6 +474,26 @@ def test_the_session_text_is_capped_and_taken_from_the_front(tmp_path):
     assert "TAIL" not in evidence
 
 
+def test_the_summary_arm_returns_the_node_text_untouched(tmp_path):
+    """``--answer-evidence summary`` is the control arm, and a control that
+    quietly leaks a byte of the treatment is not a control.
+
+    The hit here is a genuine anchor, so the expanding path WOULD read its
+    file. ``expand=False`` must return exactly what the backbone read before
+    #193 — ``[hit.text ...]`` — which is what makes the two arms differ in
+    evidence content and in nothing else."""
+    _staged(tmp_path, 21, body="a sentence only the file has")
+    memory = _anchored(tmp_path, [("Session 0021", _doc(tmp_path, 21))])
+    hits = memory.query_hits("q", k=1)
+
+    summary = memory.answer_evidence(hits, expand=False)
+
+    assert summary == [hit.text for hit in hits]
+    assert "a sentence only the file has" not in summary[0]
+    # ...and the same hits still expand, so the difference is the flag alone.
+    assert "a sentence only the file has" in memory.answer_evidence(hits)[0]
+
+
 def test_a_source_path_outside_the_work_directory_is_never_read(tmp_path):
     """``source_path`` arrives from document frontmatter and is UNTRUSTED. The
     answering side is the dangerous one: ranking buries a stolen file in a BM25

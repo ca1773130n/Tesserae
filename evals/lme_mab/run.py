@@ -376,6 +376,7 @@ def answer_group(
     *,
     k: int = PROTOCOL_K,
     progress: bool = True,
+    expand_evidence: bool = True,
 ) -> Tuple[List[Dict[str, Any]], List[List[int]]]:
     """Ask every question in ``group``. Returns ``(answer rows, retrieved)``.
 
@@ -408,10 +409,13 @@ def answer_group(
         except Exception as exc:  # recorded, not raised: one bad question
             hits, evidence, answer = [], [], f"Error: {exc}"  # keep the other 59
         else:
-            # NOT ``[hit.text ...]``. That handed the backbone a 234-character
-            # node summary of a 14,042-character session it had just ranked on
-            # 8,000 of those characters — see ``MabMemory.answer_evidence``.
-            evidence = memory.answer_evidence(hits)
+            # By default NOT ``[hit.text ...]``: that handed the backbone a
+            # 234-character node summary of a 14,042-character session it had
+            # just ranked on 8,000 of those characters — see
+            # ``MabMemory.answer_evidence``. ``expand_evidence=False`` restores
+            # it deliberately, as the control arm the difference is measured
+            # against, and only when --answer-evidence summary asks for it.
+            evidence = memory.answer_evidence(hits, expand=expand_evidence)
             try:
                 answer = answer_fn(question, evidence)
             except Exception as exc:  # the backbone failed, the search did not
@@ -431,6 +435,10 @@ def answer_group(
             # runs in this repo, what the backbone actually read is the one
             # thing worth persisting per row.
             "evidence_chars": sum(len(text) for text in evidence),
+            # Which CONTENT, not just how much of it. A replicate scored months
+            # later off answers.json has no other way to tell the two arms
+            # apart, and they differ by a factor of ten in prompt size.
+            "evidence": "source" if expand_evidence else "summary",
         })
     return rows, retrieved
 
@@ -686,6 +694,17 @@ def _evidence_budget_note(meta: Mapping[str, Any]) -> List[str]:
         f"{int(meta.get('evidence_chars_max') or 0):,}."
     )
     cap = meta.get("evidence_source_chars")
+    if not cap:
+        # The control arm. Saying nothing here would let §5 imply the default
+        # budget; saying the default sentence would declare a cap this run
+        # never applied. Both are the same lie in opposite directions.
+        sentence += (
+            f" Every item is a retrieved node's name and description and "
+            f"nothing else (`--answer-evidence summary`): the pre-#193 "
+            f"content, kept as a measurable control. On group 0 that is 1.7% "
+            f"of the text the retriever scored in order to rank it."
+        )
+        return ["", sentence]
     if cap is not None:
         sentence += (
             f" An item is a retrieved node's name and description, PLUS — for "
@@ -1019,6 +1038,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--judge", default="",
                         help=f"judge model (protocol fixes {PROTOCOL_JUDGE}; empty "
                              f"means no judge ran, which blocks the comparison)")
+    parser.add_argument("--answer-evidence", choices=("source", "summary"),
+                        default="source",
+                        help="what the backbone reads per retrieved hit: the "
+                             "node summary PLUS its own session text (source, "
+                             "the default), or the node summary alone "
+                             "(summary — the pre-#193 control arm, kept so the "
+                             "two can be measured against each other over one "
+                             "retrieval)")
     parser.add_argument("--k", type=int, default=PROTOCOL_K,
                         help=f"evidence budget. NOT a tuning knob — the protocol "
                              f"fixes K={PROTOCOL_K} and any other value blocks the "
@@ -1178,8 +1205,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                             retrieved = retrieve_group(memory, group, k=args.k,
                                                        progress=True)
                         else:
-                            answered, retrieved = answer_group(memory, group, answer_fn,
-                                                               k=args.k)
+                            answered, retrieved = answer_group(
+                                memory, group, answer_fn, k=args.k,
+                                expand_evidence=args.answer_evidence == "source")
                             rows += answered
                     else:
                         # One arm per GROUP: the corpus is a group's sessions, and
@@ -1254,7 +1282,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             # distribution is what keeps §4 checking the control it names —
             # ``evidence_budget`` is a count of items, and a reader comparing
             # this run to a published top-10 needs to know how big an item got.
-            "evidence_source_chars": EVIDENCE_SOURCE_CHARS,
+            "evidence_content": args.answer_evidence,
+            # 0, not the constant, on the summary arm: declaring a 2,400-char
+            # cap for a run whose items never expanded would be a false
+            # declaration of the very control §4 exists to check.
+            "evidence_source_chars": (EVIDENCE_SOURCE_CHARS
+                                      if args.answer_evidence == "source" else 0),
             **_evidence_chars(rows),
             "dataset": str(parquet),
             "groups": ",".join(str(g.index) for g in groups),

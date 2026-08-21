@@ -878,7 +878,8 @@ class MabMemory:
         """
         return [hit.text for hit in self.query_hits(question, k=k)]
 
-    def answer_evidence(self, hits: Sequence[MabHit]) -> List[str]:
+    def answer_evidence(self, hits: Sequence[MabHit], *,
+                        expand: bool = True) -> List[str]:
         """``hits`` as the strings the BACKBONE reads — the answering path only.
 
         This closes a measured hole. ``query_hits`` passes ``source_root`` so
@@ -920,7 +921,22 @@ class MabMemory:
         a BM25 score, answering pastes it verbatim into an LLM prompt. So the
         read goes through ``hybrid._confined_source``, rooted at the work
         directory this adapter staged into, rather than a hand-rolled open().
+
+        ``expand=False`` returns ``[hit.text ...]`` — precisely what the
+        backbone read before this method existed. It is here so the two
+        evidence CONTENTS can be measured against each other over one frozen
+        retrieval, in one process, on one tree. The alternative was checking
+        out the parent commit to obtain the control arm, which moves the
+        retrieval code underneath the comparison and makes any difference
+        un-attributable. The closing of this hole was argued from a published
+        ablation and from character counts, never measured on this corpus's own
+        answers, so the control has to stay reachable. Nothing selects it by
+        default and it is not a fallback: `run.py --answer-evidence summary`
+        is the only caller.
         """
+        if not expand:
+            return [hit.text for hit in hits]
+
         from tesserae.retrieval.hybrid import _confined_source
 
         root = self.work

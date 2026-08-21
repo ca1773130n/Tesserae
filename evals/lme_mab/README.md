@@ -161,6 +161,15 @@ questions and `adapter.EVIDENCE_SOURCE_CHARS` derives its own. Retrieval is
 untouched by any of it: `recall@10 0.8197 / MRR 0.7068` on group 0 before and
 after, to four decimals, over identical rankings.
 
+`--answer-evidence summary` restores the pre-#193 content — `[hit.text ...]`,
+nothing appended — as a **control arm**, so the two evidence contents can be
+measured against each other rather than argued about. It is the only thing that
+selects it, retrieval is identical under both, and `meta.evidence_content`
+records which one a run read. The expansion was justified by a published
+ablation and by character counts, never by this corpus's own answers; the
+control is what lets a later run check it. `--answer-evidence source` is the
+default and is what an unqualified run measures.
+
 **The retrieval unit is a session, not a turn window.** ~112 documents per
 group rather than ~1,290. K=10 is a fixed control, so the unit size is one too:
 ten sessions and ten turns are different amounts of evidence, and picking the
