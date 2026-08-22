@@ -550,11 +550,21 @@ def test_saved_answers_can_be_regraded_offline(monkeypatch, tmp_path):
     }), encoding="utf-8")
     monkeypatch.setattr(runner, "build_backbone", _forbidden)
     out_path = tmp_path / "regraded.md"
+    regraded = tmp_path / "regraded.json"
     assert runner.main(["--data", str(data), "--score", str(answers),
-                        "--out", str(out_path)]) == 0
+                        "--out", str(out_path),
+                        "--answers-out", str(regraded)]) == 0
     text = out_path.read_text(encoding="utf-8")
     assert "accuracy (all)" in text
     assert "scored apart" in text
+
+    # Re-grading is the cheap way to get per-question verdicts — no backbone, no
+    # retrieval — so it is the last path that should drop them. It did: the fold
+    # ran only on the answering path, so the one route to a decomposition that
+    # costs nothing threw the labels away and printed aggregates.
+    saved = json.loads(regraded.read_text(encoding="utf-8"))
+    assert [row["label"] for row in saved["rows"]] == ["CORRECT", "ABSTAINED"]
+    assert saved["rows"][0]["answer"] == "teal"
 
 
 def test_regrading_against_a_different_dataset_refuses(monkeypatch, capsys,

@@ -1351,6 +1351,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 meta=meta,
                 data=str(data),
             )
+            # Re-grading is the CHEAP way to get per-question verdicts back — no
+            # backbone, no retrieval — so it is the last path that should drop
+            # them. Folding only on the answering path meant the one way to
+            # re-derive a decomposition without paying for answers again threw
+            # the labels away and printed aggregates.
+            _fold_verdicts(rows, graded)
+            if args.answers_out:
+                args.answers_out.parent.mkdir(parents=True, exist_ok=True)
+                args.answers_out.write_text(
+                    json.dumps({"meta": meta, "rows": rows},
+                               indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8")
+                print(f"wrote {args.answers_out}")
             args.out.parent.mkdir(parents=True, exist_ok=True)
             args.out.write_text(text, encoding="utf-8")
             print(text)
