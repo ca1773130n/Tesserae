@@ -325,9 +325,25 @@ def _undated_shipped(rows: List[Dict[str, Any]]) -> int:
 _FINDING_TYPES = {kind: t.value for kind, t in SESSION_FINDING_KIND_TO_TYPE.items()}
 
 
+#: Metadata keys a node may carry its timestamp under, most specific first.
+#:
+#: ``started_at``/``created_at``/``ts`` alone silently zeroed every dated
+#: primitive on a corpus that uses other spellings: all 8 Session nodes in the
+#: compiled LoCoMo conv-26 graph carry ``date`` / ``chat_time`` / ``timestamp``,
+#: so `timeline` returned 0 rows for ANY `since` — including 1900-01-01 — and
+#: `recent_sessions` likewise. The failure is silent: an empty result reads as
+#: "nothing happened in that window" rather than "this node's clock is written
+#: down somewhere I do not look".
+_TS_KEYS = ("started_at", "created_at", "ts", "timestamp", "date", "chat_time")
+
+
 def _node_ts(node: Any) -> str:
     md = node.metadata or {}
-    return str(md.get("started_at") or md.get("created_at") or md.get("ts") or "")
+    for key in _TS_KEYS:
+        value = md.get(key)
+        if value:
+            return str(value)
+    return ""
 
 
 def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: int) -> Tuple[str, List[Any]]:
@@ -1187,11 +1203,19 @@ def _plan_and_answer(
             entry.update(ctx.executed[-1])
         if provenance:
             # Written AFTER the update above so a primitive's own report can
-            # never shadow it, and unconditionally under the flag so a step
-            # that reached no document says so with `[]` rather than by the
-            # key's absence — an absent key is indistinguishable from a
-            # primitive nobody wired up.
-            entry["sources"] = list(ctx.step_sources)
+            # never shadow it, and always present under the flag so a step that
+            # reached no document says so with `[]` rather than by the key's
+            # absence — an absent key is indistinguishable from a primitive
+            # nobody wired up.
+            #
+            # A step that RAISED reports `[]`, never the documents it happened
+            # to touch before failing. It was written unconditionally, so a
+            # primitive that recorded two sources and then threw came back
+            # `ok=False` with a populated `sources` list — a failed step
+            # carrying evidence of success, which is the same shape as the
+            # report that printed "every one of the 199 queries returned the
+            # full evidence budget" while all 199 had raised.
+            entry["sources"] = list(ctx.step_sources) if entry.get("ok", True) else []
         executed.append(entry)
 
     from .query import WikiQuery

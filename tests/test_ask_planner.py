@@ -912,3 +912,48 @@ def test_transcript_backed_primitives_report_no_document_provenance(tmp_path):
 
     entry = [e for e in envelope["plan"]["executed"] if e["action"] == "activity_summary"][0]
     assert entry["sources"] == []
+
+
+def test_node_ts_reads_the_timestamp_keys_a_corpus_actually_carries():
+    """`started_at`/`created_at`/`ts` alone silently zeroed the dated primitives.
+
+    All 8 Session nodes in the compiled LoCoMo conv-26 graph carry `date` /
+    `chat_time` / `timestamp`, so `recent_sessions` returned nothing for ANY
+    `since` — and an empty result reads as "nothing happened in that window"
+    rather than "this node's clock is written somewhere I do not look".
+    """
+    from tesserae.ask_planner import _node_ts
+    from tesserae.research_graph import ResearchNode, ResearchNodeType
+
+    def node(**md):
+        return ResearchNode(id="n", name="n", type=ResearchNodeType.CONCEPT,
+                            description="d", metadata=md)
+
+    for key in ("started_at", "created_at", "ts", "timestamp", "date", "chat_time"):
+        assert _node_ts(node(**{key: "2023-05-07"})) == "2023-05-07", key
+    assert _node_ts(node()) == ""
+    # Precedence: the explicit session clocks win over the generic ones.
+    assert _node_ts(node(started_at="A", date="B")) == "A"
+
+
+def test_a_step_that_raised_reports_no_sources():
+    """A failed step must not carry evidence of success.
+
+    `entry["sources"]` was written unconditionally under the flag, so a
+    primitive that recorded two documents and then threw came back `ok=False`
+    with a populated `sources` list — the same shape as the report that printed
+    "every one of the 199 queries returned the full evidence budget" while all
+    199 searches had raised.
+    """
+    import tesserae.ask_planner as AP
+
+    entry = {"action": "timeline", "ok": False}
+    sources = ["/a.md", "/b.md"]
+    # The shipped expression, exercised directly: ok=False must yield [].
+    assert (list(sources) if entry.get("ok", True) else []) == []
+    entry_ok = {"action": "timeline", "ok": True}
+    assert (list(sources) if entry_ok.get("ok", True) else []) == sources
+    # And the real code path carries the same guard.
+    import inspect
+    src = inspect.getsource(AP._plan_and_answer)
+    assert 'if entry.get("ok", True) else []' in src

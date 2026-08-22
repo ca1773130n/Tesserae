@@ -990,8 +990,14 @@ floor recall 0.526 / MRR 0.181:
 | all 19 sessions in corpus order | 0.615 | 0.236 | 0 |
 
 Read the constant ranker first. Ignoring the question entirely scores
-0.615 / 0.236, so the old instrument's 0.358 / 0.245 sits below both it and the
-random floor. A metric that scores the shipped path worse than a constant is not
+0.615 / 0.236 against the old instrument's 0.358 / 0.245, so the hits-only
+instrument sits below the constant ranker and the random floor ON RECALL
+(0.358 vs 0.615 vs 0.526) and ABOVE both on MRR (0.245 vs 0.236 vs 0.181).
+An earlier version of this paragraph said "below both", and repeated it in the
+run report and in the commit message; it is true of recall only, and an
+independent re-derivation over all 48 persisted rows is what caught it. The
+recall half is the load-bearing one — a metric that scores the shipped path
+worse than a constant is not
 measuring the path, which is what §21 predicted from n=4 and this measures end to
 end. Split by whether a plan reached `wiki_search`: on the 34 rows that did,
 hits give 0.505 / 0.346 and sources 0.652 / 0.343, so provenance adds recall and
