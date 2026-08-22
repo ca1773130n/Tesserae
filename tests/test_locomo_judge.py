@@ -213,6 +213,71 @@ def test_a_wrong_label_is_wrong():
     assert not judge.grade(_question(), "crimson").correct
 
 
+def _no_fallthrough(monkeypatch):
+    """Stub ``tesserae.llm_json`` so provider choice is observable offline."""
+    import tesserae.llm_json as llm_json
+
+    class _Claude:
+        def __init__(self, model: Optional[str] = None, **kwargs: Any) -> None:
+            self.model, self.kwargs = model, kwargs
+
+    monkeypatch.setattr(llm_json, "ClaudeCLIJsonClient", _Claude, raising=False)
+    monkeypatch.setattr(
+        llm_json, "build_rotating_client",
+        lambda **kw: pytest.fail("the judge composed a provider-fallthrough client"),
+        raising=False)
+    return _Claude
+
+
+def test_a_claude_family_judge_gets_one_provider_and_no_fallthrough(monkeypatch):
+    """A busy provider must stop the judge, never silently swap it.
+
+    Routing by model family through ``build_rotating_client`` still composed
+    Claude, the Anthropic SDK and Codex into a ``CompositeCLIClient`` that falls
+    through on exhaustion — and passed it ``model_codex=self.model``, so every
+    call reaching the fallback was guaranteed to 400 on a model Codex cannot
+    serve. Measured on a 2026-08-22 conv-26 run: the canary passed, then 12 of
+    304 judge calls fell through and returned UNPARSEABLE, which this module
+    scores WRONG. Four percent of answers marked wrong because the grader's
+    provider was busy is exactly the silent failure the canary exists to stop,
+    arriving after the canary had already run.
+    """
+    import tesserae.llm_json as llm_json
+
+    claude = _no_fallthrough(monkeypatch)
+    monkeypatch.setattr(
+        llm_json, "build_default_json_client",
+        lambda **kw: pytest.fail("a Claude model took the default provider chain"),
+        raising=False)
+
+    for model in ("sonnet", "claude-sonnet-4-6", "haiku", "opus"):
+        client = LLMJudge(model)._resolve_client()
+        assert isinstance(client, claude), f"{model} did not resolve to Claude"
+        assert client.model == model
+
+
+def test_a_non_claude_judge_still_takes_the_default_chain(monkeypatch):
+    """A non-regression pin: family routing must not capture every model.
+
+    Passes on the parent too. It is here so the narrowing above cannot quietly
+    become "every judge is a Claude judge", which would make the published
+    ``gpt-4o-mini`` grader unreachable by name.
+    """
+    import tesserae.llm_json as llm_json
+
+    _no_fallthrough(monkeypatch)
+    seen: Dict[str, Any] = {}
+
+    def _default(**kwargs: Any) -> Any:
+        seen.update(kwargs)
+        return _StubClient([{"label": "CORRECT"}])
+
+    monkeypatch.setattr(llm_json, "build_default_json_client", _default,
+                        raising=False)
+    assert LLMJudge("gpt-4o-mini")._resolve_client() is not None
+    assert seen == {"model": "gpt-4o-mini"}
+
+
 def test_an_unparseable_reply_scores_wrong_and_is_counted():
     """The reference scores it WRONG, which lets a broken judge deflate every
     arm equally and silently. The score follows the reference; the count is what

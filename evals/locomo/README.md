@@ -92,10 +92,19 @@ complete, plausible, meaningless report.
 
 ## The backbone canary is mandatory, and here is why
 
-A provider chain handed a model it does not have returns `None`. The runner
-turns `None` into `""`. `is_refusal("")` is `True`. So a wholly dead backbone
-prints `refusal_rate 1.000` with `error_rate 0.000` — a system that reads as
-cautious rather than broken.
+A provider chain handed a model it does not have returns `None`. The runner used
+to turn `None` into `""`, and `is_refusal("")` is `True`, so a wholly dead
+backbone printed `refusal_rate 1.000` with `error_rate 0.000` — a system that
+read as cautious rather than broken.
+
+`answer_conversation` now records an empty reply as `Error:` (`_EMPTY_ANSWER`),
+so that failure mode reads as `error_rate 1.000` instead. **That is a second
+line of defence and not a replacement for the canary.** It was added for the
+partial case rather than the total one: `gpt-5.6-luna` returned the empty string
+on 11 of 199 answering calls of the 2026-08-21 conv-26 run — 5.5%, with no
+relationship to prompt size — and every one was counted as the memory choosing
+to abstain. A lost call is not a decision. The canary is still what stops a run
+before it spends, because a backbone can also be confidently wrong.
 
 On LoCoMo that is worse than elsewhere: **on the 446 adversarial questions,
 declining is the gold answer**, so a dead backbone scores 446 of 446 there and

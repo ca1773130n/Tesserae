@@ -353,7 +353,7 @@ class LLMJudge(Judge):
             self._client = self._client_factory(self.model)
         else:
             from tesserae.llm_json import (
-                build_default_json_client, build_rotating_client,
+                ClaudeCLIJsonClient, build_default_json_client,
             )
 
             # Route by MODEL FAMILY, not by the default chain's preference.
@@ -368,12 +368,27 @@ class LLMJudge(Judge):
             # grader is unreachable: the answerer must not grade itself, and
             # "which provider owns this model" is a property of the name, not a
             # preference the caller should have to encode.
+            #
+            # ONE PROVIDER, NO FALLTHROUGH, and that is the correction to the
+            # first attempt at this. Routing by family through
+            # `build_rotating_client` still composed Claude, the Anthropic SDK
+            # and Codex into a `CompositeCLIClient` that falls through
+            # provider-to-provider on exhaustion — and it was handed
+            # `model_codex=self.model`, so every call that reached the fallback
+            # was GUARANTEED to 400 on a model Codex cannot serve. Measured on a
+            # 2026-08-22 conv-26 run: the canary passed, then 12 of 304 judge
+            # calls fell through and came back as UNPARSEABLE, which this module
+            # scores WRONG. A judge that silently marks 4% of answers wrong
+            # because its own provider was busy is worse than one that stops.
+            #
+            # Handing the fallback a model it CAN serve would be worse still: the
+            # run would finish, report one judge in its meta, and have been
+            # graded by two. The Claude CLI rotates its own config dirs, so
+            # within-provider capacity is still used; what is gone is the silent
+            # change of grader.
             family = str(self.model or "").casefold()
             if any(tag in family for tag in ("sonnet", "haiku", "opus", "claude")):
-                self._client = build_rotating_client(
-                    model_claude=self.model, model_codex=self.model,
-                    provider="claude",
-                )
+                self._client = ClaudeCLIJsonClient(model=self.model)
             else:
                 self._client = build_default_json_client(model=self.model)
         if self._client is None:
