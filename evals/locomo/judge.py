@@ -352,9 +352,30 @@ class LLMJudge(Judge):
         if self._client_factory is not None:
             self._client = self._client_factory(self.model)
         else:
-            from tesserae.llm_json import build_default_json_client
+            from tesserae.llm_json import (
+                build_default_json_client, build_rotating_client,
+            )
 
-            self._client = build_default_json_client(model=self.model)
+            # Route by MODEL FAMILY, not by the default chain's preference.
+            # `build_default_json_client` sent "sonnet" to the Codex CLI, which
+            # answers `The 'sonnet' model is not supported when using Codex with
+            # a ChatGPT account` — so the judge graded both "teal" and "a silver
+            # kettle" as UNPARSEABLE against gold "teal". The canary caught it
+            # and refused to run, which is the only reason it is not a silent
+            # 0.000 in a report.
+            #
+            # A cross-provider judge is also the point when the published
+            # grader is unreachable: the answerer must not grade itself, and
+            # "which provider owns this model" is a property of the name, not a
+            # preference the caller should have to encode.
+            family = str(self.model or "").casefold()
+            if any(tag in family for tag in ("sonnet", "haiku", "opus", "claude")):
+                self._client = build_rotating_client(
+                    model_claude=self.model, model_codex=self.model,
+                    provider="claude",
+                )
+            else:
+                self._client = build_default_json_client(model=self.model)
         if self._client is None:
             raise Skip(
                 f"no LLM client available for the {self.model} judge",
