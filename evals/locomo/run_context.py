@@ -164,11 +164,66 @@ def canary_shim(answer_fn: Callable[[Prompt], str]
 # --------------------------------------------------------------------------
 
 
+#: The question draw every agentic measurement on this corpus has used, so a
+#: number here is comparable with the ones already on record (spec §22: the
+#: one-shot pipeline at token F1 0.370, the agentic path at 0.323). Categories
+#: 1-4 and not 5, because category 5's gold answer IS a refusal — an arm
+#: starved of context scores that whole category for free, and mixing it into a
+#: 16-question denominator would let the closed-book control look competent.
+#: The frozen set it reproduces is
+#: ``~/.blackhole/Tesserae/2026-08-21/provenance/questions16.json``.
+PROTOCOL_SEED = 20260822
+PROTOCOL_SAMPLE = 16
+PROTOCOL_CATEGORIES = (1, 2, 3, 4)
+
+
+def select_questions(
+    conversation: Conversation,
+    *,
+    sample: int,
+    seed: int,
+    categories: Sequence[int],
+) -> tuple:
+    """Draw ``sample`` questions, and return them WITH their original indices.
+
+    Filter, then shuffle, then truncate — in that order, because shuffling
+    first and filtering afterwards draws a different set from the same seed.
+    That ordering is the identity of the question set, so it is pinned by a
+    test rather than left to read off the source.
+
+    The indices are returned rather than discarded because
+    :func:`evals.locomo.scoring.question_key` is ``<conversation>#<index>``.
+    Re-enumerating a subset from zero mints keys that name a different question
+    in every other run on this corpus, which would silently mispair the
+    question-level comparisons.
+    """
+    import random
+
+    wanted = tuple(int(c) for c in categories)
+    pool = [(i, q) for i, q in enumerate(conversation.questions)
+            if q.category in wanted]
+    if len(pool) < sample:
+        raise Skip(
+            f"{conversation.sample_id} has {len(pool)} questions in categories "
+            f"{','.join(str(c) for c in wanted)}, fewer than the {sample} "
+            f"requested",
+            "lower --sample, widen --sample-categories, or add a conversation "
+            "— answering fewer questions than the protocol declares reports a "
+            "denominator nobody chose",
+        )
+    random.Random(seed).shuffle(pool)
+    pool = pool[:sample]
+    indices = [i for i, _ in pool]
+    return replace(conversation,
+                   questions=[q for _, q in pool]), indices
+
+
 def build_prompts(
     conversation: Conversation,
     arms: Sequence[Any],
     budgets: Sequence[int],
     *,
+    indices: Optional[Sequence[int]] = None,
     progress: bool = False,
 ) -> List[Dict[str, Any]]:
     """One row per (question, arm, rung), carrying the full request text.
@@ -183,17 +238,21 @@ def build_prompts(
     identical request at three rungs would triple its cost and add three
     identical points to a curve that is supposed to show a response to budget.
     """
+    keyed = list(zip(
+        list(indices) if indices is not None
+        else range(len(conversation.questions)),
+        conversation.questions))
     rows: List[Dict[str, Any]] = []
     for arm in arms:
         unbudgeted = arm.name in ("closed_book", "whole_corpus")
         rungs: Sequence[Optional[int]] = (
             [None] if unbudgeted else list(budgets))
         for rung in rungs:
-            for index, question in enumerate(conversation.questions):
+            for position, (index, question) in enumerate(keyed):
                 if progress:
                     print(f"[{conversation.sample_id}] {arm.name} "
                           f"@{rung or 'unbudgeted'} "
-                          f"[{index + 1}/{len(conversation.questions)}]",
+                          f"[{position + 1}/{len(keyed)}]",
                           file=sys.stderr)
                 built = arm.prompt(question.question, budget_tokens=rung)
                 rows.append({
@@ -639,6 +698,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=0,
                         help="answer only the first N questions per "
                              "conversation. A smoke test, never a result.")
+    parser.add_argument("--sample", type=int, default=0,
+                        help=f"draw N questions per conversation with "
+                             f"--sample-seed, keeping their original indices. "
+                             f"Pass {PROTOCOL_SAMPLE} with the default seed to "
+                             f"reproduce the question set every other agentic "
+                             f"measurement on this corpus used. Unlike --limit "
+                             f"this is a RESULT-grade subset, not a prefix.")
+    parser.add_argument("--sample-seed", type=int, default=PROTOCOL_SEED)
+    parser.add_argument("--sample-categories",
+                        default=",".join(str(c) for c in PROTOCOL_CATEGORIES),
+                        help="categories the draw may pick from. Category "
+                             f"{ADVERSARIAL_CATEGORY} is excluded by default "
+                             "because its gold answer is a refusal, which an "
+                             "arm given no context scores for free.")
     parser.add_argument("--backbone", default=PROTOCOL_BACKBONE,
                         help="the answering model. Declared by "
                              "evals.locomo.adapter.PROTOCOL_BACKBONE so both "
@@ -755,7 +828,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 from .run import staged_documents
 
                 ranker = LexicalArm(staged_documents(conversation))
-            if args.limit:
+            indices: Optional[List[int]] = None
+            if args.sample and args.limit:
+                raise Skip(
+                    "--sample and --limit both subset the questions",
+                    "pass one. --limit is a prefix smoke test; --sample is the "
+                    "seeded draw a reported result uses",
+                )
+            if args.sample:
+                conversation, indices = select_questions(
+                    conversation, sample=args.sample, seed=args.sample_seed,
+                    categories=[int(c) for c
+                                in str(args.sample_categories).split(",")
+                                if c.strip()])
+            elif args.limit:
                 conversation = replace(
                     conversation,
                     questions=list(conversation.questions)[:args.limit])
@@ -765,7 +851,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 graph=graph,
                 project_root=str(Path(args.work) / conversation.sample_id),
                 region_k=args.region_k)
-            prompts += build_prompts(conversation, arms, budgets)
+            prompts += build_prompts(conversation, arms, budgets,
+                                     indices=indices)
 
         built = efficiency.curve([
             {**row, "arm": _cell_arm(str(row["arm"]), int(row["budget"])),
@@ -788,6 +875,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _SYSTEM_PROMPT, user_turn("", []), SCHEMA_NAME)),
             "n_prompts": len(prompts),
             "question_limit": args.limit or "none",
+            "question_sample": (
+                f"{args.sample} of categories {args.sample_categories}, "
+                f"seed {args.sample_seed}" if args.sample else "none"),
         }
 
         prompts_out = args.prompts_out or (args.out.parent / "prompts.jsonl")

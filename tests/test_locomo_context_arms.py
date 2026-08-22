@@ -13,6 +13,7 @@ compiled arm degraded into a different arm by a seed the graph silently dropped.
 
 from __future__ import annotations
 
+import random
 from typing import Any, Dict, List, Sequence
 
 import pytest
@@ -535,3 +536,112 @@ def test_unbudgeted_controls_are_built_once_not_once_per_rung():
     rows = run_context.build_prompts(conversation, [arm], [512, 2048, 8192])
     assert len(rows) == 1
     assert rows[0]["budget"] == efficiency.UNBUDGETED
+
+
+# --------------------------------------------------------------------------
+# 8. Question selection — the protocol draw, and the index it keeps
+# --------------------------------------------------------------------------
+
+
+class _StubQuestion:
+    def __init__(self, conversation: str, category: int, text: str) -> None:
+        self.conversation = conversation
+        self.category = category
+        self.question = text
+        self.answer = text.upper()
+
+
+def _stub_conversation(n: int = 40, name: str = "conv-x"):
+    from evals.locomo.dataset import Conversation
+
+    return Conversation(
+        sample_id=name, speaker_a="A", speaker_b="B", sessions=[],
+        questions=[_StubQuestion(name, (i % 5) + 1, f"q{i}") for i in range(n)])
+
+
+def test_the_draw_filters_by_category_before_it_shuffles():
+    """Category filtering must precede the shuffle.
+
+    Shuffling the whole set and filtering afterwards draws a DIFFERENT 16 from
+    the same seed, so the order of these two steps is the identity of the
+    question set and not an implementation detail.
+    """
+    conversation = _stub_conversation()
+    picked, indices = run_context.select_questions(
+        conversation, sample=16, seed=20260822, categories=(1, 2, 3, 4))
+
+    assert len(picked.questions) == 16
+    assert {q.category for q in picked.questions} <= {1, 2, 3, 4}
+    assert all(conversation.questions[i] is q
+               for i, q in zip(indices, picked.questions))
+
+    # The other order draws a DIFFERENT, equally valid-looking 16 from the same
+    # seed, so asserting only that the draw is 16 in-category questions passes
+    # under both and pins nothing. The identity of the set is the assertion.
+    swapped = list(enumerate(conversation.questions))
+    random.Random(20260822).shuffle(swapped)
+    assert indices != [i for i, q in swapped
+                       if q.category in (1, 2, 3, 4)][:16]
+    assert indices == [26, 3, 1, 15, 31, 28, 36, 6,
+                       23, 11, 21, 33, 38, 16, 17, 13]
+
+
+def test_the_draw_keeps_the_original_question_index_so_keys_stay_comparable():
+    """A sampled row must carry its index in the FULL question list.
+
+    ``question_key`` is ``<conversation>#<index>``. Re-enumerating a subset
+    from zero would mint keys that collide with different questions in every
+    other run on this corpus, silently mispairing the paired comparison the
+    replicate spread depends on.
+    """
+    conversation = _stub_conversation()
+    picked, indices = run_context.select_questions(
+        conversation, sample=5, seed=1, categories=(1, 2, 3, 4))
+
+    rows = run_context.build_prompts(
+        picked, [context_arms.ClosedBookArm(picked.sample_id, SYSTEM)],
+        [512], indices=indices)
+
+    assert [r["question_index"] for r in rows] == list(indices)
+    assert [r["key"] for r in rows] == [f"{picked.sample_id}#{i}"
+                                        for i in indices]
+    assert indices != list(range(5))
+
+
+def test_a_sample_larger_than_the_pool_refuses_rather_than_silently_shrinking():
+    """Asking for more questions than exist is a protocol error, not a truncation.
+
+    A run that quietly answers 9 questions when the protocol says 16 reports a
+    denominator nobody declared.
+    """
+    conversation = _stub_conversation(n=10)
+    with pytest.raises(Skip):
+        run_context.select_questions(
+            conversation, sample=16, seed=20260822, categories=(1,))
+
+
+def test_the_draw_is_reproducible_across_calls():
+    conversation = _stub_conversation()
+    first = run_context.select_questions(
+        conversation, sample=16, seed=20260822, categories=(1, 2, 3, 4))[1]
+    second = run_context.select_questions(
+        conversation, sample=16, seed=20260822, categories=(1, 2, 3, 4))[1]
+    assert first == second
+
+
+def test_the_protocol_draw_constants_are_pinned_to_the_frozen_set():
+    """These three constants ARE the question set, so they are pinned by value.
+
+    Every agentic measurement on this corpus drew its 16 questions with
+    ``random.Random(20260822)`` over categories 1-4, and comparability with the
+    numbers already on record (spec §22) is a property of those exact values.
+    Changing one silently redraws the set while every report still says
+    "the protocol 16". Category 5 stays out because its gold answer is a
+    refusal, which an arm handed no context scores for free.
+    """
+    assert run_context.PROTOCOL_SEED == 20260822
+    assert run_context.PROTOCOL_SAMPLE == 16
+    assert run_context.PROTOCOL_CATEGORIES == (1, 2, 3, 4)
+    from evals.locomo.dataset import ADVERSARIAL_CATEGORY
+
+    assert ADVERSARIAL_CATEGORY not in run_context.PROTOCOL_CATEGORIES
