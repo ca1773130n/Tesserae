@@ -37,6 +37,8 @@ from evals.locomo.adapter import (
     session_date,
 )
 from evals.locomo.dataset import Conversation, LocomoQuestion, LocomoSession, Turn
+from tesserae.research_graph import ResearchNode, ResearchNodeType
+from tesserae.retrieval.hybrid import HybridSearchResult, ScoredNode
 
 
 class _Node:
@@ -576,3 +578,83 @@ def test_the_gate_blocks_todays_deterministic_run():
     blockers = protocol_blockers(today)
     assert any(b.startswith("judge:") for b in blockers)
     assert any(b.startswith("llm_judge_calls:") for b in blockers)
+
+
+# ------------------------------------------------------ the reranking stage
+
+
+class _CountingSearch:
+    """Records the ``top_k`` it was asked for, returns real ``ScoredNode``s."""
+
+    def __init__(self, nodes: Sequence[Any]) -> None:
+        self._nodes = list(nodes)
+        self.top_k: List[int] = []
+
+    def __call__(self, graph: Any, query: str, **kwargs: Any) -> Any:
+        self.top_k.append(int(kwargs["top_k"]))
+        scored = [
+            ScoredNode(node=n, score=1.0 / (i + 1), per_lane={"bm25": 1.0},
+                       ranks={"bm25": i + 1})
+            for i, n in enumerate(self._nodes)
+        ]
+        return HybridSearchResult(query=query, mode="hybrid", backend="stub",
+                                  weights={}, scored=scored[: kwargs["top_k"]],
+                                  total_matches=len(scored))
+
+
+class _LastWins:
+    """A reranker that inverts whatever order it is handed."""
+
+    name = "last-wins"
+
+    def score(self, query: str, documents: Sequence[str]) -> List[float]:
+        return [float(i) for i in range(len(documents))]
+
+
+def _session_nodes(count: int) -> List[ResearchNode]:
+    return [
+        ResearchNode(
+            id=f"Session:{n}",
+            name=document_title(n),
+            type=ResearchNodeType.SESSION,
+            description=f"session {n}",
+            source_path=f"corpus/{document_name(n)}",
+        )
+        for n in range(1, count + 1)
+    ]
+
+
+def test_without_a_reranker_the_lanes_are_asked_for_the_budget_exactly(tmp_path):
+    """The shipped path must not silently start overfetching."""
+    search = _CountingSearch(_session_nodes(3))
+    memory = _memory(search_fn=search)
+    _staged(tmp_path, memory, _conversation(sessions=3))
+    memory.query_hits("q", k=2)
+    assert search.top_k == [2]
+
+
+def test_a_reranker_overfetches_and_returns_its_own_top_k(tmp_path):
+    """The lanes become a candidate generator; the cross-encoder picks the k."""
+    search = _CountingSearch(_session_nodes(8))
+    memory = _memory(search_fn=search, reranker=_LastWins(), rerank_overfetch=4)
+    _staged(tmp_path, memory, _conversation(sessions=8))
+    hits = memory.query_hits("q", k=2)
+    assert search.top_k == [8], "lanes must see k * overfetch, not k"
+    assert len(hits) == 2, "the budget still bounds what the backbone reads"
+    assert [h.name for h in hits] == [document_title(8), document_title(7)], (
+        "the reranker's order must survive, not the fused order"
+    )
+
+
+def test_a_reranker_cannot_widen_the_budget(tmp_path):
+    """Overfetch buys candidates to choose from, never more evidence."""
+    search = _CountingSearch(_session_nodes(8))
+    memory = _memory(search_fn=search, reranker=_LastWins(), rerank_overfetch=4)
+    _staged(tmp_path, memory, _conversation(sessions=8))
+    assert len(memory.search_documents("q", k=2)) == 2
+
+
+def test_overfetch_below_one_is_refused(tmp_path):
+    """Overfetch 0 would ask the lanes for nothing and rerank an empty set."""
+    with pytest.raises(ValueError, match="rerank_overfetch"):
+        _memory(reranker=_LastWins(), rerank_overfetch=0)

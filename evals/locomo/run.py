@@ -63,6 +63,7 @@ from .adapter import (
     PROTOCOL_CONTROLS,
     PROTOCOL_JUDGE,
     PROTOCOL_JUDGE_RUNS,
+    RERANK_OVERFETCH,
     IngestResult,
     LocomoMemory,
     guard_work_dir,
@@ -1195,6 +1196,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--embedding-prefer", default=LOCAL_EMBEDDING_PREFER,
                         help=f"embedding backend preference (default: "
                              f"{LOCAL_EMBEDDING_PREFER}, local and free)")
+    parser.add_argument("--rerank", default=None, metavar="MODEL",
+                        help="rerank the retrieved candidates with a "
+                             "cross-encoder before answering (e.g. "
+                             "Qwen/Qwen3-Reranker-0.6B). Needs the `rerank` "
+                             "extra. Off by default: this is not the shipped "
+                             "retrieval path")
+    parser.add_argument("--rerank-overfetch", type=int, default=RERANK_OVERFETCH,
+                        help=f"how many candidates per budget unit the lanes "
+                             f"produce for the reranker to choose from "
+                             f"(default: {RERANK_OVERFETCH}). Ignored without "
+                             f"--rerank")
     parser.add_argument("--i-know-this-costs-money", action="store_true",
                         help="required for anything that reaches an LLM")
     parser.add_argument("--yes", action="store_true",
@@ -1422,7 +1434,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if spends and not args.stage_only and not _confirm(chosen, args.yes):
             return 0
 
-        memory = LocomoMemory(embedding_prefer=args.embedding_prefer) if spends else None
+        reranker = None
+        if args.rerank:
+            from tesserae.retrieval.rerank import Qwen3Reranker
+
+            reranker = Qwen3Reranker(args.rerank)
+        memory = LocomoMemory(
+            embedding_prefer=args.embedding_prefer,
+            reranker=reranker,
+            rerank_overfetch=args.rerank_overfetch,
+        ) if spends else None
         answer_fn = build_backbone(args.backbone) if answering else None
 
         # THE CANARY. Before any question is answered, and before the judge
@@ -1538,6 +1559,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "answer_shape": ANSWER_SHAPE,
             "llm_model": args.backbone if answering else "",
             "embedding_model": embedder or LOCAL_EMBEDDING_PREFER,
+            # "" rather than an omitted key: a result whose meta is silent about
+            # reranking is a result from before the stage existed, and one that
+            # says "" ran the shipped fused ranking. Those are different claims.
+            "rerank_model": args.rerank or "",
+            "rerank_overfetch": args.rerank_overfetch if args.rerank else 0,
             "evidence_budget": args.answer_k,
             "evidence_content": args.answer_evidence,
             "evidence_source_chars": (EVIDENCE_SOURCE_CHARS

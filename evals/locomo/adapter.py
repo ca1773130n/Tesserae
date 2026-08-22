@@ -267,6 +267,17 @@ def render_session(session: LocomoSession) -> str:
 #: there is no session long enough for the cap to bind.
 EVIDENCE_SOURCE_CHARS = 8_000
 
+#: How many candidates the lanes are asked for per unit of budget WHEN a
+#: cross-encoder is reranking them.
+#:
+#: A reranker can only reorder what it is handed, so the candidate set is the
+#: recall ceiling of the whole stage: at overfetch 1 it can never move a
+#: document the lanes ranked 11th into a top-10 budget, and the run measures
+#: nothing but reordering noise. 4 is the smallest multiple that lets rank 40
+#: reach rank 1, and costs 4x the cross-encoder forward passes — the only cost
+#: that scales with it, because the lanes were already scoring the whole corpus.
+RERANK_OVERFETCH = 4
+
 #: How much session text ONE question's evidence may carry BEYOND what document
 #: anchors already bring.
 #:
@@ -482,6 +493,8 @@ class LocomoMemory:
         embedding_prefer: str = "model2vec",
         mode: str = "hybrid",
         weights: Optional[Dict[str, float]] = None,
+        reranker: Any = None,
+        rerank_overfetch: int = RERANK_OVERFETCH,
     ) -> None:
         self._compile_fn = compile_fn or _default_compile
         self._search_fn = search_fn
@@ -489,6 +502,12 @@ class LocomoMemory:
         self._embedding_prefer = embedding_prefer
         self._mode = mode
         self._weights = weights
+        #: Optional cross-encoder. ``None`` is the shipped path and returns the
+        #: fused ranking untouched — not a degraded version of it.
+        self._reranker = reranker
+        if rerank_overfetch < 1:
+            raise ValueError("rerank_overfetch must be >= 1")
+        self._rerank_overfetch = rerank_overfetch
         self.work: Optional[Path] = None
         self.conversation: Optional[str] = None
         self._graph: Any = None
@@ -634,10 +653,15 @@ class LocomoMemory:
         recorded in :attr:`shortfalls` and returned short: padding would make an
         under-filled budget indistinguishable from a full one.
         """
+        # With a reranker the lanes are a CANDIDATE GENERATOR, not the final
+        # ranking, so they are asked for more than the budget and the
+        # cross-encoder chooses k of them. Without one, `top_k` is k exactly and
+        # this line is what it always was.
+        search_k = k * self._rerank_overfetch if self._reranker else k
         result = self._resolve_search()(
             self._resolve_graph(),
             question,
-            top_k=k,
+            top_k=search_k,
             weights=self._weights,
             mode=self._mode,
             backend=self.embedding_backend(),
@@ -648,13 +672,26 @@ class LocomoMemory:
             # confined to the directory this adapter staged into.
             source_root=self.work,
         )
+        scored_nodes = result.scored
+        if self._reranker:
+            from tesserae.retrieval.rerank import rerank_nodes
+
+            scored_nodes = rerank_nodes(
+                question,
+                scored_nodes,
+                reranker=self._reranker,
+                top_n=k,
+                # The same text the lexical lanes scored. A reranker reading
+                # different text would be reordering a ranking it never saw.
+                source_root=self.work,
+            )
         hits = [
             MabHit(
                 text=evidence_text(scored.node),
                 source_path=str(getattr(scored.node, "source_path", "") or ""),
                 name=str(getattr(scored.node, "name", "") or ""),
             )
-            for scored in result.scored
+            for scored in scored_nodes
         ][:k]
         if len(hits) < k:
             self.shortfalls.append({

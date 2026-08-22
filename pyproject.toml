@@ -57,6 +57,15 @@ ingest-url = ["httpx>=0.24", "markdownify>=0.11"]
 # not in the dev group (where it used to sit only because two tests called it
 # without a guard).
 kuzu = ["kuzu>=0.6"]
+# `tesserae.retrieval.rerank` only — a cross-encoder that reorders the
+# candidates the hybrid lanes already admitted. Kept OUT of the base install
+# because it is the first dependency here that is not pure Python. Measured on
+# macOS arm64: torch 503 MB + transformers 55 MB installed, and
+# Qwen3-Reranker-0.6B another 1.1 GB of weights fetched on first use, against a
+# base install measured in tens of megabytes. Retrieval works without it; only
+# reranking is unavailable, and `semantic` remains the torch-free default
+# semantic lane. transformers>=4.51 is the floor the Qwen3 model card states.
+rerank = ["torch>=2.2", "transformers>=4.51"]
 
 [dependency-groups]
 # The test runner was previously undeclared: `pytest` appeared in neither
