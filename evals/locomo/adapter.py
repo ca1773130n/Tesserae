@@ -29,6 +29,7 @@ function of the conversation's own bytes, so re-staging is byte-identical.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -265,6 +266,82 @@ def render_session(session: LocomoSession) -> str:
 #: an unanswerable prompt — and here it would do so for no saving, because
 #: there is no session long enough for the cap to bind.
 EVIDENCE_SOURCE_CHARS = 8_000
+
+#: How much session text ONE question's evidence may carry BEYOND what document
+#: anchors already bring.
+#:
+#: :data:`EVIDENCE_SOURCE_CHARS` bounds a single document; this bounds the extra
+#: expansions :meth:`LocomoMemory.answer_evidence` gained when it stopped
+#: requiring a hit to BE its session before pasting it. It is deliberately a
+#: budget on the ADDITION and not a cap on the total, and that is the whole
+#: safety argument: every document the anchors-only rule pasted is still pasted,
+#: so no question can come out of this change with less evidence than it had.
+#:
+#: A total cap was measured first and rejected. Spending one 12,000-character
+#: budget across anchors and concept hits alike — even with anchors given first
+#: claim — moved 24 of the 150 gradeable conv-26 questions INTO gold-session
+#: coverage and moved **14 out of it**, because the anchors-only rule had no
+#: budget at all and a question whose ten hits were nine anchors used to paste
+#: all nine (prompt max 40,826 characters). The aggregate hid the regression:
+#: coverage still rose, 53.3% -> 60.0%. Losses only reached zero at a 32,000
+#: budget, by which point the prompt was larger than the additive design's. A
+#: net gain that silently takes 14 questions backwards is not the change worth
+#: shipping when a strictly additive one is available for the same prompt.
+#:
+#: 8,000 — measured, over one frozen retrieval of all 199 conv-26 questions of
+#: the 2026-08-21 run. It buys 1.76 more expanded sessions per question (2.68 ->
+#: 4.44, and the minimum rises from 0 to 1, so no prompt is summaries alone),
+#: takes gold-session coverage on the 150 gradeable questions from 53.3% to
+#: 78.0% — 37 questions gained the gold session's text and 0 lost it — and on
+#: the 30 refusals specifically from 5/30 to 15/30. The cost is the prompt:
+#: mean 14,143 -> 20,798 over
+#: all 199, and on the adversarial category — the one a refusal fix most
+#: endangers — 15,277 -> 21,697. THAT COST IS NOT ESTIMATED HERE. Abstention on
+#: adversarial questions is measured beside accuracy on every run, and the
+#: decision rule is fixed before the run rather than after it: accuracy must rise
+#: by more than adversarial abstention falls.
+#:
+#: The next rung, 12,000, reaches 85.3% coverage for a 24,850-character
+#: adversarial prompt. It is the obvious follow-up if this budget's abstention
+#: holds, and the obvious thing not to have shipped if it does not.
+EVIDENCE_EXTRA_SOURCE_CHARS = 8_000
+
+#: ``Chat Time:`` as :func:`render_session` writes it, read back off a staged
+#: document. Bounded to the document's head because a turn is free to contain
+#: the words "Chat Time:" and the header is line 3.
+_CHAT_TIME = re.compile(r"^Chat Time:[ \t]*(.+)$", re.MULTILINE)
+_CHAT_TIME_HEAD_CHARS = 400
+#: A leading clock reading and whatever joins it to the date — ``1:56 pm on``,
+#: ``2:35 pm,``. Both spellings occur in ``locomo10.json``.
+_CLOCK = re.compile(r"^\d{1,2}:\d{2}\s*(?:am|pm)?\s*(?:on\b|,)?\s*", re.I)
+_YEAR_COMMA = re.compile(r",\s*((?:19|20)\d{2})\b")
+_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
+
+
+def session_date(document: str) -> str:
+    """The calendar date a staged session states about itself, or ``""``.
+
+    ``"1:56 pm on 8 May, 2023"`` -> ``"8 May 2023"``. The clock reading is
+    dropped because no LoCoMo gold answer is a time of day, and the comma before
+    the year is dropped because the golds are written ``"8 May 2023"``.
+
+    **A year is required.** :func:`render_session` writes ``Chat Time: not
+    recorded in this conversation.`` for a session the file did not date, and
+    stamping an evidence item with that sentence would put a confident-looking
+    non-date next to a claim. No date is the honest rendering of no date.
+
+    This reads the STAGED DOCUMENT and not node metadata on purpose. The
+    extractor's dating is at the model's discretion — the compiled conv-26 graph
+    carries nine distinct date-ish keys in two incompatible formats across 27 of
+    its 345 nodes, and 218 nodes carry none — whereas the header is written by
+    :func:`render_session` from ``session_<n>_date_time`` and is present on every
+    document this adapter stages.
+    """
+    match = _CHAT_TIME.search((document or "")[:_CHAT_TIME_HEAD_CHARS])
+    if not match:
+        return ""
+    text = _YEAR_COMMA.sub(r" \1", _CLOCK.sub("", match.group(1).strip()).strip())
+    return text if _YEAR.search(text) else ""
 
 
 @dataclass
@@ -593,21 +670,58 @@ class LocomoMemory:
                         expand: bool = True) -> List[str]:
         """``hits`` as the strings the BACKBONE reads — the answering path only.
 
-        Only document anchors expand, and each source file at most once. A
-        concept node keeps its summary, which is honestly all the text it has;
-        and a session's text goes to the FIRST hit that stands for it, so two
-        nodes extracted from one session cannot spend two evidence items on the
-        same bytes.
+        **A hit expands the session it came from, whether or not it IS that
+        session.** Document anchors expand unconditionally, exactly as before;
+        the remaining hits then expand in rank order until
+        :data:`EVIDENCE_EXTRA_SOURCE_CHARS` of further source has been spent.
+        Each file is pasted at most once, at the first hit that names it, and
+        every item — expanded or not — is stamped with its session's date.
+
+        Restricting expansion to :attr:`MabHit.is_document_anchor` is what this
+        method used to do, and measured on the 150 gradeable conv-26 questions
+        of the 2026-08-21 run it is the largest single loss in the benchmark.
+        ``documents_of`` credits a session for ANY hit whose ``source_path``
+        names it, so retrieval scored the gold session as retrieved for 140 of
+        150 questions (93.3%) — but the gold session's TEXT reached the prompt
+        for only 80 (53.3%), because the other 60 were reached through a concept
+        node, which contributed its name and a description whose median length
+        is 75 characters. Refusal tracks that gap and nothing else: 6.2% (5/80)
+        when the session's text was in the prompt against 35.7% (25/70) when it
+        was not, and reading all 30 refusals, 25 were the model correctly
+        declining a prompt that did not contain the answer. That is why two
+        successive prompt fixes did not move the refusal rate: the prompt was
+        never the defect.
+
+        The anchor test is still the right answer to the question it was asked —
+        which node STANDS FOR a file, so ``documents_of`` can score one document
+        per file — and :attr:`MabHit.is_document_anchor` keeps doing that job
+        here, deciding who is expanded before the budget opens. It was the wrong
+        answer to a different question: which hits are worth spending prompt on.
+        The duplication its docstring exists to prevent — eleven concepts from
+        one chat pasting one file eleven times — is prevented by ``chosen`` and
+        ``spent``, which are keyed on the FILE.
+
+        **The addition is strictly additive, and that is a property of the code
+        rather than a result.** Anchors are chosen before the budget is
+        consulted, so every document the old rule pasted is still pasted and no
+        question can end up with less evidence than it had. The alternative —
+        one budget spanning anchors and concept hits alike — was implemented and
+        measured first, and it regressed 14 of the 150 gradeable questions while
+        the aggregate coverage still rose. See
+        :data:`EVIDENCE_EXTRA_SOURCE_CHARS`.
 
         ``source_path`` arrives from document frontmatter and is UNTRUSTED, and
         this is the side where that matters most — ranking buries a stolen file
         in a score, answering pastes it into a prompt — so the read goes through
         ``hybrid._confined_source`` rooted at the directory this adapter staged
-        into.
+        into. Widening expansion widens nothing here: a path that escapes the
+        staging root reads as ``""``, expands to nothing, and is stamped with no
+        date, exactly as before.
 
-        ``expand=False`` returns the node summaries alone. It is the control arm
-        that makes the expansion measurable over ONE frozen retrieval rather
-        than across two checkouts; nothing selects it by default.
+        ``expand=False`` returns the node summaries alone, unstamped. It is the
+        control arm that makes the expansion measurable over ONE frozen
+        retrieval rather than across two checkouts; nothing selects it by
+        default.
         """
         if not expand:
             return [hit.text for hit in hits]
@@ -616,17 +730,45 @@ class LocomoMemory:
 
         root = self.work
         cache: Dict[str, str] = {}
+
+        def source_of(hit: MabHit) -> str:
+            if root is None:
+                return ""
+            return _confined_source(hit.source_path, root, cache)[
+                :EVIDENCE_SOURCE_CHARS]
+
+        # Who gets pasted, decided before anything is rendered. Anchors first
+        # and unconditionally — that ordering is what makes this a superset of
+        # the rule it replaces — then the rest until the extra budget runs out.
+        # A document is admitted WHOLE OR NOT AT ALL: a session truncated
+        # mid-way is the ranked-but-unanswerable failure EVIDENCE_SOURCE_CHARS
+        # exists to prevent. One that does not fit is skipped rather than
+        # ending the loop, so leftover budget can still buy a smaller one
+        # further down the ranking.
+        chosen: set = set()
+        for hit in hits:
+            if hit.is_document_anchor and source_of(hit):
+                chosen.add(hit.source_path)
+        budget = EVIDENCE_EXTRA_SOURCE_CHARS
+        for hit in hits:
+            source = source_of(hit)
+            if source and hit.source_path not in chosen and len(source) <= budget:
+                chosen.add(hit.source_path)
+                budget -= len(source)
+
         spent: set = set()
         evidence: List[str] = []
         for hit in hits:
+            source = source_of(hit)
             raw = ""
-            if (root is not None and hit.is_document_anchor
-                    and hit.source_path not in spent):
-                raw = _confined_source(hit.source_path, root, cache)
-                if raw:
-                    spent.add(hit.source_path)
-            evidence.append(f"{hit.text}\n{raw[:EVIDENCE_SOURCE_CHARS]}"
-                            if raw else hit.text)
+            if source and hit.source_path in chosen and hit.source_path not in spent:
+                raw = source
+                spent.add(hit.source_path)
+            head = hit.text
+            stamp = session_date(source)
+            if stamp:
+                head = f"{head} — session date: {stamp}"
+            evidence.append(f"{head}\n{raw}" if raw else head)
         return evidence
 
     def documents_of(self, hits: Sequence[MabHit]) -> List[int]:
@@ -662,6 +804,7 @@ class LocomoMemory:
 
 
 __all__ = [
+    "EVIDENCE_EXTRA_SOURCE_CHARS",
     "EVIDENCE_SOURCE_CHARS",
     "PROTOCOL_BACKBONE",
     "PROTOCOL_CONTROLS",
@@ -678,4 +821,5 @@ __all__ = [
     "guard_work_dir",
     "protocol_blockers",
     "render_session",
+    "session_date",
 ]

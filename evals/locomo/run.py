@@ -57,6 +57,7 @@ from ..lme_mab.adapter import RefusedToCompileInRepo
 from ..lme_mab.baselines import LOCAL_EMBEDDING_PREFER, DenseArm, LexicalArm
 from ..qa.run_qa_eval import Skip, _num, _rate, _table
 from .adapter import (
+    EVIDENCE_EXTRA_SOURCE_CHARS,
     EVIDENCE_SOURCE_CHARS,
     PROTOCOL_BACKBONE,
     PROTOCOL_CONTROLS,
@@ -163,12 +164,30 @@ ANSWER_SHAPE = "short-span"
 #: This is not loosening the guard. Reasoning FROM retrieved evidence is the
 #: task; abstaining when the evidence supports no answer is still required, and
 #: the adversarial category still rewards it.
+#:
+#: A WHEN QUESTION WANTS A CALENDAR DATE, AND "Prefer the evidence's own words"
+#: WAS TELLING THE MODEL OTHERWISE. Every evidence item now carries the date of
+#: the session it came from (:func:`evals.locomo.adapter.session_date`), so the
+#: anchor a relative expression needs is in the prompt; without a rule naming it,
+#: the model copies the deixis instead. Measured on the 45 wrong answers of the
+#: 2026-08-21 conv-26 run, 13 (28.9%) — the largest single class of wrong answer
+#: — are a relative expression where the gold is a date: "Yesterday" against
+#: "2 July 2023", "Last week", "the prior weekend". Three of those 13 already had
+#: the session's own ``Chat Time`` line pasted into the prompt and copied the
+#: deixis anyway, which is what makes this a prompt defect and not only an
+#: evidence one. The rule is narrow on purpose: it fires on time, it does not
+#: license paraphrase anywhere else, and it does not touch abstention.
 _SYSTEM_PROMPT = (
     "You answer questions about a long conversation using the evidence given. "
+    "Each evidence item is stamped with the date of the session it came from. "
     "Reply with the shortest answer that the evidence supports — a name, a "
     "date, a number, yes/no, or a short phrase — and nothing else. Prefer the "
     "evidence's own words for facts it states outright, and reason from it when "
-    "the question asks what is likely, implied, or would follow. If the "
+    "the question asks what is likely, implied, or would follow. When the answer "
+    "is a time, give a calendar date: resolve relative expressions such as "
+    "\"yesterday\", \"last week\" or \"the other day\" against the session date "
+    "of the evidence item that states them, and never answer with the relative "
+    "expression itself. If the "
     "evidence supports no answer at all, reply exactly: Not mentioned."
 )
 
@@ -431,6 +450,28 @@ def search_conversation(
     return documents, evidence, errors
 
 
+#: What an EMPTY backbone reply is recorded as. ``Error:`` is
+#: :data:`evals.qa.scorer._ERROR_PREFIX`, so this lands in the errored column and
+#: in neither the correct one nor the refused one.
+#:
+#: A silent failure was being counted as a decision. ``is_refusal("")`` is True —
+#: correctly, as a scorer predicate, because a system that returns nothing has
+#: declined — but the backbone returning nothing is not the SYSTEM declining, it
+#: is the harness losing a call. Measured on the 2026-08-21 conv-26 run,
+#: ``gpt-5.6-luna`` returned the empty string on 11 of 199 answering calls
+#: (5.5%), spread from 2,267 to 32,324 evidence characters against a non-empty
+#: mean of 14,186 — no prompt-size relationship, and all 11 were filed as
+#: refusals. Five of them were adversarial, where an empty string scored zero
+#: under the published abstention rule while being counted as an abstention
+#: under ours: the two rules disagreed about eleven rows for a reason that was
+#: not a property of the memory at all.
+#:
+#: Recorded rather than retried, deliberately. A retry would spend calls to hide
+#: a defect nobody has characterised yet, and would make the call count of a run
+#: depend on how often the backbone failed.
+_EMPTY_ANSWER = "Error: the backbone returned an empty answer"
+
+
 def answer_conversation(
     conversation: Conversation,
     evidence: Sequence[Sequence[str]],
@@ -450,7 +491,9 @@ def answer_conversation(
     refusal count and the correct count.
 
     A backbone failure is caught per question, so one 429 does not erase the
-    retrieval that had already ranked gold first for every other question.
+    retrieval that had already ranked gold first for every other question. An
+    EMPTY reply is such a failure and is recorded as one — see
+    :data:`_EMPTY_ANSWER`.
     """
     rows: List[Dict[str, Any]] = []
     for index, question in enumerate(conversation.questions):
@@ -467,6 +510,9 @@ def answer_conversation(
                 answer = answer_fn(question.question, items)
             except Exception as exc:  # the backbone failed, the search did not
                 answer = f"Error: {exc}"
+            else:
+                if not str(answer or "").strip():
+                    answer = _EMPTY_ANSWER
         rows.append({
             "key": question_key(question, index),
             "arm": arm,
@@ -934,12 +980,14 @@ def _shortfall_section(shortfalls: Sequence[Mapping[str, Any]],
             f"{int(mean):,} per question, median "
             f"{int(meta.get('evidence_chars_median') or 0):,}, max "
             f"{int(meta.get('evidence_chars_max') or 0):,}. An item is a "
-            f"retrieved node's name and description, plus — for the node that "
-            f"IS a staged session, and only for it — up to "
-            f"{EVIDENCE_SOURCE_CHARS:,} characters of that session's own file. "
-            f"Measured this phase, no session in this corpus renders larger "
-            f"than that, so the backbone reads exactly the text the retriever "
-            f"scored.",
+            f"retrieved node's name and description, stamped with the date of "
+            f"the session it came from, plus that session's own file — up to "
+            f"{EVIDENCE_SOURCE_CHARS:,} characters of it. Measured this phase, "
+            f"no session in this corpus renders larger than that, so the "
+            f"backbone reads exactly the text the retriever scored. Every node "
+            f"that IS a staged session brings its file; the remaining hits "
+            f"bring theirs until a further {EVIDENCE_EXTRA_SOURCE_CHARS:,} "
+            f"characters are spent, and each file is pasted at most once.",
         ]
     return lines
 
@@ -1132,6 +1180,47 @@ def _confirm(conversations: Sequence[Conversation], assume_yes: bool) -> bool:
         print("SKIP: not confirmed — nothing was staged")
         return False
     return True
+
+
+#: What :func:`_fold_verdicts` copies from a :class:`GradedRow` onto the answer
+#: row it graded. Not the whole verdict: ``key``, ``arm``, ``replicate``,
+#: ``question`` and ``category`` are already on the answer row and re-writing
+#: them would let a fold silently disagree with the row it folded onto.
+_VERDICT_FIELDS = ("correct", "score", "label", "judge", "refused", "errored",
+                   "reference_correct")
+
+
+def _fold_verdicts(rows: List[Dict[str, Any]],
+                   graded: Sequence[GradedRow]) -> None:
+    """Write each verdict back onto the answer row it graded, in place.
+
+    **The judge's per-question labels were not being persisted anywhere.** The
+    saved answers carried the answer, its category and its evidence size; the
+    verdicts lived only inside the printed report's aggregates. So the report
+    could say "32% wrong with the gold retrieved" and nobody could list WHICH
+    32% — re-deriving the join cost a re-grade, and grepping the judge log finds
+    the words CORRECT and WRONG inside the judge's own instruction text rather
+    than its answers. Reading the failures is how the last three defects in this
+    module were found, and it should not need a second paid run.
+
+    Silent on an empty grade — a retrieval-only run has verdicts for nothing —
+    and RAISES on a length mismatch rather than zipping short. :func:`_grade_rows`
+    returns one row per answer in order, so a mismatch means that stopped being
+    true, and a short zip would silently label row N with row N's verdict for the
+    first few and leave the rest unlabelled, which reads as "the judge did not
+    grade these" rather than as a bug.
+    """
+    if not graded:
+        return
+    if len(graded) != len(rows):
+        raise RuntimeError(
+            f"graded {len(graded)} rows against {len(rows)} answers — the "
+            f"verdict/answer join is no longer positional and folding it would "
+            f"mislabel every row after the first divergence"
+        )
+    for row, verdict in zip(rows, graded):
+        payload = verdict.as_dict()
+        row.update({field: payload[field] for field in _VERDICT_FIELDS})
 
 
 def _grade_rows(
@@ -1395,6 +1484,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         graded = _grade_rows(answer_rows, chosen, judge) if answer_rows else []
         decomposition = decompose(graded) if graded else None
         spreads = replicate_spread(graded) if graded else {}
+        _fold_verdicts(answer_rows, graded)
 
         meta: Dict[str, Any] = {
             "answer_shape": ANSWER_SHAPE,
@@ -1404,6 +1494,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "evidence_content": args.answer_evidence,
             "evidence_source_chars": (EVIDENCE_SOURCE_CHARS
                                       if args.answer_evidence == "source" else 0),
+            # Declared because it changes what the backbone read. A run scored
+            # before this budget existed and a run scored after it are not the
+            # same measurement, and nothing else in meta would say so.
+            "evidence_extra_source_chars": (EVIDENCE_EXTRA_SOURCE_CHARS
+                                            if args.answer_evidence == "source"
+                                            else 0),
             "reported_ks": ",".join(str(k) for k in ks),
             "dataset": str(data),
             "dataset_revision": revision,

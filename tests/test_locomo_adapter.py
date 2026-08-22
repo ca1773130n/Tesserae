@@ -22,6 +22,7 @@ import pytest
 
 from evals.lme_mab.adapter import MabHit, document_index, document_title
 from evals.locomo.adapter import (
+    EVIDENCE_EXTRA_SOURCE_CHARS,
     EVIDENCE_SOURCE_CHARS,
     PROTOCOL_BACKBONE,
     PROTOCOL_DATASET_REVISION,
@@ -33,6 +34,7 @@ from evals.locomo.adapter import (
     guard_work_dir,
     protocol_blockers,
     render_session,
+    session_date,
 )
 from evals.locomo.dataset import Conversation, LocomoQuestion, LocomoSession, Turn
 
@@ -67,7 +69,7 @@ def _conversation(sample_id: str = "conv-test", sessions: int = 2) -> Conversati
         speaker_b="Bo",
         sessions=[
             LocomoSession(
-                number=n, date=f"noon on {n} May, 2023",
+                number=n, date=f"1:56 pm on {n} May, 2023",
                 turns=[_turn(n, 1, f"session {n} first"),
                        _turn(n, 2, f"session {n} second", "a photo of a bicycle")],
             )
@@ -293,8 +295,14 @@ def test_a_hit_with_no_staged_document_is_counted_and_dropped(tmp_path):
     assert memory.n_unmapped_hits == 1
 
 
-def test_only_the_document_anchor_expands_and_only_once(tmp_path):
-    """Two nodes from one session must not spend two evidence items on one file."""
+def test_one_file_is_pasted_once_however_many_hits_name_it(tmp_path):
+    """Two nodes from one session must not spend two evidence items on one file.
+
+    This is the property ``is_document_anchor`` was doing double duty to protect
+    and no longer has to: ``chosen`` and ``spent`` are keyed on the FILE, so a
+    session's text goes to the first hit that names it whether that hit is the
+    anchor or a concept extracted from it.
+    """
     memory = _memory()
     result = memory.ingest(_conversation(sessions=2), work=tmp_path,
                            compile_project=False)
@@ -306,8 +314,163 @@ def test_only_the_document_anchor_expands_and_only_once(tmp_path):
     ]
     evidence = memory.answer_evidence(hits)
     assert "session 1 first" in evidence[0]
-    assert evidence[1] == "twin"
-    assert evidence[2] == "concept"
+    assert sum("session 1 first" in item for item in evidence) == 1
+    assert evidence[1] == "twin — session date: 1 May 2023"
+    assert evidence[2] == "concept — session date: 1 May 2023"
+
+
+def _padded(memory, tmp_path, pad: Sequence[int]):
+    """Stage ``len(pad)`` documents, session ``n`` padded by ``pad[n - 1]`` chars.
+
+    ``LocomoSession`` is frozen, so the padding turn goes in at construction.
+    """
+    conversation = _conversation(sessions=len(pad))
+    conversation = Conversation(
+        sample_id=conversation.sample_id,
+        speaker_a=conversation.speaker_a,
+        speaker_b=conversation.speaker_b,
+        sessions=[
+            LocomoSession(number=session.number, date=session.date,
+                          turns=list(session.turns) + [
+                              _turn(session.number, 3,
+                                    f"pad{session.number} " * (extra // 6))])
+            for session, extra in zip(conversation.sessions, pad)
+        ],
+        questions=conversation.questions,
+    )
+    return memory.ingest(conversation, work=tmp_path, compile_project=False)
+
+
+def test_a_concept_node_expands_the_session_it_came_from(tmp_path):
+    """The single largest loss in the benchmark, as one assertion.
+
+    ``documents_of`` scored the gold session as retrieved for 93.3% of conv-26's
+    gradeable questions; its TEXT reached the prompt for 53.3%, because the rest
+    were reached through a concept node whose whole contribution was a name and a
+    ~75-character description. The session behind a hit is evidence whether or
+    not the hit is the node that stands for it.
+    """
+    memory = _memory()
+    result = memory.ingest(_conversation(sessions=2), work=tmp_path,
+                           compile_project=False)
+    hits = [MabHit(text="A concept", name="A concept",
+                   source_path=str(result.corpus_dir / document_name(2)))]
+    (evidence,) = memory.answer_evidence(hits)
+    assert "session 2 first" in evidence
+
+
+def test_the_extra_budget_never_costs_an_anchor_its_expansion(tmp_path):
+    """The addition is ADDITIVE, and it is the code that guarantees it.
+
+    Anchors are chosen before the budget is consulted, so an anchor ranked below
+    enough concept hits to exhaust the budget still expands. Spending one budget
+    across both — even with anchors given first claim within it — regressed 14 of
+    conv-26's 150 gradeable questions, because the rule it replaced had no budget
+    at all and a question whose hits were nine anchors used to paste all nine.
+    """
+    memory = _memory()
+    result = _padded(memory, tmp_path,
+                     pad=[EVIDENCE_EXTRA_SOURCE_CHARS // 2] * 3)
+    hits = [
+        MabHit(text="c1", name="c1", source_path=str(result.corpus_dir / document_name(1))),
+        MabHit(text="c2", name="c2", source_path=str(result.corpus_dir / document_name(2))),
+        MabHit(text="anchor", name=document_title(3),
+               source_path=str(result.corpus_dir / document_name(3))),
+    ]
+    evidence = memory.answer_evidence(hits)
+    assert "session 3 first" in evidence[2], "the anchor lost its text to the budget"
+    assert "session 1 first" in evidence[0], "the first extra should still fit"
+
+
+def test_the_extra_budget_bounds_what_the_new_expansion_adds(tmp_path):
+    """Some extra, and never more than the budget. Both halves are the point.
+
+    An unbounded version reaches 93.3% gold-session coverage on conv-26 and
+    doubles the prompt; the bound is what keeps the growth statable, and it is
+    measured against adversarial abstention on every run rather than assumed
+    safe.
+    """
+    memory = _memory()
+    result = _padded(memory, tmp_path, pad=[3_000] * 6)
+    hits = [MabHit(text=f"c{n}", name=f"c{n}",
+                   source_path=str(result.corpus_dir / document_name(n)))
+            for n in range(1, 7)]
+    summaries = memory.answer_evidence(hits, expand=False)
+    expanded = memory.answer_evidence(hits)
+    added = sum(len(a) for a in expanded) - sum(len(b) for b in summaries)
+    assert added > 0, "no concept hit expanded at all"
+    assert added <= EVIDENCE_EXTRA_SOURCE_CHARS + sum(
+        len(" — session date: 1 May 2023") + 1 for _ in hits)
+
+
+def test_a_document_too_large_for_what_is_left_is_skipped_not_truncated(tmp_path):
+    """A session cut mid-way is the ranked-but-unanswerable failure
+    ``EVIDENCE_SOURCE_CHARS`` exists to prevent, so a document is admitted whole
+    or not at all — and a smaller one further down still gets the remainder.
+
+    Session 1 takes most of the budget, session 2 no longer fits in what is left,
+    session 3 does. Skipping ends that hit's expansion, not the loop.
+    """
+    memory = _memory()
+    budget = EVIDENCE_EXTRA_SOURCE_CHARS
+    result = _padded(memory, tmp_path,
+                     pad=[budget - budget // 4, budget // 2, 0])
+    hits = [MabHit(text=f"c{n}", name=f"c{n}",
+                   source_path=str(result.corpus_dir / document_name(n)))
+            for n in (1, 2, 3)]
+    first, skipped, last = memory.answer_evidence(hits)
+    assert "session 1 first" in first, "the first document should fit"
+    assert "session 2 first" not in skipped, "a document past the budget was pasted"
+    assert "pad2" not in skipped, "the document was truncated instead of skipped"
+    assert "session 3 first" in last, "the leftover budget bought nothing"
+
+
+def test_every_evidence_item_carries_the_date_of_the_session_behind_it(tmp_path):
+    """The date lives in the document header and nowhere else the model can see.
+
+    Measured on the 45 wrong answers of the 2026-08-21 conv-26 run, 13 (28.9%) —
+    the largest single class — answered a WHEN question with a relative
+    expression ("Yesterday", "Last week") where the gold is a calendar date. The
+    extraction keeps the speaker's deixis and drops the anchor: 1,120 of the
+    1,124 unexpanded concept evidence items (99.6%) carried no date at all.
+    """
+    memory = _memory()
+    result = memory.ingest(_conversation(sessions=2), work=tmp_path,
+                           compile_project=False)
+    hits = [MabHit(text="anchor", name=document_title(1),
+                   source_path=str(result.corpus_dir / document_name(1))),
+            MabHit(text="concept", name="concept",
+                   source_path=str(result.corpus_dir / document_name(2)))]
+    anchor, concept = memory.answer_evidence(hits)
+    assert anchor.splitlines()[0] == "anchor — session date: 1 May 2023"
+    assert concept.splitlines()[0] == "concept — session date: 2 May 2023"
+
+
+def test_a_hit_from_outside_the_staging_root_is_neither_pasted_nor_dated(tmp_path):
+    """``source_path`` is untrusted, and widening expansion must not widen it."""
+    memory = _memory()
+    memory.ingest(_conversation(sessions=1), work=tmp_path, compile_project=False)
+    outside = tmp_path.parent / "elsewhere.md"
+    outside.write_text("# Session 0001\n\nChat Time: 1:56 pm on 8 May, 2023\n\nsecret\n",
+                       encoding="utf-8")
+    hits = [MabHit(text="thief", name=document_title(1), source_path=str(outside))]
+    assert memory.answer_evidence(hits) == ["thief"]
+
+
+@pytest.mark.parametrize("stated, expected", [
+    ("1:56 pm on 8 May, 2023", "8 May 2023"),          # the conv-26 spelling
+    ("2:35 pm, 16 March 2023", "16 March 2023"),       # conv-30/41/42/47/50
+    ("not recorded in this conversation.", ""),        # render_session's fallback
+])
+def test_session_date_reads_the_spellings_the_corpus_writes(stated, expected):
+    """All 272 staged documents of ``locomo10.json`` parse under these two.
+
+    Reading only the ``on`` spelling passes conv-26 perfectly and silently drops
+    13 documents across five other conversations — the same near-miss the
+    temporal read-side fix caught one commit ago. A year is REQUIRED, so the
+    undated fallback stamps nothing rather than stamping a sentence.
+    """
+    assert session_date(f"# Session 0001\n\nChat Time: {stated}\n\nturn\n") == expected
 
 
 def test_the_summary_control_expands_nothing(tmp_path):

@@ -636,6 +636,105 @@ def test_the_shortfall_section_does_not_claim_completeness_it_cannot_see():
     assert "missing data" in short
 
 
+def test_an_empty_backbone_reply_is_an_error_and_not_a_refusal():
+    """A LOST CALL was being counted as a DECISION.
+
+    ``is_refusal("")`` is True, and correct as a scorer predicate — a system that
+    returns nothing has declined. But the backbone returning nothing is the
+    harness losing a call, not the memory choosing to abstain, and the two were
+    indistinguishable in every reported number. Measured on the 2026-08-21
+    conv-26 run, ``gpt-5.6-luna`` returned the empty string on 11 of 199
+    answering calls (5.5%) with no relationship to prompt size, and all 11 were
+    filed as refusals; five were adversarial, where an empty string scored zero
+    under the published abstention rule while counting as an abstention under
+    ours.
+    """
+    from evals.qa.scorer import is_error, is_refusal
+    from evals.locomo.dataset import Conversation
+
+    conversation = Conversation(sample_id="conv-test", speaker_a="A",
+                                speaker_b="B", sessions=[],
+                                questions=[_question(), _question()])
+    replies = iter(["", "   "])
+    rows = runner.answer_conversation(
+        conversation, [["ev"], ["ev"]], ["", ""],
+        lambda q, e: next(replies), replicate=0, progress=False)
+
+    assert [row["answer"] for row in rows] == [runner._EMPTY_ANSWER] * 2
+    assert all(is_error(row["answer"]) for row in rows)
+    assert not any(is_refusal(row["answer"]) for row in rows)
+
+
+def test_a_real_answer_is_left_exactly_as_the_backbone_wrote_it():
+    """The empty-reply guard must not become an answer rewriter."""
+    from evals.locomo.dataset import Conversation
+
+    conversation = Conversation(sample_id="conv-test", speaker_a="A",
+                                speaker_b="B", sessions=[], questions=[_question()])
+    (row,) = runner.answer_conversation(
+        conversation, [["ev"]], [""], lambda q, e: "  teal  ",
+        replicate=0, progress=False)
+    assert row["answer"] == "  teal  "
+
+
+def test_the_prompt_requires_a_relative_time_expression_to_be_resolved():
+    """"Prefer the evidence's own words" was answering WHEN with "Yesterday".
+
+    Every evidence item now carries the date of the session it came from, so the
+    anchor a deictic expression needs is in the prompt; without a rule naming it
+    the model copies the deixis instead. Measured on the 45 wrong answers of the
+    2026-08-21 conv-26 run, 13 (28.9%) — the largest single class — are a
+    relative expression where the gold is a calendar date, and 3 of those 13
+    already had the session's own date pasted into the prompt.
+
+    The rule must stay narrow: it fires on time, and it must not reopen the
+    extraction-only wording that refused 21 of 21 open-domain questions.
+    """
+    prompt = runner._SYSTEM_PROMPT.casefold()
+
+    assert "session date" in prompt, "the stamp the answer must resolve against is not named"
+    assert "calendar date" in prompt, "a when question is not asked for a date"
+    assert "yesterday" in prompt, "the deixis to resolve is not named"
+    assert "reason from it" in prompt and "supports no answer" in prompt, (
+        "the time rule was written over inference or abstention"
+    )
+
+
+def test_the_saved_answers_carry_the_judges_verdict():
+    """One field, and without it the report's decomposition cannot be re-joined.
+
+    The saved answers carried the answer, its category and its evidence size; the
+    verdicts lived only inside the printed aggregates. So a report could say
+    "32% wrong with the gold retrieved" and nobody could list WHICH 32% without
+    paying for a re-grade — and grepping the judge log finds CORRECT and WRONG
+    inside the judge's own instruction text rather than its answers. Reading the
+    failures is how the defects this commit fixes were found.
+    """
+    rows = [{"answer": "teal", "question_index": 0, "conversation": "conv-test"},
+            {"answer": "Not mentioned.", "question_index": 1,
+             "conversation": "conv-test"}]
+    graded = [grade(DeterministicJudge(), _question(), row["answer"],
+                    key=f"k{i}", arm="tesserae", replicate=0)
+              for i, row in enumerate(rows)]
+
+    runner._fold_verdicts(rows, graded)
+
+    assert [row["label"] for row in rows] == ["CORRECT", "WRONG"]
+    assert rows[0]["correct"] is True and rows[1]["refused"] is True
+    # The row's own identity is never overwritten by the verdict's copy of it.
+    assert rows[0]["question_index"] == 0 and "key" not in rows[0]
+
+
+def test_folding_a_verdict_list_that_does_not_line_up_raises():
+    """``_grade_rows`` returns one verdict per answer, in order. A short zip
+    would label the first rows and leave the rest looking ungraded."""
+    with pytest.raises(RuntimeError, match="no longer positional"):
+        runner._fold_verdicts(
+            [{"answer": "teal"}, {"answer": "blue"}],
+            [grade(DeterministicJudge(), _question(), "teal",
+                   key="k", arm="tesserae", replicate=0)])
+
+
 def test_the_declining_phrase_is_accepted_by_both_graders():
     """A phrasing choice turned over an entire benchmark category.
 
