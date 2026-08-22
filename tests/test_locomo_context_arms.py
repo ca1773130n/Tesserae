@@ -645,3 +645,59 @@ def test_the_protocol_draw_constants_are_pinned_to_the_frozen_set():
     from evals.locomo.dataset import ADVERSARIAL_CATEGORY
 
     assert ADVERSARIAL_CATEGORY not in run_context.PROTOCOL_CATEGORIES
+
+
+# --------------------------------------------------------------------------
+# 9. The scalar table must see an arm's whole ladder
+# --------------------------------------------------------------------------
+
+
+def _report_for(rows):
+    """The whole report for a set of graded rows, exactly as main assembles it."""
+    cells = [{**r, "arm": run_context._cell_arm(str(r["arm"]), int(r["budget"]))}
+             for r in rows]
+    return run_context.build_report(
+        conversations=[], built=efficiency.curve(cells),
+        scored=efficiency.curve(cells), per_rung={}, spreads={},
+        prompts=[], replicates=3, tau=0.5, meta={})
+
+
+def _graded(arm, budget, n_correct, n=16, tokens_each=1000):
+    return [{"arm": arm, "budget": budget, "prompt_tokens": tokens_each,
+             "correct": i < n_correct, "score": 1.0 if i < n_correct else 0.0,
+             "refused": False, "errored": False, "truncated": False}
+            for i in range(n)]
+
+
+def test_the_scalar_table_integrates_an_arm_over_its_rungs_not_one_rung_each():
+    """AULBC needs the arm's LADDER, so the report cannot hand it cell labels.
+
+    The ladder and three-number sections key on ``arm@budget`` because a rung
+    is what they report. Handing those same labels to the scalar section gives
+    every 'arm' exactly one rung, so ``aulbc`` returns None on every row and
+    the entire column reads 'n/a (fewer than two rungs)' while looking like a
+    finished table. The bug lives at the CALL SITE, so the assertion is made
+    against the whole report rather than against the section alone.
+    """
+    rows = (_graded("bm25_docs", 512, 2) + _graded("bm25_docs", 2048, 6)
+            + _graded("bm25_docs", 8192, 10))
+    text = _report_for(rows)
+
+    assert "fewer than two rungs" not in text
+    area = efficiency.aulbc(efficiency.curve(rows).for_arm("bm25_docs"))
+    assert area is not None and f"{area:.4f}" in text
+
+
+def test_an_unbudgeted_control_reports_its_own_accuracy_not_zero():
+    """A control has no ladder, but it does have an accuracy.
+
+    ``tokens_to_tau`` looks only at budgeted rungs, so its ``best_accuracy``
+    is 0.0 for an unbudgeted arm. Printing that as the arm's best accuracy
+    contradicts the ladder table on the same page — measured on this run's
+    whole_corpus, which scored 0.188 and printed 0.000.
+    """
+    rows = _graded("whole_corpus", efficiency.UNBUDGETED, 3)
+    text = _report_for(rows)
+
+    assert "0.188" in text
+    assert "| 0.000 |" not in text

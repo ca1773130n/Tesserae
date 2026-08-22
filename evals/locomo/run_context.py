@@ -379,8 +379,27 @@ def _ladder_section(built: efficiency.Curve,
     return out
 
 
+def _by_arm(scored: Optional[efficiency.Curve]) -> Optional[efficiency.Curve]:
+    """Re-group a CELL-keyed curve onto bare arm names.
+
+    §1 and §3 key on ``arm@budget`` because a rung is the thing they report.
+    §2 integrates ACROSS rungs, so handed the same labels it sees one rung per
+    arm: ``aulbc`` needs two and returns None, and the column reads 'n/a
+    (fewer than two rungs)' on every row of a table that otherwise looks
+    finished. The two groupings are built from the same points here rather
+    than left to the caller to remember.
+    """
+    if scored is None:
+        return None
+    merged = efficiency.Curve(missing=list(scored.missing))
+    for point in scored.points:
+        merged.points.append(replace(point, arm=point.arm.split("@")[0]))
+    return merged
+
+
 def _scalar_section(scored: Optional[efficiency.Curve], tau: float) -> List[str]:
     """§2. AULBC and T@tau, with what each of them hides printed underneath."""
+    scored = _by_arm(scored)
     out = ["## 2. The scalars, and what they hide", ""]
     if scored is None or not scored.points:
         out += ["Nothing was answered, so there is no accuracy to integrate. "
@@ -398,9 +417,15 @@ def _scalar_section(scored: Optional[efficiency.Curve], tau: float) -> List[str]
         rows.append([
             arm,
             "n/a (fewer than two rungs)" if area is None else f"{area:.4f}",
-            ("censored — no rung reached it" if tau_result.censored
+            ("n/a (unbudgeted control)"
+             if all(p.budget == efficiency.UNBUDGETED for p in points)
+             else "censored — no rung reached it" if tau_result.censored
              else f"{tau_result.budget:,}"),
-            f"{tau_result.best_accuracy:.3f}",
+            # Over ALL of the arm's points, not over the budgeted ones
+            # tokens_to_tau looked at: an unbudgeted control has no rung, so
+            # that value is 0.0 for it and would contradict §1's ladder on the
+            # same page.
+            f"{max(p.accuracy for p in points):.3f}",
             "undefined" if not usable else f"{max(usable):.4f}",
         ])
     out += _table(header, rows)
