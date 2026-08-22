@@ -22,6 +22,55 @@ Everything below that is a count was measured this build, by the code in this
 package, against `snap-research/locomo` at `data/locomo10.json`.
 
 
+## Where this arm stands against the published numbers, and why that is not a ranking
+
+Measured 2026-08-23 on **conv-26 only** — 152 gradeable questions, 2 replicates,
+`gpt-5.6-luna` answering, `sonnet` judging. The competitor column is the
+LLM-as-a-Judge (`J`) table from the Mem0 paper (arXiv:2504.19413), whose runs
+answer with `gpt-4o-mini` and judge with `gpt-4o-mini` over all 1,540 gradeable
+questions.
+
+| category | this arm | Mem0 | Mem0-graph | Zep | best RAG |
+| --- | --- | --- | --- | --- | --- |
+| single-hop (4) | 89.3 | 67.1 | ~65.7 | ~8% under Mem0 | |
+| open-domain (3) | 76.9 | 72.9 | 75.7 | 76.6 | |
+| temporal (2) | 62.2 | 55.5 | 58.1 | | |
+| multi-hop (1) | 42.2 | 51.2 | under Mem0 | | |
+| overall | 71.7 | 66.9 | 68.4 | | ~61 |
+
+Full-context — every token of the conversation in the prompt, no memory system
+at all — scores ~73 in the same table, above every memory system including this
+one.
+
+**The overall column is not a result and must not be quoted as one.** Three
+things differ before the architectures do, and the first is almost certainly
+worth more than all the rest together:
+
+1. **The backbone.** This arm answers with `gpt-5.6-luna`; every published
+   number above answers with `gpt-4o-mini`. A stronger answering model lifts
+   every category, and nothing here separates that lift from the memory's
+   contribution. The +4.8 overall could be entirely this.
+2. **The denominator.** 152 questions from one conversation against 1,540 from
+   ten. conv-26's category mix is slightly HARDER than the full set (more
+   multi-hop and temporal, less single-hop); applying these same per-category
+   accuracies to the full-dataset mix gives 74.2, so the denominator is not
+   what is flattering this arm.
+3. **The judge.** `sonnet` against `gpt-4o-mini`, and the published runs average
+   10 replicates where this one averages 2 (spread 0.013).
+
+**What the table does support is a statement about SHAPE, and it is not
+flattering.** This is the most lopsided profile in it: best single-hop by 22
+points, worst multi-hop by 9. A system whose thesis is a typed graph that
+reasons across sessions is losing on exactly the questions that require
+reasoning across sessions, and winning on the ones an inverted index wins.
+Single-hop is where raw source text in the lexical lanes helped most, and
+multi-hop is where the graph was supposed to. Only one of those happened.
+
+That is the number to move, and reranking will not move it: a cross-encoder
+reorders candidates for ONE query, and a multi-hop question needs two documents
+that no single query ranks together.
+
+
 ## The data, measured
 
 ```
@@ -167,7 +216,26 @@ uv run python -m evals.locomo.run --conversations conv-26 \
 
 # re-grade saved answers with a different judge — offline for the deterministic one
 uv run python -m evals.locomo.run --score answers.json --judge llm:gpt-4o-mini
+
+# reorder the retrieved candidates with a cross-encoder before answering
+uv sync --extra rerank    # torch + transformers, 558 MB, not a normal install
+uv run python -m evals.locomo.run --conversations conv-26 --reuse-compile \
+    --rerank Qwen/Qwen3-Reranker-0.6B
 ```
+
+`--rerank` is a SECOND ranking stage, not a different retriever. The lanes still
+run over the whole graph and still decide what is a candidate; the cross-encoder
+reads each candidate together with the question and reorders it. So it can only
+move a document the lanes already found — **a reranked run's recall ceiling is
+the recall of `--rerank-overfetch` times the budget**, and if the answering
+session is not in that set, reranking cannot put it there.
+
+It exists because rank-1 is where this benchmark is lost: measured on conv-26 the
+fused ranking is 0.051 MRR behind a BM25-over-whole-documents reference by rank
+10 but 0.107 behind at rank 1 — good recall, bad ordering, which is the one
+shape a cross-encoder fixes. Every run records `rerank_model` and
+`rerank_overfetch` in its meta, and `""`/`0` means the shipped fused ranking
+answered.
 
 Never inside the repository: `guard_work_dir` refuses any path under this
 checkout or holding a `pyproject.toml`, because a compile there would overwrite
