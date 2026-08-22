@@ -179,11 +179,26 @@ _PLANNER_SYSTEM = (
 class _ExecContext:
     """Lazy per-question handles: graph, temporal facts, registry alias."""
 
-    def __init__(self, wiki: Any) -> None:
+    def __init__(self, wiki: Any, *, provenance: bool = False) -> None:
         self.wiki = wiki
         self._graph: Any = None
         self._facts: Any = None
         self._alias: Any = False  # False = unresolved, None = not registered
+        #: OFF by default and every recorder below is a no-op while it is, so
+        #: the product path does no extra work and emits no extra key. See
+        #: :func:`plan_and_answer`'s ``provenance`` argument.
+        self.provenance = bool(provenance)
+        #: Source documents behind the CURRENT step, in the order the primitive
+        #: ranked them, deduped on first occurrence. Drained by the executor
+        #: loop into that step's ``executed`` entry — deliberately per-step and
+        #: never accumulated into a plan-wide union, because a union is ordered
+        #: by plan position: measured on conv-26, concatenating the steps of a
+        #: real plan scored recall@10 0.333 where its own best single step
+        #: scored 0.583, since that step's rows landed after another step's.
+        #: Per-step lists let a consumer fuse; a union forces it to concatenate.
+        self.step_sources: List[str] = []
+        self._node_sources: Optional[Dict[str, str]] = None
+        self._doc_cache: Dict[str, str] = {}
         #: node_id -> display name for nodes a graph walk cited. Carried here
         #: rather than minted as synthetic ``QueryHit``s: ``hits`` is a
         #: documented envelope field consumed as wiki results (href, score,
@@ -216,6 +231,52 @@ class _ExecContext:
 
             self._alias = ProjectRegistry().alias_for_root(self.wiki.project_root)
         return self._alias
+
+    # -- document provenance (opt-in) ------------------------------------
+
+    def _root(self) -> Optional[Path]:
+        root = getattr(self.wiki, "project_root", None)
+        return Path(root) if root else None
+
+    def node_sources(self) -> Dict[str, str]:
+        """node_id -> confined source document, for the nodes that have one.
+
+        Built once per question and only when something asks for it, because
+        ``fact.model_dump()`` gives the temporal primitives node IDS and no
+        paths — the node is the only place the document is written down.
+        Nodes whose ``source_path`` is absent or escapes the project root are
+        simply absent from the map: a missing key means "no document behind
+        this", which is the honest answer, not an error.
+        """
+        if self._node_sources is None:
+            root = self._root()
+            out: Dict[str, str] = {}
+            if root is not None:
+                for node in self.graph().nodes:
+                    raw = getattr(node, "source_path", None)
+                    if not raw:
+                        continue
+                    doc = _confined_doc(str(raw), root, self._doc_cache)
+                    if doc:
+                        out[node.id] = doc
+            self._node_sources = out
+        return self._node_sources
+
+    def record_source(self, raw: Any) -> None:
+        """Record a raw ``source_path`` as this step's provenance."""
+        if not self.provenance or not raw:
+            return
+        doc = _confined_doc(str(raw), self._root(), self._doc_cache)
+        if doc and doc not in self.step_sources:
+            self.step_sources.append(doc)
+
+    def record_node(self, node_id: Any) -> None:
+        """Record the document behind a node id, when the node names one."""
+        if not self.provenance or not node_id:
+            return
+        doc = self.node_sources().get(str(node_id))
+        if doc and doc not in self.step_sources:
+            self.step_sources.append(doc)
 
 
 def _clip(text: str) -> str:
@@ -297,6 +358,7 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
             if len(_docs) >= _k:
                 break
             _docs.add(_sp)
+            ctx.record_source(_sp)
             hits.append(_h)
         lines = [f"- [{h.kind}] {h.title}: {h.excerpt}" for h in hits]
         return _clip("\n".join(lines) or "(no wiki matches)"), hits
@@ -340,6 +402,14 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
         ctx.citation_names.update(
             {c.node_id: c.node_name for c in bundle.citations if c.node_id}
         )
+        # The citations already carry `.source_path` — the same objects the line
+        # above reads for their names. It is taken here, off the object, rather
+        # than parsed back out of the rendered `## Citations` legend: that
+        # legend sits at the end of a mean-4701-char body and `_clip` cuts at
+        # 2500, so on conv-26 exactly 0 of 222 paths survived to be parsed, in
+        # 0 of 16 questions. Resolve before stringifying or do not resolve.
+        for c in bundle.citations:
+            ctx.record_source(c.source_path)
         # Rewrite the bundle's own [node-N] anchors to REAL node ids before the
         # synthesizer ever sees them. Left alone they are the nearest-looking
         # citation syntax in the evidence, so the model copies them — they then
@@ -433,6 +503,7 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
             # no magnitude, the shape the MCP dispatcher's `continuation` uses.
             entry["capped"] = True
         ctx.executed.append(entry)
+        _record_fact_sources(ctx, events)
         return _clip("\n".join(lines) or "(no timeline events in range)"), []
 
     if action == "search_facts":
@@ -451,6 +522,7 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
         if as_of is not None:
             report["as_of"] = as_of
         ctx.executed.append(report)
+        _record_fact_sources(ctx, rows)
         return _clip(json.dumps(rows, ensure_ascii=False, default=str)), []
 
     if action == "recent_sessions":
@@ -459,9 +531,12 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
         if since:
             sessions = [s for s in sessions if _node_ts(s) >= since]
         sessions.sort(key=_node_ts, reverse=True)
+        shown = sessions[: _as_int(args.get("limit"), 10, 20)]
+        for s in shown:
+            ctx.record_source(getattr(s, "source_path", None))
         lines = [
             f"- {_node_ts(s) or '(undated)'} {s.name}: {s.description or (s.metadata or {}).get('summary') or ''}"
-            for s in sessions[: _as_int(args.get("limit"), 10, 20)]
+            for s in shown
         ]
         return _clip("\n".join(lines) or "(no sessions in range)"), []
 
@@ -470,12 +545,22 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
         wanted = {_FINDING_TYPES[kind]} if kind in _FINDING_TYPES else set(_FINDING_TYPES.values())
         nodes = [n for n in ctx.graph().nodes if n.type.value in wanted]
         nodes.sort(key=_node_ts, reverse=True)
+        shown = nodes[: _as_int(args.get("limit"), 10, 20)]
+        for n in shown:
+            ctx.record_source(getattr(n, "source_path", None))
         lines = [
             f"- [{n.type.value}] {_node_ts(n) or '(undated)'} {n.name}: {n.description}"
-            for n in nodes[: _as_int(args.get("limit"), 10, 20)]
+            for n in shown
         ]
         return _clip("\n".join(lines) or "(no findings)"), []
 
+    # ``activity_summary`` and ``decisions`` below record NO provenance, and
+    # that is not an omission. Neither reads graph.json: activity_summary
+    # builds a wall-clock digest of Claude Code transcripts, commits and PRs,
+    # and decisions parses AskUserQuestion blocks out of Claude Code JSONL
+    # whose session_id is a transcript, not a corpus document. There is no
+    # document behind their rows to carry, and minting one would be fabricated
+    # provenance in an envelope a caller is entitled to trust.
     if action == "activity_summary":
         alias = ctx.alias()
         if alias is None:
@@ -497,6 +582,32 @@ def _execute_step(action: str, args: Dict[str, Any], ctx: _ExecContext, top_k: i
         return _clip("\n".join(lines) or "(no decisions in window)"), []
 
     raise ValueError(f"unknown action {action!r}")
+
+
+def _record_fact_sources(ctx: "_ExecContext", rows: List[Dict[str, Any]]) -> None:
+    """Record the documents behind projected temporal facts, in row order.
+
+    Row order IS the primitive's ranking, so it is preserved: ``search_facts``
+    returns relevance-ordered rows and measured MRR 0.472 on conv-26 that way,
+    which sorting or set-ifying here would throw away.
+
+    Subject before object per row, deduped on first occurrence. A fact's
+    provenance is genuinely both endpoints — 650/650 conv-26 facts have at
+    least one endpoint carrying a source_path, and only the union reaches that
+    — while subject-first keeps the row's own ranking intact.
+
+    Taken from the rows the primitive RETRIEVED, ahead of ``_clip``. That is
+    deliberate and it is a real difference: on conv-26 only 29.9% of timeline's
+    rendered lines and 45.6% of search_facts' rows survive the 2500-char
+    evidence clip. Provenance answers "what did retrieval reach", which is the
+    question the retrieval metric asks; it is NOT a claim that every one of
+    these documents' text reached the synthesizer.
+    """
+    if not ctx.provenance:
+        return
+    for row in rows:
+        ctx.record_node(row.get("subject_id"))
+        ctx.record_node(row.get("object_id"))
 
 
 def _validated_steps(raw: Any) -> List[Dict[str, Any]]:
@@ -803,6 +914,40 @@ def _read_source(path: str, cache: Dict[str, str], root: Optional[Path] = None) 
     return text
 
 
+def _confined_doc(path: str, root: Optional[Path], cache: Dict[str, str]) -> str:
+    """``path`` resolved inside ``root`` and existing, else ``""``.
+
+    The path-only half of :func:`_read_source`, and it exists for the same
+    reason: ``source_path`` is UNTRUSTED — it comes from document frontmatter,
+    and a document declaring ``source_path: /etc/ssh/id_rsa`` must not get that
+    string echoed back to a caller as "the document behind this evidence".
+    Resolve-then-compare defeats both ``..`` and an out-of-tree symlink, the
+    same contract ``retrieval.hybrid._confined_source`` enforces.
+
+    ``is_file()`` is required, not optional: provenance that names a document
+    which does not exist is invented provenance, which is worse than none.
+    Emitting only what resolves makes "we never fabricate a source" a property
+    of the code rather than a claim in a docstring.
+
+    Cached on ``(root, path)`` rather than ``path`` so two projects sharing a
+    process cannot answer for each other's files.
+    """
+    key = f"{root}\x00{path}"
+    if key in cache:
+        return cache[key]
+    out = ""
+    if root is not None:
+        try:
+            resolved = Path(path).resolve()
+            base = Path(root).resolve()
+            if resolved.is_relative_to(base) and resolved.is_file():
+                out = resolved.as_posix()
+        except (OSError, ValueError, RuntimeError):
+            out = ""
+    cache[key] = out
+    return out
+
+
 #: How many wiki pages to fetch per distinct source document wanted. Pages
 #: project from documents many-to-one, so retrieving `k` pages yields fewer than
 #: `k` documents; 3x over-fetch reaches a 10-document budget on this corpus with
@@ -937,14 +1082,45 @@ def plan_and_answer(
     history: Optional[List[Dict[str, Any]]] = None,
     client: Any = None,
     answer_style: str = "prose-cited",
+    provenance: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Full plan→execute→synthesize pass. Returns an ``ask_project``-shaped
     envelope, or None when no LLM backend is usable / planning fails — the
-    caller then falls back to the classic BM25 path."""
+    caller then falls back to the classic BM25 path.
+
+    ``provenance`` adds a ``sources`` list to every entry of
+    ``plan.executed`` — the source documents behind that step's rows, in the
+    order the primitive ranked them, each one resolved inside the project root
+    and confirmed to exist (see :func:`_confined_doc`).
+
+    OFF by default, and the default path is byte-identical to not having the
+    feature: no key is added, no path is resolved, no graph is loaded that was
+    not going to load anyway. ``ask_project`` never passes it.
+
+    What it is for and what it is NOT:
+
+    * It exists so a plan built from non-wiki primitives can be SCORED. Only
+      ``wiki_search`` populates ``hits``, so a retrieval metric reading hits
+      alone reports near-zero recall on any other plan for a reason that has
+      nothing to do with how well the corpus was remembered.
+    * It is not an answer-quality feature and must not be sold as one. It never
+      touches the evidence text, the synthesis prompt or ``hits``; the same
+      question answers identically with the flag on and off. Measured on
+      conv-26, provenance from the dated primitives as a plan actually ran them
+      scores recall@10 0.333 — BELOW a random ranking's 0.526 and below a
+      control that returns all 19 sessions in corpus order. It makes the arm
+      scoreable; it does not make it good.
+    * Deliberately NOT minted as synthetic ``QueryHit``s, for the three
+      reasons :class:`_ExecContext` gives: ``hits`` is consumed as wiki results
+      with an href, a comparable score and page text, none of which a temporal
+      fact has, and it feeds a caller-side LRU bump that would turn a read into
+      a disk side effect.
+    """
 
     try:
         return _plan_and_answer(wiki, question, top_k=top_k, history=history,
-                                client=client, answer_style=answer_style)
+                                client=client, answer_style=answer_style,
+                                provenance=provenance)
     except Exception as exc:  # noqa: BLE001 — planner bugs must never sink `ask`
         print(f"(ask planner error: {type(exc).__name__}: {exc} — falling back to wiki search)", file=sys.stderr)
         return None
@@ -958,6 +1134,7 @@ def _plan_and_answer(
     history: Optional[List[Dict[str, Any]]],
     client: Any,
     answer_style: str = "prose-cited",
+    provenance: bool = False,
 ) -> Optional[Dict[str, Any]]:
     if client is None:
         from .llm_json import build_rotating_client
@@ -987,12 +1164,13 @@ def _plan_and_answer(
         return None
     reasoning = str(raw_plan.get("reasoning") or "") if isinstance(raw_plan, dict) else ""
 
-    ctx = _ExecContext(wiki)
+    ctx = _ExecContext(wiki, provenance=provenance)
     evidence: List[Dict[str, Any]] = []
     hits: List[Any] = []
     executed: List[Dict[str, Any]] = []
     for step in steps:
         _before = len(ctx.executed)
+        ctx.step_sources = []
         ok = True
         try:
             content, step_hits = _execute_step(step["action"], step["args"], ctx, top_k)
@@ -1007,6 +1185,13 @@ def _plan_and_answer(
         entry: Dict[str, Any] = {"action": step["action"], "ok": ok}
         if len(ctx.executed) > _before:
             entry.update(ctx.executed[-1])
+        if provenance:
+            # Written AFTER the update above so a primitive's own report can
+            # never shadow it, and unconditionally under the flag so a step
+            # that reached no document says so with `[]` rather than by the
+            # key's absence — an absent key is indistinguishable from a
+            # primitive nobody wired up.
+            entry["sources"] = list(ctx.step_sources)
         executed.append(entry)
 
     from .query import WikiQuery

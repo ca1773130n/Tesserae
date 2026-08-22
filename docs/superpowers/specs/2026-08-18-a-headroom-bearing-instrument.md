@@ -835,3 +835,120 @@ Does not license: quoting +0.058 as the rule's value. It is one conversation,
 is 0.050. It licenses keeping the rule — the defect it fixes is real, the
 direction is consistent across every replicate, and the estimate grew rather
 than shrank under repetition.
+
+## §23. Provenance was never missing from the data — only from the f-string
+
+§21 recorded that only `wiki_search` returns `hits`, so the retrieval metric
+cannot see a plan built from any other primitive. The natural reading is that
+the dated primitives have no document behind them. They do. On the compiled
+conv-26 graph 344 of 345 nodes (99.7%) carry a top-level `source_path` and all
+344 resolve to a file on disk; the sole exception is the one Synthesis node,
+which is a compile artifact. Every one of the five graph-backed primitives held
+that value in a live object and dropped it at the point of string formatting.
+
+`compile_context` is the sharpest case. It prints every path it has, into a
+`## Citations` legend at the end of a body measuring mean 4701 chars, and then
+`_EVIDENCE_CLIP` cuts at 2500. Measured: **0 of 222 citation paths survived, in
+0 of 16 questions.**
+
+**What was built.** `plan_and_answer(..., provenance=True)` adds a `sources`
+list to each entry of `plan.executed`: the documents behind that step's rows,
+in the order the primitive ranked them. Off by default, and `ask_project` never
+passes it, so the product envelope is unchanged. Verified on conv-26 — evidence
+text, `hits` and the synthesis prompt hash identically with the flag on and off,
+across three questions and six primitives.
+
+Three design decisions, each forced by a measurement.
+
+*Resolved before stringification, not parsed back out.* The clip destroys 100%
+of `compile_context`'s paths, 70% of `timeline`'s rendered lines and 54% of
+`search_facts`' inline ids. A text round-trip would have measured well on short
+answers and failed silently on long ones.
+
+*Per-step, never a plan-wide union.* A union is ordered by plan position, and
+position is the thing this repo has reverted for: concatenating a real plan's
+steps scored recall@10 0.333 where its own best single step scored 0.583,
+because the good step's rows landed after another step's. Per-step lists let a
+consumer fuse.
+
+*Not synthetic `QueryHit`s.* `hits` is consumed as wiki results with an href, a
+comparable score and page text — a temporal fact has none of the three — and it
+feeds a caller-side LRU bump, which would turn a read into a disk side effect.
+
+**What each primitive's provenance is worth**, scored through the shipped code
+on the 6 dated-only probe questions (conv-26, 19 sessions; random floor
+recall@10 0.526 / MRR 0.173):
+
+| step | recall@10 | MRR | sessions returned |
+|---|---:|---:|---|
+| `search_facts` limit=20 | 0.750 | **0.489** | 5–12 |
+| `search_facts` limit=10 | 0.667 | 0.472 | 4–7 |
+| `compile_context` | 0.667 | 0.319 | 5–9 |
+| `timeline` limit=50 | 0.583 | 0.163 | 13–16 |
+| `wiki_search` top_k=8 | 0.583 | 0.173 | 8 |
+| `session_findings` | 0.167 | 0.033 | 7 |
+| `recent_sessions` | 0.167 | 0.024 | 8 |
+| CONTROL: all 19 in corpus order | 0.583 | 0.295 | 19 |
+
+Read the control row first. `timeline` is not a ranking — it is a chronological
+sweep that returns most of the corpus in roughly corpus order, and it loses to
+`range(1, 20)` on MRR. `recent_sessions` and `session_findings` sit far below
+the floor and cannot rise: conv-26 extracted 8 Session nodes and 9 finding-
+bearing documents out of 19 files, so they top out at 42% and 47% corpus reach
+regardless of plumbing. That is an extraction-coverage defect, not this one.
+
+`search_facts` is the outlier worth keeping: 2.8x the floor's MRR while
+returning 4–7 sessions where the document arm returns 8. High precision, under
+budget — the complementary profile to `wiki_search`, which finds a different
+2/6 questions at rank 1.
+
+A projected fact resolves through
+`subject_id` and `object_id`; the shipped code records subject first, then
+object, deduped on first occurrence. Subject-only was measured head to head:
+
+| | subject-only | subject+object (shipped) |
+|---|---:|---:|
+| `search_facts` limit=10 | 0.667 / **0.500** | 0.667 / 0.472 |
+| `search_facts` limit=20 | 0.750 / **0.521** | 0.750 / 0.489 |
+| `timeline` limit=50 | 0.417 / 0.100 | **0.583** / **0.163** |
+
+Subject-only wins `search_facts`' MRR by 0.028–0.032 at identical recall, which
+at n=6 is one question changing rank by one. It loses `timeline` on both. Both
+endpoints also carry the coverage argument: 650/650 conv-26 facts have at least
+one endpoint with a `source_path`, and only the union reaches all of them.
+
+**The case that actually pays is `compile_context`, and it costs nothing.** The
+shipped routing fix left 6 of 48 rows (12.5%) scoring zero recall, and every one
+of them reached a document tool — they are `compile_context`-only plans, which
+`hits` cannot see. Scored through the shipped provenance on exactly those 5
+distinct questions:
+
+| | recall@10 | MRR | first-gold ranks |
+|---|---:|---:|---|
+| `compile_context` provenance | **1.000** | 0.517 | 2, 3, 4, 1, 2 |
+| `wiki_search` (document arm) | 0.900 | **0.569** | 5, 1, 1, 7, 2 |
+
+Parity or better, from data the compiler had already computed and the planner
+was throwing away.
+
+`source_path` is document frontmatter, so
+`_confined_doc` resolves-then-compares against the project root and additionally
+requires `is_file()`. Provenance naming a document that is not on disk is
+invented provenance, which is worse than none; requiring the stat makes "we
+never fabricate a source" a property of the code rather than a claim in a
+docstring. Both guards are mutation-tested: dropping either one is caught by the
+test named for it.
+
+`activity_summary` and `decisions` were deliberately left alone. Neither reads
+`graph.json` — the first builds a wall-clock digest of transcripts,
+commits and PRs, the second parses `AskUserQuestion` blocks out of Claude Code
+JSONL whose session id is a transcript, not a corpus document. They report
+`sources: []`, which is the honest answer. No plumbing can give them a document
+and inventing one would be the worst version of this change.
+
+Does not license: calling this an answer-quality improvement. It never touches
+the prompt. Provenance from the dated primitives as a plan actually ran them
+scores recall@10 0.333 — below the random floor and below the constant ranker.
+It makes the arm scoreable and the score is bad, which is a finding, not a fix.
+Nor does it license a number for `search_facts`' fused value: n=6, one
+conversation, and nothing here fused anything.

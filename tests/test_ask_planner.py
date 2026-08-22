@@ -712,3 +712,203 @@ def test_bundle_anchors_are_rewritten_to_resolvable_node_ids(tmp_path):
     assert "[Concept:retrieval]" in evidence or "[Concept:fusion]" in evidence
     # And a citation the model copied from the evidence resolves to a name.
     assert "[Rank fusion]" in envelope["answer"]
+
+
+# --- document provenance: which document is behind a non-wiki step ----------
+
+
+def _make_provenance_project(tmp_path: Path):
+    """A project whose graph nodes name real corpus documents — plus two that
+    must never be reported: one outside the project root, one that is gone.
+
+    ``source_path`` is untrusted frontmatter, so the fixture carries the two
+    shapes that abuse it: an absolute path pointing out of the tree, and a
+    path inside the tree that names no file. Both nodes are dated so they are
+    genuinely RETURNED by the primitives below — a guard tested on a node the
+    step never reaches is a guard tested on a branch that never executes.
+    """
+    from tesserae.project import ProjectWiki
+
+    project = tmp_path / "prov-demo"
+    (project / ".tesserae" / "wiki" / "concepts").mkdir(parents=True)
+    (project / ".tesserae" / "site").mkdir(parents=True)
+    (project / ".tesserae" / "config.json").write_text("{}", encoding="utf-8")
+    (project / ".tesserae" / "site" / "search-index.json").write_text("[]", encoding="utf-8")
+    corpus = project / "corpus"
+    corpus.mkdir()
+    (corpus / "session-a.md").write_text("# A\nMelanie repainted the kitchen.\n", encoding="utf-8")
+    (corpus / "session-b.md").write_text("# B\nThe cache halved compile time.\n", encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.md").write_text("ssh-rsa AAAA...\n", encoding="utf-8")
+
+    nodes = [
+        ResearchNode(
+            id="Session:in", name="Kitchen session", type=ResearchNodeType.SESSION,
+            description="repainting", source_path=str(corpus / "session-a.md"),
+            metadata={"started_at": "2026-07-05T10:00:00Z"},
+        ),
+        ResearchNode(
+            id="Session:escapes", name="Escaping session", type=ResearchNodeType.SESSION,
+            description="hostile frontmatter", source_path=str(outside / "secret.md"),
+            metadata={"started_at": "2026-07-04T10:00:00Z"},
+        ),
+        ResearchNode(
+            id="Session:missing", name="Vanished session", type=ResearchNodeType.SESSION,
+            description="document deleted since compile",
+            source_path=str(corpus / "deleted-since-compile.md"),
+            metadata={"started_at": "2026-07-03T10:00:00Z"},
+        ),
+        ResearchNode(
+            id="SessionInsight:i1", name="Cache halves compile time",
+            type=ResearchNodeType.SESSION_INSIGHT, description="cache cut compile 90s to 40s",
+            source_path=str(corpus / "session-b.md"),
+            metadata={"first_seen_at": "2026-07-05T11:00:00Z", "created_at": "2026-07-05T11:00:00Z"},
+        ),
+    ]
+    edges = [ResearchEdge(source="SessionInsight:i1", target="Session:in",
+                          type="derived_from_session", evidence="session finding")]
+    (project / ".tesserae" / "graph.json").write_text(
+        ResearchGraph(nodes=nodes, edges=edges).to_json(indent=2), encoding="utf-8"
+    )
+    return ProjectWiki.load(project), corpus, outside
+
+
+def _doc(directory: Path, name: str) -> str:
+    """The canonical form `_confined_doc` emits — `resolve()` is what makes
+    `..` and symlinks unfoolable, and on macOS it also expands /var to
+    /private/var, so comparing against a raw tmp_path would be platform luck."""
+    return (directory / name).resolve().as_posix()
+
+
+_PROV_STEPS = [
+    {"action": "recent_sessions", "args": {"limit": 10}},
+    {"action": "session_findings", "args": {"limit": 10}},
+    {"action": "timeline", "args": {"query": "cache", "limit": 50}},
+    {"action": "search_facts", "args": {"query": "cache", "limit": 10}},
+    {"action": "activity_summary", "args": {}},
+]
+
+
+def _prov_envelope(wiki, steps=None, **kw):
+    client = FakeClient(
+        {"reasoning": "r", "steps": list(steps if steps is not None else _PROV_STEPS)},
+        "Answer [kg-step-1-recent_sessions].",
+    )
+    envelope = plan_and_answer(wiki, "q", client=client, **kw)
+    assert envelope is not None
+    return envelope, client
+
+
+def test_provenance_is_off_by_default_and_adds_no_key(tmp_path):
+    """The product's ask path must be byte-identical to not having this
+    feature: `ask_project` never passes the flag, so no `sources` key may
+    appear in the envelope it publishes."""
+    wiki, _corpus, _outside = _make_provenance_project(tmp_path)
+
+    default, _ = _prov_envelope(wiki)
+    explicit, _ = _prov_envelope(wiki, provenance=False)
+
+    for envelope in (default, explicit):
+        for entry in envelope["plan"]["executed"]:
+            assert "sources" not in entry, entry
+
+
+def test_provenance_carries_the_source_document_of_every_graph_backed_step(tmp_path):
+    """Five of the seven non-wiki primitives read graph.json, where 99.7% of
+    conv-26's nodes carry a resolving `source_path`. Losing it was a plumbing
+    failure at the point of string formatting, not a data-model gap."""
+    wiki, corpus, _outside = _make_provenance_project(tmp_path)
+
+    envelope, _ = _prov_envelope(wiki, provenance=True)
+
+    by_action = {e["action"]: e["sources"] for e in envelope["plan"]["executed"]}
+    assert by_action["recent_sessions"] == [_doc(corpus, "session-a.md")]
+    assert by_action["session_findings"] == [_doc(corpus, "session-b.md")]
+    # A projected fact resolves through BOTH endpoints: the insight is the
+    # subject, the session it derives from is the object.
+    for action in ("timeline", "search_facts"):
+        assert by_action[action] == [_doc(corpus, "session-b.md"), _doc(corpus, "session-a.md")], action
+
+
+def test_provenance_is_recorded_per_step_never_as_a_plan_wide_union(tmp_path):
+    """Measured on conv-26: concatenating a real plan's steps scored
+    recall@10 0.333 where its own best single step scored 0.583, because the
+    good step's rows landed after another step's. Per-step lists let a
+    consumer fuse; a union forces plan-order concatenation, which is the
+    position-dependence this repo has reverted for before."""
+    wiki, corpus, _outside = _make_provenance_project(tmp_path)
+
+    envelope, _ = _prov_envelope(wiki, provenance=True)
+
+    executed = envelope["plan"]["executed"]
+    assert [e["action"] for e in executed] == [s["action"] for s in _PROV_STEPS]
+    # Step 1 saw only the session document, step 2 only the insight's — no
+    # accumulator leaked one step's provenance into the next.
+    assert executed[0]["sources"] == [_doc(corpus, "session-a.md")]
+    assert executed[1]["sources"] == [_doc(corpus, "session-b.md")]
+    assert "sources" not in envelope
+    assert "sources" not in envelope["plan"]
+
+
+def test_provenance_never_names_a_document_outside_the_project_root(tmp_path):
+    """`source_path` arrives from document frontmatter and is UNTRUSTED. A
+    node declaring an absolute path out of the tree must not get that path
+    echoed back as "the document behind this evidence"."""
+    wiki, _corpus, outside = _make_provenance_project(tmp_path)
+
+    envelope, client = _prov_envelope(wiki, provenance=True)
+
+    every = [s for e in envelope["plan"]["executed"] for s in e["sources"]]
+    assert every, "no provenance at all — the guard would pass vacuously"
+    assert not [s for s in every if "secret" in s or str(outside) in s], every
+    # And the node itself still reached the model — the guard drops the PATH,
+    # not the evidence row, so this is not passing by returning nothing.
+    assert "Escaping session" in client.text_calls[0]["user"]
+
+
+def test_provenance_never_names_a_document_that_does_not_exist(tmp_path):
+    """Provenance naming a document that is not on disk is INVENTED
+    provenance, which is worse than none: `_confined_doc` requires
+    `is_file()`, so "we never fabricate a source" is a property of the code."""
+    wiki, corpus, _outside = _make_provenance_project(tmp_path)
+    ghost = _doc(corpus, "deleted-since-compile.md")
+    assert not Path(ghost).exists()
+
+    envelope, client = _prov_envelope(wiki, provenance=True)
+
+    every = [s for e in envelope["plan"]["executed"] for s in e["sources"]]
+    assert ghost not in every, every
+    assert "Vanished session" in client.text_calls[0]["user"]
+
+
+def test_provenance_leaves_the_evidence_and_the_synthesis_prompt_untouched(tmp_path):
+    """This buys SCOREABILITY, not answer quality, and the code has to say so:
+    provenance travels beside the answer in `plan.executed`, never into the
+    evidence text, the prompt or `hits`. The same question must answer
+    identically with the flag on and off."""
+    wiki, _corpus, _outside = _make_provenance_project(tmp_path)
+
+    off, off_client = _prov_envelope(wiki)
+    on, on_client = _prov_envelope(wiki, provenance=True)
+
+    assert on_client.text_calls[0]["user"] == off_client.text_calls[0]["user"]
+    assert on_client.json_calls[0]["user"] == off_client.json_calls[0]["user"]
+    assert on["hits"] == off["hits"]
+    assert on["answer"] == off["answer"]
+    assert on["plan"]["steps"] == off["plan"]["steps"]
+    assert [{k: v for k, v in e.items() if k != "sources"} for e in on["plan"]["executed"]] \
+        == off["plan"]["executed"]
+
+
+def test_transcript_backed_primitives_report_no_document_provenance(tmp_path):
+    """`activity_summary` and `decisions` read Claude Code transcripts and git,
+    never graph.json — there is no corpus document behind their rows. They
+    report an empty list rather than a missing key, so "nothing to carry" is
+    distinguishable from "nobody wired this up"."""
+    wiki, _corpus, _outside = _make_provenance_project(tmp_path)
+
+    envelope, _ = _prov_envelope(wiki, provenance=True)
+
+    entry = [e for e in envelope["plan"]["executed"] if e["action"] == "activity_summary"][0]
+    assert entry["sources"] == []
