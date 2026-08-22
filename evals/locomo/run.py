@@ -466,10 +466,37 @@ def search_conversation(
 #: under ours: the two rules disagreed about eleven rows for a reason that was
 #: not a property of the memory at all.
 #:
-#: Recorded rather than retried, deliberately. A retry would spend calls to hide
-#: a defect nobody has characterised yet, and would make the call count of a run
-#: depend on how often the backbone failed.
 _EMPTY_ANSWER = "Error: the backbone returned an empty answer"
+
+#: How many times an empty reply is asked again before it is recorded as one.
+#:
+#: This started at 0 — "recorded rather than retried, because a retry spends
+#: calls to hide a defect nobody has characterised". The defect is now
+#: characterised, and it is the shape a retry is FOR.
+#:
+#: Measured over 398 answering calls of the 2026-08-22 conv-26 run, at a mean
+#: prompt of 20,798 characters: 66 empty replies (16.6%), against 11 of 199
+#: (5.5%) on the 2026-08-21 run at a mean of 14,143. Three facts about those 66:
+#:
+#: * They do not cluster in TIME. Spread evenly across both replicates in
+#:   20-question blocks, so this is not a throttle burst.
+#: * They are very nearly INDEPENDENT PER CALL. 33 questions came back empty in
+#:   replicate 0 and 33 in replicate 1, and only 7 in both — chance alone
+#:   predicts 5.5. So it is not a property of particular prompts either.
+#: * Within the run the rate rises monotonically with prompt size: 2.0% below
+#:   10,534 characters, 10-14% through the middle, 22-24% above 20,000.
+#:
+#: An independent per-call failure at rate p becomes p^2 with one retry: 16.6%
+#: -> ~2.8% expected. THAT EXPECTATION IS ARITHMETIC, NOT A MEASUREMENT — no run
+#: has been scored with this constant above 0. What is measured is the three
+#: facts above, and they are what justify a retry over a workaround: crippling
+#: the evidence budget to keep prompts small would be tuning the memory around a
+#: flaky provider.
+#:
+#: Nothing is hidden by it. Every row persists its own ``empty_replies`` count
+#: and the run's meta sums them, so the provider's failure rate stays a reported
+#: number whether or not the retry rescued the answer.
+_EMPTY_ANSWER_RETRIES = 1
 
 
 def answer_conversation(
@@ -503,17 +530,25 @@ def answer_conversation(
                   f"{question.question}", file=sys.stderr)
         items = list(evidence[index]) if index < len(evidence) else []
         failure = errors[index] if index < len(errors) else ""
+        empty_replies = 0
         if failure:
             answer = failure
         else:
-            try:
-                answer = answer_fn(question.question, items)
-            except Exception as exc:  # the backbone failed, the search did not
-                answer = f"Error: {exc}"
-            else:
-                if not str(answer or "").strip():
-                    answer = _EMPTY_ANSWER
+            for _ in range(_EMPTY_ANSWER_RETRIES + 1):
+                try:
+                    answer = answer_fn(question.question, items)
+                except Exception as exc:  # the backbone failed, not the search
+                    answer = f"Error: {exc}"
+                    break
+                if str(answer or "").strip():
+                    break
+                empty_replies += 1
+                answer = _EMPTY_ANSWER
         rows.append({
+            # The provider's own failure rate, persisted per question rather
+            # than left in a log. 1 with an answer beside it means the retry
+            # saved the question; 2 means it did not.
+            "empty_replies": empty_replies,
             "key": question_key(question, index),
             "arm": arm,
             "replicate": replicate,
@@ -1510,7 +1545,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "judge_runs": args.replicates,
             **_evidence_chars(answer_rows),
             "evidence": {
-                "answer_calls": len(answer_rows),
+                # Calls, not rows. A question whose first reply was empty cost
+                # two, and a run that reports 398 while having made 464 is
+                # understating what it spent.
+                "answer_calls": (len(answer_rows)
+                                 + sum(int(r.get("empty_replies") or 0)
+                                       for r in answer_rows)),
+                "empty_replies": sum(int(r.get("empty_replies") or 0)
+                                     for r in answer_rows),
                 "llm_judge_calls": judge.llm_calls,
                 "canary_calls": canary_calls,
             },

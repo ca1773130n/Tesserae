@@ -97,14 +97,19 @@ to turn `None` into `""`, and `is_refusal("")` is `True`, so a wholly dead
 backbone printed `refusal_rate 1.000` with `error_rate 0.000` — a system that
 read as cautious rather than broken.
 
-`answer_conversation` now records an empty reply as `Error:` (`_EMPTY_ANSWER`),
-so that failure mode reads as `error_rate 1.000` instead. **That is a second
-line of defence and not a replacement for the canary.** It was added for the
-partial case rather than the total one: `gpt-5.6-luna` returned the empty string
-on 11 of 199 answering calls of the 2026-08-21 conv-26 run — 5.5%, with no
-relationship to prompt size — and every one was counted as the memory choosing
-to abstain. A lost call is not a decision. The canary is still what stops a run
+`answer_conversation` now asks an empty reply again once, and records the second
+one as `Error:` (`_EMPTY_ANSWER`), so a wholly dead backbone reads as
+`error_rate 1.000` instead. **That is a second line of defence and not a
+replacement for the canary.** It was added for the partial case rather than the
+total one: `gpt-5.6-luna` returned the empty string on 66 of 398 answering calls
+of the 2026-08-22 conv-26 run (16.6%, against 5.5% on 2026-08-21 at a prompt
+two-thirds the size), and every one was counted as the memory choosing to
+abstain. A lost call is not a decision. The canary is still what stops a run
 before it spends, because a backbone can also be confidently wrong.
+
+Every row persists its own `empty_replies`, and the run's meta sums them into
+`evidence.empty_replies` beside an `answer_calls` that counts retries. The retry
+bounds the provider's flakiness; it does not hide it.
 
 On LoCoMo that is worse than elsewhere: **on the 446 adversarial questions,
 declining is the gold answer**, so a dead backbone scores 446 of 446 there and

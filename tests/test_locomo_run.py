@@ -525,8 +525,8 @@ def test_an_answering_run_goes_end_to_end_without_a_model(monkeypatch, tmp_path)
     assert "Withheld — see the controls below" in text
 
     saved = json.loads(answers_path.read_text(encoding="utf-8"))
-    assert saved["meta"]["evidence"] == {"answer_calls": 2, "llm_judge_calls": 0,
-                                         "canary_calls": 1}
+    assert saved["meta"]["evidence"] == {"answer_calls": 2, "empty_replies": 0,
+                                         "llm_judge_calls": 0, "canary_calls": 1}
     assert {row["answer"] for row in saved["rows"]} == {"teal", "I don't know."}
 
 
@@ -636,33 +636,73 @@ def test_the_shortfall_section_does_not_claim_completeness_it_cannot_see():
     assert "missing data" in short
 
 
-def test_an_empty_backbone_reply_is_an_error_and_not_a_refusal():
+def _answering(replies):
+    """A backbone that serves ``replies`` in order and fails loudly if
+    over-called — a silent StopIteration would be caught as a backbone error and
+    read as the very failure these tests are about."""
+    remaining = list(replies)
+
+    def _fn(question, items):
+        assert remaining, "the backbone was called more times than expected"
+        return remaining.pop(0)
+
+    return _fn, remaining
+
+
+def _one_conversation(n=1):
+    from evals.locomo.dataset import Conversation
+    return Conversation(sample_id="conv-test", speaker_a="A", speaker_b="B",
+                        sessions=[], questions=[_question() for _ in range(n)])
+
+
+def test_an_empty_backbone_reply_is_retried_once_then_recorded_as_an_error():
     """A LOST CALL was being counted as a DECISION.
 
     ``is_refusal("")`` is True, and correct as a scorer predicate — a system that
     returns nothing has declined. But the backbone returning nothing is the
     harness losing a call, not the memory choosing to abstain, and the two were
-    indistinguishable in every reported number. Measured on the 2026-08-21
-    conv-26 run, ``gpt-5.6-luna`` returned the empty string on 11 of 199
-    answering calls (5.5%) with no relationship to prompt size, and all 11 were
-    filed as refusals; five were adversarial, where an empty string scored zero
-    under the published abstention rule while counting as an abstention under
-    ours.
+    indistinguishable in every reported number. Measured on the 2026-08-22
+    conv-26 run, ``gpt-5.6-luna`` returned the empty string on 66 of 398
+    answering calls (16.6%), every one of which the old code filed as a refusal.
     """
     from evals.qa.scorer import is_error, is_refusal
-    from evals.locomo.dataset import Conversation
 
-    conversation = Conversation(sample_id="conv-test", speaker_a="A",
-                                speaker_b="B", sessions=[],
-                                questions=[_question(), _question()])
-    replies = iter(["", "   "])
-    rows = runner.answer_conversation(
-        conversation, [["ev"], ["ev"]], ["", ""],
-        lambda q, e: next(replies), replicate=0, progress=False)
+    answer_fn, remaining = _answering(["", "   "])
+    (row,) = runner.answer_conversation(
+        _one_conversation(), [["ev"]], [""], answer_fn,
+        replicate=0, progress=False)
 
-    assert [row["answer"] for row in rows] == [runner._EMPTY_ANSWER] * 2
-    assert all(is_error(row["answer"]) for row in rows)
-    assert not any(is_refusal(row["answer"]) for row in rows)
+    assert row["answer"] == runner._EMPTY_ANSWER
+    assert is_error(row["answer"]) and not is_refusal(row["answer"])
+    assert row["empty_replies"] == 2, "the failure count is not persisted"
+    assert not remaining, "the retry did not happen"
+
+
+def test_a_retry_that_answers_rescues_the_question_and_still_counts_the_failure():
+    """The empties are near-independent per call — 33 in each replicate of the
+    2026-08-22 run and only 7 in both, against 5.5 expected by chance — which is
+    the shape a retry is for. Counting the failure anyway is what keeps the
+    provider's rate a reported number rather than one the retry hid."""
+    answer_fn, remaining = _answering(["", "teal"])
+    (row,) = runner.answer_conversation(
+        _one_conversation(), [["ev"]], [""], answer_fn,
+        replicate=0, progress=False)
+
+    assert row["answer"] == "teal"
+    assert row["empty_replies"] == 1
+    assert not remaining
+
+
+def test_a_search_failure_costs_no_backbone_call_at_all():
+    """A non-regression pin. The retry loop sits inside the branch that runs only
+    when the search succeeded; a misplaced one would spend two calls per
+    traceback."""
+    answer_fn, _ = _answering([])
+    (row,) = runner.answer_conversation(
+        _one_conversation(), [[]], ["Error: the retriever fell over"], answer_fn,
+        replicate=0, progress=False)
+    assert row["answer"] == "Error: the retriever fell over"
+    assert row["empty_replies"] == 0
 
 
 def test_a_real_answer_is_left_exactly_as_the_backbone_wrote_it():
