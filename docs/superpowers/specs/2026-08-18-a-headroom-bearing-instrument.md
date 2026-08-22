@@ -1029,3 +1029,60 @@ best-answering plans: those 14 rows do carry the higher token F1, 0.464 against
 0.309, but 10 of them are category 4 and paired within question the non-wiki
 path wins none of 7. Checked, confounded, withdrawn. Full rows and scripts at
 `.blackhole/Tesserae/2026-08-21/provenance/`.
+
+## §25. Tokens to a correct answer — the first measurement of the actual claim
+
+Every prior section measured retrieval: did the right document rank first. The
+product claim is different — BM25 finds the region, Tesserae compiles the
+background, and at hundreds of millions of documents nobody can paste documents
+into a prompt. So the axis is ACCURACY AT A FIXED TOKEN BUDGET, and BM25 is a
+component of two of the three arms rather than a rival.
+
+conv-26, the protocol 16, 3 replicates, gpt-5.6-luna, deterministic judge,
+canary passed, 529 calls declared and 529 spent. Token F1:
+
+| arm | 512 | 2,048 | 8,192 | unbudgeted |
+|---|---|---|---|---|
+| A bm25_docs | **0.191** | 0.166 | 0.373 | — |
+| B bm25_compiled | 0.059 | **0.280** | **0.400** | — |
+| C graph_only | 0.002 | 0.265 | 0.367 | — |
+| floor closed_book | | | | 0.000 |
+| ceiling whole_corpus | | | | **0.484** |
+
+Paired bootstrap, question-level, replicates averaged first:
+
+| rung | B − A | C − A |
+|---|---|---|
+| 512 | **−0.132 [−0.289, −0.013]** | **−0.189 [−0.352, −0.055]** |
+| 2,048 | +0.114 [−0.010, +0.271] | +0.100 [−0.047, +0.274] |
+| 8,192 | +0.027 [−0.058, +0.142] | −0.006 [−0.140, +0.133] |
+
+**At 512 tokens truncated raw documents beat compiled context, significantly.**
+That is the falsifying result the instrument was built to permit, and it fired.
+Compilation carries overhead that does not repay itself below roughly 2k.
+
+At 2,048 the direction favours compilation on all three replicates with
+within-arm sd 0.023-0.031, below the gap — but the paired CI grazes zero at
+n=16. A 4.04x token ratio does exist there (B scores 0.280 at 1,961 tokens; A
+needs 7,914 to exceed it) and the measuring agent declined to headline it,
+correctly: the correctness levels differ, so it is a ratio between unlike things.
+
+**Two adversarial findings weaken the only significant result, and both are
+recorded rather than argued with.** At the 512 rung arms B and C sent
+BYTE-IDENTICAL prompts on 14 of 16 questions, so the two intervals excluding
+zero are ONE result presented as two. And the Qwen3 tokenizer proxy factor is
+ARM-DEPENDENT — 3.20 chars/token for wiki text against 4.31 for a compiled
+brief, a 35% spread — so a 512-token rung is a different real budget per arm,
+and the largest excursion sits on exactly the rung carrying the conclusion.
+
+**The corpus cannot test the claim it was built for.** conv-26 in its entirety
+is 19,710 tokens: it fits in any context window, and the whole_corpus ceiling
+(0.484) beats every budgeted arm. A regime where compilation must win is one
+where the corpus does NOT fit, and this one does. What this measures is the
+instrument, not the thesis.
+
+Does not license: "compiled context is more efficient than documents". The only
+intervals excluding zero say the opposite, at one rung, confounded two ways.
+It licenses that the instrument works, that the falsification path is real, and
+that the interesting band is 2k-8k on a corpus large enough that pasting it is
+not an option.

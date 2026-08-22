@@ -26,10 +26,19 @@ nowhere else, because a token count computed two ways is two experiments:
    this machine's Hugging Face cache, verified here at vocab size 151,669 and
    sha256 ``def76fb0…b4b50a``. No GPT-family tokenizer is installed (tiktoken,
    transformers and sentencepiece all fail to import in ``.venv``), and the LLM
-   client returns no usage block, so an ABSOLUTE rung label is a proxy with an
-   unknown constant factor against whatever the backbone tokenizes with. The
-   COMPARISON is unaffected — one tokenizer is applied to every arm — and the
-   report declares the proxy rather than implying a GPT count.
+   client returns no usage block, so an ABSOLUTE rung label is a proxy against
+   whatever the backbone tokenizes with.
+
+   An earlier version of this note claimed "the COMPARISON is unaffected — one
+   tokenizer is applied to every arm". That is FALSE and the correction matters.
+   One tokenizer applied to every arm does not make the proxy factor equal
+   across arms: chars-per-token was measured at 3.20 for wiki text, 3.95 for
+   dialogue and 4.31 for a compiled brief — a 35% spread. So a rung of 512
+   Qwen3 tokens is a DIFFERENT number of backbone tokens depending on what the
+   arm put in the prompt, and the arms are not receiving equal real budgets.
+   The largest excursion sits on the smallest rung, which is exactly where this
+   instrument's only intervals excluding zero were found. Read the 512 result as
+   confounded by that until it is re-measured against the backbone's own count.
 
 Nothing here calls a model or the network.
 """

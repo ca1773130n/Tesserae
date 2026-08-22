@@ -24,9 +24,15 @@ denominator rewards silence without bound, and a ratio has no scale on which
 "better" can be read. :func:`correctness_per_1k` exists — a reader will compute
 it anyway — and it is guarded: it returns ``None`` rather than a number whenever
 the denominator is zero or the arm answered nothing, and
-:func:`dominates_by_ratio_only` names the case where the ratio ranks an arm
-first that the accuracy curve ranks last. The report prints the flag next to the
-ratio, so the ratio cannot be read alone.
+:func:`dominates_by_ratio_only` LOOKS FOR the case where the ratio ranks an arm
+first that the accuracy curve ranks last.
+
+It does not reliably find it, and an unfired check is not a clean bill. An
+adversarial review constructed the pathology and watched the function stay
+silent while the report printed a positive assertion that the ratio was safe.
+The flag therefore means "not detected", never "not present", and the report
+must say so — a guard that reports success when it fails to fire is the same
+shape as a shortfall counter whose silence was read as completeness.
 
 Nothing here calls a model.
 """
