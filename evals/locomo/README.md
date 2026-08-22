@@ -166,6 +166,70 @@ are needed: `ingest` restages before compiling, so a directory can hold one
 conversation's fresh documents beside another's graph.
 
 
+## The other axis: tokens to a correct answer
+
+`run.py` measures rank. `run_context.py` measures **tokens**, and the two are
+different questions. At the scale this project is aimed at, retrieving every
+detail is not an option and pasting documents into a prompt is not an option, so
+the binding constraint is not "did you rank the right document first" but "can
+you hand a model enough understanding, in few enough tokens, to answer".
+
+**BM25 is the retriever, not the rival.** It ranks in two of the three arms;
+there is no recall@k table between it and Tesserae in that report, deliberately.
+
+| arm | what fills the budget |
+| --- | --- |
+| `bm25_docs` | BM25 ranks; whole session documents, best first, until the budget is spent. The incumbent. |
+| `bm25_compiled` | BM25 finds the region; its sessions seed `compile_context`, which compiles background from the graph. |
+| `graph_only` | no document retrieval at all — `compile_context` from the question alone. |
+| `closed_book` | no evidence. The floor, and the meter for the refusal free lunch. |
+| `whole_corpus` | every staged session, unbudgeted. The ceiling. |
+
+Every arm is handed the same token budget and fits its own context into it with
+its own knob — documents for the first, `compile_context`'s character budget
+scanned over a declared grid for the next two. Truncation is a counted, printed
+column, because a fixed budget measures truncation skill unless it is visible.
+
+Tokens are counted over the **complete serialized request** — system prompt,
+JSON contract, schema name and user turn, exactly the string
+`llm_json._stitch_json_prompt` sends — with a digest-pinned Qwen3 BPE. Counting
+only the evidence would leave instructions and few-shot examples free to move
+into the system half. Character budgets are not a substitute: chars-per-token
+varies about 35% across this corpus's own artifact families.
+
+**Every prompt is built, counted and written to disk before any of them is
+sent.** `--score` then re-derives the whole report from that file offline, which
+is what makes a token claim auditable rather than a number that has to be
+re-spent to check.
+
+```bash
+# FREE. Builds every request at every rung, counts it, writes prompts.jsonl.
+uv run python -m evals.locomo.run_context --dry-run \
+    --work ~/.blackhole/Tesserae/2026-08-21/locomo-run/work \
+    --conversations conv-26 --budgets 512,2048,8192
+
+# the measurement: one canary, then one call per prompt per replicate
+uv run python -m evals.locomo.run_context \
+    --work ~/.blackhole/Tesserae/2026-08-21/locomo-run/work \
+    --conversations conv-26 --budgets 512,2048,8192 \
+    --arms bm25_docs,bm25_compiled,graph_only,closed_book,whole_corpus \
+    --backbone gpt-5.6-luna --replicates 3 --i-know-this-costs-money --yes
+
+# re-score without re-spending
+uv run python -m evals.locomo.run_context --score answers-context.json
+```
+
+`run_context.py` **never compiles**. It reads a corpus and a graph an earlier
+run staged, and refuses when either is missing.
+
+**What conv-26 cannot show.** Its whole staged corpus serialises to 19,906
+tokens under this tokenizer, measured — it fits in any current context window.
+That makes `whole_corpus` a legal arm and makes conv-26 able to calibrate the
+instrument but not to demonstrate the at-scale claim. If the ceiling arm
+dominates the ladder, that falsifies this corpus as evidence, not the claim, and
+the report prints that sentence whether or not it is convenient.
+
+
 ## The controls are checked, and today they fail
 
 `adapter.PROTOCOL_CONTROLS` declares six controls onto every artifact — backbone,
