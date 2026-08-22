@@ -952,3 +952,74 @@ scores recall@10 0.333 — below the random floor and below the constant ranker.
 It makes the arm scoreable and the score is bad, which is a finding, not a fix.
 Nor does it license a number for `search_facts`' fused value: n=6, one
 conversation, and nothing here fused anything.
+
+## §24. The scoreability bought what it promised and nothing more
+
+§23 shipped `provenance=True` on the argument that it costs nothing and buys a
+retrieval column. Both halves are now measured on the same 16 questions and the
+same seed §22 used, 3 replicates x 16, 48 planner calls.
+
+The cost half is a null, and the two tests agree for once.
+
+| arm | replicate means | mean | sd |
+|---|---|---|---|
+| §22 AFTER (recorded) | 0.303, 0.369, 0.296 | 0.323 | 0.033 |
+| `provenance=True` | 0.389, 0.305, 0.368 | 0.354 | 0.036 |
+
+The replicate means interleave completely: 0.296 B, 0.303 B, 0.305 A, 0.368 A,
+0.369 B, 0.389 A. Exact permutation p = 0.150 one-sided, three times this
+design's floor; paired by question, +0.0315 [-0.0174, +0.0885], containing zero;
+5 questions better, 6 unchanged, 5 worse. Byte identity was re-checked before
+the run on 96 cells (16 questions x 6 primitives) rather than the commit's 18.
+
+So +0.0315 is not an effect, it is this path's run-to-run drift across two days
+of identical execution code, and that is the number worth keeping: it is 54% of
+the +0.058 §22 attributed to the routing rule. §22 stands, its replicate means
+being disjoint where these interleave, but the drift bounds how much of +0.058
+a reader should treat as settled.
+
+The retrieval half is a first measurement, at K=10 over 19 sessions, random
+floor recall 0.526 / MRR 0.181:
+
+| policy | recall@10 | MRR | empty rows |
+|---|---|---|---|
+| hits only, the instrument before §23 | 0.358 | 0.245 | 14 |
+| plan concatenation | 0.688 | 0.365 | 0 |
+| reciprocal-rank fusion over steps | 0.667 | 0.428 | 0 |
+| best single step (oracle) | 0.740 | 0.513 | 2 |
+| all 19 sessions in corpus order | 0.615 | 0.236 | 0 |
+
+Read the constant ranker first. Ignoring the question entirely scores
+0.615 / 0.236, so the old instrument's 0.358 / 0.245 sits below both it and the
+random floor. A metric that scores the shipped path worse than a constant is not
+measuring the path, which is what §21 predicted from n=4 and this measures end to
+end. Split by whether a plan reached `wiki_search`: on the 34 rows that did,
+hits give 0.505 / 0.346 and sources 0.652 / 0.343, so provenance adds recall and
+nothing to MRR. On the 14 that did not, hits give 0.000 / 0.000 and sources
+0.774 / 0.419. Every one of those 14 contains `compile_context`, as §23 inferred;
+the count is 14 of 48 rather than 6, and it is now a record rather than an
+inference. RRF beating concatenation by 0.063 MRR is the first evidence for
+per-step lists being the right shape, which §23 chose on reasoning alone.
+
+Scored with the planner's own argument strings, which had never been recorded,
+`search_facts` leads at 0.778 / 0.555 and `wiki_search` is fourth at
+0.505 / 0.346, below the constant ranker on recall. That ordering is not the one
+the question-text queries in §23 gave.
+
+Two defects surfaced only because provenance separates "retrieved nothing" from
+"retrieved something unscoreable", both reproducing with zero LLM calls. All 4
+`recent_sessions` invocations returned nothing: the planner anchors "recent" to
+wall-clock today and passes `since` values in 2026 against a 2023 corpus. And
+any `since` bound zeroes `timeline` here, because every event on this corpus is
+undated, so the same query returns 6 sources with no bound and 0 with
+`since: 1900-01-01`. Neither is in the provenance change; neither is fixed.
+
+Does not license: an answering claim in either direction, this being a null.
+Nor quoting 0.688 as the agentic path's retrieval: one conversation, 19
+sessions, 16 questions, one backbone, one day, and the oracle row is an oracle.
+Nor reading the per-primitive ordering as general, at n from 2 to 34. And
+specifically not the tempting claim that the old instrument was blind to the
+best-answering plans: those 14 rows do carry the higher token F1, 0.464 against
+0.309, but 10 of them are category 4 and paired within question the non-wiki
+path wins none of 7. Checked, confounded, withdrawn. Full rows and scripts at
+`.blackhole/Tesserae/2026-08-21/provenance/`.
