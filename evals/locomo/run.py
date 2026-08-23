@@ -1548,7 +1548,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                             answer_k=args.answer_k,
                             expand_evidence=args.answer_evidence == "source",
                             build_evidence=answering,
-                            progress=not answering)
+                            # Always, not `not answering`. Retrieval used to go
+                            # silent whenever the run was also answering,
+                            # because its progress would have duplicated the
+                            # answering loop's. That was free when retrieval
+                            # cost 8 seconds. With `--rerank` it costs 199
+                            # searches x 40 candidates and takes ~37 minutes on
+                            # MPS, and a phase that prints NOTHING for 37
+                            # minutes is indistinguishable from a hang — this
+                            # session killed a healthy run at 34 minutes on
+                            # exactly that evidence. The two phases are
+                            # sequential, so printing both interleaves nothing.
+                            progress=True)
                         if answering:
                             assert answer_fn is not None
                             for replicate in range(args.replicates):

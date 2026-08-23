@@ -121,6 +121,51 @@ jobs:
           --extra synthesis-llm
           --extra ingest-url
 
+      # `evals/locomo/tokens.py` measures the context arms in TOKENS and refuses
+      # to fall back to a character count: two runs counted with two
+      # vocabularies produce two ladders that look like one. Without the pinned
+      # tokenizer those 13 tests skip (they used to FAIL, see 9d5cdc24), so CI
+      # was green while never running them.
+      #
+      # ONE FILE, not the model. tokenizer.json is ~11 MB; model.safetensors is
+      # 1.2 GB and nothing here loads weights. `hf download` places it at the
+      # snapshot path `_TOKENIZER_GLOB` already globs for, so `tokens.py` needs
+      # no notion of CI.
+      #
+      # Keyed on TOKENIZER_SHA256 itself: the pin changing is the only event
+      # that should invalidate this cache, and a stale entry cannot survive it
+      # because the digest check in `load_tokenizer` refuses a mismatch rather
+      # than warning.
+      - name: Cache the pinned tokenizer
+        if: ${{ matrix.python-version == '3.11' || github.event_name != 'pull_request' }}
+        id: tokenizer-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface/hub/models--Qwen--Qwen3-Embedding-0.6B
+          key: qwen3-embedding-0.6b-tokenizer-def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a
+
+      - name: Fetch the pinned tokenizer
+        if: >-
+          ${{ (matrix.python-version == '3.11' || github.event_name != 'pull_request')
+              && steps.tokenizer-cache.outputs.cache-hit != 'true' }}
+        # A download is a network dependency and network dependencies fail, so
+        # this step must not be able to fail the build for a reason unrelated to
+        # the code: `continue-on-error` lets the 13 tests fall back to the skip
+        # they had before this step existed. The digest is verified here as well
+        # as in `load_tokenizer`, because a truncated download that reaches the
+        # right path is the one failure a glob cannot see.
+        continue-on-error: true
+        run: |
+          uv run --python "${{ steps.setup-python.outputs.python-path }}" \
+            python -c "
+          from huggingface_hub import hf_hub_download
+          p = hf_hub_download('Qwen/Qwen3-Embedding-0.6B', 'tokenizer.json')
+          import hashlib, pathlib, sys
+          d = hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
+          print(p, d)
+          sys.exit(0 if d == 'def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a' else 1)
+          "
+
       - name: Run the suite
         if: ${{ matrix.python-version == '3.11' || github.event_name != 'pull_request' }}
         # Collection is scoped to tests/ by [tool.pytest.ini_options] in
