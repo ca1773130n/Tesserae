@@ -532,6 +532,70 @@ TURN_WEIGHTS: Mapping[str, float] = MappingProxyType({
 #: otherwise report a lexical-lane result with the lexical lane switched off.
 TURN_LANES: Tuple[str, ...] = ("bm25_ctx", "dense", "rank")
 
+#: How many sessions the SESSION STAGE is asked for when widening the candidate
+#: pool, independently of how many the answer-time budget retrieved.
+#:
+#: 0 — OFF, and off is byte-identical to every turn-unit run before this: the
+#: pool is exactly the ~9.9 documents the answer-time hits named. It is not a
+#: default because the arm that measured the win pooled every staged session
+#: through the ``turn_pool="corpus"`` glob, and a glob is a measurement stand-in,
+#: not an implementation — on a 19-32-session conversation it is
+#: indistinguishable from reading the whole corpus, which would make a coverage
+#: number a retrieval bypass wearing a packing hat. Set this to a real widened
+#: ``k`` (22 reproduces the measured pool's ~22.4 distinct sessions on this
+#: corpus) and the same widening transfers to a corpus where the pool cannot be
+#: everything.
+#:
+#: WHY WIDEN AT ALL. Instrumented over all ten conversations, 2,360 gold
+#: evidence turns (cats 1-4), every MISSING gold turn split into "never entered
+#: the candidate pool" against "was in the pool and the admission rule refused
+#: it":
+#:
+#:     category      n     in pool   in prompt   lost:pool   lost:pack
+#:     multi-hop    882     0.738      0.717       0.262       0.022
+#:     temporal     375     0.968      0.968       0.032       0.000
+#:     open-domain  208     0.649      0.615       0.351       0.034
+#:     single-hop   895     0.966      0.965       0.034       0.001
+#:     ALL         2360     0.853      0.842       0.147       0.011
+#:
+#: Only 1.1% of gold turns are losable by the ADMISSION RULE; 14.7% never become
+#: candidates. That is why this branch widens the pool rather than sharpening
+#: the objective — and the published budgeted-submodular packer was implemented
+#: and measured on this corpus before that conclusion was drawn: pooled over
+#: 1,536 questions it is NEUTRAL at 28,000 characters (0.909 against 0.909),
+#: NEGATIVE at 24,000 and 20,000, and collapses at 8,000 (0.560). Do not ship a
+#: packer here.
+TURN_POOL_K = 0
+
+#: The most SESSION BLOCKS a turn pack may open. 0 — OFF, uncapped, which is
+#: byte-identical to every turn-unit run before this.
+#:
+#: THE CAP IS NOT A SAFETY VALVE, it is half the mechanism. Pooled, n=1,536,
+#: 28,000 characters in every cell:
+#:
+#:     arm            chars   turns  sess   cover  allgold   multi  temporal  open-dom  single
+#:     narrow (ships) 27,949  167.3   9.9   0.909   0.850    0.739   0.971     0.681    0.968
+#:     wide/cap8      26,987  165.0   8.0   0.848   0.785    0.622   0.886     0.638    0.933
+#:     wide/cap10     27,979  167.5  10.0   0.906   0.849    0.716   0.952     0.668    0.977
+#:     wide/cap12     27,985  164.7  12.0   0.919   0.864    0.764   0.965     0.682    0.980
+#:     wide/cap16     27,987  161.2  16.0   0.930   0.877    0.803   0.971     0.695    0.983
+#:     wide/cap99     27,987  158.2  22.4   0.928   0.876    0.806   0.971     0.706    0.976
+#:
+#: cap16 beats the UNCAPPED wide pool with 6.4 fewer blocks, because a session
+#: opened for one turn pays its header and crowds out turns; and cap8 is worse
+#: than narrow on every axis, so the curve has a real interior optimum rather
+#: than "more sessions is better".
+#:
+#: 16 IS THE KNEE OF A FIVE-POINT CURVE COMPUTED ON THE BENCHMARK, which is
+#: selection on the test set. Every point >= 12 beats narrow and the direction
+#: holds in 9 of 10 conversations, so the DIRECTION is robust; the exact 16 is
+#: not, and no writeup may present it as a tuned optimum. The fallback if graded
+#: multi-hop falls to Levy's distractor penalty (Findings of EMNLP 2025: 5-20%
+#: F1 lost on multi-hop when document count rises at fixed length, and 68% of
+#: this gain IS multi-hop) is cap12 — +0.010 coverage at 2.1 more documents than
+#: today.
+TURN_SESSION_CAP = 0
+
 
 #: The edge that carries a receipt, and the ONLY one walked.
 #:
@@ -877,6 +941,8 @@ class LocomoMemory:
         evidence_unit: str = "session",
         evidence_pack_chars: int = EVIDENCE_PACK_CHARS,
         turn_pool: str = "retrieved",
+        turn_pool_k: int = TURN_POOL_K,
+        turn_session_cap: int = TURN_SESSION_CAP,
         turn_score_window: int = TURN_SCORE_WINDOW,
         turn_emit_window: int = TURN_EMIT_WINDOW,
         turn_heads: str = "none",
@@ -958,6 +1024,20 @@ class LocomoMemory:
                 f"turn_pool must be 'retrieved' or 'corpus', not {turn_pool!r}"
             )
         self._turn_pool = turn_pool
+        #: Retrieve-wide. 0 is today: the pool is exactly the documents the
+        #: answer-time hits named. Above 0, the session stage is asked a SECOND,
+        #: free time at this k and its documents join the pool — a retrieval
+        #: result with a stated k, never a filesystem glob. See
+        #: :data:`TURN_POOL_K`.
+        if turn_pool_k < 0:
+            raise ValueError("turn_pool_k must be >= 0")
+        self._turn_pool_k = turn_pool_k
+        #: Pack-narrow. 0 is today: uncapped. Above 0, admission refuses to open
+        #: the (cap+1)-th session block, receipts included. See
+        #: :data:`TURN_SESSION_CAP`.
+        if turn_session_cap < 0:
+            raise ValueError("turn_session_cap must be >= 0")
+        self._turn_session_cap = turn_session_cap
         if turn_score_window < 0:
             raise ValueError("turn_score_window must be >= 0")
         self._turn_score_window = turn_score_window
@@ -1012,6 +1092,17 @@ class LocomoMemory:
         self._node_type_by_id: Dict[str, str] = {}
         #: ``source_path`` -> (dia ids in FILE ORDER, dia id -> (position, line)).
         self._turn_lines_by_path: Dict[str, Any] = {}
+        #: Scoring-context text -> its model2vec vector, for the whole run.
+        #:
+        #: A candidate turn's context does not depend on the QUESTION, but
+        #: :meth:`_turn_scores` used to re-embed every one of them for every
+        #: question. Memoising makes the widened pool cost-neutral — without it
+        #: `turn_pool_k` roughly doubles a per-question embed pass — and makes
+        #: today's narrow path faster too. Keyed by the context string rather
+        #: than by ``(path, dia)`` so a change to ``turn_score_window`` cannot
+        #: serve a vector built under the other window. Invalidated with
+        #: ``_turn_lines_by_path``, for the same reason.
+        self._turn_vector_by_context: Dict[str, Any] = {}
         #: Shared by every ``_confined_source`` read on this memory, so a staged
         #: document is read from disk once per run rather than once per receipt.
         self._source_cache: Dict[str, str] = {}
@@ -1128,6 +1219,7 @@ class LocomoMemory:
         # root, so a stale entry here would serve the previous conversation's
         # turns as this one's receipts.
         self._turn_lines_by_path = {}
+        self._turn_vector_by_context = {}
         self._source_cache = {}
 
         return IngestResult(
@@ -1505,7 +1597,8 @@ class LocomoMemory:
             ),
         )
 
-    def query_hits(self, question: str, *, k: int) -> List[MabHit]:
+    def query_hits(self, question: str, *, k: int,
+                   record_shortfall: bool = True) -> List[MabHit]:
         """Up to ``k`` hits for ``question``. Never more, never padded.
 
         The one search both the answering path and the retrieval score are built
@@ -1513,6 +1606,14 @@ class LocomoMemory:
         scored on can never come from two different rankings. Fewer than ``k`` is
         recorded in :attr:`shortfalls` and returned short: padding would make an
         under-filled budget indistinguishable from a full one.
+
+        ``record_shortfall=False`` is for the ONE caller that is not spending
+        the evidence budget: :meth:`_turn_pool_paths` widening the candidate
+        pool. A pool query asks for more sessions than a 19-session conversation
+        has BY DESIGN, so ledgering it would report "every query returned fewer
+        than k" and drown the shortfalls that mean the answering budget went
+        unfilled. The hits it returns are still capped at ``k`` and still never
+        padded; only the ledger entry is skipped.
 
         RERANKER ORDERING, AND IT IS UNTESTED. ``rerank_nodes`` has no notion of
         documents and will happily re-cluster several hits from one session,
@@ -1622,7 +1723,7 @@ class LocomoMemory:
             for scored_item, node in zip(scored_nodes,
                                          self._hit_nodes(scored_nodes))
         ][:k]
-        if len(hits) < k:
+        if len(hits) < k and record_shortfall:
             self.shortfalls.append({
                 "question": question,
                 "conversation": self.conversation,
@@ -1725,14 +1826,27 @@ class LocomoMemory:
             return hit.text[:-len(suffix)]
         return hit.text
 
-    def _turn_pool_paths(self, hits: Sequence[MabHit]) -> List[str]:
+    def _turn_pool_paths(self, hits: Sequence[MabHit],
+                         question: str = "") -> List[str]:
         """The staged documents whose turns may be scored, RETRIEVED ONES FIRST.
 
-        ``turn_pool="retrieved"`` is the default and returns exactly the
-        documents the hits named, in rank order. That holds the pack to the SAME
-        distinct-session count the shipped arm has (9.78 on conv-26), which
-        makes it Levy-safe by construction and costs 0.013 turn coverage
-        (0.928 against 0.941).
+        ``turn_pool="retrieved"`` with ``turn_pool_k=0`` is the default and
+        returns exactly the documents the hits named, in rank order. That holds
+        the pack to the SAME distinct-session count the shipped arm has (9.78 on
+        conv-26), which makes it Levy-safe by construction and costs 0.013 turn
+        coverage (0.928 against 0.941).
+
+        ``turn_pool_k`` above 0 is RETRIEVE-WIDE: the session stage is asked a
+        second, free time at that k — BM25 + model2vec over the same compiled
+        graph, no LLM call — and its documents are appended after the answer-time
+        ones, in its own rank order, de-duplicated by session NUMBER. It is a
+        retrieval result with a stated k and NOT the ``turn_pool="corpus"`` glob
+        below, deliberately: 14.7% of gold evidence turns never enter the pool
+        at all (against 1.1% lost to the admission rule), so widening is where
+        the headroom is, but a pool bought by globbing the corpus would not
+        transfer to any corpus where the pool cannot be everything. Widening
+        alone is not the design — pair it with ``turn_session_cap``, which is
+        what bounds the distractor count the widening would otherwise raise.
 
         ``turn_pool="corpus"`` appends every other staged session, in file-name
         order. It reaches full coverage parity (0.942) but at 17.3 distinct
@@ -1758,22 +1872,37 @@ class LocomoMemory:
         """
         paths: List[str] = []
         seen: set = set()
-        for hit in hits:
-            if not hit.source_path or hit.source_path in paths:
-                continue
-            index = document_index(hit.source_path)
+
+        def _offer(source_path: str) -> None:
+            """Pool ``source_path`` unless its SESSION is already pooled.
+
+            By session NUMBER and not by string: ``source_path`` arrives from
+            frontmatter and the glob arrives from the filesystem, and two
+            spellings of one session would put its turns in the pool twice.
+            """
+            if not source_path or source_path in paths:
+                return
+            index = document_index(source_path)
             if index is not None:
                 if index in seen:
-                    continue
+                    return
                 seen.add(index)
-            paths.append(hit.source_path)
+            paths.append(source_path)
+
+        for hit in hits:
+            _offer(hit.source_path)
+        if self._turn_pool_k and question.strip():
+            # A SECOND retrieval at a stated k, not a glob, and its shortfall is
+            # not ledgered: asking for more sessions than the conversation has
+            # is what this query is FOR.
+            for hit in self.query_hits(question, k=self._turn_pool_k,
+                                       record_shortfall=False):
+                _offer(hit.source_path)
         if self._turn_pool == "corpus" and self.work is not None:
             for path in sorted((self.work / "corpus").glob("session-*.md")):
-                index = document_index(str(path))
-                if index is None or index in seen:
+                if document_index(str(path)) is None:
                     continue
-                seen.add(index)
-                paths.append(str(path))
+                _offer(str(path))
         return paths
 
     def _turn_scores(self, question: str, contexts: Sequence[str],
@@ -1800,9 +1929,22 @@ class LocomoMemory:
                 _tokenize(question), [_tokenize(text) for text in contexts])
         if weights["dense"]:
             backend = self.embedding_backend()
-            vectors = backend.embed([question, *contexts])
-            query = vectors[0] if vectors else []
-            lanes["dense"] = [_cosine(query, vector) for vector in vectors[1:]]
+            # ONLY the question and the contexts not already embedded on this
+            # memory. A context does not depend on the question, so re-embedding
+            # every candidate for every question was pure repetition — and it is
+            # what would have made a widened pool cost a second embed pass per
+            # question instead of nothing. `dict.fromkeys` de-duplicates while
+            # keeping first-seen order, so the batch handed to the backend is
+            # deterministic.
+            cache = self._turn_vector_by_context
+            missing = [text for text in dict.fromkeys(contexts)
+                       if text not in cache]
+            fresh = backend.embed([question, *missing])
+            query = fresh[0] if fresh else []
+            for text, vector in zip(missing, fresh[1:]):
+                cache[text] = vector
+            lanes["dense"] = [_cosine(query, cache.get(text) or [])
+                              for text in contexts]
         if weights["rank"]:
             # NEGATED: rank 0 is the best session, and every other lane scores
             # high for good. Sign errors here are invisible in an aggregate.
@@ -1843,6 +1985,19 @@ class LocomoMemory:
            the anchor-substituted node.
         3. **Everything else by score**, greedily, until the cap.
 
+        ``turn_session_cap`` bounds tiers 1-3 together: admission refuses to
+        open the (cap+1)-th SESSION BLOCK, receipts included, and nothing else
+        moves — receipts still run first, the score loop still breaks on an
+        exhausted budget, ties still break on ``(session, position)``, and the
+        terminal overrun check still guards the cap. It is the other half of
+        ``turn_pool_k``: widening the pool recovers the 14.7% of gold turns that
+        never became candidates, and the cap is what stops that widening paying
+        for it in distractors. Pooled, the pair is worth +0.021 gold-turn
+        coverage at 27,985 characters against 27,949 — the budget does not move,
+        6.1 turns are traded for 6.1 session headers. See
+        :data:`TURN_SESSION_CAP` for the curve, and for why 16 is a knee found
+        on the benchmark rather than a tuned optimum.
+
         Each admitted turn brings its :data:`TURN_EMIT_WINDOW` neighbours with
         it, competing for the same budget — which is why that window is 0.
 
@@ -1865,7 +2020,7 @@ class LocomoMemory:
         is not optional: this branch has already lost two thirds of one headline
         to exactly that omission.
         """
-        pool = self._turn_pool_paths(hits)
+        pool = self._turn_pool_paths(hits, question)
         rank_of: Dict[str, int] = {}
         for path in pool:
             rank_of[path] = len(rank_of)
@@ -1927,6 +2082,15 @@ class LocomoMemory:
             entry = lines_of.get(path, {}).get(dia)
             if entry is None or dia in chosen.get(path, ()):
                 return False
+            # PACK-NARROW. Refuse to open the (cap+1)-th session block — and
+            # refuse it to RECEIPTS too, which is the deliberate part: receipts
+            # run first, so they spend the cap rather than being exempted from
+            # it, and a one-hop `evidenced_by` receipt lands in its fact's own
+            # session 99.0% of the time so it almost never wants a new block.
+            # A turn in an ALREADY-OPEN block is always still admissible.
+            if (self._turn_session_cap and path not in chosen
+                    and len(chosen) >= self._turn_session_cap):
+                return False
             if not spend(path, _packed_turn_text(entry[1])):
                 return False
             chosen[path].add(dia)
@@ -1954,6 +2118,14 @@ class LocomoMemory:
             for hit in hits:
                 path = hit.source_path
                 if path not in lines_of:
+                    continue
+                # The cap counts SESSION BLOCKS, and a head renders inside one,
+                # so a head may not open the (cap+1)-th block either. `admit`
+                # carries the same guard; this tier bypasses it by calling
+                # `spend` directly, which is exactly how an invariant enforced
+                # in one place only goes quietly wrong.
+                if (self._turn_session_cap and path not in chosen
+                        and len(chosen) >= self._turn_session_cap):
                     continue
                 text = self._head_text(hit)
                 if not text or text in heads.get(path, ()):

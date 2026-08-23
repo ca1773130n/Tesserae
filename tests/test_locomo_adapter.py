@@ -1417,6 +1417,193 @@ def test_the_corpus_pool_is_a_strict_superset_of_the_retrieved_one(tmp_path):
     assert len(pooled) == 4 and len(set(pooled)) == 4
 
 
+# ------------------------------------------ retrieve-wide / pack-narrow
+
+
+def test_both_pack_knobs_are_off_and_the_pack_is_byte_identical(tmp_path):
+    """The opt-in guarantee, proved on the code rather than on a measurement.
+
+    With ``turn_pool_k=0`` the pool is exactly the documents the answer-time
+    hits named and NO second retrieval happens at all — a landmine on
+    ``query_hits`` says so out loud, because a widening that ran silently would
+    make every turn-unit number on this branch describe a different pool. With
+    ``turn_session_cap=0`` admission is uncapped, as it has always been.
+    """
+    conversation = _conversation(sessions=4)
+    memory, result = _packed(tmp_path, conversation)
+    paths = [str(result.corpus_dir / document_name(n)) for n in (1, 3)]
+    hits = [_hit(p) for p in paths]
+    expected = memory.answer_evidence(hits, question="session 3 second")
+
+    guarded, _ = _packed(tmp_path, conversation)
+
+    def _landmine(*_args, **_kwargs):
+        raise AssertionError("the pool widened on the shipped path")
+
+    guarded.query_hits = _landmine
+    assert guarded.answer_evidence(hits, question="session 3 second") == expected
+    assert guarded._turn_pool_paths(hits, "session 3 second") == paths
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"evidence_unit": "turn", "turn_pool_k": -1},
+    {"evidence_unit": "turn", "turn_session_cap": -1},
+])
+def test_a_negative_pack_knob_is_refused_at_construction(kwargs):
+    with pytest.raises(ValueError):
+        _memory(**kwargs)
+
+
+def _wide(tmp_path, conversation, **kwargs):
+    """A turn-unit memory whose session stage returns every staged session.
+
+    The stub stands in for the ranking, so what these cases exercise is that
+    the widening goes through ``query_hits`` at a stated ``k`` — a retrieval —
+    rather than through a filesystem glob.
+    """
+    seen: List[Dict[str, Any]] = []
+    corpus = tmp_path / "conv-test" / "corpus"
+
+    def _search(graph, query, **kw):
+        seen.append(dict(kw))
+        return _Result([_Node(document_title(n),
+                              source_path=str(corpus / document_name(n)))
+                        for n in range(1, len(conversation.sessions) + 1)])
+
+    memory, result = _packed(tmp_path, conversation, search_fn=_search, **kwargs)
+    memory._graph = object()
+    return memory, result, seen
+
+
+def test_the_widened_pool_is_a_retrieval_at_a_stated_k_and_never_a_glob(tmp_path):
+    """A pool bought by globbing the corpus does not transfer to any corpus
+    where the pool cannot be everything — the adapter's own ``turn_pool``
+    docstring says so about ``"corpus"``, and that glob is the measurement
+    stand-in, not the implementation. The widening must therefore be a search
+    with a declared budget, and this pins that it is.
+    """
+    conversation = _conversation(sessions=4)
+    memory, result, seen = _wide(tmp_path, conversation, turn_pool_k=3)
+    named = str(result.corpus_dir / document_name(1))
+
+    pooled = memory._turn_pool_paths([_hit(named)], "session 3 second")
+
+    assert seen and seen[-1]["top_k"] == 3, (
+        "the pool was not asked for at a stated k"
+    )
+    assert pooled[0] == named, "the answer-time hits must stay first, in rank order"
+    # k IS A BUDGET, and the difference from a glob is visible right here: the
+    # conversation has four sessions and k=3 pools three of them. A glob would
+    # have pooled all four however small k was, which is what makes a coverage
+    # number bought that way untransferable.
+    assert len(pooled) == len(set(pooled)) == 3
+    # ...and the shortfall ledger is untouched: a pool query asks for more
+    # sessions than the conversation has BY DESIGN, and ledgering it would
+    # drown the shortfalls that mean the ANSWERING budget went unfilled.
+    assert memory.shortfalls == []
+
+
+def test_the_widened_pool_puts_turns_in_the_prompt_the_hits_never_named(tmp_path):
+    """The 14.7% this exists for: gold turns that never became candidates."""
+    conversation = _conversation(sessions=4)
+    narrow, result = _packed(tmp_path, conversation)
+    named = str(result.corpus_dir / document_name(1))
+    assert "[D3:" not in "\n\n".join(
+        narrow.answer_evidence([_hit(named)], question="session 3 second"))
+
+    wide, _, _ = _wide(tmp_path, conversation, turn_pool_k=4)
+    assert "[D3:" in "\n\n".join(
+        wide.answer_evidence([_hit(named)], question="session 3 second"))
+
+
+def test_the_pool_order_is_deterministic_under_shuffled_hit_order(tmp_path):
+    """This repository has been bitten four times by iteration order reaching an
+    artifact. The pool is rank order then the widening's own order, and the
+    widening is a deterministic search — so the same question packs the same
+    prompt however the hits arrive."""
+    conversation = _conversation(sessions=4)
+    memory, result, _ = _wide(tmp_path, conversation, turn_pool_k=4)
+    paths = [str(result.corpus_dir / document_name(n)) for n in (1, 2)]
+
+    forward = memory._turn_pool_paths([_hit(p) for p in paths], "q")
+    again = memory._turn_pool_paths([_hit(p) for p in paths], "q")
+    assert forward == again
+    reversed_hits = memory._turn_pool_paths(
+        [_hit(p) for p in reversed(paths)], "q")
+    # The hits' own rank order is respected — that is what a ranking IS — and
+    # everything the widening adds follows it in the search's order.
+    assert reversed_hits[:2] == list(reversed(paths))
+    assert sorted(reversed_hits) == sorted(forward)
+
+
+def test_the_session_cap_is_never_exceeded(tmp_path):
+    """The distinct-document count is the number Levy's distractor penalty is
+    argued on, so it is a hard cap and not a preference."""
+    conversation = _conversation(sessions=4)
+    for cap in (1, 2, 3):
+        memory, result, _ = _wide(tmp_path, conversation, turn_pool_k=4,
+                                  turn_session_cap=cap)
+        items = memory.answer_evidence(
+            [_hit(str(result.corpus_dir / document_name(1)))],
+            question="session 3 second")
+        assert len(items) <= cap
+        assert memory.pack_sessions <= cap
+
+
+def test_receipts_spend_the_cap_rather_than_being_exempt_from_it(tmp_path):
+    """Receipts are force-admitted AHEAD of the score, so an exemption would let
+    them open every block the cap exists to refuse — and the cap would be a
+    preference wearing a hard-cap's name. They land in their fact's own session
+    99.0% of the time, so this costs almost nothing."""
+    conversation = _conversation(sessions=4)
+    memory, result = _packed(tmp_path, conversation, turn_session_cap=2)
+    paths = [str(result.corpus_dir / document_name(n)) for n in (1, 2, 3)]
+    spans = [_span(f"D{n}:1", path, node_id=f"EvidenceSpan:D{n}:1")
+             for n, path in enumerate(paths, start=1)]
+    memory._graph = _graph(
+        [_claim(f"Claim:c{n}", path) for n, path in enumerate(paths, start=1)]
+        + spans,
+        [(f"Claim:c{n}", spans[n - 1].id, "evidenced_by")
+         for n in (1, 2, 3)])
+
+    items = memory.answer_evidence(
+        [_hit(path, node_id=f"Claim:c{n}")
+         for n, path in enumerate(paths, start=1)],
+        question="session 1 first")
+
+    assert len(items) == 2, "a receipt opened a block past the cap"
+    assert memory.receipt_lines == 2
+
+
+def test_the_cap_still_admits_turns_into_an_already_open_session(tmp_path):
+    """The cap counts BLOCKS, not turns. A turn in a block that is already open
+    is free of it — which is exactly why cap16 admits 6.1 fewer turns than the
+    narrow pool rather than starving."""
+    conversation = _conversation(sessions=4)
+    memory, result, _ = _wide(tmp_path, conversation, turn_pool_k=4,
+                              turn_session_cap=1)
+    items = memory.answer_evidence(
+        [_hit(str(result.corpus_dir / document_name(2)))],
+        question="session 2 first second")
+    assert len(items) == 1
+    assert "[D2:1]" in items[0] and "[D2:2]" in items[0]
+
+
+def test_the_budget_assertion_still_fires_with_both_knobs_on(tmp_path):
+    """The whole claim of this design is a number: the pack must still be a cap
+    on what ``run.py`` records, header-for-header, however wide the pool is."""
+    conversation = _conversation(sessions=4)
+    for budget in (60, 140, 400):
+        memory, result, _ = _wide(tmp_path, conversation, turn_pool_k=4,
+                                  turn_session_cap=3,
+                                  evidence_pack_chars=budget)
+        items = memory.answer_evidence(
+            [_hit(str(result.corpus_dir / document_name(1)))],
+            question="session 3 second")
+        assert sum(len(item) for item in items) <= budget
+        assert memory.pack_chars <= budget
+
+
 def test_sessions_render_in_session_order_and_turns_in_file_order(tmp_path):
     """SESSION order, unlike every other unit here, and the reason is the pack.
 

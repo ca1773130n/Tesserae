@@ -51,6 +51,7 @@ import json
 import os
 import re
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -73,7 +74,9 @@ from .adapter import (
     RERANK_MAX_LENGTH,
     RERANK_OVERFETCH,
     TURN_EMIT_WINDOW,
+    TURN_POOL_K,
     TURN_SCORE_WINDOW,
+    TURN_SESSION_CAP,
     IngestResult,
     LocomoMemory,
     guard_work_dir,
@@ -240,6 +243,80 @@ _BOTH_BRANCHES_RULE = (
 #: assembled from the two constants above rather than duplicated, so the head
 #: the Modal Gate shares with it cannot drift away from it in a later edit.
 _SYSTEM_PROMPT = _ANSWER_FORMAT_RULES + _BOTH_BRANCHES_RULE
+
+
+# --------------------------------------------------------------------------
+# The Deliberation Field — reason in a discarded key, answer in a declared one
+#
+# Opt-in through ``--deliberate``. Absent it, :data:`_ANSWER_FORMAT_RULES` above
+# is the head every question is answered under, byte for byte. This replaces the
+# FORMATTING half only; every abstention rule below is appended unchanged, so a
+# deliberate run and a shipped run refuse on identical terms and this measures
+# form and never the refusal bar.
+# --------------------------------------------------------------------------
+
+#: The alternative head: name the two output keys, then two CONTENT rules in
+#: place of "the shortest answer ... and nothing else".
+#:
+#: THREE CHANGES, and it is worth saying what is NOT here.
+#:
+#: 1. IT NAMES THE KEYS. ``tesserae.llm_json._stitch_json_prompt`` sends only
+#:    "Respond with valid JSON only ... Schema name: locomo_answer" — it never
+#:    names a key — while :func:`build_backbone` reads ``payload["answer"]``.
+#:    The model was guessing. A 24-call raw probe at fan-out prompt size found 6
+#:    shape failures (25%) and ZERO transport failures; in the paired A/B, 8 of
+#:    76 shipped calls needed shape recovery against 0 of 76 here (one-sided
+#:    Fisher p=0.0032).
+#: 2. TWO CONTENT RULES. Be specific (name the thing, not its category); give
+#:    every item a list-, count- or set-shaped answer needs. 66.3% of multi-hop
+#:    golds are list-shaped and multi-hop is our weakest gradeable category.
+#: 3. A DISCARDED ``reasoning`` KEY. Free-form, mean 32 words, never sent to the
+#:    judge — Tam et al. (EMNLP 2024: format restriction degrades reasoning)
+#:    obtained without lengthening the graded string. It is OUTPUT, so it costs
+#:    nothing against the evidence budget.
+#:
+#: NOT HERE, deliberately: any lifting of an output-length cap. The premise that
+#: this arm sits in "the 4.5-word configuration" does not survive our own data —
+#: our answers average 4.67 words against LoCoMo's gold at 4.89, accuracy is
+#: flat across answer-length buckets, and the WITHIN-arm r(answer_words,
+#: correct) is +0.071, not the between-system 0.60. The measured null-padding
+#: control says the judge's length channel is ~0 on our judge and our data.
+#:
+#: ALSO NOT HERE, and this one was tried and rejected: a date-granularity
+#: clause. "Give the date to the granularity the evidence fixes" cost temporal
+#: -0.071 — ``23 August 2023`` became ``The week of 21 August 2023`` against
+#: gold "The week of 23 August 2023". Temporal answers correctly 0.938 of the
+#: time already; there was nothing to win and a correct row to lose. The shipped
+#: date rule below is the shipped one, verbatim.
+_ANSWER_FORMAT_RULES_V2 = (
+    # Sentences 1-2: the shipped head's opening, kept to the word.
+    "You answer questions about a long conversation using the evidence given. "
+    "Each evidence item is stamped with the date of the session it came from. "
+    # THE OUTPUT CONTRACT, named rather than guessed at.
+    "Reply with a JSON object carrying exactly two keys. \"reasoning\" is "
+    "yours: work through the evidence there in as many words as you need. "
+    "\"answer\" is the only key that is read, and it carries the answer alone "
+    "— a name, a date, a number, yes/no, or a short phrase — with no working "
+    "and no restatement of the question. "
+    # CONTENT RULE ONE: specificity.
+    "In \"answer\", be as specific as the evidence allows: name the place, "
+    "person, object or work rather than the category it belongs to. "
+    # CONTENT RULE TWO: enumeration.
+    "Give every item the evidence supports: when the answer is a list, a count "
+    "or a set, none of it may be left out. "
+    # The shipped head's inference and time clauses, kept to the word.
+    "Prefer the evidence's own words for facts it states outright, and reason "
+    "from it when the question asks what is likely, implied, or would follow. "
+    "When the answer is a time, give a calendar date: resolve relative "
+    "expressions such as \"yesterday\", \"last week\" or \"the other day\" "
+    "against the session date of the evidence item that states them, and never "
+    "answer with the relative expression itself. "
+)
+
+#: The deliberate head under each abstention rule, assembled the same way the
+#: shipped three are — so the Modal Gate branches inherit the new head instead
+#: of silently reverting to the old one when both flags are on.
+_SYSTEM_PROMPT_V2 = _ANSWER_FORMAT_RULES_V2 + _BOTH_BRANCHES_RULE
 
 
 # --------------------------------------------------------------------------
@@ -416,13 +493,26 @@ _EVENT_RULE = (
 _DISPOSITIONAL_SYSTEM = _ANSWER_FORMAT_RULES + _DISPOSITIONAL_RULE
 _EVENT_SYSTEM = _ANSWER_FORMAT_RULES + _EVENT_RULE
 
+#: The same two branches over the deliberate head. The abstention rules are the
+#: SAME OBJECTS — ``--deliberate`` changes the formatting half and nothing else,
+#: which is what lets the two flags be measured independently and composed.
+_DISPOSITIONAL_SYSTEM_V2 = _ANSWER_FORMAT_RULES_V2 + _DISPOSITIONAL_RULE
+_EVENT_SYSTEM_V2 = _ANSWER_FORMAT_RULES_V2 + _EVENT_RULE
 
-def system_for(question: str, *, modal_gate: bool) -> str:
+
+def system_for(question: str, *, modal_gate: bool, deliberate: bool = False) -> str:
     """The system prompt ``question`` is answered under.
 
-    ``modal_gate=False`` returns :data:`_SYSTEM_PROMPT` for every question,
-    which is the shipped behaviour and the only behaviour any run before this
-    flag had.
+    ``modal_gate=False`` with ``deliberate=False`` returns :data:`_SYSTEM_PROMPT`
+    for every question, which is the shipped behaviour and the only behaviour
+    any run before these flags had.
+
+    The two flags are ORTHOGONAL and compose: ``deliberate`` picks the head
+    (:data:`_ANSWER_FORMAT_RULES` or :data:`_ANSWER_FORMAT_RULES_V2`),
+    ``modal_gate`` picks the abstention rule appended to it. That is deliberate
+    — an arm that changed both halves at once could not attribute its own delta,
+    and the abstention rules are shared objects here rather than copies so they
+    cannot drift apart per head.
 
     KNOWN CONFOUND, declared rather than buried: LoCoMo-Plus (arXiv:2602.10715)
     finds that revealing the question TYPE systematically inflates LoCoMo
@@ -442,9 +532,10 @@ def system_for(question: str, *, modal_gate: bool) -> str:
     representative.
     """
     if not modal_gate:
-        return _SYSTEM_PROMPT
-    return (_DISPOSITIONAL_SYSTEM if dispositional_question(question)
-            else _EVENT_SYSTEM)
+        return _SYSTEM_PROMPT_V2 if deliberate else _SYSTEM_PROMPT
+    if dispositional_question(question):
+        return _DISPOSITIONAL_SYSTEM_V2 if deliberate else _DISPOSITIONAL_SYSTEM
+    return _EVENT_SYSTEM_V2 if deliberate else _EVENT_SYSTEM
 
 #: The canary's planted evidence. The question and the expected token are
 #: :mod:`evals.locomo.judge`'s — ONE owner for the pair, because a backbone
@@ -557,9 +648,100 @@ def select_or_skip(conversations: Sequence[Conversation],
 # The backbone, and the canary in front of it
 # --------------------------------------------------------------------------
 
+#: The longest raw non-JSON reply the extractor will accept as an answer.
+#:
+#: LoCoMo's gold answers run 4.89 words / median 3.0, and the two bare-prose
+#: replies the raw probe found were ``LGBTQ+ individuals`` and ``counseling or
+#: mental health``. 200 characters admits a sentence and refuses a reasoning
+#: trace — which matters because the judge is told to "be generous ... as long
+#: as it touches on the same topic" and would accept a trace exactly as the
+#: 62.81% false-accept floor predicts. Belt-and-braces on top of the hard gate:
+#: this rung is switched OFF entirely whenever ``deliberate`` is on.
+_BARE_PROSE_MAX_CHARS = 200
+
+#: Per-thread record of WHICH rung of the extractor ladder produced the answer.
+#:
+#: ``"answer-key"`` = the contract was honoured. Everything else is a shape
+#: failure the extractor recovered from, and the point of recording it is that
+#: the fix must not HIDE the provider's failure rate: it is persisted per row
+#: beside ``empty_replies`` so it stays a reported number.
+#:
+#: Thread-local, and cleared by the caller before every backbone call, for the
+#: same reason ``tesserae.llm_json._LAST_FAILURE`` is: a stale note read after a
+#: stub answerer would attribute one call's shape to another's.
+_LAST_SHAPE = threading.local()
+
+
+def _note_answer_shape(kind: Optional[str]) -> None:
+    """Record which extractor rung produced this thread's answer."""
+    _LAST_SHAPE.kind = kind
+
+
+def last_answer_shape() -> Optional[str]:
+    """``"answer-key"`` | ``"sole-string-value"`` | ``"bare-json-string"`` |
+    ``"bare-prose"`` | ``"unusable"`` | ``None`` for this thread's most recent
+    backbone call. ``None`` means no backbone built by :func:`build_backbone`
+    ran — a stub answerer, or a row whose search failed before one was made."""
+    return getattr(_LAST_SHAPE, "kind", None)
+
+
+def extract_answer(payload: Any, raw: Optional[str], *,
+                   deliberate: bool) -> Tuple[str, str]:
+    """``(answer, shape)`` from whatever the provider actually returned.
+
+    A LADDER, cheapest and most trustworthy rung first. Every rung below the
+    first exists because the raw probe found that exact shape at fan-out prompt
+    size, carrying an answer we had already paid for:
+
+    1. ``answer`` key — the contract, and after :data:`_ANSWER_FORMAT_RULES_V2`
+       names it, 76 of 76 calls in the A/B.
+    2. the dict's SOLE string value — ``{"name": "Progressive"}``: right answer,
+       wrong key. With ``deliberate`` on, the declared ``reasoning`` key is
+       dropped from the candidates BEFORE the sole-value test, so a model that
+       emits reasoning plus a misnamed answer still resolves, and a model that
+       emits reasoning ALONE resolves to nothing rather than to its own trace.
+    3. a bare JSON string — ``"Not mentioned."``, a correct refusal on the
+       adversarial category that scored as an error because ``json.loads``
+       returns a ``str`` and the old reader tested ``isinstance(payload,
+       Mapping)``.
+    4. short bare prose — the reply that never parsed at all. **Disabled
+       whenever ``deliberate`` is on**: with a reasoning key in the contract,
+       unparsed text is far likelier to be a truncated trace than an answer,
+       and handing a trace to a lenient judge is the one way this change could
+       manufacture a score. Fail loudly (``"unusable"``, an empty answer, a
+       counted ``empty_replies``) rather than fall back to full text.
+
+    ``""`` with shape ``"unusable"`` is the honest reading of "the system
+    returned nothing" — the canary in front of the run is what stops a whole
+    run of them being read as caution.
+    """
+    if isinstance(payload, Mapping):
+        if payload.get("answer") is not None:
+            return str(payload["answer"]), "answer-key"
+        candidates = [(key, value) for key, value in payload.items()
+                      if isinstance(value, str) and value.strip()
+                      and not (deliberate and key == "reasoning")]
+        if len(candidates) == 1:
+            return candidates[0][1], "sole-string-value"
+        return "", "unusable"
+    if isinstance(payload, str) and payload.strip():
+        # `parse_json_tolerant` is annotated dict|list but returns whatever
+        # `json.loads` gives it, so a bare JSON string arrives here parsed.
+        return payload, "bare-json-string"
+    if payload is not None:
+        return "", "unusable"
+    text = (raw or "").strip()
+    if deliberate or not text or len(text) > _BARE_PROSE_MAX_CHARS:
+        return "", "unusable"
+    if text.startswith(("{", "[")):
+        # It tried to be JSON and failed. That is a bad generation, not prose.
+        return "", "unusable"
+    return text, "bare-prose"
+
 
 def build_backbone(model: str, *,
-                   modal_gate: bool = False
+                   modal_gate: bool = False,
+                   deliberate: bool = False
                    ) -> Callable[[str, Sequence[str]], str]:
     """An ``(question, evidence) -> short answer`` callable on ``model``.
 
@@ -571,6 +753,13 @@ def build_backbone(model: str, *,
     is chosen per question by :func:`system_for` — see the Modal Gate block
     above for why the split is on the question's MODALITY and not on how much
     the evidence supports.
+
+    ``deliberate=False`` reads ``payload["answer"]`` exactly as before; what is
+    NOT conditional on the flag is :func:`extract_answer`'s ladder, which runs
+    either way. That is on purpose: the recovery rungs cost no calls, recover
+    answers already paid for, and their absence was measured at 12 of 304
+    gradeable rows scoring zero on ``Error: the backbone returned an empty
+    answer``. The flag only decides whether the prose rung is available at all.
     """
     from tesserae.llm_json import build_default_json_client
 
@@ -582,20 +771,23 @@ def build_backbone(model: str, *,
             "recall and MRR and spends nothing",
         )
 
+    from tesserae.llm_json import last_raw_reply
+
     def answer(question: str, evidence: Sequence[str]) -> str:
         numbered = "\n\n".join(f"[{i}] {text}"
                                for i, text in enumerate(evidence, start=1))
         payload = client.complete_json(
-            system=system_for(question, modal_gate=modal_gate),
+            system=system_for(question, modal_gate=modal_gate,
+                              deliberate=deliberate),
             user=f"Evidence:\n{numbered}\n\nQuestion: {question}",
             schema_name="locomo_answer",
         )
-        if isinstance(payload, Mapping) and payload.get("answer") is not None:
-            return str(payload["answer"])
-        # No answer key is neither a refusal nor an answer. "" is the honest
-        # reading of "the system returned nothing" — and the canary above is
-        # what stops a whole run of them being read as caution.
-        return ""
+        # Read the raw reply IMMEDIATELY: it is thread-local and describes only
+        # the call that just returned.
+        text, shape = extract_answer(payload, last_raw_reply(),
+                                     deliberate=deliberate)
+        _note_answer_shape(shape)
+        return text
 
     return answer
 
@@ -764,6 +956,16 @@ _EMPTY_ANSWER = "Error: the backbone returned an empty answer"
 #: Nothing is hidden by it. Every row persists its own ``empty_replies`` count
 #: and the run's meta sums them, so the provider's failure rate stays a reported
 #: number whether or not the retry rescued the answer.
+#:
+#: AND THE DIAGNOSIS ABOVE IS NOW KNOWN TO BE HALF WRONG, which is worth leaving
+#: in place rather than rewriting. A 24-call raw probe at fan-out prompt size
+#: found 6 shape failures and ZERO transport failures: the provider ANSWERED and
+#: :func:`build_backbone` could not read the shape. That is a parse contract the
+#: answerer was never told, not a flaky provider — see
+#: :data:`_ANSWER_FORMAT_RULES_V2` and :func:`extract_answer`, which cost no
+#: calls. The retry stays because the two failures are independent and this one
+#: still catches a genuinely empty reply; what changed is that it is no longer
+#: the only thing standing between a paid-for answer and a zero.
 _EMPTY_ANSWER_RETRIES = 1
 
 
@@ -800,15 +1002,22 @@ def answer_conversation(
         items = list(evidence[index]) if index < len(evidence) else []
         failure = errors[index] if index < len(errors) else ""
         empty_replies = 0
+        shape = None
         if failure:
             answer = failure
         else:
             for _ in range(_EMPTY_ANSWER_RETRIES + 1):
+                # Cleared before every call, and read straight after it: the
+                # note is thread-local and describes exactly one call. A stub
+                # answerer writes none, which stays None and records "".
+                _note_answer_shape(None)
                 try:
                     answer = answer_fn(question.question, items)
                 except Exception as exc:  # the backbone failed, not the search
                     answer = f"Error: {exc}"
+                    shape = last_answer_shape()
                     break
+                shape = last_answer_shape()
                 if str(answer or "").strip():
                     break
                 empty_replies += 1
@@ -818,6 +1027,13 @@ def answer_conversation(
             # than left in a log. 1 with an answer beside it means the retry
             # saved the question; 2 means it did not.
             "empty_replies": empty_replies,
+            # WHICH rung of `extract_answer` produced the answer that shipped —
+            # of the LAST call, because that is the one whose text is in
+            # `answer`. "answer-key" is the contract honoured; anything else is
+            # a provider shape failure the extractor recovered from, and it is
+            # persisted so the fix reports that rate rather than hiding it.
+            # "" means no backbone built by `build_backbone` ran.
+            "answer_shape_recovery": shape or "",
             "key": question_key(question, index),
             "arm": arm,
             "replicate": replicate,
@@ -1567,6 +1783,27 @@ def build_parser() -> argparse.ArgumentParser:
                              "shipped prompt, byte for byte. Free — it changes "
                              "no evidence and costs ~400 characters LESS than "
                              "the prompt it replaces")
+    parser.add_argument("--deliberate", action="store_true",
+                        help="answer under the two-key contract: a free-form "
+                             "\"reasoning\" key the judge never sees, and an "
+                             "\"answer\" key that is NAMED to the model rather "
+                             "than guessed at, plus two content rules (be "
+                             "specific; enumerate list-shaped answers) in place "
+                             "of \"the shortest answer ... and nothing else\". "
+                             "Off by default: without it every question is "
+                             "answered under the single shipped prompt, byte "
+                             "for byte. Costs ~148 evidence-budget tokens "
+                             "(2.1% of 7,069) because the system prompt is "
+                             "inside the budget; the reasoning field is OUTPUT "
+                             "and costs nothing. It does NOT change the "
+                             "abstention rule, and it does NOT lift an "
+                             "output-length cap — measured, the judge's length "
+                             "channel is ~0 on this judge and this data. The "
+                             "extractor ladder that recovers a misshapen reply "
+                             "runs either way; this flag only decides whether "
+                             "its bare-prose rung is available, and it is OFF "
+                             "under --deliberate so a reasoning trace can never "
+                             "reach the judge")
     parser.add_argument("--evidence-unit", choices=("session", "turn"),
                         default="session",
                         help="what ONE evidence item is. 'session' is the "
@@ -1599,6 +1836,35 @@ def build_parser() -> argparse.ArgumentParser:
                              "a 19-session corpus indistinguishable from "
                              "reading everything. Ignored without "
                              "--evidence-unit turn")
+    parser.add_argument("--turn-pool-k", type=int, default=TURN_POOL_K,
+                        help=f"RETRIEVE-WIDE. Ask the session stage a second, "
+                             f"free time at this k and pool those sessions' "
+                             f"turns as well as the answer-time hits' (default: "
+                             f"{TURN_POOL_K} — off, byte-identical to today). "
+                             f"14.7%% of gold evidence turns never enter the "
+                             f"candidate pool at all, against 1.1%% lost to the "
+                             f"admission rule, so this is where the headroom is. "
+                             f"BM25 + model2vec over the same graph: zero LLM "
+                             f"calls. Pair it with --turn-session-cap, which is "
+                             f"what bounds the distractor count it raises; on "
+                             f"its own the wide pool scores 0.928 turn coverage "
+                             f"against 0.930 capped at 16 and 0.909 today. "
+                             f"Ignored without --evidence-unit turn")
+    parser.add_argument("--turn-session-cap", type=int,
+                        default=TURN_SESSION_CAP,
+                        help=f"PACK-NARROW. The most SESSION BLOCKS the pack "
+                             f"may open, receipts included (default: "
+                             f"{TURN_SESSION_CAP} — uncapped, byte-identical to "
+                             f"today). Pooled over 1,536 questions at 28,000 "
+                             f"characters: narrow 0.909 coverage at 9.9 blocks, "
+                             f"wide/cap8 0.848, cap12 0.919, cap16 0.930, "
+                             f"uncapped-wide 0.928 at 22.4 — an interior "
+                             f"optimum, not 'more sessions is better'. 16 is a "
+                             f"knee found ON the benchmark; the direction holds "
+                             f"in 9 of 10 conversations, the exact value is not "
+                             f"a tuned optimum, and cap12 is the fallback if "
+                             f"graded multi-hop falls to Levy's distractor "
+                             f"penalty. Ignored without --evidence-unit turn")
     parser.add_argument("--turn-emit-window", type=int,
                         default=TURN_EMIT_WINDOW,
                         help=f"turns either side of an ADMITTED turn to emit "
@@ -1906,11 +2172,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             evidence_unit=args.evidence_unit,
             evidence_pack_chars=args.evidence_pack_chars,
             turn_pool=args.turn_pool,
+            turn_pool_k=args.turn_pool_k,
+            turn_session_cap=args.turn_session_cap,
             turn_emit_window=args.turn_emit_window,
             turn_heads=args.turn_heads,
         ) if spends else None
         answer_fn = (build_backbone(args.backbone,
-                                  modal_gate=args.modal_gate)
+                                  modal_gate=args.modal_gate,
+                                  deliberate=args.deliberate)
                      if answering else None)
 
         # THE CANARY. Before any question is answered, and before the judge
@@ -2071,6 +2340,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             # per-question branch is on the ROW, not here — this only says
             # whether routing happened at all.
             "modal_gate": bool(args.modal_gate),
+            # "shipped"/"deliberate" rather than a bool, and never omitted: a
+            # result whose meta is silent about the answering contract predates
+            # the flag, and one that says "shipped" answered under the single
+            # prompt every earlier run used. The two rubrics' reports come from
+            # ONE answers file, so this is what tells a reader which prompt the
+            # dual-rubric differential below was produced under.
+            "answer_prompt": "deliberate" if args.deliberate else "shipped",
             # "session"/0 rather than omitted, on the same terms as `fanout`: a
             # result whose meta is silent about the unit predates the stage, and
             # one that says "session" pasted whole sessions the shipped way. The
@@ -2082,6 +2358,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                     if args.evidence_unit == "turn" else 0),
             "turn_pool": (args.turn_pool
                           if args.evidence_unit == "turn" else ""),
+            # 0 rather than omitted, on the same terms as `turn_emit_window`: a
+            # result silent about these predates the stage, and one that says 0
+            # pooled exactly the retrieved sessions and opened as many session
+            # blocks as it liked. They travel TOGETHER because neither is the
+            # design on its own — widening without the cap raises the distractor
+            # count Levy's penalty aims at, and the cap without widening is
+            # strictly worse than today.
+            "turn_pool_k": (args.turn_pool_k
+                            if args.evidence_unit == "turn" else 0),
+            "turn_session_cap": (args.turn_session_cap
+                                 if args.evidence_unit == "turn" else 0),
             "turn_emit_window": (args.turn_emit_window
                                  if args.evidence_unit == "turn" else 0),
             # From the CONSTANT, not a flag — it has none, because the design
@@ -2143,6 +2430,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                        for r in answer_rows)),
                 "empty_replies": sum(int(r.get("empty_replies") or 0)
                                      for r in answer_rows),
+                # Calls whose SHAPE the provider got wrong and the extractor
+                # recovered from. Reported beside `empty_replies` rather than
+                # folded into it: a fix that made this number invisible would
+                # be hiding the defect it exists to answer.
+                "answer_shape_recoveries": sum(
+                    1 for r in answer_rows
+                    if r.get("answer_shape_recovery")
+                    not in ("", "answer-key")),
                 "llm_judge_calls": judge.llm_calls,
                 "canary_calls": canary_calls,
             },

@@ -529,8 +529,15 @@ def test_an_answering_run_goes_end_to_end_without_a_model(monkeypatch, tmp_path)
 
     saved = json.loads(answers_path.read_text(encoding="utf-8"))
     assert saved["meta"]["evidence"] == {"answer_calls": 2, "empty_replies": 0,
+                                         "answer_shape_recoveries": 0,
                                          "llm_judge_calls": 0, "canary_calls": 1}
     assert {row["answer"] for row in saved["rows"]} == {"teal", "I don't know."}
+    # A stub answerer writes no shape note, and "" is the honest reading of
+    # "no backbone built by build_backbone ran" — not "the contract held".
+    assert {row["answer_shape_recovery"] for row in saved["rows"]} == {""}
+    # The answering contract is declared even when it is the shipped one, so a
+    # reader of the answers file never has to infer which prompt produced them.
+    assert saved["meta"]["answer_prompt"] == "shipped"
 
 
 def test_saved_answers_can_be_regraded_offline(monkeypatch, tmp_path):
@@ -730,7 +737,17 @@ def test_a_real_answer_is_left_exactly_as_the_backbone_wrote_it():
     assert row["answer"] == "  teal  "
 
 
-def test_the_prompt_requires_a_relative_time_expression_to_be_resolved():
+#: Both answering contracts. Every property below is a measured lesson, and a
+#: head that dropped one would lose what the lesson cost to learn — so the head
+#: is a parameter rather than these tests naming the shipped one.
+@pytest.fixture(params=["shipped", "deliberate"])
+def prompt_constant(request):
+    return (runner._SYSTEM_PROMPT if request.param == "shipped"
+            else runner._SYSTEM_PROMPT_V2)
+
+
+def test_the_prompt_requires_a_relative_time_expression_to_be_resolved(
+        prompt_constant):
     """"Prefer the evidence's own words" was answering WHEN with "Yesterday".
 
     Every evidence item now carries the date of the session it came from, so the
@@ -742,8 +759,13 @@ def test_the_prompt_requires_a_relative_time_expression_to_be_resolved():
 
     The rule must stay narrow: it fires on time, and it must not reopen the
     extraction-only wording that refused 21 of 21 open-domain questions.
+
+    Both heads carry it VERBATIM. A date-granularity clause was tried on the
+    deliberate head and measured HARMFUL — temporal -0.071, because "23 August
+    2023" became "The week of 21 August 2023" against gold "The week of 23
+    August 2023" — so the shipped sentence is the shipped sentence in both.
     """
-    prompt = runner._SYSTEM_PROMPT.casefold()
+    prompt = prompt_constant.casefold()
 
     assert "session date" in prompt, "the stamp the answer must resolve against is not named"
     assert "calendar date" in prompt, "a when question is not asked for a date"
@@ -788,7 +810,7 @@ def test_folding_a_verdict_list_that_does_not_line_up_raises():
                    key="k", arm="tesserae", replicate=0)])
 
 
-def test_the_declining_phrase_is_accepted_by_both_graders():
+def test_the_declining_phrase_is_accepted_by_both_graders(prompt_constant):
     """A phrasing choice turned over an entire benchmark category.
 
     The reference grader accepts exactly "no information available" and "not
@@ -804,7 +826,7 @@ def test_the_declining_phrase_is_accepted_by_both_graders():
     from evals.qa.scorer import is_refusal
     from evals.locomo.judge import _REFERENCE_ABSTENTION
 
-    prompt = runner._SYSTEM_PROMPT
+    prompt = prompt_constant
     phrase = prompt.rsplit("reply exactly:", 1)[1].strip().rstrip(".").strip()
 
     assert is_refusal(phrase), f"{phrase!r} is not a refusal under our own rule"
@@ -815,7 +837,8 @@ def test_the_declining_phrase_is_accepted_by_both_graders():
     )
 
 
-def test_the_prompt_permits_inference_and_still_requires_abstention():
+def test_the_prompt_permits_inference_and_still_requires_abstention(
+        prompt_constant):
     """Abstention is for UNSUPPORTED, not for UNSTATED.
 
     An extraction-only instruction ("use exact words from the evidence", decline
@@ -828,7 +851,7 @@ def test_the_prompt_permits_inference_and_still_requires_abstention():
     Both halves must hold: reasoning from evidence is permitted, and abstention
     on genuinely unsupported questions is still demanded.
     """
-    prompt = runner._SYSTEM_PROMPT.casefold()
+    prompt = prompt_constant.casefold()
 
     assert "reason from it" in prompt, "inference is not permitted"
     assert "likely" in prompt or "implied" in prompt, "inference is not named"
@@ -1037,13 +1060,26 @@ def test_the_gate_off_is_the_shipped_prompt_for_every_question():
         assert runner.system_for(question, modal_gate=False) is runner._SYSTEM_PROMPT
 
 
-def test_the_dispositional_branch_contains_no_abstention_string_at_all():
+#: ``(head, both-branches, dispositional, event)`` for one answering contract.
+#: Every structural property of the Modal Gate has to hold under BOTH heads, or
+#: ``--modal-gate --deliberate`` is a third prompt nobody characterised.
+@pytest.fixture(params=["shipped", "deliberate"])
+def head_family(request):
+    if request.param == "shipped":
+        return (runner._ANSWER_FORMAT_RULES, runner._SYSTEM_PROMPT,
+                runner._DISPOSITIONAL_SYSTEM, runner._EVENT_SYSTEM)
+    return (runner._ANSWER_FORMAT_RULES_V2, runner._SYSTEM_PROMPT_V2,
+            runner._DISPOSITIONAL_SYSTEM_V2, runner._EVENT_SYSTEM_V2)
+
+
+def test_the_dispositional_branch_contains_no_abstention_string_at_all(
+        head_family):
     """Abstention Inflation (arXiv:2507.16199v6) finds the inflation is
     STRUCTURAL, not semantic — the presence of a decline option raises
     declining however it is worded — so only literal absence works. This is the
     mechanism, not a style rule.
     """
-    text = runner._DISPOSITIONAL_SYSTEM.lower()
+    text = head_family[2].lower()
     for marker in ("not mentioned", "decline", "refus", "insufficient",
                    "unanswerable", "cannot answer", "don't know",
                    "do not know", "unknown", "no answer"):
@@ -1054,7 +1090,7 @@ def test_the_dispositional_branch_contains_no_abstention_string_at_all():
         )
 
 
-def test_the_event_branch_refuses_in_the_shipped_words():
+def test_the_event_branch_refuses_in_the_shipped_words(head_family):
     """THE CONTROL. An EVENT branch that refuses in different words than the
     arm it is compared against is a prompt rewrite wearing a router's clothes.
 
@@ -1065,7 +1101,7 @@ def test_the_event_branch_refuses_in_the_shipped_words():
     """
     shipped = runner._BOTH_BRANCHES_RULE
     sentence = shipped[shipped.rindex("If the evidence supports no answer"):]
-    assert sentence and sentence in runner._EVENT_SYSTEM
+    assert sentence and sentence in head_family[3]
     assert "Not mentioned." in sentence, (
         "the refusal phrase left the shipped prompt. It is the one BOTH the "
         "published grader's abstention rule and ours accept, and an earlier "
@@ -1074,21 +1110,27 @@ def test_the_event_branch_refuses_in_the_shipped_words():
     )
 
 
-def test_neither_branch_carries_the_other_and_both_carry_the_head():
+def test_neither_branch_carries_the_other_and_both_carry_the_head(head_family):
     """The separation IS the design: the dispositional instruction is not
     softened for adversarial questions, it is never shown to them. Both keep
     the formatting head verbatim, so no arm can win by being told to answer
-    more tersely."""
-    head = runner._ANSWER_FORMAT_RULES
-    assert runner._SYSTEM_PROMPT.startswith(head)
-    assert runner._DISPOSITIONAL_SYSTEM.startswith(head)
-    assert runner._EVENT_SYSTEM.startswith(head)
-    assert runner._DISPOSITIONAL_RULE not in runner._EVENT_SYSTEM
-    assert runner._EVENT_RULE not in runner._DISPOSITIONAL_SYSTEM
+    more tersely.
+
+    WITHIN each head. ``--deliberate`` moves the head and nothing else, so the
+    gate's token arithmetic is a property of the family rather than of the
+    shipped constants — a deliberate branch is longer than a shipped one and
+    still shorter than the deliberate prompt it replaces.
+    """
+    head, both, dispositional, event = head_family
+    assert both.startswith(head)
+    assert dispositional.startswith(head)
+    assert event.startswith(head)
+    assert runner._DISPOSITIONAL_RULE not in event
+    assert runner._EVENT_RULE not in dispositional
     # Token-neutral to marginally token-NEGATIVE. It neither funds nor
     # obstructs the packing budget and must not be credited with either.
-    assert len(runner._DISPOSITIONAL_SYSTEM) < len(runner._SYSTEM_PROMPT)
-    assert len(runner._EVENT_SYSTEM) < len(runner._SYSTEM_PROMPT)
+    assert len(dispositional) < len(both)
+    assert len(event) < len(both)
 
 
 def test_the_gate_hands_each_question_its_own_branch():
@@ -1120,6 +1162,257 @@ def test_the_backbone_sends_the_branch_the_router_chose(monkeypatch):
     plain = runner.build_backbone("m")
     plain("Would she likely say yes?", ["e"])
     assert seen == [runner._SYSTEM_PROMPT]
+
+
+# ---------------------------------------------- the Deliberation Field
+
+
+def test_the_deliberate_head_is_unreachable_unless_it_is_asked_for():
+    """The opt-in guarantee, on the code rather than on a measurement.
+
+    ``--deliberate`` is under A/B on this branch and a run that silently
+    answered under a different formatting rule would corrupt it. The shipped
+    constants are returned by IDENTITY, not by equality, so a later edit that
+    makes the two heads coincidentally equal still fails here.
+    """
+    for question, _ in _ROUTER_CASES:
+        assert runner.system_for(question, modal_gate=False) is \
+            runner._SYSTEM_PROMPT
+        assert runner.system_for(question, modal_gate=False,
+                                 deliberate=False) is runner._SYSTEM_PROMPT
+    assert runner._SYSTEM_PROMPT_V2 != runner._SYSTEM_PROMPT
+
+
+def test_the_two_flags_are_orthogonal_and_compose():
+    """``deliberate`` picks the HEAD, ``modal_gate`` picks the abstention rule.
+
+    An arm that changed both halves at once could not attribute its own delta,
+    and the four cells are what let each be measured alone.
+    """
+    dispositional, event = "Would she likely say yes?", "What was the gift?"
+    assert runner.system_for(event, modal_gate=False,
+                             deliberate=True) is runner._SYSTEM_PROMPT_V2
+    assert runner.system_for(dispositional, modal_gate=True,
+                             deliberate=True) is runner._DISPOSITIONAL_SYSTEM_V2
+    assert runner.system_for(event, modal_gate=True,
+                             deliberate=True) is runner._EVENT_SYSTEM_V2
+    # The abstention rules are the SAME TEXT under both heads, which is what
+    # makes --deliberate a measurement of FORM and never of the refusal bar.
+    for head, gated in ((runner._ANSWER_FORMAT_RULES, runner._SYSTEM_PROMPT),
+                        (runner._ANSWER_FORMAT_RULES_V2,
+                         runner._SYSTEM_PROMPT_V2)):
+        assert gated[len(head):] == runner._BOTH_BRANCHES_RULE
+
+
+def test_the_deliberate_head_names_both_output_keys():
+    """THE DEFECT THIS FIXES. ``_stitch_json_prompt`` sends only "Respond with
+    valid JSON only ... Schema name: locomo_answer" — it never names a key —
+    while the backbone reads ``payload["answer"]``. The model was guessing, and
+    a 24-call raw probe at fan-out prompt size found 6 shape failures (25%) and
+    ZERO transport failures.
+    """
+    head = runner._ANSWER_FORMAT_RULES_V2
+    assert '"answer"' in head, "the key the backbone reads is not named"
+    assert '"reasoning"' in head, "the discarded key is not named"
+    assert "exactly two keys" in head
+    # The shipped head names neither, which is the whole point.
+    assert '"answer"' not in runner._ANSWER_FORMAT_RULES
+
+
+def test_the_deliberate_head_carries_the_two_content_rules_and_no_length_lift():
+    """Specificity and enumeration — and NOT a longer answer.
+
+    Our answers already average 4.67 words against LoCoMo's gold at 4.89, the
+    within-arm r(answer_words, correct) is +0.071 rather than the between-system
+    0.60, and a null-padding control measured the judge's length channel at ~0.
+    An instruction to answer at LENGTH would be gaming a channel that is not
+    there, so it must not appear.
+    """
+    head = runner._ANSWER_FORMAT_RULES_V2.casefold()
+    assert "as specific as the evidence allows" in head
+    assert "rather than the category it belongs to" in head
+    assert "give every item the evidence supports" in head
+    assert "none of it may be left out" in head
+    for banned in ("explain your", "in full sentences", "at least",
+                   "step by step", "as much detail"):
+        assert banned not in head, (
+            f"{banned!r} lifts the output-length cap. Answer length is not the "
+            f"lever the brief claims: the length channel measured ~0 on this "
+            f"judge and this data."
+        )
+
+
+def test_the_deliberate_head_keeps_the_date_rule_and_adds_no_granularity_clause():
+    """MEASURED HARMFUL, and the one clause of this design that was tried and
+    rejected. "Give the date to the granularity the evidence fixes" cost
+    temporal -0.071: ``23 August 2023`` became ``The week of 21 August 2023``
+    against gold "The week of 23 August 2023". Temporal already answers
+    correctly 0.938 of the time, so there was nothing to win and a correct row
+    to lose.
+    """
+    shipped, deliberate = (runner._ANSWER_FORMAT_RULES,
+                           runner._ANSWER_FORMAT_RULES_V2)
+    sentence = shipped[shipped.index("When the answer is a time"):].strip()
+    assert sentence and sentence in deliberate, (
+        "the date rule was rewritten rather than carried over"
+    )
+    assert "granularity" not in deliberate.casefold()
+
+
+# -------------------------------------------------- the extractor ladder
+
+
+def test_the_answer_key_is_the_contract_and_the_first_rung():
+    assert runner.extract_answer({"answer": "teal"}, None, deliberate=False) \
+        == ("teal", "answer-key")
+    # Non-string values are the model's business, not the extractor's.
+    assert runner.extract_answer({"answer": 3}, None, deliberate=False) \
+        == ("3", "answer-key")
+
+
+def test_the_right_answer_under_the_wrong_key_is_recovered():
+    """``{"name": "Progressive"}`` — the raw probe's third failure. The answer
+    was generated and paid for; only the key was wrong."""
+    assert runner.extract_answer({"name": "Progressive"}, None,
+                                 deliberate=False) == ("Progressive",
+                                                       "sole-string-value")
+    # Ambiguous is not recovered: two candidate strings is a guess, and a guess
+    # that lands on the wrong one is worse than a visible failure.
+    assert runner.extract_answer({"a": "x", "b": "y"}, None,
+                                 deliberate=False) == ("", "unusable")
+
+
+def test_a_bare_json_string_refusal_is_an_answer_and_not_an_error():
+    """``"Not mentioned."`` parses to a ``str``, and the old reader tested
+    ``isinstance(payload, Mapping)`` — so a CORRECT refusal on the adversarial
+    category, where declining IS the gold answer, scored as a backbone error."""
+    assert runner.extract_answer("Not mentioned.", None, deliberate=True) \
+        == ("Not mentioned.", "bare-json-string")
+    assert runner.extract_answer("   ", None, deliberate=False) \
+        == ("", "unusable")
+
+
+def test_the_bare_prose_rung_is_off_under_deliberate():
+    """THE ONE WAY THIS CHANGE COULD MANUFACTURE A SCORE, closed by construction.
+
+    With a reasoning key in the contract, unparsed text is far likelier to be a
+    truncated trace than an answer — and a judge told to "be generous ... as
+    long as it touches on the same topic" would accept a trace exactly as the
+    62.81% false-accept floor predicts. Fail loudly instead.
+    """
+    prose = "LGBTQ+ individuals"
+    assert runner.extract_answer(None, prose, deliberate=False) \
+        == (prose, "bare-prose")
+    assert runner.extract_answer(None, prose, deliberate=True) \
+        == ("", "unusable")
+
+    trace = "First I check the evidence. " * 20
+    assert runner.extract_answer(None, trace, deliberate=False) \
+        == ("", "unusable"), "a reasoning-length reply is not a short answer"
+    # A reply that TRIED to be JSON and failed is a bad generation, not prose.
+    assert runner.extract_answer(None, '{"answer": "te', deliberate=False) \
+        == ("", "unusable")
+    assert runner.extract_answer(None, None, deliberate=False) \
+        == ("", "unusable")
+
+
+def test_a_reasoning_trace_never_becomes_the_answer():
+    """The declared reasoning key is dropped BEFORE the sole-value test, so a
+    model that emits reasoning plus a misnamed answer still resolves — and one
+    that emits reasoning ALONE resolves to nothing rather than to its trace."""
+    payload = {"reasoning": "She is from Sweden because ...", "result": "Sweden"}
+    assert runner.extract_answer(payload, None, deliberate=True) \
+        == ("Sweden", "sole-string-value")
+    assert runner.extract_answer({"reasoning": "a long trace"}, None,
+                                 deliberate=True) == ("", "unusable")
+    # With the flag OFF no reasoning key was asked for, so nothing is special
+    # about that name and the sole-value rule applies unchanged.
+    assert runner.extract_answer({"reasoning": "a long trace"}, None,
+                                 deliberate=False) == ("a long trace",
+                                                       "sole-string-value")
+
+
+def test_the_backbone_reads_the_raw_reply_the_client_would_have_destroyed(
+        monkeypatch):
+    """``complete_json`` returns None for an unparseable reply and the text is
+    gone one frame below the harness. ``last_raw_reply`` is what makes the
+    ladder's bottom rung reachable at all."""
+    import tesserae.llm_json as llm_json
+
+    class _Client:
+        def complete_json(self, *, system, user, schema_name):
+            llm_json._note_raw("counseling or mental health")
+            return None
+
+    monkeypatch.setattr("tesserae.llm_json.build_default_json_client",
+                        lambda model: _Client())
+    answer = runner.build_backbone("m")
+    assert answer("q", ["e"]) == "counseling or mental health"
+    assert runner.last_answer_shape() == "bare-prose"
+
+
+def test_the_deliberate_backbone_sends_the_deliberate_prompt(monkeypatch):
+    """The wiring, checked without an LLM client."""
+    seen: List[str] = []
+
+    class _Client:
+        def complete_json(self, *, system, user, schema_name):
+            seen.append(system)
+            return {"answer": "ok", "reasoning": "because"}
+
+    monkeypatch.setattr("tesserae.llm_json.build_default_json_client",
+                        lambda model: _Client())
+
+    assert runner.build_backbone("m", deliberate=True)("q", ["e"]) == "ok"
+    assert seen == [runner._SYSTEM_PROMPT_V2]
+    assert runner.last_answer_shape() == "answer-key", (
+        "the reasoning key must not make a well-shaped reply look recovered"
+    )
+
+    seen.clear()
+    runner.build_backbone("m", modal_gate=True, deliberate=True)("q", ["e"])
+    assert seen == [runner._EVENT_SYSTEM_V2]
+
+
+def test_the_row_records_which_rung_produced_the_answer():
+    """The fix must not HIDE the provider's shape-failure rate. 12 of 304
+    gradeable rows scored zero on ``Error: the backbone returned an empty
+    answer`` before it; persisting the rung is what keeps that a reported number
+    rather than one the recovery quietly absorbed."""
+    conversation = _conversation_with(2)
+
+    def _answer(question, evidence):
+        runner._note_answer_shape("sole-string-value")
+        return "Progressive"
+
+    rows = runner.answer_conversation(conversation, [["e"], ["e"]], ["", ""],
+                                      _answer, replicate=0, progress=False)
+    assert [r["answer_shape_recovery"] for r in rows] == ["sole-string-value"] * 2
+
+    # A stub answerer that writes no note records "", which is not the same
+    # claim as "answer-key": one says no backbone ran, the other says the
+    # contract held.
+    rows = runner.answer_conversation(conversation, [["e"], ["e"]], ["", ""],
+                                      lambda q, e: "teal", replicate=0,
+                                      progress=False)
+    assert [r["answer_shape_recovery"] for r in rows] == ["", ""]
+
+
+def test_a_stale_shape_note_cannot_be_attributed_to_the_next_question():
+    """The note is thread-local and cleared before every call. Without the
+    clear, one recovered answer would label every later row on the thread."""
+    conversation = _conversation_with(2)
+    calls: List[int] = []
+
+    def _answer(question, evidence):
+        calls.append(1)
+        if len(calls) == 1:
+            runner._note_answer_shape("bare-json-string")
+        return "teal"
+
+    rows = runner.answer_conversation(conversation, [["e"], ["e"]], ["", ""],
+                                      _answer, replicate=0, progress=False)
+    assert [r["answer_shape_recovery"] for r in rows] == ["bare-json-string", ""]
 
 
 def test_the_row_records_the_branch_only_when_the_gate_ran(tmp_path):
@@ -1215,6 +1508,7 @@ def test_a_turn_unit_run_declares_its_budget_and_its_spend(monkeypatch,
         "--answers-out", str(answers),
         "--evidence-unit", "turn", "--evidence-pack-chars", "400",
         "--turn-pool", "corpus", "--turn-heads", "fact", "--modal-gate",
+        "--turn-pool-k", "3", "--turn-session-cap", "2", "--deliberate",
         "--i-know-this-costs-money", "--yes",
     ]) == 0
 
@@ -1225,6 +1519,12 @@ def test_a_turn_unit_run_declares_its_budget_and_its_spend(monkeypatch,
     assert meta["turn_heads"] == "fact"
     assert meta["turn_score_window"] == runner.TURN_SCORE_WINDOW
     assert meta["modal_gate"] is True
+    # The two halves of retrieve-wide / pack-narrow travel TOGETHER in the meta
+    # because neither is the design on its own, and the answering contract is
+    # named because two rubrics' reports come from one answers file.
+    assert meta["turn_pool_k"] == 3 and meta["turn_session_cap"] == 2
+    assert meta["answer_prompt"] == "deliberate"
+    assert meta["pack_sessions"] <= 2 * 2, "the session cap did not reach the run"
     assert 0 < meta["pack_chars"] <= 400 * 2
     assert meta["pack_turns"] >= 1 and meta["pack_sessions"] >= 1
 
@@ -1262,11 +1562,14 @@ def test_a_session_unit_run_says_so_rather_than_going_silent(monkeypatch,
     assert meta["evidence_pack_chars"] == 0
     assert meta["turn_pool"] == "" and meta["turn_heads"] == ""
     assert meta["turn_emit_window"] == meta["turn_score_window"] == 0
+    assert meta["turn_pool_k"] == meta["turn_session_cap"] == 0
     assert meta["modal_gate"] is False
+    assert meta["answer_prompt"] == "shipped"
     assert meta["pack_chars"] == meta["pack_turns"] == meta["pack_sessions"] == 0
 
 
-def test_the_prompt_cuts_by_what_is_asked_not_by_how_much_evidence():
+def test_the_prompt_cuts_by_what_is_asked_not_by_how_much_evidence(
+        prompt_constant):
     """The distinction that separates open-domain from adversarial.
 
     Two kinds of question need opposite treatment and a single sufficiency
@@ -1285,8 +1588,12 @@ def test_the_prompt_cuts_by_what_is_asked_not_by_how_much_evidence():
 
     Every replicate of the new prompt beat every replicate of the old on BOTH
     axes, and the effects are five times the spreads.
+
+    ``--deliberate`` replaces the FORMATTING half and appends this rule
+    unchanged, which is what makes it a measurement of form rather than of the
+    refusal bar. That is checked here rather than asserted in a comment.
     """
-    prompt = runner._SYSTEM_PROMPT.casefold()
+    prompt = prompt_constant.casefold()
 
     assert "asked for" in prompt, "the cut is not stated"
     assert "character" in prompt and "would probably do" in prompt, (
