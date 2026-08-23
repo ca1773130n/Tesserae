@@ -606,6 +606,21 @@ class MabHit:
     #: the node that IS a document from the ~103 nodes that merely inherited its
     #: path — see :attr:`is_document_anchor`.
     name: str = ""
+    #: The graph node's ``id``, or ``""`` when the caller carried none.
+    #:
+    #: This dataclass deliberately drops the node — see the class docstring — and
+    #: that is why the LoCoMo answering path could not follow a fact's
+    #: ``evidenced_by`` edge back to the transcript turn it was extracted from:
+    #: by the time a hit exists, the node is gone. The id is the smallest thing
+    #: that puts the edge back within reach without re-widening this into a node
+    #: wrapper. LongMemEval never sets it, nothing here reads it, and it reaches
+    #: no prompt byte — only :meth:`evals.locomo.adapter.LocomoMemory.
+    #: _answer_evidence_tiered` looks it up, and only when tiering is on.
+    #:
+    #: LAST, and defaulted, because all 15 construction sites in this repository
+    #: pass the preceding fields by keyword; a trailing defaulted field is
+    #: therefore additive at every one of them.
+    node_id: str = ""
 
     @property
     def document(self) -> Optional[int]:

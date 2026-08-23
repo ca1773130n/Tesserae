@@ -49,6 +49,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -61,13 +62,18 @@ from .adapter import (
     DEFAULT_SOURCE_CAP,
     DEFAULT_UBIQUITY_DF_RATIO,
     EVIDENCE_EXTRA_SOURCE_CHARS,
+    EVIDENCE_PACK_CHARS,
+    EVIDENCE_RECEIPT_CHARS,
     EVIDENCE_SOURCE_CHARS,
     PROTOCOL_BACKBONE,
     PROTOCOL_CONTROLS,
     PROTOCOL_JUDGE,
     PROTOCOL_JUDGE_RUNS,
+    RECEIPT_WINDOW,
     RERANK_MAX_LENGTH,
     RERANK_OVERFETCH,
+    TURN_EMIT_WINDOW,
+    TURN_SCORE_WINDOW,
     IngestResult,
     LocomoMemory,
     guard_work_dir,
@@ -182,7 +188,11 @@ ANSWER_SHAPE = "short-span"
 #: deixis anyway, which is what makes this a prompt defect and not only an
 #: evidence one. The rule is narrow on purpose: it fires on time, it does not
 #: license paraphrase anywhere else, and it does not touch abstention.
-_SYSTEM_PROMPT = (
+#: The half of the prompt that is about FORM and nothing else: what shape an
+#: answer takes, and how a time is written. 672 characters, and every branch
+#: below carries it verbatim — the Modal Gate splits the ABSTENTION rule, never
+#: the formatting rule, so no arm can win by being told to answer more tersely.
+_ANSWER_FORMAT_RULES = (
     "You answer questions about a long conversation using the evidence given. "
     "Each evidence item is stamped with the date of the session it came from. "
     "Reply with the shortest answer that the evidence supports — a name, a "
@@ -192,9 +202,249 @@ _SYSTEM_PROMPT = (
     "is a time, give a calendar date: resolve relative expressions such as "
     "\"yesterday\", \"last week\" or \"the other day\" against the session date "
     "of the evidence item that states them, and never answer with the relative "
-    "expression itself. If the "
+    "expression itself. "
+)
+
+#: The abstention rule the shipped prompt carries: BOTH branches, delivered to
+#: every question. 776 characters. Unchanged, and still what runs unless
+#: ``--modal-gate`` is passed — an A/B on this text is in flight and a run that
+#: silently answered under a different rule would corrupt it.
+_BOTH_BRANCHES_RULE = (
+    # The refusal bar, cut by WHAT IS ASKED FOR rather than by how much evidence
+    # what cost open-domain 27 points. Measured on conv-26 under the published
+    # gpt-4o-mini grader: category 3 scored 0.500, and the failures were not
+    # wrong answers but "Not mentioned." against gold like "Likely no; though
+    # she likes reading, she wants to be a counselor" and "Somewhat, but not
+    # extremely religious". The old single sentence -- "if the evidence
+    # supports no answer at all" -- was read as "does not STATE it", so a
+    # question answerable only by inference read as unanswerable.
+    #
+    # The gold answers for that category are themselves hedged, which is the
+    # shape this asks for. What is NOT relaxed is the adversarial case: on
+    # category 5 declining IS the gold answer, 446 questions of the benchmark
+    # turn on it, and those ask about subjects the corpus never raises at all --
+    # which is exactly the first case below and still refuses.
+    "Two kinds of question need opposite treatment, and the difference is what "
+    "is being ASKED FOR, not how much evidence there is. A question about what "
+    "someone is LIKE -- their character, beliefs, preferences, or what they "
+    "would probably do -- is answerable from how they have behaved, so answer "
+    "it hedged as far as the evidence warrants (\"Likely no\", \"Somewhat\", "
+    "\"Probably a teacher\") and never decline it. A question that asserts a "
+    "SPECIFIC EVENT, object or fact -- what someone said about X, when they "
+    "did Y, which Z they bought -- needs the evidence to establish that event; "
+    "related material about the same people does not establish it. If the "
     "evidence supports no answer at all, reply exactly: Not mentioned."
 )
+
+#: The shipped prompt: form, then both abstention branches. 1,448 characters,
+#: assembled from the two constants above rather than duplicated, so the head
+#: the Modal Gate shares with it cannot drift away from it in a later edit.
+_SYSTEM_PROMPT = _ANSWER_FORMAT_RULES + _BOTH_BRANCHES_RULE
+
+
+# --------------------------------------------------------------------------
+# The Modal Gate — two abstention rules, one selected per question BEFORE
+# retrieval, neither containing the other's text
+#
+# Opt-in through ``--modal-gate``. Absent it, :data:`_SYSTEM_PROMPT` above is
+# what every question is answered under, byte for byte.
+#
+# THE DIAGNOSIS. Measured on the gpt-4o-mini-graded fan-out rows of the
+# 2026-08-23 conv-26 run: of 26 open-domain rows, 13 are correct, 11 are the
+# literal string "Not mentioned.", and exactly 2 are answered-but-wrong. When
+# the model ANSWERS a category-3 question it is right 13/15 = 0.867. The whole
+# deficit is refusal, not reasoning — and the golds it refuses are themselves
+# hedged verdicts ("Likely no, she does not refer to herself as part of it",
+# "Somewhat, but not extremely religious").
+#
+# WHY A GATE AND NOT A SOFTER RULE. The failed edit gated on how much the
+# evidence "bears on" the question. Evidence sufficiency is an axis BOTH
+# categories sit low on — an open-domain question has evidence that implies but
+# does not state the answer, an adversarial question has topically related
+# evidence that supports nothing — so any threshold on it moves both classes the
+# same way, which is exactly what was measured: open-domain refusals 54% -> 0%
+# AND adversarial 72% -> 49%, +7 questions against -11. Modality is orthogonal
+# BY CONSTRUCTION: it is a property of what is ASKED, fixed before a document is
+# retrieved, and it cannot move when retrieval quality changes. The dispositional
+# instruction is not softened for adversarial questions; it is never shown to
+# them.
+#
+# AND IT DOES NOT WORK. The reasoning above is sound and the measurement refutes
+# it anyway, which is why the flag ships OFF and this paragraph is longer than
+# the argument it corrects. Measured on conv-26, paired, identical frozen
+# evidence, 133 scored rows plus 20 empty-reply retries:
+#
+#   open-domain (cat 3, n=13)   refused 8.3% -> 0.0%    +1 question
+#   adversarial (cat 5, n=47)   refused 68.4% -> 59.6%  -4 questions
+#
+# Under every reading the gate lands below the 72% adversarial bar it was built
+# to protect: paired 68.4% -> 57.9%, unpaired 68.4% -> 59.6%, empties-counted-as
+# -refusals 74.5% -> 59.6%. One-sided exact McNemar on the 4:0 discordant pairs
+# is p=0.0625 — short of significance on ONE replicate, and stated here rather
+# than rounded, because the point estimate is negative under every reading and a
+# second replicate would not change the decision.
+#
+# THE CAUSE, from a disclosure control of 13 extra calls: a category-3 question
+# answered under :data:`_EVENT_SYSTEM` refuses 41.7% of the time, against 8.3%
+# under the both-branches prompt and 0.0% under :data:`_DISPOSITIONAL_SYSTEM`.
+# The event branch is worse calibrated than the prompt it replaced, so every
+# routing error costs more than a correct route saves. Modality being orthogonal
+# to evidence sufficiency does not help when one of the two branches is a worse
+# instruction than the undivided one.
+#
+# Kept, off, and documented rather than deleted: the diagnosis above (the whole
+# category-3 deficit is refusal, and a model that answers is right 13 of 15) is
+# still the correct reading, and the next attempt should fix the EVENT branch's
+# calibration rather than re-derive the routing.
+#
+# WHAT IT IS NOT. Two entity-based gates were tried and FALSIFIED on this
+# corpus, and neither should be proposed again without new evidence. Share of a
+# question's content words present in raw conv-26 text: adversarial mean 0.874
+# with 53.2% fully present, single-hop mean 0.878 with 51.4% fully present.
+# ADVERSARIAL QUESTIONS HAVE MORE OF THEIR VOCABULARY IN THE CORPUS THAN
+# ANSWERABLE ONES DO — LoCoMo builds them by recombining PRESENT entities into
+# events that never happened. A retrieval-confidence gate is unattractive for
+# the same reason from the other side: RippleMem measures first-hop confidence
+# as actively misleading on exactly these questions.
+# --------------------------------------------------------------------------
+
+#: The modals that mark a DISPOSITIONAL question, as one word-boundary
+#: alternation over the raw question string.
+#:
+#: SIX TERMS, AND THE FRONTIER IS EXACTLY HERE. Measured on all 1,986 LoCoMo
+#: questions and then re-measured on the nine conversations HELD OUT from the
+#: rule's design (conv-26 excluded): 0 of 399 held-out adversarial questions and
+#: 0 of 1,305 held-out category-1/2/4 questions route dispositional. Adding
+#: {attributes, personality, traits, describe} raises category-3 recall 0.396 ->
+#: 0.406 and breaks leakage from 0.0000 to 0.0224 adversarial and 0.0166 on
+#: 1/2/4. **Do not widen this for recall.** The design's entire claim is that
+#: the two populations are lexically DISJOINT on this feature, not that they
+#: rarely overlap, and a single leaked adversarial question falsifies it.
+#:
+#: Computed on the QUESTION STRING ALONE, before retrieval, which is what makes
+#: it orthogonal to evidence sufficiency and free to audit: every branch can be
+#: checked over the whole benchmark without an LLM call.
+_DISPOSITIONAL_MODALS = re.compile(
+    r"\b(?:would|might|likely|probably|be considered|prefer)\b", re.I)
+
+
+def dispositional_question(question: str) -> bool:
+    """Does ``question`` ask what someone WOULD do or IS LIKE?
+
+    Public because the falsifier is public: the router is validated by building
+    prompts for all ten conversations and checking that no category-5 question
+    lands here, and that check must be runnable without constructing a backbone
+    or spending a call.
+    """
+    return bool(_DISPOSITIONAL_MODALS.search(question or ""))
+
+
+#: The abstention rule for a DISPOSITIONAL question. 
+#:
+#: IT CONTAINS NO ABSTENTION STRING AT ALL, and that literalness is the
+#: mechanism rather than a stylistic choice. Abstention Inflation
+#: (arXiv:2507.16199v6) finds the inflation is STRUCTURAL, not semantic — the
+#: presence of a decline option raises declining, whatever it is worded as — so
+#: only absence works. There is no "Not mentioned.", no "refuse", no "decline",
+#: no "insufficient" below, deliberately.
+#:
+#: THE SECOND SENTENCE IS THE ONE THAT CONVERTS THE REFUSALS. Read the golds it
+#: is written against: "Would Melanie be considered a member of the LGBTQ
+#: community?" -> "Likely no, she does not refer to herself as part of it".
+#: The corpus never says so, and that ABSENCE IS THE ANSWER. Every one of the
+#: five questions refused in both replicates has a short hedged verdict as gold.
+#: This instruction cannot leak to the adversarial category because 0 of its 446
+#: questions reach this branch.
+_DISPOSITIONAL_RULE = (
+    # SENTENCE ONE is the shipped rule's dispositional half, kept to the word
+    # apart from "and never decline it", which is dropped for the reason above:
+    # an abstention token in this branch is the thing the branch exists to
+    # remove. Keeping the rest verbatim is what stops a gate-on/gate-off
+    # comparison measuring a rewrite instead of a routing decision.
+    "This question is about what someone is LIKE -- their character, beliefs, "
+    "preferences, or what they would probably do -- which is answerable from "
+    "how they have behaved, so answer it hedged as far as the evidence warrants "
+    "(\"Likely no\", \"Somewhat\", \"Probably a teacher\"). "
+    # SENTENCE TWO is the addition, and it is the whole mechanism.
+    "What the evidence never shows is itself informative: when nothing in it "
+    "shows the trait, the habit or the belief being asked about, that supports "
+    "a negative verdict such as \"Likely no\", which is an answer and is often "
+    "the right one."
+)
+
+#: The abstention rule for an EVENT question — the shipped rule's second half,
+#: with the dispositional carve-out DELETED and "Not mentioned." kept exactly.
+#:
+#: THE DELETION IS A POSITIVE MECHANISM, not merely tidying. The carve-out is
+#: measurably leaking onto adversarial questions today. Splitting conv-26's
+#: adversarial rows by whether the question asks for a feeling, meaning, motive
+#: or evaluation: interpretive-shaped refuse at 0.450 (n=20) against 0.611 for
+#: factual-shaped (n=72), and the 11 interpretive rows that answered returned
+#: exactly the hedged inferences the carve-out licenses — "Tiny and in awe of
+#: the universe" for "How did Caroline feel while watching the meteor shower?".
+#: None of those carry a modal, so all of them route here, where that text no
+#: longer exists.
+#:
+#: THE REFUSAL SENTENCE IS COPIED FROM :data:`_BOTH_BRANCHES_RULE`, CHARACTER
+#: FOR CHARACTER, and ``test_the_event_branch_refuses_in_the_shipped_words``
+#: pins it there. That phrase is the one BOTH the published grader's abstention
+#: rule and ours accept, and an earlier run turned an entire category over on
+#: the choice — the same answers scored 66.7% under our rule and 0.0% under the
+#: published one. It is ALSO the control: an EVENT branch that refuses in
+#: different words than the arm it is compared against is not a controlled
+#: comparison, it is a prompt rewrite wearing a router's clothes. That prompt is
+#: under active A/B on this branch and its wording has already moved once
+#: mid-edit; if the pin goes red, update this constant to match rather than
+#: relaxing the test.
+_EVENT_RULE = (
+    # The shipped rule's event half, kept to the word, minus the sentence that
+    # introduced the pair ("Two kinds of question need opposite treatment...")
+    # — there is only one kind of question in this branch.
+    "This question asserts a SPECIFIC EVENT, object or fact -- what someone "
+    "said about X, when they did Y, which Z they bought -- and needs the "
+    "evidence to establish that event; related material about the same people "
+    "does not establish it. If the evidence supports no answer at all, reply "
+    "exactly: Not mentioned."
+)
+
+#: The two prompts the gate chooses between. Each is the shared formatting head
+#: plus ONE rule, so neither carries the other's text — which is the whole
+#: design — and each is ~400 characters SHORTER than the single prompt that
+#: delivers both. The gate is therefore token-neutral to marginally
+#: token-negative; it neither funds nor obstructs the packing budget, and no
+#: writeup may credit it with either.
+_DISPOSITIONAL_SYSTEM = _ANSWER_FORMAT_RULES + _DISPOSITIONAL_RULE
+_EVENT_SYSTEM = _ANSWER_FORMAT_RULES + _EVENT_RULE
+
+
+def system_for(question: str, *, modal_gate: bool) -> str:
+    """The system prompt ``question`` is answered under.
+
+    ``modal_gate=False`` returns :data:`_SYSTEM_PROMPT` for every question,
+    which is the shipped behaviour and the only behaviour any run before this
+    flag had.
+
+    KNOWN CONFOUND, declared rather than buried: LoCoMo-Plus (arXiv:2602.10715)
+    finds that revealing the question TYPE systematically inflates LoCoMo
+    scores, and this router does exactly that implicitly. Part of any category
+    gain is prompt adaptation rather than memory quality. The owed control is
+    running each branch's prompt on the other branch's questions to size the
+    disclosure effect, and it must be run before the gain is described as a
+    memory result.
+
+    GENERALISATION, also declared: the router reaches 13 of 13 open-domain
+    questions on conv-26 but only 25 of 83 (0.301) on the held-out nine. About
+    60% of LoCoMo category 3 is not dispositional at all — "What console does
+    Nate own?" is a factual question the benchmark happens to label 3 — so
+    across ten conversations the branch touches roughly 29 of 96 open-domain
+    questions and the measured gain will be far smaller than conv-26 implies.
+    conv-26 is an unusually favourable slice and must not be sold as
+    representative.
+    """
+    if not modal_gate:
+        return _SYSTEM_PROMPT
+    return (_DISPOSITIONAL_SYSTEM if dispositional_question(question)
+            else _EVENT_SYSTEM)
 
 #: The canary's planted evidence. The question and the expected token are
 #: :mod:`evals.locomo.judge`'s — ONE owner for the pair, because a backbone
@@ -308,11 +558,19 @@ def select_or_skip(conversations: Sequence[Conversation],
 # --------------------------------------------------------------------------
 
 
-def build_backbone(model: str) -> Callable[[str, Sequence[str]], str]:
+def build_backbone(model: str, *,
+                   modal_gate: bool = False
+                   ) -> Callable[[str, Sequence[str]], str]:
     """An ``(question, evidence) -> short answer`` callable on ``model``.
 
     A closure rather than a class so the tests pass any callable and never
     construct an LLM client.
+
+    ``modal_gate=False`` answers every question under :data:`_SYSTEM_PROMPT`,
+    which is what every run before the flag did. With it on, the system prompt
+    is chosen per question by :func:`system_for` — see the Modal Gate block
+    above for why the split is on the question's MODALITY and not on how much
+    the evidence supports.
     """
     from tesserae.llm_json import build_default_json_client
 
@@ -328,7 +586,7 @@ def build_backbone(model: str) -> Callable[[str, Sequence[str]], str]:
         numbered = "\n\n".join(f"[{i}] {text}"
                                for i, text in enumerate(evidence, start=1))
         payload = client.complete_json(
-            system=_SYSTEM_PROMPT,
+            system=system_for(question, modal_gate=modal_gate),
             user=f"Evidence:\n{numbered}\n\nQuestion: {question}",
             schema_name="locomo_answer",
         )
@@ -448,7 +706,12 @@ def search_conversation(
         documents.append(memory.documents_of(hits))
         if build_evidence:
             budget = hits if answer_k is None else hits[:answer_k]
-            evidence.append(memory.answer_evidence(budget, expand=expand_evidence))
+            # The QUESTION reaches the assembly, not only the ranking. Read by
+            # `--evidence-unit turn` alone, which scores every candidate turn
+            # against it; the session units ignore it and their bytes are
+            # unchanged.
+            evidence.append(memory.answer_evidence(
+                budget, expand=expand_evidence, question=question.question))
         else:
             evidence.append([])
         errors.append("")
@@ -513,6 +776,7 @@ def answer_conversation(
     replicate: int,
     arm: str = "tesserae",
     evidence_content: str = "source",
+    modal_gate: bool = False,
     progress: bool = True,
 ) -> List[Dict[str, Any]]:
     """Answer every question from evidence :func:`search_conversation` already got.
@@ -562,6 +826,13 @@ def answer_conversation(
             "question": question.question,
             "category": question.category,
             "answer": answer,
+            # Which abstention rule this question was answered under, persisted
+            # so the router is auditable in the answers file rather than
+            # re-derivable from a regex someone has to trust. "" when the gate
+            # is off, which is not the same claim as "event": one says the
+            # question was never routed, the other says it was and landed there.
+            "branch": (("dispositional" if dispositional_question(question.question)
+                        else "event") if modal_gate else ""),
             "n_evidence": len(items),
             # What the backbone actually read, in characters. An identical
             # generative config has swung 0.043 token F1 between two runs in
@@ -1250,6 +1521,91 @@ def build_parser() -> argparse.ArgumentParser:
                              "session file rather than the node retrieved. "
                              "Repairs the prompt starvation --source-cap "
                              "otherwise causes; see LocomoMemory._hit_nodes")
+    parser.add_argument("--tiered-evidence", action="store_true",
+                        help="spend the evidence budget cheapest first: fact "
+                             "heads with the filesystem path stripped, then the "
+                             "transcript turn each fact's evidenced_by edge "
+                             "points at, then today's session paste unchanged. "
+                             "Free, local, deterministic. Off by default: "
+                             "without it the answering path is the same bytes "
+                             "it is today. Refuses --prefer-anchor-text")
+    parser.add_argument("--evidence-receipt-chars", type=int,
+                        default=EVIDENCE_RECEIPT_CHARS,
+                        help=f"characters of receipt TURN text one question may "
+                             f"carry (default: {EVIDENCE_RECEIPT_CHARS}). A "
+                             f"bound, not a target — measured spend is 477, so "
+                             f"it does not bind on this corpus. 0 is the kill "
+                             f"control and reproduces the shipped numbers "
+                             f"exactly. Ignored without --tiered-evidence")
+    parser.add_argument("--receipt-window", type=int, default=RECEIPT_WINDOW,
+                        help=f"turns either side of a receipt turn to emit with "
+                             f"it, in FILE order (default: {RECEIPT_WINDOW}). "
+                             f"Off because it is unmeasured in this frame: two "
+                             f"prior measurements disagree, and the one that "
+                             f"found it inert had already pasted the "
+                             f"neighbours. Ignored without --tiered-evidence")
+    parser.add_argument("--modal-gate", action="store_true",
+                        help="choose the abstention rule PER QUESTION from the "
+                             "question's modality, computed before retrieval: a "
+                             "dispositional question (would / might / likely / "
+                             "probably / be considered / prefer) is answered "
+                             "under a prompt containing NO abstention string at "
+                             "all, everything else under one containing no "
+                             "dispositional carve-out. Off by default: without "
+                             "it every question is answered under the single "
+                             "shipped prompt, byte for byte. Free — it changes "
+                             "no evidence and costs ~400 characters LESS than "
+                             "the prompt it replaces")
+    parser.add_argument("--evidence-unit", choices=("session", "turn"),
+                        default="session",
+                        help="what ONE evidence item is. 'session' is the "
+                             "shipped path and pastes whole session files; "
+                             "'turn' keeps the session as the RETRIEVAL unit "
+                             "and makes the turn the READING unit, packing "
+                             "query-selected [D<n>:<t>] lines from the same "
+                             "retrieved sessions into --evidence-pack-chars. "
+                             "Free, local, deterministic. Off by default: "
+                             "without it the answering path is the same bytes "
+                             "it is today. Refuses --tiered-evidence")
+    parser.add_argument("--evidence-pack-chars", type=int,
+                        default=EVIDENCE_PACK_CHARS,
+                        help=f"the ONE total budget a turn-unit prompt may "
+                             f"spend, session headers included (default: "
+                             f"{EVIDENCE_PACK_CHARS}, ~7,000 tokens against the "
+                             f"~10,900 the fan-out arm spends today). Replaces "
+                             f"the per-document and extra-source budgets on "
+                             f"this path only. Ignored without --evidence-unit "
+                             f"turn")
+    parser.add_argument("--turn-pool", choices=("retrieved", "corpus"),
+                        default="retrieved",
+                        help="which sessions' turns may be scored. 'retrieved' "
+                             "is the default and holds the pack to the same "
+                             "distinct-session count the shipped arm has "
+                             "(9.78 on conv-26); 'corpus' scores every staged "
+                             "session, reaching +0.014 turn coverage at 17.3 "
+                             "distinct sessions — a SECOND ARM against Levy's "
+                             "distractor penalty, not a better default, and on "
+                             "a 19-session corpus indistinguishable from "
+                             "reading everything. Ignored without "
+                             "--evidence-unit turn")
+    parser.add_argument("--turn-emit-window", type=int,
+                        default=TURN_EMIT_WINDOW,
+                        help=f"turns either side of an ADMITTED turn to emit "
+                             f"with it, in FILE order (default: "
+                             f"{TURN_EMIT_WINDOW}). Off because it is measured "
+                             f"NEGATIVE at a fixed budget — 0.923 -> 0.908 turn "
+                             f"coverage, because the neighbours eat slots. "
+                             f"Score with context, emit without it. Ignored "
+                             f"without --evidence-unit turn")
+    parser.add_argument("--turn-heads", choices=("none", "fact"),
+                        default="none",
+                        help="whether the fact heads join the pack. 'none' by "
+                             "default and measured: they cost 2,230 characters, "
+                             "which at a fixed cap is ~14 turns, and the turns "
+                             "are worth more (coverage 0.942 -> 0.927, "
+                             "open-domain 0.773 -> 0.682). 'fact' emits them "
+                             "with the absolute filesystem path stripped. "
+                             "Ignored without --evidence-unit turn")
     parser.add_argument("--i-know-this-costs-money", action="store_true",
                         help="required for anything that reaches an LLM")
     parser.add_argument("--yes", action="store_true",
@@ -1351,7 +1707,41 @@ def _grade_rows(
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    # Guard 0 — a flag pair that would silently produce the failure the other
+    # flag exists to prevent. `--prefer-anchor-text` rewrites EVERY hit to a
+    # SourceDocument/Session anchor, and those node types carry no
+    # `evidenced_by` edge at all: measured, it drives provenance to exactly
+    # 0.000. Composing the two would report a tiered run whose receipt tier
+    # emitted nothing, which is the "worse Mem0" this design exists to avoid.
+    # A hard refusal rather than a Skip: this is an argument error, and a Skip
+    # exits 0, which reads as a run that measured something.
+    #
+    # `--prefer-anchor-text` is NOT gated on `--fanout`, so absent this it
+    # composes with anything.
+    if args.tiered_evidence and args.prefer_anchor_text:
+        parser.error(
+            "--tiered-evidence and --prefer-anchor-text contradict each other: "
+            "--prefer-anchor-text rewrites every hit to its session's anchor "
+            "node, and SourceDocument/Session nodes carry no evidenced_by "
+            "edges, so the receipt tier would resolve nothing and provenance "
+            "would read 0.000. Pick one."
+        )
+
+    # Guard 0b — the second incoherent pair, refused on the same terms.
+    # Tiering's tier 2 (receipt turns) IS a degenerate turn pack, and its tier 3
+    # pastes whole sessions the pack budget knows nothing about. Composing them
+    # would produce a prompt neither design's coverage table describes and a
+    # meta block naming two budgets only one of which bound.
+    if args.evidence_unit == "turn" and args.tiered_evidence:
+        parser.error(
+            "--evidence-unit turn and --tiered-evidence are mutually "
+            "exclusive: tiering's receipt tier is a degenerate special case of "
+            "the turn pack, and its session tier spends a budget the pack does "
+            "not account for. Pick one."
+        )
 
     # Guard 1 — CI, before anything reads a file.
     if os.environ.get("CI"):
@@ -1498,8 +1888,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             ubiquity_df_ratio=args.ubiquity_df_ratio,
             extra_facets=args.extra_facets,
             prefer_anchor_text=args.prefer_anchor_text,
+            tiered_evidence=args.tiered_evidence,
+            evidence_receipt_chars=args.evidence_receipt_chars,
+            receipt_window=args.receipt_window,
+            evidence_unit=args.evidence_unit,
+            evidence_pack_chars=args.evidence_pack_chars,
+            turn_pool=args.turn_pool,
+            turn_emit_window=args.turn_emit_window,
+            turn_heads=args.turn_heads,
         ) if spends else None
-        answer_fn = build_backbone(args.backbone) if answering else None
+        answer_fn = (build_backbone(args.backbone,
+                                  modal_gate=args.modal_gate)
+                     if answering else None)
 
         # THE CANARY. Before any question is answered, and before the judge
         # grades anything. Both halves, in both directions.
@@ -1566,7 +1966,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                 answer_rows += answer_conversation(
                                     conversation, evidence, errors, answer_fn,
                                     replicate=replicate,
-                                    evidence_content=args.answer_evidence)
+                                    evidence_content=args.answer_evidence,
+                                    modal_gate=args.modal_gate)
                     else:
                         # One arm per CONVERSATION: an index carried across
                         # conversations would rank a question against a corpus
@@ -1644,6 +2045,64 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             # NOT gated on --fanout: this one changes what the backbone reads
             # whether or not the fan-out ran, so a silent key would be a lie.
             "prefer_anchor_text": bool(args.prefer_anchor_text),
+            # False/0 rather than omitted, on the same terms as `fanout`: a
+            # result whose meta is silent about tiering predates the stage, and
+            # one that says False assembled whole sessions the shipped way.
+            "tiered_evidence": bool(args.tiered_evidence),
+            "evidence_receipt_chars": (args.evidence_receipt_chars
+                                       if args.tiered_evidence else 0),
+            "receipt_window": (args.receipt_window
+                               if args.tiered_evidence else 0),
+            # False rather than omitted, on the same terms as `fanout`: a result
+            # whose meta is silent about the gate predates it, and one that says
+            # False answered every question under the single shipped prompt. The
+            # per-question branch is on the ROW, not here — this only says
+            # whether routing happened at all.
+            "modal_gate": bool(args.modal_gate),
+            # "session"/0 rather than omitted, on the same terms as `fanout`: a
+            # result whose meta is silent about the unit predates the stage, and
+            # one that says "session" pasted whole sessions the shipped way. The
+            # budget travels with it because a turn arm's ENTIRE claim is
+            # quality at a declared character cost — a coverage number without
+            # the budget it was bought at is unreadable.
+            "evidence_unit": args.evidence_unit,
+            "evidence_pack_chars": (args.evidence_pack_chars
+                                    if args.evidence_unit == "turn" else 0),
+            "turn_pool": (args.turn_pool
+                          if args.evidence_unit == "turn" else ""),
+            "turn_emit_window": (args.turn_emit_window
+                                 if args.evidence_unit == "turn" else 0),
+            # From the CONSTANT, not a flag — it has none, because the design
+            # decided it (+0.023 turn coverage at a fixed budget) and a sweep
+            # would report noise. Declared anyway, on the same terms as
+            # `evidence_source_chars`: it changes WHICH turns the backbone read,
+            # and a run scored before and after a change to it are not the same
+            # measurement.
+            "turn_score_window": (TURN_SCORE_WINDOW
+                                  if args.evidence_unit == "turn" else 0),
+            "turn_heads": (args.turn_heads
+                           if args.evidence_unit == "turn" else ""),
+            # What the pack actually spent, against what it was allowed to.
+            # `pack_sessions` is the distinct-session count the Levy distractor
+            # risk is argued on, so it belongs beside the budget rather than in
+            # a notebook.
+            "pack_chars": memory.pack_chars if memory else 0,
+            "pack_turns": memory.pack_turns if memory else 0,
+            "pack_sessions": memory.pack_sessions if memory else 0,
+            # What the tier actually spent and what the GRAPH allowed it to.
+            # `witness_yield` travels beside the spend deliberately: it is the
+            # ceiling on redeemable receipts, and a redeemability number quoted
+            # without it is unbounded. `unresolvable_spans` and
+            # `dangling_receipts` are the compile tripwires — receipts are
+            # recovered entirely through the `[D<n>:<t>]` marker
+            # `render_session` writes, so a change to the staged rendering
+            # zeroes them and the coverage instrument at the same time, in
+            # silence, and these two counters are the only warning.
+            "receipt_chars": memory.receipt_chars if memory else 0,
+            "receipt_lines": memory.receipt_lines if memory else 0,
+            "witness_yield": round(memory.witness_yield, 4) if memory else 0.0,
+            "unresolvable_spans": memory.unresolvable_spans if memory else 0,
+            "dangling_receipts": memory.dangling_receipts if memory else 0,
             "evidence_budget": args.answer_k,
             "evidence_content": args.answer_evidence,
             "evidence_source_chars": (EVIDENCE_SOURCE_CHARS

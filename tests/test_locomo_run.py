@@ -506,9 +506,12 @@ def test_an_answering_run_goes_end_to_end_without_a_model(monkeypatch, tmp_path)
                         lambda self: type("B", (), {"name": "stub", "dim": 8})())
     # A backbone that answers the single-hop question and declines the
     # adversarial one — which is the correct behaviour on both.
+    # ``**_`` because ``build_backbone`` grew ``modal_gate``: a stub pinned to
+    # the old arity would fail on the wiring rather than on the behaviour it
+    # exists to check.
     monkeypatch.setattr(runner, "build_backbone",
-                        lambda model: lambda q, e: ("teal" if "colour" in q
-                                                    else "I don't know."))
+                        lambda model, **_: lambda q, e: ("teal" if "colour" in q
+                                                         else "I don't know."))
 
     out_path = tmp_path / "report.md"
     answers_path = tmp_path / "answers.json"
@@ -836,3 +839,428 @@ def test_the_prompt_permits_inference_and_still_requires_abstention():
     assert "does not contain the answer" not in prompt, (
         "an extraction-only abstention rule refuses every inference question"
     )
+
+
+def test_tiered_evidence_and_prefer_anchor_text_refuse_each_other(monkeypatch,
+                                                                  tmp_path):
+    """A pair that would silently produce the failure tiering exists to prevent.
+
+    `--prefer-anchor-text` rewrites EVERY hit to its session's anchor, and
+    SourceDocument/Session nodes carry no `evidenced_by` edges at all — measured,
+    it drives provenance to exactly 0.000. It is not gated on `--fanout`, so
+    absent this refusal it composes with anything. A hard exit rather than a
+    Skip: a Skip returns 0, which reads as a run that measured something.
+    """
+    monkeypatch.delenv("CI", raising=False)
+    with pytest.raises(SystemExit) as exit_info:
+        runner.main([
+            "--data", str(_dataset(tmp_path)), "--work", str(tmp_path / "work"),
+            "--tiered-evidence", "--prefer-anchor-text",
+        ])
+    assert exit_info.value.code == 2
+
+
+def test_the_tiered_knobs_read_zero_when_the_stage_is_off():
+    """False/0 rather than an omitted key, on `--fanout`'s terms: silent meta
+    predates the stage, and 0 says the run did not use the knob."""
+    args = runner.build_parser().parse_args([])
+    assert args.tiered_evidence is False
+    assert (args.evidence_receipt_chars, args.receipt_window) == (8_000, 0)
+
+
+def test_a_tiered_run_puts_the_receipt_in_the_prompt_and_the_spend_in_the_meta(
+        monkeypatch, tmp_path):
+    """`--tiered-evidence` end to end: flag -> memory -> prompt -> artifact.
+
+    The retrieved fact lives in session 2 and its `evidenced_by` span points at
+    a turn of session 1, so the receipt is a turn tier 3 does NOT paste — which
+    is the whole case the tier exists for. A harness whose wiring can only be
+    checked by spending money does not get checked, so the backbone and the
+    search lane are stubs and this costs nothing.
+
+    Verified to fail on every assertion below with the flag removed.
+    """
+    from tesserae.research_graph import (
+        ResearchEdge,
+        ResearchGraph,
+        ResearchNode,
+        ResearchNodeType,
+    )
+
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.setattr("evals.locomo.adapter._default_compile", lambda work: None)
+
+    def _graph_of(memory):
+        corpus = memory.work / "corpus"
+        return ResearchGraph(
+            nodes=[
+                ResearchNode(id="Claim:bike", name="Ada owns a teal bike",
+                             type=ResearchNodeType.CLAIM,
+                             description="Ada bought a bike and rode it to work.",
+                             source_path=str(corpus / "session-0002.md")),
+                ResearchNode(id="EvidenceSpan:D1:1", name="D1:1 evidence",
+                             type=ResearchNodeType.EVIDENCE_SPAN, description="",
+                             source_path=str(corpus / "session-0001.md"),
+                             metadata={"turn": "D1:1", "speaker": "Ada"}),
+            ],
+            edges=[ResearchEdge(source="Claim:bike", target="EvidenceSpan:D1:1",
+                                type="evidenced_by")],
+        )
+
+    class _Result:
+        def __init__(self, nodes):
+            self.scored = [type("S", (), {"node": n})() for n in nodes]
+            self.total_matches = len(nodes)
+
+    monkeypatch.setattr(runner.LocomoMemory, "_resolve_graph", _graph_of)
+    monkeypatch.setattr(runner.LocomoMemory, "_resolve_search",
+                        lambda self: lambda graph, q, **kw: _Result(graph.nodes[:1]))
+    monkeypatch.setattr(runner.LocomoMemory, "embedding_backend",
+                        lambda self: type("B", (), {"name": "stub", "dim": 8})())
+    prompts: List[str] = []
+
+    def _backbone(model, **_):
+        def _answer(question, evidence):
+            prompts.append("\n\n".join(evidence))
+            return "teal"
+        return _answer
+
+    monkeypatch.setattr(runner, "build_backbone", _backbone)
+
+    answers_path = tmp_path / "answers.json"
+    assert runner.main([
+        "--data", str(_dataset(tmp_path)), "--conversations", "conv-test",
+        "--work", str(tmp_path / "work"), "--answers-out", str(answers_path),
+        "--out", str(tmp_path / "report.md"), "--tiered-evidence",
+        "--i-know-this-costs-money", "--yes",
+    ]) == 0
+
+    prompt = prompts[-1]
+    assert "[D1:1]" in prompt, "the receipt tier emitted nothing"
+    assert "teal bike" in prompt, "session 2's own text stopped being pasted"
+    assert " — source: " not in prompt, "the absolute path survived the strip"
+
+    meta = json.loads(answers_path.read_text(encoding="utf-8"))["meta"]
+    assert meta["tiered_evidence"] is True
+    assert meta["evidence_receipt_chars"] == 8_000 and meta["receipt_window"] == 0
+    assert meta["receipt_lines"] >= 1 and meta["receipt_chars"] > 0
+    assert meta["witness_yield"] == 1.0
+    assert meta["unresolvable_spans"] == 0 and meta["dangling_receipts"] == 0
+
+
+# ------------------------------------------------------------- the modal gate
+
+
+#: Real LoCoMo questions, one per category, frozen here so the router has a
+#: ratchet that does not depend on the 350 MB dataset being on disk. The
+#: dataset-wide leak check below is the real falsifier; this is the one that
+#: still runs when it is skipped.
+_ROUTER_CASES = [
+    # category 3 — dispositional, the branch's whole population
+    ("Would Melanie be considered a member of the LGBTQ community?", True),
+    ("Would Caroline likely have Dr. Seuss books?", True),
+    ("Would Joanna prefer a quiet evening?", True),
+    ("Might Nate take up running again?", True),
+    ("Is Melanie probably religious?", True),
+    # category 3 — factual questions the benchmark happens to label 3, which
+    # the router deliberately does NOT claim
+    ("What console does Nate own?", False),
+    ("What nickname does Nate use for Joanna?", False),
+    # category 5 — adversarial. NOT ONE of these may route dispositional.
+    ("What was grandma's gift to Melanie?", False),
+    ("Where did Oscar hide his bone once?", False),
+    ("Did Caroline make the black and white bowl in the photo?", False),
+    ("How did Caroline feel while watching the meteor shower?", False),
+    ("What is Melanie excited about in her adoption process?", False),
+    # categories 1 / 2 / 4
+    ("What state did Joanna visit in summer 2021?", False),
+    ("When did Ada buy the bike?", False),
+]
+
+
+@pytest.mark.parametrize("question,expected", _ROUTER_CASES)
+def test_the_router_reads_modality_and_nothing_else(question, expected):
+    """Computed on the QUESTION STRING ALONE, before retrieval.
+
+    That is what makes it orthogonal to evidence sufficiency. The failed edit
+    gated on how much the evidence "bears on" the question — an axis BOTH
+    open-domain and adversarial sit low on — and moved open-domain refusals
+    54% -> 0% while moving adversarial 72% -> 49%: +7 questions against -11.
+    Modality cannot move when retrieval quality changes.
+    """
+    assert runner.dispositional_question(question) is expected
+
+
+def test_no_adversarial_question_in_the_benchmark_routes_dispositional():
+    """KILL CONDITION 1, and it costs nothing to run.
+
+    The claim is that the two populations are lexically DISJOINT on this
+    feature, not that they rarely overlap, so a SINGLE leaked adversarial
+    question out of 446 falsifies the design. Measured today over all 1,986
+    questions: 0 of 446 adversarial and 0 of 1,444 on categories 1/2/4, with
+    38 of 96 open-domain routed (25 of 83 on the nine conversations held out
+    from the rule's design).
+    """
+    if not runner.DEFAULT_DATA.is_file():
+        pytest.skip(f"{runner.DEFAULT_DATA} is not on this machine; the frozen "
+                    f"_ROUTER_CASES above still pin the rule")
+    leaked: Dict[int, List[str]] = {}
+    routed = total = 0
+    for conversation in load_conversations(runner.DEFAULT_DATA):
+        for question in conversation.questions:
+            disposed = runner.dispositional_question(question.question)
+            if question.category == 3:
+                total += 1
+                routed += int(disposed)
+            elif disposed:
+                leaked.setdefault(question.category, []).append(question.question)
+    assert leaked == {}, (
+        f"the router leaked into non-open-domain categories: "
+        f"{ {k: v[:3] for k, v in leaked.items()} }. The design's whole "
+        f"separation claim is that this set is empty — DO NOT widen "
+        f"_DISPOSITIONAL_MODALS to recover open-domain recall; adding "
+        f"{{attributes, personality, traits, describe}} was measured at "
+        f"+0.010 recall for 0.0224 adversarial leakage."
+    )
+    assert routed == 38 and total == 96, (
+        f"open-domain routing moved to {routed}/{total} from 38/96. That is "
+        f"not a failure on its own, but every projection in this design is "
+        f"arithmetic over that denominator."
+    )
+
+
+def test_the_gate_off_is_the_shipped_prompt_for_every_question():
+    """The opt-in guarantee. An A/B on ``_SYSTEM_PROMPT`` is in flight on this
+    branch, and a run that silently answered under a different rule would
+    corrupt it."""
+    for question, _ in _ROUTER_CASES:
+        assert runner.system_for(question, modal_gate=False) is runner._SYSTEM_PROMPT
+
+
+def test_the_dispositional_branch_contains_no_abstention_string_at_all():
+    """Abstention Inflation (arXiv:2507.16199v6) finds the inflation is
+    STRUCTURAL, not semantic — the presence of a decline option raises
+    declining however it is worded — so only literal absence works. This is the
+    mechanism, not a style rule.
+    """
+    text = runner._DISPOSITIONAL_SYSTEM.lower()
+    for marker in ("not mentioned", "decline", "refus", "insufficient",
+                   "unanswerable", "cannot answer", "don't know",
+                   "do not know", "unknown", "no answer"):
+        assert marker not in text, (
+            f"{marker!r} is in the dispositional prompt. Its 11 refusals are "
+            f"caused by the structural presence of an abstention option; "
+            f"rewording one back in reinstates the failure."
+        )
+
+
+def test_the_event_branch_refuses_in_the_shipped_words():
+    """THE CONTROL. An EVENT branch that refuses in different words than the
+    arm it is compared against is a prompt rewrite wearing a router's clothes.
+
+    The refusal sentence is copied from ``_BOTH_BRANCHES_RULE`` character for
+    character. That prompt is under active A/B on this branch and its wording
+    has already moved once mid-edit — if this goes red, update ``_EVENT_RULE``
+    to match it rather than relaxing the assertion.
+    """
+    shipped = runner._BOTH_BRANCHES_RULE
+    sentence = shipped[shipped.rindex("If the evidence supports no answer"):]
+    assert sentence and sentence in runner._EVENT_SYSTEM
+    assert "Not mentioned." in sentence, (
+        "the refusal phrase left the shipped prompt. It is the one BOTH the "
+        "published grader's abstention rule and ours accept, and an earlier "
+        "run turned an entire category over on that choice: the same answers "
+        "scored 66.7% under our rule and 0.0% under the published one."
+    )
+
+
+def test_neither_branch_carries_the_other_and_both_carry_the_head():
+    """The separation IS the design: the dispositional instruction is not
+    softened for adversarial questions, it is never shown to them. Both keep
+    the formatting head verbatim, so no arm can win by being told to answer
+    more tersely."""
+    head = runner._ANSWER_FORMAT_RULES
+    assert runner._SYSTEM_PROMPT.startswith(head)
+    assert runner._DISPOSITIONAL_SYSTEM.startswith(head)
+    assert runner._EVENT_SYSTEM.startswith(head)
+    assert runner._DISPOSITIONAL_RULE not in runner._EVENT_SYSTEM
+    assert runner._EVENT_RULE not in runner._DISPOSITIONAL_SYSTEM
+    # Token-neutral to marginally token-NEGATIVE. It neither funds nor
+    # obstructs the packing budget and must not be credited with either.
+    assert len(runner._DISPOSITIONAL_SYSTEM) < len(runner._SYSTEM_PROMPT)
+    assert len(runner._EVENT_SYSTEM) < len(runner._SYSTEM_PROMPT)
+
+
+def test_the_gate_hands_each_question_its_own_branch():
+    assert runner.system_for("Would she likely say yes?", modal_gate=True) == \
+        runner._DISPOSITIONAL_SYSTEM
+    assert runner.system_for("What was the gift?", modal_gate=True) == \
+        runner._EVENT_SYSTEM
+
+
+def test_the_backbone_sends_the_branch_the_router_chose(monkeypatch):
+    """The wiring, checked without an LLM client — the thing a paid run would
+    otherwise be the only way to check."""
+    seen: List[str] = []
+
+    class _Client:
+        def complete_json(self, *, system, user, schema_name):
+            seen.append(system)
+            return {"answer": "ok"}
+
+    monkeypatch.setattr("tesserae.llm_json.build_default_json_client",
+                        lambda model: _Client())
+
+    gated = runner.build_backbone("m", modal_gate=True)
+    gated("Would she likely say yes?", ["e"])
+    gated("What was the gift?", ["e"])
+    assert seen == [runner._DISPOSITIONAL_SYSTEM, runner._EVENT_SYSTEM]
+
+    seen.clear()
+    plain = runner.build_backbone("m")
+    plain("Would she likely say yes?", ["e"])
+    assert seen == [runner._SYSTEM_PROMPT]
+
+
+def test_the_row_records_the_branch_only_when_the_gate_ran(tmp_path):
+    """"" is not the same claim as "event": one says the question was never
+    routed, the other says it was and landed there. The branch is persisted so
+    the router is auditable in the answers file rather than re-derivable from a
+    regex someone has to trust."""
+    conversation = load_conversations(_dataset(tmp_path))[0]
+    evidence = [["e"], ["e"]]
+    errors = ["", ""]
+
+    off = runner.answer_conversation(conversation, evidence, errors,
+                                     lambda q, e: "x", replicate=0,
+                                     progress=False)
+    assert [row["branch"] for row in off] == ["", ""]
+
+    on = runner.answer_conversation(conversation, evidence, errors,
+                                    lambda q, e: "x", replicate=0,
+                                    modal_gate=True, progress=False)
+    assert [row["branch"] for row in on] == ["event", "event"]
+    assert all(runner.dispositional_question(row["question"]) is False
+               for row in on)
+
+
+# --------------------------------------------------- the turn pack, wired up
+
+
+def test_the_turn_unit_and_tiering_are_refused_together(capsys):
+    """Tier 2 IS a degenerate turn pack, and tier 3 spends a budget the pack
+    does not account for. Refused at the parser, like the other incoherent
+    pair, because a Skip exits 0 and reads as a run that measured something."""
+    with pytest.raises(SystemExit):
+        runner.main(["--evidence-unit", "turn", "--tiered-evidence"])
+    assert "mutually exclusive" in capsys.readouterr().err
+
+
+def test_the_pack_settings_default_to_the_shipped_session_unit():
+    args = runner.build_parser().parse_args([])
+    assert args.evidence_unit == "session"
+    assert args.turn_pool == "retrieved"
+    assert args.turn_heads == "none"
+    assert args.modal_gate is False
+    assert args.evidence_pack_chars == runner.EVIDENCE_PACK_CHARS
+    assert args.turn_emit_window == runner.TURN_EMIT_WINDOW
+
+
+def test_a_turn_unit_run_declares_its_budget_and_its_spend(monkeypatch,
+                                                           tmp_path):
+    """An arm's budget is declared in its OWN record. A coverage number without
+    the character cost it was bought at is unreadable, and this branch has
+    already lost two thirds of one headline to a missing budget-matched
+    control.
+    """
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.setattr("evals.locomo.adapter._default_compile", lambda work: None)
+
+    class _Node:
+        def __init__(self, name, source_path):
+            self.name, self.source_path, self.description = name, source_path, ""
+            self.id = "SourceDocument:1"
+
+    class _Result:
+        def __init__(self, nodes):
+            self.scored = [type("S", (), {"node": n})() for n in nodes]
+            self.total_matches = len(nodes)
+
+    def _search(graph, question, **kwargs):
+        root = kwargs.get("source_root")
+        return _Result([_Node("Session 0001",
+                              str(root / "corpus" / "session-0001.md"))])
+
+    monkeypatch.setattr(runner.LocomoMemory, "_resolve_graph", lambda self: object())
+    monkeypatch.setattr(runner.LocomoMemory, "_resolve_search", lambda self: _search)
+    monkeypatch.setattr(runner.LocomoMemory, "_receipt_index", lambda self: {})
+    # The dense lane is weighted 0.5 by default, so this run resolves a backend
+    # and calls it. A stub keeps the case on a normal install: no model, no
+    # torch, no network.
+    class _Backend:
+        name, dim = "stub", 2
+
+        def embed(self, texts):
+            return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(runner.LocomoMemory, "embedding_backend",
+                        lambda self: _Backend())
+    monkeypatch.setattr(runner, "build_backbone",
+                        lambda model, **_: lambda q, e: "teal")
+
+    answers = tmp_path / "answers.json"
+    assert runner.main([
+        "--data", str(_dataset(tmp_path)), "--conversations", "conv-test",
+        "--work", str(tmp_path / "work"), "--out", str(tmp_path / "report.md"),
+        "--answers-out", str(answers),
+        "--evidence-unit", "turn", "--evidence-pack-chars", "400",
+        "--turn-pool", "corpus", "--turn-heads", "fact", "--modal-gate",
+        "--i-know-this-costs-money", "--yes",
+    ]) == 0
+
+    meta = json.loads(answers.read_text(encoding="utf-8"))["meta"]
+    assert meta["evidence_unit"] == "turn"
+    assert meta["evidence_pack_chars"] == 400
+    assert meta["turn_pool"] == "corpus"
+    assert meta["turn_heads"] == "fact"
+    assert meta["turn_score_window"] == runner.TURN_SCORE_WINDOW
+    assert meta["modal_gate"] is True
+    assert 0 < meta["pack_chars"] <= 400 * 2
+    assert meta["pack_turns"] >= 1 and meta["pack_sessions"] >= 1
+
+    rows = json.loads(answers.read_text(encoding="utf-8"))["rows"]
+    assert {row["branch"] for row in rows} == {"event"}
+    assert all(0 < row["evidence_chars"] <= 400 for row in rows)
+
+
+def test_a_session_unit_run_says_so_rather_than_going_silent(monkeypatch,
+                                                             tmp_path):
+    """"session"/0 rather than an omitted key, on the same terms as `fanout`: a
+    result whose meta is silent about the unit predates the stage, and one that
+    says "session" pasted whole sessions the shipped way."""
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.setattr("evals.locomo.adapter._default_compile", lambda work: None)
+    monkeypatch.setattr(runner, "build_backbone",
+                        lambda model, **_: lambda q, e: "teal")
+    monkeypatch.setattr(runner.LocomoMemory, "_resolve_graph", lambda self: object())
+    monkeypatch.setattr(
+        runner.LocomoMemory, "_resolve_search",
+        lambda self: lambda graph, question, **kwargs: type(
+            "R", (), {"scored": [], "total_matches": 0})())
+    monkeypatch.setattr(runner.LocomoMemory, "embedding_backend",
+                        lambda self: type("B", (), {"name": "stub", "dim": 8})())
+
+    answers = tmp_path / "answers.json"
+    assert runner.main([
+        "--data", str(_dataset(tmp_path)), "--conversations", "conv-test",
+        "--work", str(tmp_path / "work"), "--out", str(tmp_path / "report.md"),
+        "--answers-out", str(answers),
+        "--i-know-this-costs-money", "--yes",
+    ]) == 0
+    meta = json.loads(answers.read_text(encoding="utf-8"))["meta"]
+    assert meta["evidence_unit"] == "session"
+    assert meta["evidence_pack_chars"] == 0
+    assert meta["turn_pool"] == "" and meta["turn_heads"] == ""
+    assert meta["turn_emit_window"] == meta["turn_score_window"] == 0
+    assert meta["modal_gate"] is False
+    assert meta["pack_chars"] == meta["pack_turns"] == meta["pack_sessions"] == 0
