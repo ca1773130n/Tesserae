@@ -389,6 +389,27 @@ class LLMJudge(Judge):
             family = str(self.model or "").casefold()
             if any(tag in family for tag in ("sonnet", "haiku", "opus", "claude")):
                 self._client = ClaudeCLIJsonClient(model=self.model)
+            elif family.startswith(("gpt-", "o1", "o3", "o4", "chatgpt")):
+                # The PUBLISHED grader is gpt-4o-mini, and until this branch it
+                # was unreachable: `build_default_json_client` sends every
+                # OpenAI-family name to the Codex CLI, which on a ChatGPT
+                # account answers `The 'gpt-4o-mini' model is not supported when
+                # using Codex with a ChatGPT account`. So `judge: UNMET` was
+                # printed on every run in this repository and no number it
+                # produced was comparable to a published one — not a
+                # configuration choice, a missing capability.
+                #
+                # `codex` names Codex's OWN models (gpt-5.6-luna and friends),
+                # which the CLI serves and the HTTP API does not, so it is not
+                # captured by this prefix test and still routes below.
+                from tesserae.llm_json import OpenAIAPIJsonClient
+
+                client = OpenAIAPIJsonClient(model=self.model)
+                # Falls through to the CLI when no key is configured rather
+                # than failing: a machine with Codex and no OPENAI_API_KEY is
+                # exactly the machine this used to work on for Codex's models.
+                self._client = client if client.available else (
+                    build_default_json_client(model=self.model))
             else:
                 self._client = build_default_json_client(model=self.model)
         if self._client is None:

@@ -31,6 +31,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import re
 import secrets
 import signal
@@ -1058,6 +1059,131 @@ class ClaudeCLIJsonClient:
 #: assumed as the remedy.
 _TRANSPORT_RETRIES = 2
 _TRANSPORT_BACKOFF = 2.0  # seconds; doubled per attempt
+
+
+class OpenAIAPIJsonClient:
+    """The OpenAI HTTP API, for models the Codex CLI cannot serve.
+
+    Exists because the PUBLISHED LoCoMo grader is ``gpt-4o-mini`` and this
+    codebase could not reach it. Every OpenAI-family model routed through
+    :class:`CodexCLIJsonClient`, and Codex on a ChatGPT account answers
+    ``The 'gpt-4o-mini' model is not supported when using Codex with a ChatGPT
+    account`` — so every run reported ``judge: UNMET`` and no number this
+    project produced was comparable to a published one. That is a missing
+    capability, not a configuration choice.
+
+    Stdlib ``urllib`` rather than the ``openai`` package, following
+    :class:`~tesserae.retrieval.hybrid.OpenAIEmbeddingBackend`, which posts to
+    the same API the same way. A grader is a few hundred short calls; it does
+    not justify a dependency the base install would carry forever.
+
+    ``None`` on any failure, like every client here, so a caller that cannot
+    grade stops rather than scoring an ungraded answer WRONG.
+    """
+
+    name = "openai-api"
+
+    def __init__(self, model: str, *, api_key: Optional[str] = None,
+                 timeout: float = 120.0) -> None:
+        self.model = model
+        self._key = api_key or os.environ.get("OPENAI_API_KEY") or ""
+        self._timeout = timeout
+
+    @property
+    def available(self) -> bool:
+        return bool(self._key)
+
+    def _post(self, *, system: str, user: str, json_mode: bool) -> Optional[str]:
+        import json as _json
+        import urllib.error
+        import urllib.request
+
+        if not self._key:
+            return None
+        body = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            # The published grader runs at temperature 0. A judge that varies
+            # run to run is a judge whose disagreements cannot be told from the
+            # arms it is grading.
+            "temperature": 0,
+        }
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
+        req = urllib.request.Request(
+            "https://api.openai.com/v1/chat/completions",
+            data=_json.dumps(body).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self._key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                payload = _json.load(resp)
+        except urllib.error.HTTPError as exc:
+            # The body carries the reason ("model not found", "insufficient
+            # quota"); the status alone does not, and a judge that fails for a
+            # billing reason must not read as a judge that failed to parse.
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", "replace")[:400]
+            except Exception:  # pragma: no cover - best effort
+                pass
+            print(f"[openai-api] HTTP {exc.code} for {self.model}: {detail}",
+                  file=sys.stderr)
+            _note_failure("openai-api")
+            return None
+        except Exception as exc:  # pragma: no cover - network shapes vary
+            print(f"[openai-api] {type(exc).__name__} for {self.model}: {exc}",
+                  file=sys.stderr)
+            _note_failure("openai-api")
+            return None
+        try:
+            return str(payload["choices"][0]["message"]["content"])
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    def complete_json(
+        self,
+        *,
+        system: str,
+        user: str,
+        schema_name: str,
+        cache_key: Optional[str] = None,
+        max_retries: int = 2,
+    ) -> Optional[Union[dict, list]]:
+        cached = _cli_cache_get(cache_key, model=self.model, prompt=f"{system}\n{user}",
+                                extra=schema_name)
+        if cached is not None:
+            return parse_json_tolerant(cached)
+        for _ in range(max(1, max_retries)):
+            raw = self._post(system=system, user=user, json_mode=True)
+            if raw is None:
+                continue
+            parsed = parse_json_tolerant(raw)
+            if parsed is not None:
+                _cli_cache_put(cache_key, raw, model=self.model,
+                               prompt=f"{system}\n{user}", extra=schema_name)
+                return parsed
+        return None
+
+    def complete_text(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_retries: int = 2,
+    ) -> Optional[str]:
+        for _ in range(max(1, max_retries)):
+            raw = self._post(system=system, user=user, json_mode=False)
+            if raw is not None:
+                return raw
+        return None
 
 
 class CodexCLIJsonClient:
