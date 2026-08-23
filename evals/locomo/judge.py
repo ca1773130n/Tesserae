@@ -276,6 +276,62 @@ Do NOT include both CORRECT and WRONG in your response, or it will break the eva
 
 Just return the label CORRECT or WRONG in a json format with the key as "label"."""
 
+#: Mem0's OWN 2026 grader, reproduced from `mem0ai/memory-benchmarks`
+#: (`benchmarks/locomo/prompts.py`), because their 92.5 is graded by it and the
+#: Protocol-B prompt above is not the same instrument.
+#:
+#: It is NOT a better grader and this module does not present it as one. It is a
+#: LENIENT one, in three named ways, and every one of them raises any system's
+#: score without changing the system:
+#:
+#:   * PARTIAL CREDIT — one gold item out of a list is enough. LoCoMo's
+#:     multi-hop gold is frequently a set ("pottery, camping, painting,
+#:     swimming"); under Protocol-B an answer with three of four scores zero.
+#:   * DATE TOLERANCE — 14 days, and durations within 50%.
+#:   * CATEGORY-3 TRUNCATION — the gold is cut at its first semicolon, which is
+#:     what ``--semicolon-gold`` already does here.
+#:
+#: Measured on this repository's own saved conv-26 rows: 3 answers were EXACTLY
+#: the gold date and graded WRONG, and 25 had list-shaped gold at 36% mean item
+#: coverage. All 28 become CORRECT under these rules, on answers nobody changed.
+#:
+#: **Never report a number graded with this beside one graded with Protocol B.**
+#: The run artifact records `judge_rules`, and a report that does not print it is
+#: quoting two instruments as one.
+MEM0_2026_JUDGE_USER_PROMPT = """Your task is to label an answer to a question as 'CORRECT' or 'WRONG'. You will be given the following data:
+    (1) a question (posed by one user to another user),
+    (2) a 'gold' (ground truth) answer,
+    (3) a generated answer
+which you will score as CORRECT/WRONG.
+
+The point of the question is to ask about something one user should know about the other user based on their prior conversations.
+The gold answer will usually be a concise and short answer that includes the referenced topic, for example:
+Question: Do you remember what I got the last time I went to Hawaii?
+Gold answer: A shell necklace
+The generated answer might be much longer, but you should be generous with your grading - as long as it touches on the same topic as the gold answer, it should be counted as CORRECT.
+
+Apply these rules:
+1. PARTIAL CREDIT: If the generated answer includes AT LEAST ONE correct item from the gold answer's list, mark CORRECT. Only mark WRONG if NONE of the gold answer items appear.
+2. TOPIC MATCH: As long as the generated answer touches on the same topic as the gold answer, mark CORRECT.
+3. FORMAT: Differences in format, wording, verbosity or ordering never make an answer WRONG.
+4. DATE TOLERANCE: Dates within 14 days of each other are CORRECT. Durations within 50% are CORRECT.
+
+Now it's time for the real question:
+Question: {question}
+Gold answer: {gold_answer}
+Generated answer: {response}
+
+First, provide a short (one sentence) explanation of your reasoning, then finish with CORRECT or WRONG.
+Do NOT include both CORRECT and WRONG in your response, or it will break the evaluation script.
+
+Just return the label CORRECT or WRONG in a json format with the key as "label"."""
+
+#: The prompt each rule set uses. `judge_rules` in the run artifact names the key.
+JUDGE_RULE_SETS = {
+    "protocol-b": JUDGE_USER_PROMPT,
+    "mem0-2026": MEM0_2026_JUDGE_USER_PROMPT,
+}
+
 _LABEL = re.compile(r"correct|wrong", re.IGNORECASE)
 
 
@@ -311,6 +367,7 @@ class LLMJudge(Judge):
         temperature: float = 0.0,
         client_factory: Optional[Callable[[str], Any]] = None,
         split_semicolon_gold: bool = False,
+        judge_rules: str = "protocol-b",
     ) -> None:
         if not str(model).strip():
             raise Skip(
@@ -324,6 +381,13 @@ class LLMJudge(Judge):
         self._client: Any = None
         self._abstention = DeterministicJudge(split_semicolon_gold=split_semicolon_gold)
         self._split_semicolon = split_semicolon_gold
+        if judge_rules not in JUDGE_RULE_SETS:
+            raise Skip(f"--judge-rules {judge_rules!r} names no rule set",
+                       f"pass one of {sorted(JUDGE_RULE_SETS)}")
+        #: Which grader's rules ran. `protocol-b` is the published LoCoMo
+        #: grader; `mem0-2026` is Mem0's own, which is LENIENT and whose number
+        #: must never be printed beside a Protocol-B one.
+        self.judge_rules = judge_rules
         self._llm_calls = 0
         #: Replies that carried no CORRECT/WRONG label. Scored WRONG, as the
         #: reference does, and counted here so a judge that stopped answering
@@ -336,7 +400,17 @@ class LLMJudge(Judge):
             "judge": self.model,
             "judge_family": self.name,
             "judge_temperature": self.temperature,
-            "judge_prompt": "LoCoMo Protocol B grader, verbatim",
+            # The INSTRUMENT, named. A run graded by Mem0's lenient rules and
+            # one graded by the published grader are not the same measurement,
+            # and an artifact that says "Protocol B" for both is how they get
+            # quoted as one.
+            "judge_prompt": (
+                "LoCoMo Protocol B grader, verbatim"
+                if self.judge_rules == "protocol-b"
+                else "Mem0 2026 grader, verbatim (LENIENT: partial credit, "
+                     "14-day date tolerance, 50% duration tolerance)"
+            ),
+            "judge_rules": self.judge_rules,
             "judge_adversarial_rule": "evals.qa.scorer.is_refusal (not sent to "
                                       "the model — 444 of 446 carry no gold)",
             "judge_semicolon_gold": self._split_semicolon,
@@ -451,7 +525,7 @@ class LLMJudge(Judge):
                            judge=self.model, errored=True,
                            detail=str(answer)[:200])
         client = self._resolve_client()
-        prompt = JUDGE_USER_PROMPT.format(
+        prompt = JUDGE_RULE_SETS[self.judge_rules].format(
             question=question.question,
             gold_answer=golds[0],
             response=answer or "",
@@ -484,6 +558,7 @@ class LLMJudge(Judge):
 
 
 def build_judge(spec: str, *, split_semicolon_gold: bool = False,
+                judge_rules: str = "protocol-b",
                 client_factory: Optional[Callable[[str], Any]] = None) -> Judge:
     """``deterministic`` or ``llm:<model>`` — the whole judge boundary, as a flag.
 
@@ -497,7 +572,8 @@ def build_judge(spec: str, *, split_semicolon_gold: bool = False,
     family, _, model = text.partition(":")
     if family.strip().lower() in ("llm", "model"):
         return LLMJudge(model, client_factory=client_factory,
-                        split_semicolon_gold=split_semicolon_gold)
+                        split_semicolon_gold=split_semicolon_gold,
+                        judge_rules=judge_rules)
     raise Skip(
         f"--judge {spec!r} names no judge this harness has",
         "pass --judge deterministic (free, reproducible, runs today) or "

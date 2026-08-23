@@ -1465,6 +1465,17 @@ def build_parser() -> argparse.ArgumentParser:
                         help="what the backbone reads per hit: the node summary "
                              "plus its own session text (source, the default), "
                              "or the node summary alone (summary, the control)")
+    parser.add_argument("--judge-rules", default="protocol-b",
+                        choices=("protocol-b", "mem0-2026"),
+                        help="which grader's RULES run. protocol-b is the "
+                             "published LoCoMo grader (default). mem0-2026 is "
+                             "Mem0's own, reproduced from their benchmark repo: "
+                             "partial credit on list golds, 14-day date "
+                             "tolerance, 50%% duration tolerance. It is LENIENT "
+                             "and raises any system's score without changing "
+                             "the system — their 92.5 is graded by it. Recorded "
+                             "in the run artifact as `judge_rules`; never quote "
+                             "a number from one beside a number from the other")
     parser.add_argument("--semicolon-gold", action="store_true",
                         help="score category 3 on the first `;`-separated "
                              "clause only, as the reference harness does")
@@ -1751,7 +1762,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     try:
-        judge = build_judge(args.judge, split_semicolon_gold=args.semicolon_gold)
+        judge = build_judge(args.judge, split_semicolon_gold=args.semicolon_gold,
+                            judge_rules=args.judge_rules)
         arms = parse_arms(args.arms)
         ks = require_ks(args.k)
         data = require_data(args.data)

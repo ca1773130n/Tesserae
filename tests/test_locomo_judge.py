@@ -354,3 +354,41 @@ def test_a_dead_judge_is_not_a_skip():
     """A Skip prints and exits 0, which is right for a missing input and wrong
     for a grader that is answering."""
     assert not issubclass(DeadJudge, Skip)
+
+
+def test_the_lenient_rule_set_declares_itself_in_the_artifact():
+    """Two graders, and a run that cannot say which one ran is a wrong record.
+
+    `mem0-2026` reproduces Mem0's own grader: partial credit on list golds,
+    14-day date tolerance, 50% duration tolerance. It is LENIENT, and on this
+    repository's own saved conv-26 answers — the same answers, no system change
+    — it moves the fan-out arm 0.816 -> 0.859, almost all of it multi-hop
+    (0.766 -> 0.875) where LoCoMo's gold is a list.
+
+    The first version of this threading reported `judge_prompt: "LoCoMo Protocol
+    B grader, verbatim"` while running Mem0's rules. That artifact would have
+    been quoted against a strict number as though the two were one instrument.
+    """
+    from evals.locomo.judge import JUDGE_RULE_SETS, build_judge
+
+    assert set(JUDGE_RULE_SETS) == {"protocol-b", "mem0-2026"}
+
+    strict = build_judge("llm:gpt-4o-mini").config
+    lenient = build_judge("llm:gpt-4o-mini", judge_rules="mem0-2026").config
+
+    assert strict["judge_rules"] == "protocol-b"
+    assert lenient["judge_rules"] == "mem0-2026"
+    assert "Protocol B" in strict["judge_prompt"]
+    assert "LENIENT" in lenient["judge_prompt"], (
+        "a report quoting this number must be able to see, from the artifact "
+        "alone, that its grader gives partial credit"
+    )
+    assert strict["judge_prompt"] != lenient["judge_prompt"]
+
+
+def test_an_unknown_rule_set_is_refused_rather_than_defaulted():
+    """Silently falling back to Protocol B would mislabel every row."""
+    from evals.qa.run_qa_eval import Skip
+
+    with pytest.raises(Skip):
+        build_judge("llm:gpt-4o-mini", judge_rules="whatever")
