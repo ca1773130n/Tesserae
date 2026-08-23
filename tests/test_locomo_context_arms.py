@@ -25,6 +25,31 @@ from evals.qa.run_qa_eval import Skip
 SYSTEM = "You answer questions."
 
 
+@pytest.fixture
+def pinned_tokenizer():
+    """The real tokenizer, or skip the test that asked for it.
+
+    These arms are measured in TOKENS, and `tokens.py` refuses to fall back to
+    a character count on purpose — two runs counted with two vocabularies
+    produce two ladders that look like one. So a machine without
+    `Qwen/Qwen3-Embedding-0.6B` in its Hugging Face cache cannot run these
+    cases, and the honest outcome there is a skip naming what is missing.
+
+    It was a FAILURE until now, which is worse than either: 13 red tests on
+    every CI run since `816edf18`, none of them about the code under test, all
+    of them saying only that a hosted runner has no model cache. A red suite
+    that is always red stops being read.
+
+    Requested explicitly rather than autouse, because the cases that assert
+    `pytest.raises(Skip)` must keep running on exactly the machines where the
+    tokenizer is absent — that is the behaviour they pin.
+    """
+    try:
+        tokens.load_tokenizer()
+    except Skip as exc:
+        pytest.skip(f"{exc}")
+
+
 # --------------------------------------------------------------------------
 # Stubs
 # --------------------------------------------------------------------------
@@ -98,7 +123,7 @@ def test_serialized_request_is_byte_identical_to_what_the_client_sends():
         system="sys", user="usr", schema_name="sch")
 
 
-def test_the_system_half_is_inside_the_count_so_it_cannot_be_smuggled():
+def test_the_system_half_is_inside_the_count_so_it_cannot_be_smuggled(pinned_tokenizer):
     """Moving text from the user turn into the system prompt must not be free.
 
     Counting only the evidence leaves a channel open: instructions, few-shot
@@ -126,7 +151,7 @@ def test_a_tokenizer_whose_digest_moved_is_refused_not_used(monkeypatch, tmp_pat
     monkeypatch.setattr(tokens, "_TOKENIZER", None)
 
 
-def test_fit_by_prefix_is_maximal_and_never_overshoots():
+def test_fit_by_prefix_is_maximal_and_never_overshoots(pinned_tokenizer):
     """The cut is measured in tokens, not sliced in characters.
 
     Characters and tokens are not proportional, so a character slice at a
@@ -160,7 +185,7 @@ def test_evidence_framing_matches_the_shape_the_other_runner_sends():
         "Evidence:\n[1] first\n\n[2] second\n\nQuestion: Q?")
 
 
-def test_an_arm_that_supplies_nothing_says_so_inside_the_count():
+def test_an_arm_that_supplies_nothing_says_so_inside_the_count(pinned_tokenizer):
     """Empty evidence must not read as "never asked".
 
     The words are inside the request and therefore inside the token count, like
@@ -171,7 +196,7 @@ def test_an_arm_that_supplies_nothing_says_so_inside_the_count():
     assert tokens.count_tokens(tokens.serialized_request(SYSTEM, user, "x")) > 0
 
 
-def test_every_prompt_row_carries_its_own_token_count():
+def test_every_prompt_row_carries_its_own_token_count(pinned_tokenizer):
     prompt = tokens.Prompt(system=SYSTEM, user=tokens.user_turn("Q?", ["e"]),
                            schema_name=tokens.SCHEMA_NAME, items=["e"])
     row = prompt.as_row()
@@ -189,7 +214,7 @@ def _documents(n: int, size: int = 900) -> Dict[int, str]:
     return {i: f"Session {i}. " + ("word%d " % i) * size for i in range(1, n + 1)}
 
 
-def test_bm25_documents_fills_the_budget_with_whole_documents_and_stops():
+def test_bm25_documents_fills_the_budget_with_whole_documents_and_stops(pinned_tokenizer):
     documents = _documents(6)
     arm = context_arms.Bm25DocumentsArm(
         "conv-a", SYSTEM, _StubRanker([1, 2, 3, 4, 5, 6]), documents)
@@ -201,7 +226,7 @@ def test_bm25_documents_fills_the_budget_with_whole_documents_and_stops():
             assert all(item in documents.values() for item in prompt.items)
 
 
-def test_bm25_documents_truncates_only_when_nothing_fits_and_flags_it():
+def test_bm25_documents_truncates_only_when_nothing_fits_and_flags_it(pinned_tokenizer):
     """A fixed budget measures truncation skill unless truncation is counted."""
     documents = _documents(3)
     arm = context_arms.Bm25DocumentsArm(
@@ -215,7 +240,7 @@ def test_bm25_documents_truncates_only_when_nothing_fits_and_flags_it():
     assert roomy.truncated is False
 
 
-def test_bm25_documents_ranks_the_whole_corpus_so_the_budget_is_the_only_cut():
+def test_bm25_documents_ranks_the_whole_corpus_so_the_budget_is_the_only_cut(pinned_tokenizer):
     """A smaller k would be a second, undeclared budget inside the ranking."""
     ranker = _StubRanker([1, 2, 3, 4])
     arm = context_arms.Bm25DocumentsArm("conv-a", SYSTEM, ranker, _documents(4))
@@ -228,7 +253,7 @@ def test_bm25_documents_ranks_the_whole_corpus_so_the_budget_is_the_only_cut():
 # --------------------------------------------------------------------------
 
 
-def test_compiled_arms_never_exceed_the_budget_they_were_fitted_to(monkeypatch):
+def test_compiled_arms_never_exceed_the_budget_they_were_fitted_to(monkeypatch, pinned_tokenizer):
     _stub_compile(monkeypatch, lambda budget: "compiled body. " * (budget // 10))
     arm = context_arms.GraphOnlyArm("conv-a", SYSTEM, _StubGraph([]), "/root")
     for budget in (512, 2048, 8192):
@@ -238,7 +263,7 @@ def test_compiled_arms_never_exceed_the_budget_they_were_fitted_to(monkeypatch):
         assert prompt.fit["grid_tokens"], "the fitting scan must be auditable"
 
 
-def test_bm25_compiled_seeds_the_walk_and_graph_only_does_not(monkeypatch):
+def test_bm25_compiled_seeds_the_walk_and_graph_only_does_not(monkeypatch, pinned_tokenizer):
     """The one structural difference between arm B and arm C."""
     seen = _stub_compile(monkeypatch, lambda budget: "body " * (budget // 10))
     graph = _StubGraph(["SourceDocument:session-0001:aa",
@@ -280,7 +305,7 @@ def test_a_seed_the_graph_does_not_hold_refuses_instead_of_degrading():
 # --------------------------------------------------------------------------
 
 
-def test_an_arm_built_for_one_conversation_cannot_emit_another_s_text():
+def test_an_arm_built_for_one_conversation_cannot_emit_another_s_text(pinned_tokenizer):
     """Speaker names repeat across LoCoMo conversations; a leak would score."""
     a = context_arms.Bm25DocumentsArm(
         "conv-a", SYSTEM, _StubRanker([1]), {1: "CONV-A ONLY: Melanie paints."})
@@ -501,7 +526,7 @@ def test_the_canary_reaches_the_prompt_backbone_through_the_run_s_own_check():
         canary_backbone(run_context.canary_shim(lambda prompt: ""))
 
 
-def test_build_prompts_persists_the_request_verbatim(tmp_path):
+def test_build_prompts_persists_the_request_verbatim(tmp_path, pinned_tokenizer):
     """A token claim must be re-derivable from disk without re-spending."""
     from evals.locomo.dataset import Conversation, LocomoQuestion
 
@@ -525,7 +550,7 @@ def test_build_prompts_persists_the_request_verbatim(tmp_path):
     assert "The bicycle was teal." in lines[1]
 
 
-def test_unbudgeted_controls_are_built_once_not_once_per_rung():
+def test_unbudgeted_controls_are_built_once_not_once_per_rung(pinned_tokenizer):
     from evals.locomo.dataset import Conversation, LocomoQuestion
 
     conversation = Conversation(
@@ -586,7 +611,7 @@ def test_the_draw_filters_by_category_before_it_shuffles():
                        23, 11, 21, 33, 38, 16, 17, 13]
 
 
-def test_the_draw_keeps_the_original_question_index_so_keys_stay_comparable():
+def test_the_draw_keeps_the_original_question_index_so_keys_stay_comparable(pinned_tokenizer):
     """A sampled row must carry its index in the FULL question list.
 
     ``question_key`` is ``<conversation>#<index>``. Re-enumerating a subset
