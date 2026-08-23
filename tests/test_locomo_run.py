@@ -1264,3 +1264,42 @@ def test_a_session_unit_run_says_so_rather_than_going_silent(monkeypatch,
     assert meta["turn_emit_window"] == meta["turn_score_window"] == 0
     assert meta["modal_gate"] is False
     assert meta["pack_chars"] == meta["pack_turns"] == meta["pack_sessions"] == 0
+
+
+def test_the_prompt_cuts_by_what_is_asked_not_by_how_much_evidence():
+    """The distinction that separates open-domain from adversarial.
+
+    Two kinds of question need opposite treatment and a single sufficiency
+    threshold cannot serve both: an open-domain question has evidence that
+    implies but does not state its answer, an adversarial question has topically
+    related evidence that supports nothing, so a rule gated on how much the
+    evidence "bears on" the question moves both the same way. Measured when
+    exactly that was tried: open-domain refusal 54% -> 0% AND adversarial
+    72% -> 49%, +7 questions against -11.
+
+    Cutting on WHAT IS ASKED FOR instead moves them in opposite directions.
+    Measured on conv-26, three replicates of both arms, 360 backbone calls:
+
+        open-domain refusal  48.7% -> 10.3%   (spread 7.7 / 7.7)
+        adversarial refusal  62.4% -> 79.4%   (spread 6.4 / 2.1)
+
+    Every replicate of the new prompt beat every replicate of the old on BOTH
+    axes, and the effects are five times the spreads.
+    """
+    prompt = runner._SYSTEM_PROMPT.casefold()
+
+    assert "asked for" in prompt, "the cut is not stated"
+    assert "character" in prompt and "would probably do" in prompt, (
+        "the dispositional case is not named, so it falls back to the "
+        "sufficiency reading that moved both categories together"
+    )
+    assert "specific event" in prompt, "the event case is not named"
+    assert "does not establish it" in prompt, (
+        "without this, topically related evidence reads as establishment and "
+        "adversarial questions get answered"
+    )
+    # The two rules the earlier failures produced must not come back.
+    assert "bears on" not in prompt, "the refuted sufficiency gate returned"
+    assert "does not contain the answer" not in prompt, (
+        "an extraction-only abstention rule refuses every inference question"
+    )
