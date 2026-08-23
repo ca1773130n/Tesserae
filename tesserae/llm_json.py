@@ -173,6 +173,37 @@ def last_failure_kind() -> Optional[str]:
     return getattr(_LAST_FAILURE, "kind", None)
 
 
+#: The provider's LAST raw reply on this thread, before parsing.
+#:
+#: ``complete_json`` DESTROYS unparseable text: ``parse_json_tolerant`` returns
+#: None, ``_note_failure("unparseable")`` records why, and the caller gets None
+#: one frame above with nothing to recover from. Measured on the LoCoMo
+#: answering path (24-call raw probe at fan-out prompt size, 2026-08-23): 6 of
+#: 24 replies were shape failures and ZERO were transport failures — two were
+#: bare prose carrying the CORRECT answer, one was a correct refusal written as
+#: a bare JSON string. Every "the backbone returned nothing" row on that run was
+#: an answer already paid for and then thrown away inside this module.
+#:
+#: Thread-local for the same reason ``_LAST_FAILURE`` is: BatchIngestRunner
+#: shares ONE client across worker threads, so an instance attribute would
+#: report whichever worker wrote last. Only meaningful immediately after the
+#: ``complete_json`` whose text it describes — it is cleared on entry to every
+#: one, so a stale reply can never be attributed to a call that never answered.
+_LAST_RAW = threading.local()
+
+
+def _note_raw(text: Optional[str]) -> None:
+    """Record the raw text this thread's in-flight ``complete_json`` received."""
+    _LAST_RAW.text = text
+
+
+def last_raw_reply() -> Optional[str]:
+    """The provider's unparsed reply to this thread's most recent
+    ``complete_json``, or ``None`` when nothing was received. Read it only
+    immediately after that call: it is per-thread, not per-client."""
+    return getattr(_LAST_RAW, "text", None)
+
+
 #: Monotonic per-thread tally of on-disk cache consultations, so a caller can
 #: bracket a unit of work and learn what it COST rather than only that it
 #: finished. A compile that is 90% replay from ``~/.tesserae/llm_cache`` and one
@@ -475,6 +506,7 @@ class AnthropicLLMJsonClient:
         # Clear first: a caller reads last_failure_kind() only after a None
         # return, and a stale note from an earlier call would misattribute it.
         _note_failure(None)
+        _note_raw(None)  # ...and the same for the raw reply, for the same reason
         # Add a JSON-mode reminder to whatever system prompt the caller
         # supplied. Belt-and-suspenders even though the prompt should
         # already say "respond with JSON only".
@@ -537,6 +569,7 @@ class AnthropicLLMJsonClient:
                 return None
 
         text = _extract_text(response)
+        _note_raw(text)
         if not text:
             # A 200 with an empty body is a transport failure wearing a clean
             # status code, not a bad generation.
@@ -955,16 +988,22 @@ class ClaudeCLIJsonClient:
     ) -> Optional[Union[dict, list]]:
         # Clear first so a cache hit can't leave a stale note behind.
         _note_failure(None)
+        _note_raw(None)
         # Stitch system + user into a single prompt for the CLI's -p flag.
         prompt = _stitch_json_prompt(system=system, user=user, schema_name=schema_name)
         model, extra = self._cache_coords(schema_name)
         cached = _cli_cache_get(cache_key, model=model, prompt=prompt, extra=extra)
         if cached is not None:
+            # A replayed answer is still what the provider said; note it so a
+            # caller recovering an odd SHAPE behaves the same on a cache hit as
+            # on a live call, rather than only on the run that paid.
+            _note_raw(cached)
             return parse_json_tolerant(cached)
         raw = self._run_prompt(
             prompt,
             error_label=f"ClaudeCLIJsonClient.complete_json failed (schema={schema_name})",
         )
+        _note_raw(raw)
         if raw is None:
             # _run_prompt records "timeout" when that's what it was; every
             # other exhausted-all-config-dirs path means nothing was answered.
@@ -1157,12 +1196,15 @@ class OpenAIAPIJsonClient:
         cache_key: Optional[str] = None,
         max_retries: int = 2,
     ) -> Optional[Union[dict, list]]:
+        _note_raw(None)  # cleared on entry so a stale reply cannot be misread
         cached = _cli_cache_get(cache_key, model=self.model, prompt=f"{system}\n{user}",
                                 extra=schema_name)
         if cached is not None:
+            _note_raw(cached)
             return parse_json_tolerant(cached)
         for _ in range(max(1, max_retries)):
             raw = self._post(system=system, user=user, json_mode=True)
+            _note_raw(raw)
             if raw is None:
                 continue
             parsed = parse_json_tolerant(raw)
@@ -1512,17 +1554,23 @@ class CodexCLIJsonClient:
     ) -> Optional[Union[dict, list]]:
         # Clear first so a cache hit can't leave a stale note behind.
         _note_failure(None)
+        _note_raw(None)
         # Same prompt stitching as the Claude CLI client: codex exec has no
         # separate system slot either, so prefix the JSON-only contract.
         prompt = _stitch_json_prompt(system=system, user=user, schema_name=schema_name)
         model, extra = self._cache_coords(schema_name)
         cached = _cli_cache_get(cache_key, model=model, prompt=prompt, extra=extra)
         if cached is not None:
+            # A replayed answer is still what the provider said; note it so a
+            # caller recovering an odd SHAPE behaves the same on a cache hit as
+            # on a live call, rather than only on the run that paid.
+            _note_raw(cached)
             return parse_json_tolerant(cached)
         raw = self._run_prompt(
             prompt,
             error_label=f"CodexCLIJsonClient.complete_json failed (schema={schema_name})",
         )
+        _note_raw(raw)
         if raw is None:
             # _run_prompt already recorded WHY (timeout vs unavailable) —
             # don't flatten a timeout back into a capacity outage. Only the

@@ -176,6 +176,28 @@ def test_client_gives_up_after_max_retries(fake_client_factory):
     assert len(fake.messages.calls) == 3
 
 
+def test_a_transport_failure_leaves_no_stale_raw_reply(fake_client_factory):
+    """THE CLEAR-ON-ENTRY, pinned where it carries weight. This client gives up
+    from inside its except ladder — ``_note_failure("unavailable"); return
+    None`` — before any raw text exists, so without clearing on entry the
+    PREVIOUS call's reply would still be readable and would be recovered as
+    this call's answer."""
+    from tesserae.llm_json import last_raw_reply
+
+    fake_client_factory([_FakeResponse("not json at all")])
+    client = AnthropicLLMJsonClient()
+    assert client.complete_json(system="x", user="y", schema_name="z") is None
+    assert last_raw_reply() == "not json at all"
+
+    class _Boom(Exception):
+        pass
+
+    fake_client_factory([_Boom("the API never answered")])
+    assert client.complete_json(system="x", user="y", schema_name="z") is None
+    assert llm_json.last_failure_kind() == "unavailable"
+    assert not (last_raw_reply() or "").strip()
+
+
 # ---------------------------------------------------------------------------
 # build_default_json_client gating
 # ---------------------------------------------------------------------------
@@ -904,6 +926,51 @@ def test_codex_client_invokes_codex_exec_and_parses_json(monkeypatch, tmp_path):
     assert "You extract insights." in call["input"]
     assert "Session text here." in call["input"]
     assert "insights_v1" in call["input"]
+
+
+def test_the_raw_reply_survives_a_parse_failure(monkeypatch, tmp_path):
+    """``complete_json`` DESTROYS unparseable text — ``parse_json_tolerant``
+    returns None and the caller one frame up gets None with nothing to recover
+    from. Measured on the LoCoMo answering path, that destroyed answers the run
+    had already paid for: a 24-call raw probe at fan-out prompt size found 6
+    shape failures and ZERO transport failures, two of them bare prose carrying
+    the CORRECT answer.
+
+    So the text is noted before it is parsed, and the caller reads it straight
+    after a None return.
+    """
+    from tesserae.llm_json import CodexCLIJsonClient, last_raw_reply
+
+    monkeypatch.setattr(llm_json, "_run_cli",
+                        _FakeCodexRun(payload="counseling or mental health"))
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    client = CodexCLIJsonClient(codex_homes=[str(home)])
+
+    assert client.complete_json(system="s", user="u", schema_name="z") is None
+    assert llm_json.last_failure_kind() == "unparseable"
+    assert "counseling or mental health" in (last_raw_reply() or "")
+
+
+def test_the_raw_reply_is_cleared_when_nothing_was_received(monkeypatch, tmp_path):
+    """After a call that received nothing, the PREVIOUS call's reply must not
+    still be readable — a caller recovering an odd shape would otherwise attach
+    one question's answer to another's row."""
+    from tesserae.llm_json import CodexCLIJsonClient, last_raw_reply
+
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    client = CodexCLIJsonClient(codex_homes=[str(home)])
+
+    monkeypatch.setattr(llm_json, "_run_cli", _FakeCodexRun(payload="prose"))
+    assert client.complete_json(system="s", user="u", schema_name="z") is None
+    assert last_raw_reply() == "prose"
+
+    monkeypatch.setattr(llm_json, "_run_cli", _FakeCodexRun(payload="", returncode=1))
+    assert client.complete_json(system="s", user="u", schema_name="z") is None
+    assert not (last_raw_reply() or "").strip(), (
+        "a stale reply survived a call that received nothing"
+    )
 
 
 def test_codex_client_env_home_used_when_no_arg(monkeypatch, tmp_path):
