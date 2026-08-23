@@ -107,3 +107,62 @@ def test_constructing_the_real_reranker_downloads_nothing() -> None:
     assert reranker._model is None
     assert reranker.score("q", []) == [], "no documents means no model load"
     assert reranker._model is None
+
+
+def test_the_forward_pass_does_not_materialise_every_position() -> None:
+    """A full logits tensor is 4.97 GB per batch and one row per row is read.
+
+    Pinned rather than left to review: the model card's own snippet omits both
+    kwargs, so the next person to copy it back in reintroduces an OOM that looks
+    like a slow machine rather than a bug.
+    """
+    reranker = Qwen3Reranker(batch_size=2)
+    seen = {}
+
+    class _Logits:
+        logits = [[[0.0, 0.0]]]
+
+    class _Model:
+        device = "cpu"
+
+        def __call__(self, **kwargs):
+            seen.update(kwargs)
+            raise _Stop()
+
+    class _Stop(Exception):
+        pass
+
+    class _Tok:
+        def __call__(self, batch, **kw):
+            return {"input_ids": [[1, 2] for _ in batch]}
+
+        def pad(self, inputs, **kw):
+            class _T(dict):
+                def to(self, device):
+                    return self
+            return _T({"input_ids": _Arr()})
+
+    class _Arr:
+        def to(self, device):
+            return self
+
+    reranker._model = _Model()
+    reranker._tokenizer = _Tok()
+    reranker._torch = _FakeTorch()
+    reranker._prefix_ids, reranker._suffix_ids = [], []
+    reranker._true_id, reranker._false_id = 1, 0
+    with pytest.raises(_Stop):
+        reranker.score("q", ["a"])
+    assert seen.get("logits_to_keep") == 1, "full-position logits are 4.97 GB"
+    assert seen.get("use_cache") is False, "a KV cache for a single forward pass"
+
+
+class _FakeTorch:
+    """Just enough of torch for the call above to reach the model."""
+
+    class _NoGrad:
+        def __enter__(self): return None
+        def __exit__(self, *a): return False
+
+    def no_grad(self):
+        return self._NoGrad()

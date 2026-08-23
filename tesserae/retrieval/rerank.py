@@ -187,7 +187,18 @@ class Qwen3Reranker:
             inputs = self._tokenizer.pad(inputs, padding=True, return_tensors="pt")
             inputs = {k: v.to(self._model.device) for k, v in inputs.items()}
             with torch.no_grad():
-                logits = self._model(**inputs).logits[:, -1, :]
+                # `logits_to_keep=1` and `use_cache=False` are MEMORY
+                # CORRECTNESS, not tuning. A causal LM materialises logits for
+                # every position by default: at batch 8 x 2048 tokens against
+                # this model's 151,669-token vocabulary that is a single
+                # 4.97 GB fp16 tensor, of which one row per row is read. The
+                # KV cache is another 1.88 GB for a forward pass that generates
+                # nothing. Together they took a 16 GB machine into swap —
+                # 15.5 GB of 16 GB swap used and the process paged out to 4 MB
+                # resident — while the model itself is 1.2 GB.
+                logits = self._model(
+                    **inputs, logits_to_keep=1, use_cache=False
+                ).logits[:, -1, :]
                 pair = torch.stack(
                     [logits[:, self._false_id], logits[:, self._true_id]], dim=1
                 )
