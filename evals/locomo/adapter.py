@@ -46,6 +46,12 @@ from ..lme_mab.adapter import (
     evidence_text,
     guard_work_dir,
 )
+# Imported at module level, unlike `rerank`'s constants: `fanout` is pure
+# Python over the same modules `hybrid_search` already needs (0.05 s cold), so
+# there is nothing here to defer and no reason to duplicate a default that
+# could then drift from the library's.
+from tesserae.retrieval.fanout import DEFAULT_OVERFETCH, DEFAULT_SOURCE_CAP
+from tesserae.retrieval.query_decompose import DEFAULT_UBIQUITY_DF_RATIO
 from .dataset import Conversation, LocomoSession
 
 # --------------------------------------------------------------------------
@@ -504,6 +510,12 @@ class LocomoMemory:
         weights: Optional[Dict[str, float]] = None,
         reranker: Any = None,
         rerank_overfetch: int = RERANK_OVERFETCH,
+        fanout: bool = False,
+        fanout_overfetch: int = DEFAULT_OVERFETCH,
+        source_cap: Optional[int] = DEFAULT_SOURCE_CAP,
+        ubiquity_df_ratio: float = DEFAULT_UBIQUITY_DF_RATIO,
+        extra_facets: int = 0,
+        prefer_anchor_text: bool = False,
     ) -> None:
         self._compile_fn = compile_fn or _default_compile
         self._search_fn = search_fn
@@ -517,9 +529,27 @@ class LocomoMemory:
         if rerank_overfetch < 1:
             raise ValueError("rerank_overfetch must be >= 1")
         self._rerank_overfetch = rerank_overfetch
+        #: Query fan-out with a document-disjoint merge. ``False`` is the
+        #: shipped path and asks the lanes for exactly the budget, as before.
+        self._fanout = fanout
+        if fanout_overfetch < 1:
+            raise ValueError("fanout_overfetch must be >= 1")
+        self._fanout_overfetch = fanout_overfetch
+        #: 1 HERE and ``None`` in the library, deliberately. This adapter's
+        #: corpus is one node-set per session document, which is the shape one
+        #: hit per document is correct for; a graph where thousands of nodes
+        #: share one path is the shape it is wrong for, so the library refuses
+        #: to choose on a caller's behalf.
+        self._source_cap = source_cap
+        self._ubiquity_df_ratio = ubiquity_df_ratio
+        self._extra_facets = extra_facets
+        self._prefer_anchor_text = prefer_anchor_text
         self.work: Optional[Path] = None
         self.conversation: Optional[str] = None
         self._graph: Any = None
+        #: ``source_path`` -> the node that STANDS FOR that file, built once per
+        #: graph. Only consulted when ``prefer_anchor_text`` is on.
+        self._anchor_by_path: Optional[Dict[str, Any]] = None
         #: One entry per query that returned fewer than K items. Never padded.
         self.shortfalls: List[Dict[str, Any]] = []
         #: Retrieved nodes whose provenance is not a staged session document.
@@ -597,6 +627,7 @@ class LocomoMemory:
         self.work = resolved
         self.conversation = conversation.sample_id
         self._graph = None  # a new corpus invalidates any graph already loaded
+        self._anchor_by_path = None  # ...and every index derived from it
 
         return IngestResult(
             conversation=conversation.sample_id,
@@ -648,10 +679,104 @@ class LocomoMemory:
     def _resolve_search(self) -> Callable[..., Any]:
         if self._search_fn is not None:
             return self._search_fn
+        if self._fanout:
+            # `fanout_search` takes every parameter `hybrid_search` takes and
+            # adds its own, so this swap is the whole wiring. An injected
+            # `search_fn` still wins — the tests drive stubs through it.
+            from tesserae.retrieval.fanout import fanout_search
+
+            self._search_fn = fanout_search
+            return self._search_fn
         from tesserae.retrieval.hybrid import hybrid_search
 
         self._search_fn = hybrid_search
         return self._search_fn
+
+    def _anchor_index(self) -> Dict[str, Any]:
+        """``source_path`` -> the node that STANDS FOR that file.
+
+        Selection is by IDENTITY — the node whose name IS the file's H1 — and
+        NOT by ``hybrid._SOURCE_ANCHOR_TYPES``, for the reason
+        :meth:`MabHit.is_document_anchor` documents at length: type matches 214
+        nodes of the compiled group-0 graph and only 111 of them are the
+        transcripts. The other 103 are things somebody talked about, and they
+        carry a ``session-NNNN.md`` path all the same.
+
+        The two tests must agree because they are two halves of one decision.
+        This one chooses the node a hit is REWRITTEN to; ``is_document_anchor``
+        then decides whether that node's session text is pasted
+        unconditionally. Choose an impostor here and the rewritten hit fails
+        the second test, falls back into the shared
+        :data:`EVIDENCE_EXTRA_SOURCE_CHARS` pool, and starves — which is
+        precisely the failure ``prefer_anchor_text`` exists to repair.
+
+        Measured on the type test, pooled over 272 session files: 33 picked a
+        node that then failed ``is_document_anchor`` — conv-30 9 of 19,
+        conv-47 11 of 31, conv-48 4 of 30, conv-50 4 of 30, and conv-26 zero,
+        which is why a conv-26-only sweep could not see this at all.
+        ``session-0013.md`` chose the Project "Fashion Styling Video
+        Presentation"; ``session-0001.md`` chose "Dog walking and pet care
+        app". On conv-47 the flag delivered 43.7% of hits still non-anchor
+        after substitution and +0.084 gold-text coverage against conv-26's
+        +0.244.
+
+        Built once per graph, never per query: this walks every node, and
+        conv-26 alone would repeat that 199 times a run otherwise.
+        """
+        if self._anchor_by_path is not None:
+            return self._anchor_by_path
+        index: Dict[str, Any] = {}
+        for node in getattr(self._resolve_graph(), "nodes", []):
+            path = str(getattr(node, "source_path", "") or "")
+            if not path or path in index:
+                continue
+            document = document_index(path)
+            if document is None:
+                continue
+            if str(getattr(node, "name", "") or "") == document_title(document):
+                index[path] = node
+        self._anchor_by_path = index
+        return index
+
+    def _hit_nodes(self, scored: Sequence[Any]) -> List[Any]:
+        """The nodes ``scored`` becomes hits from, anchors substituted or not.
+
+        REQUIRED whenever ``source_cap`` is on, and the reason is a measured
+        regression rather than a preference. With one hit per session, ten
+        sessions compete for the same 8,000-character
+        :data:`EVIDENCE_EXTRA_SOURCE_CHARS` and fewer of them get their raw text
+        pasted, so the DOCUMENT metric rises while the PROMPT starves: pooled,
+        ALL-doc@10 0.823 -> 0.883 but gold-evidence-turn coverage 0.791 ->
+        0.751, multi-hop turn coverage 0.468 -> 0.420, all-gold-turns-present
+        20.6% -> 16.3%. Rebuilding each hit from the node that STANDS FOR its
+        file — which ``answer_evidence`` expands unconditionally — is what
+        repairs that: multi-hop turn coverage 0.436 -> 0.555 at a matched
+        character budget.
+
+        KNOWN SIDE EFFECT, stated rather than hidden: ``MabHit`` derives
+        :attr:`~evals.lme_mab.adapter.MabHit.is_document_anchor` from ``name``,
+        and ``answer_evidence`` expands anchors UNCONDITIONALLY before the extra
+        budget opens, capping each only at :data:`EVIDENCE_SOURCE_CHARS` with no
+        total. Ten anchors therefore bypass the extra-source budget entirely and
+        grow the prompt from 19,547 to 37,213 characters. That is why the
+        acceptance gate for this flag is run at a MATCHED budget. Giving
+        ``answer_evidence`` a total anchor budget is a separate change that has
+        to be measured on its own.
+
+        Two hits from one session collapse to the same anchor node here, so this
+        is only coherent alongside a ``source_cap`` that already made the head
+        document-disjoint. ``answer_evidence``'s ``spent`` set still pastes each
+        file once either way.
+        """
+        if not self._prefer_anchor_text:
+            return [item.node for item in scored]
+        index = self._anchor_index()
+        out: List[Any] = []
+        for item in scored:
+            node = item.node
+            path = str(getattr(node, "source_path", "") or "")
+            out.append(index.get(path, node))
+        return out
 
     def query_hits(self, question: str, *, k: int) -> List[MabHit]:
         """Up to ``k`` hits for ``question``. Never more, never padded.
@@ -661,12 +786,28 @@ class LocomoMemory:
         scored on can never come from two different rankings. Fewer than ``k`` is
         recorded in :attr:`shortfalls` and returned short: padding would make an
         under-filled budget indistinguishable from a full one.
+
+        RERANKER ORDERING, AND IT IS UNTESTED. ``rerank_nodes`` has no notion of
+        documents and will happily re-cluster several hits from one session,
+        undoing the cap. So with both stages on, the fan-out runs UNCAPPED, the
+        cross-encoder reorders, and the cap is applied to what it produced.
+        ``fanout`` and ``reranker`` are never both on in the sweep this was
+        built for, so that ordering has been reasoned about and not measured.
         """
         # With a reranker the lanes are a CANDIDATE GENERATOR, not the final
         # ranking, so they are asked for more than the budget and the
         # cross-encoder chooses k of them. Without one, `top_k` is k exactly and
         # this line is what it always was.
         search_k = k * self._rerank_overfetch if self._reranker else k
+        extra: Dict[str, Any] = {}
+        if self._fanout:
+            extra = {
+                "overfetch": self._fanout_overfetch,
+                # Capped here only when nothing downstream would undo it.
+                "source_cap": None if self._reranker else self._source_cap,
+                "ubiquity_df_ratio": self._ubiquity_df_ratio,
+                "extra_facets": self._extra_facets,
+            }
         result = self._resolve_search()(
             self._resolve_graph(),
             question,
@@ -680,27 +821,49 @@ class LocomoMemory:
             # the session file itself is what closes that gap, and it is
             # confined to the directory this adapter staged into.
             source_root=self.work,
+            **extra,
         )
         scored_nodes = result.scored
+        capped_after_rerank = (
+            self._reranker is not None
+            and self._fanout
+            and self._source_cap is not None
+        )
         if self._reranker:
             from tesserae.retrieval.rerank import rerank_nodes
 
             scored_nodes = rerank_nodes(
                 question,
                 scored_nodes,
+                # The cap is what bounds the result when it runs after this, and
+                # it can only choose among what it is handed: truncating to k
+                # here would leave it k items that may all name one session, and
+                # the no-shrink clamp would then refill with that same session.
+                top_n=None if capped_after_rerank else k,
                 reranker=self._reranker,
-                top_n=k,
                 # The same text the lexical lanes scored. A reranker reading
                 # different text would be reordering a ranking it never saw.
                 source_root=self.work,
             )
+            if capped_after_rerank:
+                from tesserae.retrieval.fanout import (
+                    _merge_document_disjoint,
+                    _source_path_key,
+                )
+
+                scored_nodes = _merge_document_disjoint(
+                    [scored_nodes],
+                    top_k=k,
+                    source_cap=self._source_cap,
+                    group_key=_source_path_key,
+                )
         hits = [
             MabHit(
-                text=evidence_text(scored.node),
-                source_path=str(getattr(scored.node, "source_path", "") or ""),
-                name=str(getattr(scored.node, "name", "") or ""),
+                text=evidence_text(node),
+                source_path=str(getattr(node, "source_path", "") or ""),
+                name=str(getattr(node, "name", "") or ""),
             )
-            for scored in scored_nodes
+            for node in self._hit_nodes(scored_nodes)
         ][:k]
         if len(hits) < k:
             self.shortfalls.append({

@@ -667,3 +667,181 @@ def test_the_harness_default_matches_the_library_default():
     from evals.locomo.adapter import RERANK_MAX_LENGTH
 
     assert RERANK_MAX_LENGTH == DEFAULT_MAX_LENGTH
+
+
+# -------------------------------------------------------- the fan-out stage
+
+
+class _RecordingSearch(_CountingSearch):
+    """``_CountingSearch`` that also records the fan-out kwargs it was handed."""
+
+    def __init__(self, nodes: Sequence[Any]) -> None:
+        super().__init__(nodes)
+        self.kwargs: List[Dict[str, Any]] = []
+
+    def __call__(self, graph: Any, query: str, **kwargs: Any) -> Any:
+        self.kwargs.append(dict(kwargs))
+        return super().__call__(graph, query, **kwargs)
+
+
+def test_without_fanout_the_search_call_is_unchanged(tmp_path):
+    """The opt-in contract at the harness boundary.
+
+    Not one fan-out keyword reaches the search function on the shipped path, so
+    a `search_fn` written before this stage existed still binds — and the real
+    `hybrid_search`, which would raise `TypeError` on an unknown keyword, is
+    still callable with exactly the arguments it always got.
+    """
+    search = _RecordingSearch(_session_nodes(3))
+    memory = _memory(search_fn=search)
+    _staged(tmp_path, memory, _conversation(sessions=3))
+    memory.query_hits("q", k=2)
+
+    assert search.top_k == [2]
+    assert set(search.kwargs[0]) == {
+        "top_k", "weights", "mode", "backend", "source_root"
+    }
+
+
+def test_the_shipped_path_binds_hybrid_search_and_fanout_binds_fanout_search():
+    from tesserae.retrieval.fanout import fanout_search
+    from tesserae.retrieval.hybrid import hybrid_search
+
+    assert LocomoMemory()._resolve_search() is hybrid_search
+    assert LocomoMemory(fanout=True)._resolve_search() is fanout_search
+
+
+def test_fanout_forwards_every_knob_it_owns(tmp_path):
+    """Each knob is sweepable through `--memory-arg` only if it reaches here."""
+    search = _RecordingSearch(_session_nodes(3))
+    memory = _memory(search_fn=search, fanout=True, fanout_overfetch=3,
+                     source_cap=2, ubiquity_df_ratio=0.4, extra_facets=1)
+    _staged(tmp_path, memory, _conversation(sessions=3))
+    memory.query_hits("q", k=2)
+
+    assert search.top_k == [2], "the fan-out overfetches INSIDE the call, not here"
+    assert search.kwargs[0]["overfetch"] == 3
+    assert search.kwargs[0]["source_cap"] == 2
+    assert search.kwargs[0]["ubiquity_df_ratio"] == 0.4
+    assert search.kwargs[0]["extra_facets"] == 1
+
+
+def test_a_reranker_moves_the_cap_downstream_of_itself(tmp_path):
+    """`rerank_nodes` has no notion of documents and would undo the cap.
+
+    So with both stages on the fan-out runs UNCAPPED and the cap is applied to
+    what the cross-encoder produced. Untested against a real cross-encoder;
+    the two are never both on in the sweep this was built for.
+    """
+    nodes = [
+        ResearchNode(id=f"Node:{i}", name=f"node {i}",
+                     type=ResearchNodeType.SESSION, description=f"n{i}",
+                     source_path=f"corpus/{document_name(1 + i // 3)}")
+        for i in range(6)
+    ]
+    search = _RecordingSearch(nodes)
+    memory = _memory(search_fn=search, fanout=True, source_cap=1,
+                     reranker=_LastWins(), rerank_overfetch=4)
+    _staged(tmp_path, memory, _conversation(sessions=2))
+    hits = memory.query_hits("q", k=2)
+
+    assert search.kwargs[0]["source_cap"] is None, (
+        "capping before the reranker lets it re-cluster one session"
+    )
+    # Two sessions, two hits, one each: the cap survived the reorder.
+    assert len({h.source_path for h in hits}) == 2
+
+
+def test_fanout_overfetch_below_one_is_refused():
+    """Overfetch 0 would ask each sub-query for nothing."""
+    with pytest.raises(ValueError, match="fanout_overfetch"):
+        _memory(fanout=True, fanout_overfetch=0)
+
+
+def test_prefer_anchor_text_rebuilds_a_hit_from_the_node_that_stands_for_it(tmp_path):
+    """The repair `source_cap` requires, and what it is measured to prevent.
+
+    With one hit per session the concept node that WON the slot carries a
+    ~75-character summary, and `answer_evidence` only expands anchors
+    unconditionally — so the document metric rises while the prompt starves
+    (multi-hop gold-turn coverage 0.468 -> 0.420). Rebuilding the hit from the
+    session's own anchor node is what puts the text back.
+    """
+    path = f"corpus/{document_name(1)}"
+    concept = ResearchNode(id="Concept:pots", name="pottery",
+                           type=ResearchNodeType.METHODOLOGICAL_CONCEPT,
+                           description="a short summary", source_path=path)
+    anchor = ResearchNode(id="SourceDocument:1", name=document_title(1),
+                          type=ResearchNodeType.SOURCE_DOCUMENT,
+                          description="the session itself", source_path=path)
+
+    class _Graph:
+        nodes = [concept, anchor]
+
+    search = _RecordingSearch([concept])
+    memory = _memory(search_fn=search, fanout=True, prefer_anchor_text=True)
+    memory.ingest(_conversation(sessions=1), work=tmp_path, compile_project=False)
+    memory._graph = _Graph()
+
+    assert [h.name for h in memory.query_hits("q", k=1)] == [document_title(1)]
+
+    # ...and off, the retrieved node is the hit, exactly as before.
+    plain = _memory(search_fn=_RecordingSearch([concept]))
+    plain.ingest(_conversation(sessions=1), work=tmp_path, compile_project=False)
+    plain._graph = _Graph()
+    assert [h.name for h in plain.query_hits("q", k=1)] == ["pottery"]
+
+
+def test_an_impostor_of_the_right_type_does_not_become_the_anchor(tmp_path):
+    """A Project that was TALKED ABOUT in a session is not that session.
+
+    `_SOURCE_ANCHOR_TYPES` matches 214 nodes of the compiled group-0 graph and
+    only 111 are transcripts; the rest are things somebody mentioned, carrying
+    the path of the chat that mentioned them. Picking one here rewrites every
+    hit from that file into a node that then FAILS `is_document_anchor`, so it
+    is not expanded unconditionally and starves in the shared budget — the
+    exact failure `prefer_anchor_text` exists to repair.
+
+    Measured on the type test, 33 of 272 pooled session files chose an
+    impostor. conv-26 chose zero, which is why the sweep could not see it.
+    """
+    path = f"corpus/{document_name(1)}"
+    concept = ResearchNode(id="Concept:pots", name="pottery",
+                           type=ResearchNodeType.METHODOLOGICAL_CONCEPT,
+                           description="a short summary", source_path=path)
+    # Anchor TYPE, wrong identity, and FIRST — so a type test picks it.
+    impostor = ResearchNode(id="Project:styling", name="Fashion Styling Video",
+                            type=ResearchNodeType.PROJECT,
+                            description="something they discussed",
+                            source_path=path)
+    real = ResearchNode(id="SourceDocument:1", name=document_title(1),
+                        type=ResearchNodeType.SOURCE_DOCUMENT,
+                        description="the session itself", source_path=path)
+
+    class _Graph:
+        nodes = [impostor, real, concept]
+
+    memory = _memory(search_fn=_RecordingSearch([concept]), fanout=True,
+                     prefer_anchor_text=True)
+    memory.ingest(_conversation(sessions=1), work=tmp_path, compile_project=False)
+    memory._graph = _Graph()
+
+    hits = memory.query_hits("q", k=1)
+    assert [h.name for h in hits] == [document_title(1)], (
+        "the node whose name IS the file's H1 must win over one that merely "
+        "shares its type and came first"
+    )
+    assert hits[0].is_document_anchor, (
+        "the chosen anchor must pass the SAME test answer_evidence applies, "
+        "or the substitution buys nothing"
+    )
+
+
+def test_the_harness_source_cap_default_is_the_librarys_named_value():
+    """1 here and None in the library, and neither is a magic number."""
+    import inspect
+
+    from tesserae.retrieval.fanout import DEFAULT_SOURCE_CAP, fanout_search
+
+    assert LocomoMemory()._source_cap == DEFAULT_SOURCE_CAP == 1
+    assert inspect.signature(fanout_search).parameters["source_cap"].default is None

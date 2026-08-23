@@ -57,6 +57,9 @@ from ..lme_mab.adapter import RefusedToCompileInRepo
 from ..lme_mab.baselines import LOCAL_EMBEDDING_PREFER, DenseArm, LexicalArm
 from ..qa.run_qa_eval import Skip, _num, _rate, _table
 from .adapter import (
+    DEFAULT_OVERFETCH,
+    DEFAULT_SOURCE_CAP,
+    DEFAULT_UBIQUITY_DF_RATIO,
     EVIDENCE_EXTRA_SOURCE_CHARS,
     EVIDENCE_SOURCE_CHARS,
     PROTOCOL_BACKBONE,
@@ -1215,6 +1218,38 @@ def build_parser() -> argparse.ArgumentParser:
                              f"whether reranking is affordable; see "
                              f"tesserae.retrieval.rerank for the measured "
                              f"curve. Ignored without --rerank")
+    parser.add_argument("--fanout", action="store_true",
+                        help="run the lanes a second time with the "
+                             "corpus-ubiquitous terms stripped, and merge the "
+                             "two rankings admitting at most --source-cap hits "
+                             "per session. Free, local, deterministic. Off by "
+                             "default: this is not the shipped retrieval path")
+    parser.add_argument("--fanout-overfetch", type=int, default=DEFAULT_OVERFETCH,
+                        help=f"how many candidates per budget unit EACH "
+                             f"sub-query produces for the merge to choose from "
+                             f"(default: {DEFAULT_OVERFETCH}; saturates there). "
+                             f"Ignored without --fanout")
+    parser.add_argument("--source-cap", type=int, default=DEFAULT_SOURCE_CAP,
+                        help=f"hits per session admitted into the head of the "
+                             f"merged result (default: {DEFAULT_SOURCE_CAP}). 0 "
+                             f"disables the cap, which isolates how much of the "
+                             f"gain is the fan-out alone. Ignored without "
+                             f"--fanout")
+    parser.add_argument("--ubiquity-df-ratio", type=float,
+                        default=DEFAULT_UBIQUITY_DF_RATIO,
+                        help=f"a term in this fraction of the corpus or more is "
+                             f"stripped from the sub-query (default: "
+                             f"{DEFAULT_UBIQUITY_DF_RATIO}). Ignored without "
+                             f"--fanout")
+    parser.add_argument("--extra-facets", type=int, default=0,
+                        help="extra single-token sub-queries beyond the "
+                             "stripped one, rarest term first (default: 0). "
+                             "Ignored without --fanout")
+    parser.add_argument("--prefer-anchor-text", action="store_true",
+                        help="build each hit from the node that STANDS FOR its "
+                             "session file rather than the node retrieved. "
+                             "Repairs the prompt starvation --source-cap "
+                             "otherwise causes; see LocomoMemory._hit_nodes")
     parser.add_argument("--i-know-this-costs-money", action="store_true",
                         help="required for anything that reaches an LLM")
     parser.add_argument("--yes", action="store_true",
@@ -1453,6 +1488,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             embedding_prefer=args.embedding_prefer,
             reranker=reranker,
             rerank_overfetch=args.rerank_overfetch,
+            fanout=args.fanout,
+            fanout_overfetch=args.fanout_overfetch,
+            # 0 on the command line means "no cap", which is the control arm
+            # that separates the fan-out's own contribution from the merge's —
+            # the two are multiplicative and reporting only the total would
+            # credit the wrong half.
+            source_cap=args.source_cap if args.source_cap > 0 else None,
+            ubiquity_df_ratio=args.ubiquity_df_ratio,
+            extra_facets=args.extra_facets,
+            prefer_anchor_text=args.prefer_anchor_text,
         ) if spends else None
         answer_fn = build_backbone(args.backbone) if answering else None
 
@@ -1575,6 +1620,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "rerank_model": args.rerank or "",
             "rerank_overfetch": args.rerank_overfetch if args.rerank else 0,
             "rerank_max_length": args.rerank_max_length if args.rerank else 0,
+            # False rather than an omitted key, on the same terms as
+            # `rerank_model`: a result whose meta is silent about fan-out
+            # predates the stage, and one that says False ran the shipped
+            # single-pass ranking. The knobs read 0 when the stage is off so a
+            # sweep cannot be mistaken for a run that used them.
+            "fanout": bool(args.fanout),
+            "fanout_overfetch": args.fanout_overfetch if args.fanout else 0,
+            "source_cap": args.source_cap if args.fanout else 0,
+            "ubiquity_df_ratio": args.ubiquity_df_ratio if args.fanout else 0.0,
+            "extra_facets": args.extra_facets if args.fanout else 0,
+            # NOT gated on --fanout: this one changes what the backbone reads
+            # whether or not the fan-out ran, so a silent key would be a lie.
+            "prefer_anchor_text": bool(args.prefer_anchor_text),
             "evidence_budget": args.answer_k,
             "evidence_content": args.answer_evidence,
             "evidence_source_chars": (EVIDENCE_SOURCE_CHARS
