@@ -66,9 +66,39 @@ reasoning across sessions, and winning on the ones an inverted index wins.
 Single-hop is where raw source text in the lexical lanes helped most, and
 multi-hop is where the graph was supposed to. Only one of those happened.
 
-That is the number to move, and reranking will not move it: a cross-encoder
-reorders candidates for ONE query, and a multi-hop question needs two documents
-that no single query ranks together.
+That is the number to move. **An earlier revision of this section said why it
+could not be moved by reranking — "a multi-hop question needs two documents that
+no single query ranks together" — and that was wrong.** Measured since: at K=40
+instead of K=10, multi-hop ALL-gold@10 is 0.938. The second document IS ranked;
+it sits at 11-40 and the budget cuts it. The failure was ordering and budget,
+not reach.
+
+Two things then turned out to be true of it, and both are recorded in
+`tesserae/retrieval/fanout.py`:
+
+**The budget was being spent twice on the same session.** `documents_of`
+collapses hits from one session onto that session, so a 10-hit budget buys a
+pooled mean of 6.90 documents. Roughly a third of every prompt was a session
+already read. `fanout_search`'s `source_cap` is the repair, and it is worth
++0.128 of the +0.188 pooled multi-hop gain — the rest of which, +0.060, is the
+only part that is ranking rather than coverage arithmetic.
+
+**Graph expansion is a measured null on this corpus, not an unbuilt idea.**
+Seeding `personalized_pagerank` from the lanes and walking the typed graph was
+tested three independent ways and does not help here. `Person:caroline` has
+degree 101 and `Person:melanie` 70, both present in all 19 conv-26 sessions, so
+at depth 2 every session reaches every other and `HUB_DEGREE_CAP=200` never
+fires. Seeded with the ENTIRE node set of one true gold session — a seed no
+retriever can produce — PPR puts the other at median rank 8.5 of 18 against a
+chance mean of 9.5, and a shuffled-seed control beats the real walk. "The gold
+sessions are 1-2 hops apart" is true of all 28 multi-hop questions and carries
+no information.
+
+**And the metric above is a proxy that this branch falsified.** ALL-gold@10
+counts DOCUMENTS; what the backbone reads is TURNS. On the fan-out the document
+metric nearly doubles while pooled multi-hop all-gold-turns-present falls 0.206
+-> 0.156. Read any ALL-gold@10 figure here as a retrieval diagnostic and never
+as a prediction about accuracy.
 
 
 ## The data, measured
