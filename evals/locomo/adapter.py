@@ -278,6 +278,15 @@ EVIDENCE_SOURCE_CHARS = 8_000
 #: that scales with it, because the lanes were already scoring the whole corpus.
 RERANK_OVERFETCH = 4
 
+#: Tokens per (query, candidate) pair the cross-encoder reads.
+#:
+#: Duplicated from :data:`tesserae.retrieval.rerank.DEFAULT_MAX_LENGTH` rather
+#: than imported, because importing that module pulls in torch and this one is
+#: imported by every LoCoMo run including the ones with no reranker. The two
+#: are pinned equal by ``test_the_harness_default_matches_the_library_default``
+#: so the duplication cannot drift silently.
+RERANK_MAX_LENGTH = 512
+
 #: How much session text ONE question's evidence may carry BEYOND what document
 #: anchors already bring.
 #:

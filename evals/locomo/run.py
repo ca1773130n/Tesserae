@@ -63,6 +63,7 @@ from .adapter import (
     PROTOCOL_CONTROLS,
     PROTOCOL_JUDGE,
     PROTOCOL_JUDGE_RUNS,
+    RERANK_MAX_LENGTH,
     RERANK_OVERFETCH,
     IngestResult,
     LocomoMemory,
@@ -1207,6 +1208,13 @@ def build_parser() -> argparse.ArgumentParser:
                              f"produce for the reranker to choose from "
                              f"(default: {RERANK_OVERFETCH}). Ignored without "
                              f"--rerank")
+    parser.add_argument("--rerank-max-length", type=int, default=RERANK_MAX_LENGTH,
+                        help=f"tokens per (query, candidate) pair the "
+                             f"cross-encoder reads (default: "
+                             f"{RERANK_MAX_LENGTH}). The knob that decides "
+                             f"whether reranking is affordable; see "
+                             f"tesserae.retrieval.rerank for the measured "
+                             f"curve. Ignored without --rerank")
     parser.add_argument("--i-know-this-costs-money", action="store_true",
                         help="required for anything that reaches an LLM")
     parser.add_argument("--yes", action="store_true",
@@ -1438,7 +1446,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.rerank:
             from tesserae.retrieval.rerank import Qwen3Reranker
 
-            reranker = Qwen3Reranker(args.rerank)
+            reranker = Qwen3Reranker(
+                args.rerank, max_length=args.rerank_max_length
+            )
         memory = LocomoMemory(
             embedding_prefer=args.embedding_prefer,
             reranker=reranker,
@@ -1564,6 +1574,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             # says "" ran the shipped fused ranking. Those are different claims.
             "rerank_model": args.rerank or "",
             "rerank_overfetch": args.rerank_overfetch if args.rerank else 0,
+            "rerank_max_length": args.rerank_max_length if args.rerank else 0,
             "evidence_budget": args.answer_k,
             "evidence_content": args.answer_evidence,
             "evidence_source_chars": (EVIDENCE_SOURCE_CHARS

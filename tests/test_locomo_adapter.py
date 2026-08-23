@@ -658,3 +658,12 @@ def test_overfetch_below_one_is_refused(tmp_path):
     """Overfetch 0 would ask the lanes for nothing and rerank an empty set."""
     with pytest.raises(ValueError, match="rerank_overfetch"):
         _memory(reranker=_LastWins(), rerank_overfetch=0)
+
+
+def test_the_harness_default_matches_the_library_default():
+    """`RERANK_MAX_LENGTH` is a copy, kept out of an import that pulls torch."""
+    from tesserae.retrieval.rerank import DEFAULT_MAX_LENGTH
+
+    from evals.locomo.adapter import RERANK_MAX_LENGTH
+
+    assert RERANK_MAX_LENGTH == DEFAULT_MAX_LENGTH

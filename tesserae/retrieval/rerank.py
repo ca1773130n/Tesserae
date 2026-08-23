@@ -54,9 +54,25 @@ DEFAULT_INSTRUCTION = (
 
 DEFAULT_MODEL = "Qwen/Qwen3-Reranker-0.6B"
 
-#: Tokens per (query, document) pair. The model accepts 8192; the default is
-#: lower because cost is linear in it and the candidates are already short.
-DEFAULT_MAX_LENGTH = 2048
+#: Tokens per (query, document) pair. The model accepts 8192.
+#:
+#: This is the ONLY knob that decides whether reranking is affordable, so it is
+#: set from measurement rather than from what the model permits. Warm on an M-
+#: series MPS device, fp16, batch 8, per pair and extrapolated to a conv-26 run
+#: (398 questions x 40 candidates = 15,920 pairs):
+#:
+#:     256   0.19 s/pair    0.8 h
+#:     512   0.28 s/pair    1.2 h
+#:     1024  0.66 s/pair    2.9 h
+#:     2048  1.16 s/pair    5.1 h
+#:
+#: fp32 measures within 13% of fp16 at every length, so precision is not what
+#: costs; sequence length is, roughly linearly above 512 and flat below it where
+#: fixed overhead dominates. 512 buys the knee of that curve: about 2,000
+#: characters of a candidate, which is the node summary plus the opening of its
+#: session rather than the whole 8,000-character source the BACKBONE later
+#: reads. The reranker ORDERS on the opening; the answer is still read in full.
+DEFAULT_MAX_LENGTH = 512
 
 DEFAULT_BATCH_SIZE = 8
 
