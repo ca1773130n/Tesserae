@@ -118,7 +118,32 @@ BASELINE_ARMS = (("Hybrid-doc", "hybrid-doc"), ("BM25", "bm25"), ("Dense", "dens
 #: also the one constant that must NOT be chosen after seeing which way the
 #: overlay verdict went — that is tuning to the sample. Sweep it against the
 #: controls, the way the hop budget was, before quoting any number as final.
-SEED_K = 25
+#: Seeds handed to the PPR walk, weighted by retrieval score.
+#:
+#: Was 25 and uniform, which caps the walk at re-ranking what lexical search
+#: already found. HippoRAG 2 seeds broadly and says why: activating a wide set
+#: is what uncovers passages along multi-hop chains.
+#:
+#: Measured on the 71 lowest question/answer word-overlap questions -- the only
+#: stratum where lexical retrieval is structurally weak -- gold-document R@10
+#: against BM25's 0.740, paired bootstrap 4,000x:
+#:
+#:     k=50  +0.062 [+0.005,+0.124]     k=300 +0.063 [+0.001,+0.126]
+#:     k=100 +0.078 [+0.021,+0.137]     k=400 +0.031 [-0.035,+0.099]
+#:     k=150 +0.070 [+0.008,+0.133]     k=600 -0.008 [-0.076,+0.061]
+#:     k=200 +0.075 [+0.018,+0.135]
+#:
+#: 150 is the CENTRE of the 50-300 plateau, deliberately not the k=100 argmax:
+#: a value chosen by argmax over the same questions it is scored on is how the
+#: lane-weight sweep produced a +0.039 that vanished under a held-out split.
+#: Cross-validated (tune on even questions, score odd, and the reverse) this
+#: gap is +0.063 against a full-set argmax of +0.078 -- an optimism gap of only
+#: +0.015, which is what a plateau rather than a spike buys.
+#:
+#: The win is confined to that stratum. Where question and answer DO share
+#: vocabulary the walk costs -0.060, so a caller that can tell the two regimes
+#: apart should not run it in the second.
+SEED_K = 150
 
 #: Reported cut-offs. K stays the shared budget; the rest are diagnostics.
 #: R@10 saturates near 1.0, so MRR and R@3/R@5 are the headline and R@10 is
@@ -310,8 +335,15 @@ def rank_documents_graph(
     if walk:
         from tesserae.retrieval.ppr import personalized_pagerank
 
+        # Teleport mass proportional to each seed's retrieval score, not spread
+        # evenly. Uniform mass over a broad seed set is not a personalized walk
+        # at all -- it is plain PageRank -- and measured that way over every
+        # node it scores 0.066-0.203 R@10 against BM25's 0.740-0.930. The same
+        # broad seeds, weighted, recover about +0.49 of that. The weighting is
+        # what makes seeding past the top handful possible.
         ordered = [nid for nid, _ in personalized_pagerank(
-            graph, seeds, alpha=0.15, top_k=len(graph.nodes)
+            graph, seeds, alpha=0.15, top_k=len(graph.nodes),
+            seed_weights={s.node.id: max(s.score, 1e-9) for s in res.scored},
         )]
     else:
         ordered = seeds

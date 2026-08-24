@@ -67,6 +67,25 @@ class TesseraeConfig(QABenchmarkConfig):  # type: ignore[misc,valid-type]
     answer_style: str = "prose-cited"
 
 
+    #: OPT-IN abstention gate. ``None`` — the default — is today's behaviour
+    #: exactly: no gate, nothing computed, no change to any number. Set it to a
+    #: quantile in [0, 1] and an answer whose Novel Grounded Evidence falls
+    #: below ``grounding_tau(corpus_idf, quantile)`` is replaced with ``""``,
+    #: which :func:`evals.qa.scorer.is_refusal` already reads as a refusal.
+    #:
+    #: A QUANTILE, never an absolute threshold. BM25 idf scales with
+    #: ``log(n_docs)``, so a constant tuned on a 135-document corpus means
+    #: something else entirely on a 62k-page graph — see
+    #: :func:`tesserae.retrieval.grounding.grounding_tau`.
+    #:
+    #: Measured at quantile 0.25 on 352 persisted answers, Tesserae arm:
+    #: Youden J +0.5048 -> +0.6172, refuse|unanswerable 0.529 -> 0.691,
+    #: refuse|answerable 0.025 -> 0.074. Honest leave-one-out J +0.5884
+    #: (dJ +0.0837, paired bootstrap 95%% CI [-0.0004, +0.1719]). It costs
+    #: token F1 0.3534 -> 0.3380 on the answerable stratum. Opt in per run;
+    #: it is not the product's behaviour and must not become it.
+    grounding_quantile: Optional[float] = None
+
     project_root: str = ""
     staging_dir: Optional[str] = None
     backend: str = "wiki"
@@ -86,6 +105,7 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
     def __init__(self, corpus, qa_pairs, config: TesseraeConfig):
         super().__init__(corpus, qa_pairs, config)
         self.config: TesseraeConfig = config
+        self.grounding_scores: Dict[str, Any] = {}
         if not config.project_root:
             raise ValueError("TesseraeConfig.project_root is required")
         self.project_root = Path(config.project_root).resolve()
@@ -159,7 +179,58 @@ class QABenchmarkTesserae(QABenchmarkRAG):  # type: ignore[misc,valid-type]
             route=self.config.route,
             answer_style=self.config.answer_style,
         )
-        return answer_text(envelope)
+        answer = answer_text(envelope)
+        # Record the score whether or not a gate is active. One run then
+        # supports sweeping EVERY quantile offline, instead of re-spending 352
+        # LLM calls per threshold — and it makes the shipped number auditable
+        # against the offline estimate rather than merely consistent with it.
+        self.grounding_scores[question] = (
+            envelope.get("grounding") if isinstance(envelope, dict) else None
+        )
+        if self.config.grounding_quantile is None:
+            return answer
+        return "" if self._below_grounding_gate(question, answer, envelope) else answer
+
+    # --------------------------------------------------------- abstention gate
+
+    def _corpus_idf(self):
+        """BM25 idf over the arm's whole corpus. Built once per run."""
+        cached = getattr(self, "_idf", None)
+        if cached is None:
+            from tesserae.retrieval.grounding import corpus_idf
+
+            cached = corpus_idf([d for d in (self.corpus or []) if isinstance(d, str)])
+            self._idf = cached
+        return cached
+
+    def _below_grounding_gate(self, question: str, answer: str, envelope: Any) -> bool:
+        """True when the answer adds too little novel, source-attested vocabulary.
+
+        The score comes from the envelope, which measured it against the
+        evidence the model actually read. There is deliberately NO fallback.
+
+        There was one, and it recomputed the score from ``hit["excerpt"]`` —
+        200-character clips of wiki pages — while the planner had pasted
+        4,000-character raw source documents into the prompt. Every one of the
+        352 benchmark questions routes through the planner, whose envelope did
+        not carry the score, so the fallback ran on every question and refused
+        71.1% of ANSWERABLE ones: Youden J +0.289, WORSE than the +0.505 of not
+        gating at all. The measured +0.617 described an offline proxy no shipped
+        path ran. Two independent reviews caught it; neither the unit tests nor
+        the implementer's own numbers did, because both exercised the branch
+        that never executes.
+
+        So a missing score means DO NOT GATE, never "gate on a substitute".
+        Scoring against different evidence is not a weaker version of the same
+        measurement, it is a different measurement wearing its name.
+        """
+        from tesserae.retrieval.grounding import grounding_tau
+
+        score = envelope.get("grounding") if isinstance(envelope, dict) else None
+        if score is None:
+            return False
+        idf, _n_docs = self._corpus_idf()
+        return float(score) < grounding_tau(idf, self.config.grounding_quantile)
 
     # ------------------------------------------------------------------- meta
 

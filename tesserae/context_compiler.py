@@ -39,6 +39,7 @@ from typing import (Any, Callable, Dict, FrozenSet, List, Mapping, Optional,
 from .graph_filters import suppressed_ids
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 from .retrieval.hybrid import RetrievalProfile, hybrid_search
+from .retrieval.local_scope import LocalScope
 from .retrieval.ppr import personalized_pagerank
 from .wiki_projector import kind_for_node
 from .wiki_store import WikiPageStore
@@ -197,6 +198,37 @@ def _empty_pool_reservations() -> Dict[str, Optional[Dict[str, object]]]:
 #: baseline this bundle is measured against pastes 4,000 per document, and it is
 #: the reference the number is chosen against rather than a guess.
 SOURCE_EXCERPT_CHARS = 4_000
+
+#: How many nodes the budget walk aims to fit before any one of them may take
+#: the whole thing.
+#:
+#: Without this, a single node's ``SOURCE_EXCERPT_CHARS`` body (4,000) exceeds
+#: the ask path's ``_CONTEXT_BUDGET`` (1,800) on its own, so the first ranked
+#: node was truncated to fill the budget and the walk broke immediately.
+#: Measured over 31 questions, the bundle delivered exactly ONE node in 31/31
+#: runs, and in 28/31 that node's source document was ALREADY among the ten the
+#: fusion lane had ranked — the graph was contributing essentially no text the
+#: prompt did not already have.
+#:
+#: Raising the budget is not the fix: 1,800 is sized to survive ``_EVIDENCE_CLIP``
+#: (2,500) downstream, so a larger bundle is computed and then thrown away.
+#: Spending the SAME budget across several nodes costs no extra prompt bytes.
+_TARGET_BUNDLE_NODES = 5
+
+#: The smallest per-node share worth redistributing into. Below it, splitting
+#: the budget produces fragments rather than evidence — at ``budget=400`` a
+#: five-way split leaves 80 characters per node, which is a sentence opening
+#: and not a fact — so a budget this tight keeps the original behaviour of
+#: letting the first ranked body take what it needs. Multi-pool reservation
+#: tests run at exactly that budget and depend on it.
+_MIN_NODE_SHARE = 300
+
+#: Below this many chars a raw source excerpt is worse evidence than the
+#: extracted body it would replace: the first few hundred characters of a paper
+#: are title, authors and boilerplate, where the extracted description is dense
+#: and already about the thing that matched. So the substitution is skipped
+#: rather than performed badly when the per-node share cannot afford it.
+_MIN_SOURCE_EXCERPT = 900
 
 
 def _source_text(node: ResearchNode, cache: Dict[str, str],
@@ -522,6 +554,7 @@ def compile_context(
     tame_hubs: bool = False,
     view: Optional[Union[str, Sequence[str]]] = None,
     explain: bool = False,
+    local: Optional[LocalScope] = None,
 ) -> ContextBundle:
     """Compile a tailored, cited context bundle for ``query`` / ``seeds``.
 
@@ -583,6 +616,19 @@ def compile_context(
     already happened. PPR expansion and multi-view fusion are deliberately not
     profiled: they run over an in-memory edge list at a cost the seed searches
     dominate, and reporting a "plan" for a fixed pipeline would be theatre.
+
+    ``local=<LocalScope>`` (default ``None``, byte-identical unset) is the
+    third producer of the same ``restrict`` set, sourced from lexical retrieval
+    rather than from the hierarchy sidecar — see
+    :mod:`tesserae.retrieval.local_scope`. It composes with ``scope`` and
+    ``strategy`` under the same rule they use on each other: intersect, and an
+    empty intersection keeps the explicit scope. Because it lands in
+    ``restrict``, everything downstream — seed search, PPR, the depth BFS,
+    selection — is already subgraph-local with no further change, including the
+    ``top_k=len(graph.nodes)`` PPR requests, which bound themselves once
+    ``graph`` is the induced subgraph. Its ``seed_weights`` are forwarded to
+    PPR as the personalization vector: a MAPPING keyed by seed id, so the first
+    stage's rank order cannot reach the walk.
 
     Both ``scope`` and ``strategy="hierarchical"`` require ``project_root``
     (the sidecar lives under it); the ``budget=0`` uncapped invariant is
@@ -738,6 +784,18 @@ def compile_context(
                 # is the harder contract of the two.
                 restrict = narrowed or restrict
 
+    if local is not None and local.node_ids:
+        # The lexical first stage, joining the same intersection. An EMPTY
+        # scope is skipped rather than applied: "the first stage matched
+        # nothing" must degrade to the unrestricted walk, not compile an empty
+        # graph — the same degradation the hierarchical branch makes above.
+        narrowed_local = (
+            set(local.node_ids) if restrict is None else restrict & local.node_ids
+        )
+        # Empty intersection -> the first stage landed entirely outside the
+        # caller's scope; keep the explicit scope, the harder contract.
+        restrict = narrowed_local or restrict
+
     if restrict is not None:
         graph = _induced_subgraph(graph, restrict)
 
@@ -797,6 +855,22 @@ def compile_context(
             retrieval_profiles=retrieval_profiles,
         )
 
+    # First-stage relevance mass for the walk's personalization vector. A
+    # MAPPING keyed by seed id, never a list: nothing about the first stage's
+    # rank ORDER can reach PPR through it, which is what makes this safe where
+    # an earlier walk/seed fusion was not.
+    local_seed_weights: Optional[Dict[str, float]] = None
+    if local is not None and local.seed_weights:
+        _mass = {sid: float(local.seed_weights.get(sid, 0.0)) for sid in seed_ids}
+        # A seed the first stage never scored — a neighbour that out-ranked the
+        # anchors once the search ran inside the induced subgraph — carries no
+        # first-stage mass, which is what a zero means. If NO seed carries any,
+        # the first stage has no opinion about this seed set at all, and uniform
+        # teleport is the honest answer: PPR refuses a personalization vector
+        # summing to zero, and is right to.
+        if any(w > 0.0 for w in _mass.values()):
+            local_seed_weights = _mass
+
     # --- Step 2: PPR expansion, bounded to the depth-hop neighbourhood -------
     # ``depth`` must bound hop-distance, not just scale ``top_k``: PPR runs over
     # the FULL connected component, so without this filter a depth=1 request can
@@ -837,6 +911,7 @@ def compile_context(
                 graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes)),
                 edge_type_weights=_vw,
                 tame_hubs=tame_hubs, hub_ids=hub_ids,
+                seed_weights=local_seed_weights,
             )
             _lane = {
                 nid: score
@@ -879,6 +954,7 @@ def compile_context(
             graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes)),
             edge_type_weights=edge_type_weights,
             tame_hubs=tame_hubs, hub_ids=hub_ids,
+            seed_weights=local_seed_weights,
         )
         pre_rank = [
             (nid, score)
@@ -1039,6 +1115,13 @@ def compile_context(
     chars_used = 0
     _source_cache: Dict[str, str] = {}
     _docs_emitted: set = set()
+    # The share any one node may claim. ``budget <= 0`` is uncapped, and a
+    # budget generous enough that the share exceeds SOURCE_EXCERPT_CHARS leaves
+    # every body exactly as it was — so the default 32,000 path is unchanged
+    # and only a tight budget (the ask path's 1,800) is redistributed.
+    _per_node = budget // _TARGET_BUNDLE_NODES if budget > 0 else 0
+    if _per_node < _MIN_NODE_SHARE:
+        _per_node = 0  # too tight to split; first body takes what it needs
     for node_id, _score in ranked:
         node = node_index.get(node_id)
         if node is None:
@@ -1049,7 +1132,8 @@ def compile_context(
         # from one document and repeating it would spend the budget on copies
         # instead of on coverage.
         _sp = getattr(node, "source_path", None)
-        if _sp and _sp not in _docs_emitted:
+        _can_afford_source = _per_node == 0 or _per_node >= _MIN_SOURCE_EXCERPT
+        if _sp and _sp not in _docs_emitted and _can_afford_source:
             _raw = _source_text(node, _source_cache, project_root)
             if _raw:
                 _docs_emitted.add(_sp)
@@ -1064,7 +1148,11 @@ def compile_context(
                 # The node's own name is kept as the heading so the extracted
                 # layer still says WHY this document was retrieved, which is the
                 # part the graph contributes.
-                body = f"{_raw[:SOURCE_EXCERPT_CHARS]}"
+                _cap = min(SOURCE_EXCERPT_CHARS, _per_node or SOURCE_EXCERPT_CHARS)
+                body = f"{_raw[:_cap]}"
+        # Hold every body to its share so the first node cannot spend the walk.
+        if _per_node and len(body) > _per_node:
+            body = _truncate_to_budget(body, _per_node)
         if budget > 0 and chars_used + len(body) > budget:
             # A valid query must never yield an empty bundle just because the
             # first ranked body overflows the budget: always include the FIRST

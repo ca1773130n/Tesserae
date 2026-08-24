@@ -43,9 +43,10 @@ import math
 import re
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
-from ..research_graph import ResearchGraph, ResearchNode
+from ..research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 from .bm25_index import Bm25Index, PreparedCorpus
 from .vector_cache import VectorCache, embed_texts
 
@@ -541,6 +542,81 @@ def _node_text(node: ResearchNode) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Lane: raw source text for document-anchor nodes
+# ---------------------------------------------------------------------------
+
+#: How much of a document-anchor node's OWN source file joins its LEXICAL text.
+#: Deliberately NOT the embedding text. A 256-dimension mean-pooled vector over
+#: 8k characters is the per-file pooling failure that cost the dense lane
+#: 0.7857 -> 0.6578 in lane ablation; measured on LongMemEval-MAB group 0, raw
+#: text in ALL THREE lanes scores 0.803/0.612 against 0.820/0.707 for the
+#: lexical lanes alone, so the gating below is load-bearing and not decoration.
+SOURCE_LEXICAL_CHARS = 8_000
+
+#: Node types whose ``source_path`` names the document the node stands for,
+#: rather than a file that merely mentions it. Only these nodes get their own
+#: file's text: a concept extracted from a paper must not become retrievable
+#: through the paper's entire contents, which would make every concept in a
+#: document score identically and destroy ranking within it.
+_SOURCE_ANCHOR_TYPES = frozenset(
+    {
+        ResearchNodeType.SOURCE_DOCUMENT,
+        ResearchNodeType.PAPER,
+        ResearchNodeType.SOURCE_FILE,
+        ResearchNodeType.REPOSITORY,
+        ResearchNodeType.PROJECT,
+    }
+)
+
+
+def _confined_source(path: str, root: Path, cache: Dict[str, str]) -> str:
+    """``path``'s text, or ``""`` when it escapes ``root``.
+
+    ``source_path`` is UNTRUSTED: it arrives from document frontmatter, and a
+    document that declares ``source_path: /etc/ssh/id_rsa`` would otherwise
+    paste that file into a retrieval corpus and, downstream, into an LLM
+    prompt. Resolve-then-compare is the same contract
+    ``ask_planner._read_source`` already enforces for the same reason.
+
+    The cache is keyed on ``(root, path)`` rather than ``path`` alone so two
+    projects sharing a process cannot serve each other's file contents.
+    """
+    key = f"{root}\x00{path}"
+    if key in cache:
+        return cache[key]
+    text = ""
+    try:
+        resolved = Path(path).resolve()
+        base = Path(root).resolve()
+        if resolved.is_relative_to(base) and resolved.is_file():
+            text = resolved.read_text(encoding="utf-8", errors="ignore")
+    except (OSError, ValueError, RuntimeError):
+        text = ""
+    cache[key] = text
+    return text
+
+
+def _lexical_texts(
+    nodes: Sequence[ResearchNode], texts: Sequence[str], source_root: Optional[Path]
+) -> Sequence[str]:
+    """``texts`` with each anchor node's own source file appended, or ``texts``.
+
+    Returns the SAME object when ``source_root`` is None, so the default path
+    is byte-identical to not having this feature at all — no copy, no
+    re-tokenisation, no ranking churn on any caller that does not opt in.
+    """
+    if source_root is None:
+        return texts
+    cache: Dict[str, str] = {}
+    out: List[str] = []
+    for node, text in zip(nodes, texts):
+        raw = ""
+        if node.type in _SOURCE_ANCHOR_TYPES and node.source_path:
+            raw = _confined_source(node.source_path, source_root, cache)
+        out.append(f"{text}\n{raw[:SOURCE_LEXICAL_CHARS]}" if raw else text)
+    return out
+
+# ---------------------------------------------------------------------------
 # Lane: Okapi BM25
 # ---------------------------------------------------------------------------
 
@@ -984,6 +1060,7 @@ def hybrid_search(
     candidate_filter: Optional[Iterable[ResearchNode]] = None,
     vector_cache: Optional[VectorCache] = None,
     bm25_index: Optional[Bm25Index] = None,
+    source_root: Optional[Path] = None,
     profile: bool = False,
 ) -> HybridSearchResult:
     """Fuse BM25, lexical and embedding lanes over a ``ResearchGraph``.
@@ -1028,6 +1105,26 @@ def hybrid_search(
         whenever the index cannot serve the WHOLE candidate set, because a
         partly-indexed corpus would score differently rather than merely
         slower.
+    source_root
+        Opt-in. When given, a document-anchor node (see
+        :data:`_SOURCE_ANCHOR_TYPES`) also becomes retrievable through its OWN
+        source file's first :data:`SOURCE_LEXICAL_CHARS` characters, in the
+        BM25 and lexical lanes ONLY. Structure still selects the text; it no
+        longer replaces it, which is the change HippoRAG 2 makes with passage
+        nodes and reaches here without a schema change.
+
+        Measured on LongMemEval-MAB group 0, K=10, weights untouched: recall@10
+        0.705 -> 0.820 and MRR 0.584 -> 0.707, against a BM25-over-whole-
+        -documents reference of 0.911/0.803. The extraction pipeline's own text
+        loss is what this recovers — a 14k-character chat session was otherwise
+        retrievable only through 88-character concept summaries.
+
+        Files are read confined to this root because ``source_path`` is
+        untrusted frontmatter; ``None`` reads NOTHING rather than everything,
+        and is byte-identical to this parameter not existing.
+
+        Raises ranking churn for every caller that opts in, so callers opt in
+        one at a time and deliberately.
     profile
         Opt-in per-lane cost accounting (roadmap step 9), attached to the
         result as :attr:`HybridSearchResult.profile`. Off by default because
@@ -1114,6 +1211,10 @@ def hybrid_search(
         raise ValueError(f"Unknown mode: {mode!r}")
 
     texts = [_node_text(node) for node in nodes]
+    # The embedding lane and the hybrid candidate gate keep reading ``texts``.
+    # Only the two lexical lanes read ``lex_texts``, which is ``texts`` itself
+    # unless a caller opted in with ``source_root``.
+    lex_texts = _lexical_texts(nodes, texts, source_root)
     query_tokens = _tokenize(query)
 
     lane_scores: Dict[str, List[float]] = {}
@@ -1138,7 +1239,7 @@ def hybrid_search(
         # index reproduces the LOCAL Okapi, and rank_bm25 replaces it.
         if bm25_index is not None and not _rank_bm25_available():
             _before = (bm25_index.stats.hits, bm25_index.stats.misses)
-            prepared = bm25_index.prepare(texts, _tokenize)
+            prepared = bm25_index.prepare(lex_texts, _tokenize)
             _bm25_hits = bm25_index.stats.hits - _before[0]
             _bm25_misses = bm25_index.stats.misses - _before[1]
             if prepared is not None:
@@ -1156,7 +1257,7 @@ def hybrid_search(
             # lie the profile exists to prevent.
             _bm25_hits = _bm25_misses = 0
             lane_scores["bm25"] = _bm25_scores(
-                query_tokens, [_tokenize(text) for text in texts]
+                query_tokens, [_tokenize(text) for text in lex_texts]
             )
     else:
         lane_scores["bm25"] = [0.0] * len(nodes)
@@ -1166,7 +1267,7 @@ def hybrid_search(
         _t_lane = _now
 
     if selected_weights.get("lexical", 0.0) > 0:
-        lane_scores["lexical"] = _lexical_scores(query, texts)
+        lane_scores["lexical"] = _lexical_scores(query, lex_texts)
     else:
         lane_scores["lexical"] = [0.0] * len(nodes)
     if profile:

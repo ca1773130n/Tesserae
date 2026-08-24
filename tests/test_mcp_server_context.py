@@ -588,3 +588,350 @@ def test_compile_context_explain_adds_a_profile_and_leaves_the_default_shape(tmp
     assert set(lanes) == {"bm25", "lexical", "embedding"}
     assert profile[0]["returned"] == len(profile[0]["winners"])
     assert all(w["lanes"] for w in profile[0]["winners"])
+
+
+# --------------------------------------------------------------------------- #
+# node_context(keyed=true) — the same answer, fetched by key                   #
+#                                                                             #
+# The bar for these is not "the keyed path returns something reasonable". It   #
+# is that the payload is IDENTICAL to the whole-graph payload, because the     #
+# flag is sold as a cheaper route to the same answer. Each test below pins a   #
+# specific way a keyed read could quietly return a different one.             #
+# --------------------------------------------------------------------------- #
+
+import json as _json
+
+import pytest
+
+from tesserae.persistence import SQLiteResearchGraphStore
+
+
+def _keyed_project(tmp_path, graph, *, sync_mirror: bool = True):
+    """Write ``graph`` the way ``ProjectWiki._publish`` writes it.
+
+    Canonicalize ONCE, then write graph.json and the SQLite mirror from that
+    same object — the exact sequence at ``project.py``'s publish step. Both
+    halves matter to what is being tested here: the canonical order is what
+    makes ``graph.json`` order well-defined, and ``write_graph(replace=True)``
+    is the truncate-and-reinsert that stops the mirror drifting by keeping rows
+    a later compile dropped.
+
+    ``sync_mirror=False`` skips the mirror so the staleness guard can be
+    tested.
+    """
+    published = graph.canonicalized()
+    root = tmp_path / "proj"
+    (root / ".tesserae").mkdir(parents=True, exist_ok=True)
+    graph_path = root / ".tesserae" / "graph.json"
+    graph_path.write_text(published.to_json(indent=2) + "\n", encoding="utf-8")
+    if sync_mirror:
+        SQLiteResearchGraphStore(root / ".tesserae" / "sqlite.db").write_graph(
+            published, replace=True
+        )
+    return root, graph_path
+
+
+def _both(server, graph_path, **args):
+    """``node_context`` via the whole graph and via the keyed store."""
+    base = {"graph_path": str(graph_path), **args}
+    full = server._dispatch_tool("node_context", dict(base))
+    keyed = server._dispatch_tool("node_context", {**base, "keyed": True})
+    return full, keyed
+
+
+def _suppression_graph():
+    """A graph whose suppression evidence is deliberately out of 1-hop reach.
+
+    ``Method:live`` and ``Method:dead`` are both neighbours of the focal paper.
+    ``Method:dead`` is superseded by ``Method:winner``, which is NOT a
+    neighbour of the focal node — so the edge that makes ``Method:dead``
+    invisible hangs off the neighbour, one hop further out than the payload
+    itself. A keyed read that fetched only the focal node's own edges would
+    serve a superseded node as current knowledge.
+    """
+    nodes = [
+        ResearchNode(id="Paper:focal", name="Focal Paper", type=ResearchNodeType.PAPER,
+                     description="the focal paper"),
+        ResearchNode(id="Method:live", name="Live Method",
+                     type=ResearchNodeType.METHODOLOGICAL_CONCEPT, description="current"),
+        ResearchNode(id="Method:dead", name="Dead Method",
+                     type=ResearchNodeType.METHODOLOGICAL_CONCEPT, description="superseded"),
+        ResearchNode(id="Method:winner", name="Winning Method",
+                     type=ResearchNodeType.METHODOLOGICAL_CONCEPT, description="the winner"),
+        ResearchNode(id="Claim:retracted", name="Retracted Claim",
+                     type=ResearchNodeType.PERFORMANCE_CLAIM, description="withdrawn"),
+        ResearchNode(id="Claim:retractor", name="Retracting Note",
+                     type=ResearchNodeType.PERFORMANCE_CLAIM, description="the retraction"),
+        ResearchNode(id="Concept:far", name="Far Concept",
+                     type=ResearchNodeType.CONCEPT, description="two hops out"),
+    ]
+    edges = [
+        ResearchEdge(source="Paper:focal", target="Method:live", type="uses", evidence="a"),
+        ResearchEdge(source="Paper:focal", target="Method:dead", type="uses", evidence="b"),
+        ResearchEdge(source="Paper:focal", target="Claim:retracted",
+                     type="supports_claim", evidence="c"),
+        # Suppression evidence, one hop beyond the payload:
+        ResearchEdge(source="Method:winner", target="Method:dead", type="supersedes", evidence="d"),
+        ResearchEdge(source="Claim:retractor", target="Claim:retracted", type="retracts", evidence="e"),
+        # Pure distance, so the graph is genuinely bigger than the neighbourhood:
+        ResearchEdge(source="Method:live", target="Concept:far", type="extends", evidence="f"),
+    ]
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_keyed_node_context_matches_the_whole_graph_payload(tmp_path):
+    """Byte-identical payloads for every node, on a graph with suppression.
+
+    Iterating EVERY node rather than a chosen one is deliberate: a keyed read
+    that happened to be right about the focal node and wrong about a hub, or
+    right about a node with neighbours and wrong about an isolated one, would
+    pass a single-node test.
+    """
+    graph = _suppression_graph()
+    _root, graph_path = _keyed_project(tmp_path, graph)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    for node in graph.nodes:
+        for extra in ({}, {"include_superseded": True}, {"limit": 1}, {"budget_chars": 300}):
+            full, keyed = _both(server, graph_path, node_id=node.id, **extra)
+            assert keyed == full, (
+                f"keyed payload diverged for {node.id} with {extra}:\n"
+                f"full  = {_json.dumps(full, indent=2, sort_keys=True)}\n"
+                f"keyed = {_json.dumps(keyed, indent=2, sort_keys=True)}"
+            )
+
+
+def test_keyed_node_context_suppresses_a_neighbour_condemned_out_of_reach(tmp_path):
+    """The suppression probe is load-bearing, not decorative.
+
+    Pins the ACTUAL behaviour rather than only "the two paths agree": if both
+    paths stopped suppressing, an equality assertion would still pass.
+    """
+    graph = _suppression_graph()
+    _root, graph_path = _keyed_project(tmp_path, graph)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    keyed = server._dispatch_tool(
+        "node_context", {"graph_path": str(graph_path), "node_id": "Paper:focal", "keyed": True}
+    )
+    surfaced = {n["id"] for n in keyed["neighbors"]}
+    assert surfaced == {"Method:live"}
+    assert "Method:dead" not in surfaced       # superseded by a non-neighbour
+    assert "Claim:retracted" not in surfaced   # retracted by a non-neighbour
+    assert {(e["source"], e["target"]) for e in keyed["edges"]} == {
+        ("Paper:focal", "Method:live")
+    }
+
+    opted_in = server._dispatch_tool(
+        "node_context",
+        {"graph_path": str(graph_path), "node_id": "Paper:focal", "keyed": True,
+         "include_superseded": True},
+    )
+    assert {n["id"] for n in opted_in["neighbors"]} == {
+        "Method:live", "Method:dead", "Claim:retracted"
+    }
+
+
+def test_keyed_node_context_keeps_graph_json_edge_order_under_a_limit(tmp_path):
+    """``limit`` slices the SAME edges the in-memory scan would slice.
+
+    ``node_context`` filters incident edges in ``graph.edges`` order and takes
+    the first N. Hand it edges in query-planner order instead and a bounded
+    call returns a different, silently arbitrary subset.
+    """
+    focal = ResearchNode(id="Paper:hub", name="Hub", type=ResearchNodeType.PAPER,
+                         description="hub")
+    others = [
+        ResearchNode(id=f"Concept:{i:02d}", name=f"Concept {i}",
+                     type=ResearchNodeType.CONCEPT, description=f"c{i}")
+        for i in range(30)
+    ]
+    edges = [
+        ResearchEdge(source="Paper:hub", target=f"Concept:{i:02d}", type="uses",
+                     evidence=f"e{i}")
+        if i % 2 == 0
+        else ResearchEdge(source=f"Concept:{i:02d}", target="Paper:hub", type="extends",
+                          evidence=f"e{i}")
+        for i in range(30)
+    ]
+    graph = ResearchGraph(nodes=[focal, *others], edges=edges)
+    _root, graph_path = _keyed_project(tmp_path, graph)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    published = graph.canonicalized()
+    expected = [
+        e.evidence for e in published.edges if "Paper:hub" in (e.source, e.target)
+    ]
+    for limit in (1, 3, 7, 29):
+        full, keyed = _both(server, graph_path, node_id="Paper:hub", limit=limit)
+        assert keyed == full
+        assert [e["evidence"] for e in keyed["edges"]] == expected[:limit]
+    # Not vacuous: the fixture's insertion order is not the published order, so
+    # a store answering in insertion order would fail the slice above.
+    assert [e.evidence for e in graph.edges] != [e.evidence for e in published.edges]
+
+
+def test_keyed_node_context_keeps_the_discovered_link_overlay(tmp_path):
+    """An overlay edge whose partner is outside the 1-hop ring still lands.
+
+    ``apply_overlay`` skips any edge with an endpoint absent from the view it
+    is handed, so applying it to a bare neighbourhood would silently drop
+    exactly the discovered connections the overlay exists to add. The keyed
+    path folds the overlay partners into the seed set first; this test fails if
+    that step is removed.
+    """
+    graph = ResearchGraph(
+        nodes=[
+            ResearchNode(id="Paper:focal", name="Focal", type=ResearchNodeType.PAPER,
+                         description="focal"),
+            ResearchNode(id="Concept:near", name="Near", type=ResearchNodeType.CONCEPT,
+                         description="one hop"),
+            ResearchNode(id="Concept:stranger", name="Stranger",
+                         type=ResearchNodeType.CONCEPT, description="no graph edge at all"),
+        ],
+        edges=[ResearchEdge(source="Paper:focal", target="Concept:near", type="uses",
+                            evidence="a")],
+    )
+    root, graph_path = _keyed_project(tmp_path, graph)
+    (root / ".tesserae" / "discovered_links.json").write_text(
+        _json.dumps([["Paper:focal", "Concept:stranger", 0.9]]), encoding="utf-8"
+    )
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    full, keyed = _both(server, graph_path, node_id="Paper:focal")
+    assert keyed == full
+    assert "Concept:stranger" in {n["id"] for n in keyed["neighbors"]}
+
+
+def test_keyed_node_context_resolves_names_and_merged_ids_like_the_graph(tmp_path):
+    """Name lookup and the merge-ledger redirect behave identically.
+
+    Both are ``_find_node`` behaviours the keyed path had to re-implement
+    against the store, so both are pinned against the in-memory answer.
+    """
+    from tesserae.merge_ledger import MergeRecord, merge_ledger_path, publish_merge_ledger
+
+    graph = _suppression_graph()
+    root, graph_path = _keyed_project(tmp_path, graph)
+    publish_merge_ledger(
+        merge_ledger_path(root),
+        [MergeRecord(loser_id="Method:retired", survivor_id="Method:live", basis="test")],
+        [n.id for n in graph.nodes],
+    )
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    by_name_full, by_name_keyed = _both(server, graph_path, name="Live Method")
+    assert by_name_keyed == by_name_full
+    assert by_name_keyed["node"]["id"] == "Method:live"
+
+    merged_full, merged_keyed = _both(server, graph_path, node_id="Method:retired")
+    assert merged_keyed == merged_full
+    assert merged_keyed["status"] == "merged"
+    assert merged_keyed["merged_from"] == "Method:retired"
+    assert merged_keyed["merged_into"] == "Method:live"
+
+
+def test_keyed_node_context_default_is_untouched(tmp_path):
+    """Without ``keyed`` nothing changes — the flag is opt-in at the call site."""
+    graph = _suppression_graph()
+    _root, graph_path = _keyed_project(tmp_path, graph)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    # No mirror at all: the default path must not notice, let alone fail.
+    (graph_path.parent / "sqlite.db").unlink()
+    out = server._dispatch_tool(
+        "node_context", {"graph_path": str(graph_path), "node_id": "Paper:focal"}
+    )
+    assert {n["id"] for n in out["neighbors"]} == {"Method:live"}
+
+
+def test_keyed_node_context_refuses_rather_than_approximating(tmp_path):
+    """Every shape a keyed read cannot serve fails loudly.
+
+    Each of these would otherwise return a plausible but different answer —
+    a PPR ranking over the wrong graph, an unfiltered agent view, or a payload
+    read from a mirror that no longer matches graph.json. A silently different
+    answer is the one failure mode this whole change must not have.
+    """
+    graph = _suppression_graph()
+    root, graph_path = _keyed_project(tmp_path, graph)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+    base = {"graph_path": str(graph_path), "node_id": "Paper:focal", "keyed": True}
+
+    with pytest.raises(ValueError, match="use_ppr"):
+        server._dispatch_tool("node_context", {**base, "use_ppr": True})
+    with pytest.raises(ValueError, match="agent"):
+        server._dispatch_tool("node_context", {**base, "agent": "worker"})
+
+    # graph.json republished without the mirror following it.
+    db = root / ".tesserae" / "sqlite.db"
+    import os, time as _time
+    stale = db.stat().st_mtime
+    os.utime(graph_path, (stale + 10, stale + 10))
+    with pytest.raises(ValueError, match="NEWER than its SQLite mirror"):
+        server._dispatch_tool("node_context", dict(base))
+
+    # No mirror at all.
+    db.unlink()
+    os.utime(graph_path, (stale, stale))
+    with pytest.raises(ValueError, match="does not exist"):
+        server._dispatch_tool("node_context", dict(base))
+
+
+def test_keyed_node_context_is_advertised_in_the_tool_listing(tmp_path):
+    """An opt-in nobody can discover is not opt-in."""
+    server = LLMWikiMCPServer()
+    spec = next(t for t in server.list_tools() if t["name"] == "node_context")
+    keyed = spec["inputSchema"]["properties"]["keyed"]
+    assert keyed["default"] is False
+    assert "use_ppr" in keyed["description"]
+
+
+def test_keyed_node_context_does_not_leak_the_code_layer(tmp_path):
+    """graph.json is the RESEARCH partition; sqlite.db is the UNION.
+
+    ``project.py`` partitions the compiled graph and publishes only the research
+    half to graph.json, while the SQLite mirror is written from the union. A
+    keyed read that trusts the mirror therefore answers with ``CodeFunction``
+    nodes and cross-layer edges the whole-graph path provably cannot return —
+    silently, with no error.
+
+    Every existing keyed test passed WITH that bug, because this project's own
+    corpus carries zero code nodes. So the fixture here has to mint one.
+    """
+    graph = ResearchGraph(
+        nodes=[
+            ResearchNode(id="Paper:focal", name="Focal Paper",
+                         type=ResearchNodeType.PAPER, description="focal"),
+            ResearchNode(id="Method:live", name="Live Method",
+                         type=ResearchNodeType.METHODOLOGICAL_CONCEPT, description="live"),
+            ResearchNode(id="Code:fn", name="parse_tokens",
+                         type=ResearchNodeType.CODE_FUNCTION, description="a code symbol"),
+        ],
+        edges=[
+            ResearchEdge(source="Paper:focal", target="Method:live", type="uses"),
+            ResearchEdge(source="Code:fn", target="Paper:focal", type="mentioned_in"),
+        ],
+    )
+    _root, graph_path = _keyed_project(tmp_path, graph)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    keyed = server._dispatch_tool(
+        "node_context",
+        {"graph_path": str(graph_path), "node_id": "Paper:focal", "keyed": True},
+    )
+    surfaced = {n["id"] for n in keyed["neighbors"]}
+    assert "Code:fn" not in surfaced, (
+        f"a CodeFunction reached a keyed research payload: {surfaced}"
+    )
+    assert surfaced == {"Method:live"}
+    assert all(
+        e["source"] != "Code:fn" and e["target"] != "Code:fn" for e in keyed["edges"]
+    ), f"a cross-layer edge survived: {keyed['edges']}"
+
+    # Deliberately NOT asserting keyed == full here. ``_keyed_project`` writes
+    # the graph to graph.json unpartitioned, so the whole-graph path in THIS
+    # fixture still sees the code node; production partitions before publishing
+    # (project.py:3843/:3852). Equality would therefore assert the harness's
+    # shortcut rather than the behaviour, and the property that matters is the
+    # one above: a keyed read never surfaces the code layer.

@@ -162,14 +162,47 @@ def build_plan(
     sources = list(overrides.pop("sources", detection.project.default_sources))
 
     extractor = overrides.pop("extractor", detection.recommended.extractor)
-    claude_config_dir = overrides.pop(
-        "claude_config_dir", detection.recommended.claude_config_dir
-    )
-    claude_model = overrides.pop("claude_model", None)
-    codex_model = overrides.pop("codex_model", detection.recommended.codex_model)
-    codex_home = overrides.pop("codex_home", None)
-    llm_provider = overrides.pop("llm_provider", detection.recommended.llm_provider)
-    llm_model = overrides.pop("llm_model", None)
+    # PRECEDENCE: explicit override > the machine-wide config > detection.
+    #
+    # Detection is a GUESS about what is installed; the global config is the
+    # user's standing DECISION. Before this, detection won, and
+    # `detection.py` checks the Claude CLI first — so a machine with both CLIs
+    # got `llm_provider: "claude"` written into every new project however
+    # emphatically the global config said `codex`, and the project value then
+    # shadowed the global for good, because `resolve_llm_client_settings` reads
+    # the project layer first.
+    #
+    # Measured cost of that on 2026-08-24: a 1,552-document eval corpus was
+    # compiled against a Claude Code subscription that the operator had
+    # configured globally to use Codex. It exhausted the session limit at 5am
+    # and 1,116 documents (71.9%) silently fell back to deterministic
+    # extraction. `init` had also pinned `llm_claude_config_dirs` to one
+    # specific account directory, which nothing had asked for.
+    from tesserae.llm_json import _load_global_llm_config
+
+    global_llm = _load_global_llm_config()
+
+    def _pick(override_key: str, global_key: str, detected):
+        """override > global > detected, with `None` never masking a later layer."""
+        if override_key in overrides:
+            return overrides.pop(override_key)
+        chosen = global_llm.get(global_key)
+        return chosen if chosen is not None else detected
+
+    llm_provider = _pick("llm_provider", "llm_provider",
+                         detection.recommended.llm_provider)
+    llm_model = _pick("llm_model", "llm_model", None)
+    codex_model = _pick("codex_model", "llm_model",
+                        detection.recommended.codex_model)
+    codex_home = _pick("codex_home", "llm_codex_home", None)
+    claude_model = _pick("claude_model", "llm_claude_model", None)
+    # A claude config dir is only meaningful when claude is the provider.
+    # Writing one under a codex provider is the pin that surprised an operator
+    # into spending the wrong subscription.
+    claude_config_dir = _pick("claude_config_dir", "llm_claude_config_dir",
+                              detection.recommended.claude_config_dir)
+    if llm_provider and llm_provider != "claude":
+        claude_config_dir = None
     llm_base_url = overrides.pop("llm_base_url", None)
     llm_api_key = overrides.pop("llm_api_key", None)
     install_agent_pointer = bool(overrides.pop("install_agent_pointer", True))

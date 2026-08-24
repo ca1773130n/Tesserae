@@ -14,7 +14,21 @@ from .research_graph import RETRACTION_EDGE_TYPES
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard for type checkers
     from .research_graph import ResearchGraph
 
-__all__ = ["retracted_ids", "superseded_ids", "suppressed_ids"]
+__all__ = [
+    "SUPPRESSION_EDGE_TYPES",
+    "retracted_ids",
+    "superseded_ids",
+    "suppressed_ids",
+]
+
+#: Every edge type that can mint a suppressed node. Derived here rather than
+#: spelled out again by callers so a future suppression class is picked up by
+#: the keyed store's probe the same day it is picked up by
+#: :func:`suppressed_ids` — the two must never disagree about which edges
+#: matter, because one is used to decide which edges to FETCH for the other.
+SUPPRESSION_EDGE_TYPES: frozenset = (
+    frozenset({"supersedes", "resolved_by"}) | RETRACTION_EDGE_TYPES
+)
 
 
 def superseded_ids(graph: "ResearchGraph") -> Set[str]:

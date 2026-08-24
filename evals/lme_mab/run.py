@@ -65,6 +65,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 from ..qa.run_qa_eval import Skip, _num, _rate, _table, load_answers_file
 from ..qa.scorer import score_system
 from .adapter import (
+    EVIDENCE_SOURCE_CHARS,
     PROTOCOL_BACKBONE,
     PROTOCOL_CONTROLS,
     PROTOCOL_EMBEDDING_MODEL,
@@ -375,6 +376,7 @@ def answer_group(
     *,
     k: int = PROTOCOL_K,
     progress: bool = True,
+    expand_evidence: bool = True,
 ) -> Tuple[List[Dict[str, Any]], List[List[int]]]:
     """Ask every question in ``group``. Returns ``(answer rows, retrieved)``.
 
@@ -407,7 +409,13 @@ def answer_group(
         except Exception as exc:  # recorded, not raised: one bad question
             hits, evidence, answer = [], [], f"Error: {exc}"  # keep the other 59
         else:
-            evidence = [hit.text for hit in hits]
+            # By default NOT ``[hit.text ...]``: that handed the backbone a
+            # 234-character node summary of a 14,042-character session it had
+            # just ranked on 8,000 of those characters — see
+            # ``MabMemory.answer_evidence``. ``expand_evidence=False`` restores
+            # it deliberately, as the control arm the difference is measured
+            # against, and only when --answer-evidence summary asks for it.
+            evidence = memory.answer_evidence(hits, expand=expand_evidence)
             try:
                 answer = answer_fn(question, evidence)
             except Exception as exc:  # the backbone failed, the search did not
@@ -421,6 +429,16 @@ def answer_group(
             "stratum": types[i] if i < len(types) else "unspecified",
             "group": group.index,
             "n_evidence": len(evidence),
+            # Items stopped being a description of the budget the moment they
+            # stopped carrying comparable amounts of text. Given that an
+            # IDENTICAL generative config has swung 0.043 token F1 between two
+            # runs in this repo, what the backbone actually read is the one
+            # thing worth persisting per row.
+            "evidence_chars": sum(len(text) for text in evidence),
+            # Which CONTENT, not just how much of it. A replicate scored months
+            # later off answers.json has no other way to tell the two arms
+            # apart, and they differ by a factor of ten in prompt size.
+            "evidence": "source" if expand_evidence else "summary",
         })
     return rows, retrieved
 
@@ -514,7 +532,8 @@ def _corpus_section(ingests: Sequence[IngestResult]) -> List[str]:
         str(r.group_index), f"{r.documents:,}", f"{r.turns:,}", f"{r.chars:,}",
         f"{r.dated_sessions:,}", r.session_source,
         {True: "yes", False: "**NO**", None: "n/a"}[r.views_agree],
-        "yes" if r.compiled else "**staged only**",
+        "yes" if r.compiled else ("reused (earlier run)" if r.reused
+                                  else "**staged only**"),
     ] for r in ingests]
     lines = _table(
         ["group", "documents (sessions)", "turns", "chars", "dated sessions",
@@ -637,10 +656,76 @@ def _controls_section(meta: Mapping[str, Any], blockers: Sequence[str]) -> List[
     return lines
 
 
-def _shortfall_section(shortfalls: Sequence[Mapping[str, Any]], n_questions: int) -> List[str]:
+def _evidence_chars(rows: Sequence[Mapping[str, Any]]) -> Dict[str, int]:
+    """Mean / median / max characters of evidence per question, as declarations.
+
+    Empty when no row recorded any, so a ``--score`` re-run of an answers file
+    written before this existed declares nothing rather than declaring zero.
+    """
+    sizes = sorted(int(r.get("evidence_chars") or 0) for r in rows
+                   if r.get("evidence_chars") is not None)
+    if not sizes:
+        return {}
+    mid = len(sizes) // 2
+    median = sizes[mid] if len(sizes) % 2 else (sizes[mid - 1] + sizes[mid]) // 2
+    return {
+        "evidence_chars_mean": round(sum(sizes) / len(sizes)),
+        "evidence_chars_median": median,
+        "evidence_chars_max": sizes[-1],
+    }
+
+
+def _evidence_budget_note(meta: Mapping[str, Any]) -> List[str]:
+    """What K=10 items actually cost in characters. See ``_evidence_chars``.
+
+    K counts ITEMS, and items stopped being interchangeable when the document
+    anchors among them started carrying their own session text. A reader
+    comparing this run's evidence budget with a published top-10 needs the
+    second number, so §5 prints it beside the shortfalls rather than leaving
+    "the full K=10 evidence items" to imply a budget it no longer describes.
+    """
+    mean = meta.get("evidence_chars_mean")
+    if mean is None:
+        return []
+    sentence = (
+        f"**Evidence size, in characters rather than items.** Mean "
+        f"{int(mean):,} per question, median "
+        f"{int(meta.get('evidence_chars_median') or 0):,}, max "
+        f"{int(meta.get('evidence_chars_max') or 0):,}."
+    )
+    cap = meta.get("evidence_source_chars")
+    if not cap:
+        # The control arm. Saying nothing here would let §5 imply the default
+        # budget; saying the default sentence would declare a cap this run
+        # never applied. Both are the same lie in opposite directions.
+        sentence += (
+            f" Every item is a retrieved node's name and description and "
+            f"nothing else (`--answer-evidence summary`): the pre-#193 "
+            f"content, kept as a measurable control. On group 0 that is 1.7% "
+            f"of the text the retriever scored in order to rank it."
+        )
+        return ["", sentence]
+    if cap is not None:
+        sentence += (
+            f" An item is a retrieved node's name and description, PLUS — for "
+            f"the node that IS a staged session, and only for it — the first "
+            f"{int(cap):,} characters of that session's own file. Before that "
+            f"expansion the same K={PROTOCOL_K} was ~2,300 characters, 1.7% of "
+            f"the text the retriever had already scored in order to rank it; "
+            f"arXiv:2410.10813 §5.2 measures exactly that substitution — "
+            f"sessions replaced by summaries or facts — as a LOSS. The cap is "
+            f"not the ranking cap; `adapter.EVIDENCE_SOURCE_CHARS` says why "
+            f"2,400 rather than 8,000."
+        )
+    return ["", sentence]
+
+
+def _shortfall_section(shortfalls: Sequence[Mapping[str, Any]], n_questions: int,
+                       meta: Optional[Mapping[str, Any]] = None) -> List[str]:
+    meta = meta or {}
     if not shortfalls:
         return [f"Every one of the {n_questions} queries returned the full K="
-                f"{PROTOCOL_K} evidence items."]
+                f"{PROTOCOL_K} evidence items."] + _evidence_budget_note(meta)
     rows = [[str(s["question"])[:80], str(s["requested"]), str(s["returned"]),
              str(s.get("total_matches", "—"))] for s in shortfalls[:20]]
     lines = _table(["question", "requested", "returned", "candidates"], rows)
@@ -656,7 +741,7 @@ def _shortfall_section(shortfalls: Sequence[Mapping[str, Any]], n_questions: int
         "budget allows, so this run gave itself LESS context than the baselines "
         "had, not more.",
     ]
-    return lines
+    return lines + _evidence_budget_note(meta)
 
 
 def _retrieval_footnotes(reports: Sequence[Mapping[str, Any]]) -> List[str]:
@@ -892,7 +977,7 @@ def build_report(
     else:
         lines += ["Nothing declared — an undeclared run cannot be published."]
     lines += ["", "## 5. Retrieval shortfalls", ""]
-    lines += (_shortfall_section(shortfalls, n_questions) if tesserae_ran else
+    lines += (_shortfall_section(shortfalls, n_questions, meta) if tesserae_ran else
               ["The Tesserae arm did not run, and §5 is about ITS graph "
                "retrieval. The baseline arms' shortfalls are in §6."])
     lines += ["", "## 6. Retrieval comparison (this machine's protocol)", ""]
@@ -933,6 +1018,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retrieval-only", action="store_true",
                         help="score recall@K and MRR of the gold session and skip "
                              "answering entirely — no backbone, no judge")
+    parser.add_argument("--reuse-compile", action="store_true",
+                        help="measure against the graph ALREADY compiled in "
+                             "--work instead of compiling again. Verifies the "
+                             "staged corpus is byte-identical to what this "
+                             "group would stage and refuses otherwise; writes "
+                             "nothing. A compile is ~an hour per group, so this "
+                             "is how a retrieval change is re-measured on a "
+                             "group that has already been built")
     parser.add_argument("--stage-only", action="store_true",
                         help="write the session documents and stop: no compile, "
                              "no LLM, no network")
@@ -945,6 +1038,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--judge", default="",
                         help=f"judge model (protocol fixes {PROTOCOL_JUDGE}; empty "
                              f"means no judge ran, which blocks the comparison)")
+    parser.add_argument("--answer-evidence", choices=("source", "summary"),
+                        default="source",
+                        help="what the backbone reads per retrieved hit: the "
+                             "node summary PLUS its own session text (source, "
+                             "the default), or the node summary alone "
+                             "(summary — the pre-#193 control arm, kept so the "
+                             "two can be measured against each other over one "
+                             "retrieval)")
     parser.add_argument("--k", type=int, default=PROTOCOL_K,
                         help=f"evidence budget. NOT a tuning knob — the protocol "
                              f"fixes K={PROTOCOL_K} and any other value blocks the "
@@ -1024,6 +1125,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "index Session.render() in memory and stage nothing",
             )
 
+        if args.reuse_compile and args.stage_only:
+            print("SKIP: --reuse-compile and --stage-only contradict each other — "
+                  "one measures against an existing graph, the other refuses to "
+                  "build or use one")
+            return 0
+
         # Guard 2 — the estimate, before any input is read. Group selection is
         # not known yet, so the banner is scaled off the REQUEST, which is what
         # the operator is being asked to approve.
@@ -1081,7 +1188,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         for group in groups:
             if memory is not None:
                 ingests.append(memory.ingest(group, work=work,
-                                             compile_project=not args.stage_only))
+                                             compile_project=not args.stage_only,
+                                             reuse_compiled=args.reuse_compile))
                 print(f"group {group.index}: staged {ingests[-1].documents} sessions "
                       f"to {ingests[-1].corpus_dir}", file=sys.stderr)
             if args.stage_only:
@@ -1097,8 +1205,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                             retrieved = retrieve_group(memory, group, k=args.k,
                                                        progress=True)
                         else:
-                            answered, retrieved = answer_group(memory, group, answer_fn,
-                                                               k=args.k)
+                            answered, retrieved = answer_group(
+                                memory, group, answer_fn, k=args.k,
+                                expand_evidence=args.answer_evidence == "source")
                             rows += answered
                     else:
                         # One arm per GROUP: the corpus is a group's sessions, and
@@ -1167,6 +1276,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "embedding_dim": getattr(memory.embedding_backend(), "dim", None),
             "judge": args.judge,
             "evidence_budget": args.k,
+            # K alone no longer describes the budget: an evidence item is a
+            # node summary OR a node summary plus up to EVIDENCE_SOURCE_CHARS
+            # of its own session. Declaring the cap and the realised
+            # distribution is what keeps §4 checking the control it names —
+            # ``evidence_budget`` is a count of items, and a reader comparing
+            # this run to a published top-10 needs to know how big an item got.
+            "evidence_content": args.answer_evidence,
+            # 0, not the constant, on the summary arm: declaring a 2,400-char
+            # cap for a run whose items never expanded would be a false
+            # declaration of the very control §4 exists to check.
+            "evidence_source_chars": (EVIDENCE_SOURCE_CHARS
+                                      if args.answer_evidence == "source" else 0),
+            **_evidence_chars(rows),
             "dataset": str(parquet),
             "groups": ",".join(str(g.index) for g in groups),
             "protocol": "arXiv:2606.04555 §5.2-5.3",

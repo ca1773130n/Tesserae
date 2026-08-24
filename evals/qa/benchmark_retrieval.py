@@ -72,6 +72,25 @@ class RetrievalConfig(QABenchmarkConfig):  # type: ignore[misc,valid-type]
     #: Declared, never derived. Must equal the null model's for the comparison
     #: to be publishable at all.
     answer_shape: str = "short-span"
+    #: OPT-IN abstention gate. ``None`` — the default — is today's behaviour
+    #: exactly: no gate, nothing computed, no change to any number. Set it to a
+    #: quantile in [0, 1] and an answer whose Novel Grounded Evidence falls
+    #: below ``grounding_tau(corpus_idf, quantile)`` is replaced with ``""``,
+    #: which :func:`evals.qa.scorer.is_refusal` already reads as a refusal.
+    #:
+    #: A QUANTILE, never an absolute threshold. BM25 idf scales with
+    #: ``log(n_docs)``, so a constant tuned on a 135-document corpus means
+    #: something else entirely on a 62k-page graph — see
+    #: :func:`tesserae.retrieval.grounding.grounding_tau`.
+    #:
+    #: Measured at quantile 0.25 on 352 persisted answers, Tesserae arm:
+    #: Youden J +0.5048 -> +0.6172, refuse|unanswerable 0.529 -> 0.691,
+    #: refuse|answerable 0.025 -> 0.074. Honest leave-one-out J +0.5884
+    #: (dJ +0.0837, paired bootstrap 95%% CI [-0.0004, +0.1719]). It costs
+    #: token F1 0.3534 -> 0.3380 on the answerable stratum. Opt in per run;
+    #: it is not the product's behaviour and must not become it.
+    grounding_quantile: Optional[float] = None
+
     results_file: str = "retrieval_qa_results.json"
 
 
@@ -214,7 +233,25 @@ class QABenchmarkRetrieval(QABenchmarkRAG):  # type: ignore[misc,valid-type]
             # refusal downstream, which would credit an exhausted account as
             # caution. Surface it as an error instead.
             raise RuntimeError("LLM returned no answer (every account exhausted?)")
-        return answer.strip()
+        answer = answer.strip()
+        if self.config.grounding_quantile is None:
+            return answer
+        # OPT-IN abstention gate. Scored against the very blocks that were
+        # pasted into the prompt above, with rarity taken from the WHOLE
+        # corpus — an idf derived from five retrieved documents cannot tell a
+        # rare term from a common one.
+        from tesserae.retrieval.grounding import (
+            grounding_tau, novel_grounded_evidence,
+        )
+
+        if getattr(self, "_idf", None) is None:
+            from tesserae.retrieval.grounding import corpus_idf
+
+            self._idf = corpus_idf(self.documents)
+        idf, n_docs = self._idf
+        sources = [self.documents[i][: self.config.doc_chars] for i in picked]
+        score = novel_grounded_evidence(answer, question, sources, idf, n_docs)
+        return "" if score < grounding_tau(idf, self.config.grounding_quantile) else answer
 
     def declared_meta(self) -> Dict[str, Any]:
         # embedding_model / embedding_dim are FAIRNESS_KEYS: without them the

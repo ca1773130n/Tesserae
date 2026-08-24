@@ -20,6 +20,7 @@ wrong number:
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
@@ -27,11 +28,13 @@ import pytest
 
 from evals.lme_mab import run as runner
 from evals.lme_mab.adapter import (
+    EVIDENCE_SOURCE_CHARS,
     PROTOCOL_K,
     MabMemory,
     RefusedToCompileInRepo,
     Session,
     document_index,
+    document_title,
     guard_work_dir,
     protocol_blockers,
     split_sessions,
@@ -367,6 +370,217 @@ def test_search_documents_drops_an_unmappable_hit_and_counts_it(tmp_path):
     assert memory.n_unmapped_hits == 2
 
 
+# ------------------------------------------- the text the backbone reads
+
+
+def _staged(work: Path, *indices: int, body: str = "") -> None:
+    """Write ``session-NNNN.md`` for each index, as ``ingest`` would."""
+    corpus = work / "corpus"
+    corpus.mkdir(parents=True, exist_ok=True)
+    for index in indices:
+        session = Session(index=index, date="2023/05/21 (Sun) 09:00",
+                          turns=[{"role": "user", "content": body or f"body {index}"}])
+        (corpus / session.document_name).write_text(session.render(), encoding="utf-8")
+
+
+def _doc(work: Path, index: int) -> str:
+    """The ``source_path`` a compile records: ABSOLUTE, as the real graph's are.
+
+    ``hybrid._confined_source`` resolves a path as given, so a relative one
+    resolves against the process's cwd and falls outside the work tree — which
+    is why the real graph's paths are absolute and these are too."""
+    return str(work / "corpus" / f"session-{index:04d}.md")
+
+
+def _anchored(work: Path, nodes: Sequence[tuple]) -> MabMemory:
+    """A memory whose search returns ``(name, source_path)`` in that order."""
+    def _search(graph, query, **kwargs):
+        return _Result([_Scored(_Node(name, f"about {query}", path))
+                        for name, path in nodes], total_matches=len(nodes))
+
+    memory = MabMemory(compile_fn=lambda w: None, search_fn=_search, backend=object())
+    memory.work = work
+    memory._graph = object()
+    return memory
+
+
+def test_the_document_title_is_the_h1_the_staged_document_carries():
+    """``is_document_anchor`` compares a node's name against this string, and a
+    compile names a document's anchor after the document's own H1. Two
+    spellings of it would silently stop every anchor matching, and the evidence
+    would quietly go back to being an 88-character summary."""
+    for index in (0, 20, 113):
+        rendered = Session(index=index, date="", turns=[]).render()
+        assert rendered.splitlines()[0] == f"# {document_title(index)}"
+
+
+def test_an_anchor_gets_its_session_and_an_impostor_sharing_the_path_does_not(tmp_path):
+    """The trap. Every node in this graph carries the ``source_path`` of the
+    chat it was extracted from, so ``session-0015.md`` is the provenance of the
+    session AND of "Banksy: Wall and Piece", a book mentioned in it. Measured on
+    the compiled group-0 graph, 103 of the 214 nodes a TYPE-based rule would
+    admit are impostors like that one — and under the lexical lane 219 of 600
+    retrieved hits are.
+
+    The impostor ranks FIRST here on purpose. De-duplication would hide a
+    broken gate if the anchor came first, and the retrieval that matters is the
+    one where the anchor is not in the top-10 at all: the book alone would then
+    hand the backbone a whole transcript under somebody else's name."""
+    _staged(tmp_path, 15, body="the keys are on the hall table")
+    path = _doc(tmp_path, 15)
+    memory = _anchored(tmp_path, [("Banksy: Wall and Piece", path),
+                                  ("Session 0015", path)])
+
+    impostor, anchor = memory.answer_evidence(memory.query_hits("q", k=2))
+
+    assert "the keys are on the hall table" not in impostor
+    assert impostor == f"Banksy: Wall and Piece — about q — source: {path}"
+    assert "the keys are on the hall table" in anchor
+
+    alone = _anchored(tmp_path, [("Banksy: Wall and Piece", path)])
+    assert alone.answer_evidence(alone.query_hits("q", k=1)) == [impostor]
+
+
+def test_a_session_is_expanded_once_however_many_of_its_nodes_rank(tmp_path):
+    """17 of group 0's 111 sessions carry a ``Session`` summary node named
+    exactly like their ``SourceDocument`` anchor, so both pass the identity
+    test and both point at one file. Eleven of the 60 real questions retrieved
+    such a pair. Paying twice for the same bytes is the failure the gate exists
+    to prevent, so the text goes to the FIRST hit that stands for the file —
+    the rule ``documents_of`` already scores by."""
+    _staged(tmp_path, 43, body="an unmistakable sentence")
+    memory = _anchored(tmp_path, [("Session 0043", _doc(tmp_path, 43)),
+                                  ("Session 0043", _doc(tmp_path, 43))])
+
+    first, second = memory.answer_evidence(memory.query_hits("q", k=2))
+
+    assert "an unmistakable sentence" in first
+    assert "an unmistakable sentence" not in second
+    assert len({first, second}) == 2
+
+
+def test_the_session_text_is_capped_and_taken_from_the_front(tmp_path):
+    """A ranking cap is not an answering cap — see ``EVIDENCE_SOURCE_CHARS``.
+    Truncation is from the front because gold answers are front-loaded here
+    (median offset 268 over group 0's 53 literally locatable golds)."""
+    _staged(tmp_path, 7, body="A" * 40_000 + "TAIL")
+    memory = _anchored(tmp_path, [("Session 0007", _doc(tmp_path, 7))])
+
+    (evidence,) = memory.answer_evidence(memory.query_hits("q", k=1))
+
+    head = evidence.split("\n", 1)[1]
+    assert len(head) == EVIDENCE_SOURCE_CHARS
+    assert head.startswith("# Session 0007")
+    assert "TAIL" not in evidence
+
+
+def test_the_summary_arm_returns_the_node_text_untouched(tmp_path):
+    """``--answer-evidence summary`` is the control arm, and a control that
+    quietly leaks a byte of the treatment is not a control.
+
+    The hit here is a genuine anchor, so the expanding path WOULD read its
+    file. ``expand=False`` must return exactly what the backbone read before
+    #193 — ``[hit.text ...]`` — which is what makes the two arms differ in
+    evidence content and in nothing else."""
+    _staged(tmp_path, 21, body="a sentence only the file has")
+    memory = _anchored(tmp_path, [("Session 0021", _doc(tmp_path, 21))])
+    hits = memory.query_hits("q", k=1)
+
+    summary = memory.answer_evidence(hits, expand=False)
+
+    assert summary == [hit.text for hit in hits]
+    assert "a sentence only the file has" not in summary[0]
+    # ...and the same hits still expand, so the difference is the flag alone.
+    assert "a sentence only the file has" in memory.answer_evidence(hits)[0]
+
+
+def test_a_source_path_outside_the_work_directory_is_never_read(tmp_path):
+    """``source_path`` arrives from document frontmatter and is UNTRUSTED. The
+    answering side is the dangerous one: ranking buries a stolen file in a BM25
+    score, answering pastes it verbatim into an LLM prompt. The read is
+    confined to the directory this adapter staged into."""
+    outside = tmp_path.parent / "secret"
+    outside.mkdir(exist_ok=True)
+    (outside / "session-0001.md").write_text("BEGIN OPENSSH PRIVATE KEY", encoding="utf-8")
+    work = tmp_path / "work"
+    _staged(work, 1)
+    memory = _anchored(work, [("Session 0001", str(outside / "session-0001.md"))])
+
+    (evidence,) = memory.answer_evidence(memory.query_hits("q", k=1))
+
+    assert "PRIVATE KEY" not in evidence
+    assert evidence == memory.query_hits("q", k=1)[0].text
+
+
+def test_the_expansion_is_answering_only_and_moves_no_retrieval_number(tmp_path):
+    """The deterministic half of this benchmark is its most reproducible
+    evidence — BM25 reproduced to four decimals across four runs — and nothing
+    on the answering side may perturb it. ``query``, ``query_hits`` and
+    ``search_documents`` see the node text and no file at all."""
+    _staged(tmp_path, 5, body="a sentence only the file has")
+    memory = _anchored(tmp_path, [("Session 0005", _doc(tmp_path, 5)),
+                                  ("Digital Detox", _doc(tmp_path, 5))])
+
+    hits = memory.query_hits("q", k=2)
+
+    assert all("a sentence only the file has" not in hit.text for hit in hits)
+    assert memory.query("q") == [hit.text for hit in hits]
+    assert memory.documents_of(hits) == [5]
+    assert memory.search_documents("q", k=2) == [5]
+
+
+def test_answer_evidence_before_ingest_returns_the_node_text_rather_than_raising(tmp_path):
+    """``work`` is None until ``ingest`` runs. There is no tree to confine a
+    read to, so there is no read — the evidence is what it was before this
+    existed rather than an exception on the answering path."""
+    memory = _memory(tmp_path, hits=2, paths=["corpus/session-0002.md"])
+    memory.work = None
+    hits = memory.query_hits("q", k=2)
+
+    assert memory.answer_evidence(hits) == [hit.text for hit in hits]
+
+
+def test_the_answer_rows_record_what_the_backbone_actually_read(tmp_path):
+    """An IDENTICAL generative config has swung 0.043 token F1 between two runs
+    in this repo, so the evidence content is the one thing worth persisting per
+    row. ``n_evidence`` counts items and stopped describing the budget the
+    moment items stopped carrying comparable amounts of text."""
+    _staged(tmp_path, 2, body="the hall table")
+    memory = _anchored(tmp_path, [("Session 0002", _doc(tmp_path, 2))])
+    seen: List[Sequence[str]] = []
+
+    rows, retrieved = runner.answer_group(
+        memory, _group(), lambda q, evidence: seen.append(evidence) or "the hall table",
+        k=1, progress=False)
+
+    assert retrieved == [[2]]
+    assert "the hall table" in seen[0][0]              # the backbone read the file
+    assert rows[0]["n_evidence"] == 1
+    assert rows[0]["evidence_chars"] == len(seen[0][0])
+
+
+def test_the_report_states_the_evidence_budget_in_characters(tmp_path):
+    """K counts ITEMS. Once an item can be a summary or a summary plus 2,400
+    characters of transcript, "the full K=10 evidence items" no longer
+    describes the budget, and §4 would be certifying a control it stopped
+    checking."""
+    rows = [{"question": "q", "answer": "a", "gold": ["a"],
+             "stratum": "multi-session", "n_evidence": 10, "evidence_chars": 23_281}]
+    meta = _met_meta(evidence_source_chars=2_400, **runner._evidence_chars(rows))
+    report = runner.score_system(rows, system="Tesserae", meta=meta)
+
+    text = runner.build_report([report])
+
+    assert "Mean 23,281 per question" in text
+    assert "first 2,400 characters" in text
+
+
+def test_an_answers_file_written_before_this_existed_declares_nothing(tmp_path):
+    """``--score`` re-reads saved rows. One without ``evidence_chars`` must
+    declare no distribution rather than declare a distribution of zero."""
+    assert runner._evidence_chars([{"question": "q", "n_evidence": 10}]) == {}
+
+
 # -------------------------------------------------------- protocol controls
 
 
@@ -603,3 +817,164 @@ def test_the_banner_is_printed_before_any_input_is_read(monkeypatch, capsys, tmp
 
     out = capsys.readouterr().out
     assert out.index("ESTIMATED COST") < out.index("SKIP:")
+
+
+# ---------------------------------------------------------- reuse_compiled
+#
+# A compile is ~an hour per group, so re-measuring a retrieval change on a
+# group that has already been built has to be possible without paying it
+# again. The flag's whole safety is that it refuses when the staged corpus is
+# not the one this group would stage: a graph compiled from other text would
+# answer about a haystack the questions were never asked about, and would
+# look like a valid measurement while doing it.
+
+
+def _already_compiled(work, group, *, graph=True, indexes=True):
+    """Stage ``group`` in ``work`` the way a previous run would have.
+
+    ``indexes=False`` writes a graph that indexes NO staged document — the
+    foreign-graph case. The original helper always wrote the literal "{}",
+    which means every reuse test exercised the corpus half of the check and
+    none of them could see the graph half; a graph indexing a different group
+    passed all nine.
+    """
+    memory = MabMemory(compile_fn=lambda w: None)
+    memory.ingest(group, work=work)
+    if graph:
+        tess = work / ".tesserae"
+        tess.mkdir(parents=True, exist_ok=True)
+        nodes = []
+        if indexes:
+            nodes = [
+                {"id": p.stem, "source_path": str(p)}
+                for p in sorted((work / "corpus").glob("*.md"))
+            ]
+        (tess / "graph.json").write_text(
+            json.dumps({"nodes": nodes, "edges": []}), encoding="utf-8"
+        )
+    return memory
+
+
+def test_reuse_compiled_does_not_compile(tmp_path):
+    _already_compiled(tmp_path, _group())
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    result = memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+    assert result.reused is True
+    assert result.compiled is False
+    assert result.documents == 3
+    assert result.turns == 4
+
+
+def test_reuse_compiled_writes_nothing(tmp_path):
+    """The compiled group is a read-mostly measurement target, not scratch."""
+    _already_compiled(tmp_path, _group())
+    corpus = tmp_path / "corpus"
+    before = {p.name: (p.read_bytes(), p.stat().st_mtime_ns)
+              for p in sorted(corpus.glob("*.md"))}
+
+    MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway")).ingest(
+        _group(), work=tmp_path, reuse_compiled=True)
+
+    after = {p.name: (p.read_bytes(), p.stat().st_mtime_ns)
+             for p in sorted(corpus.glob("*.md"))}
+    assert before == after
+
+
+def test_reuse_compiled_refuses_when_a_staged_document_differs(tmp_path):
+    _already_compiled(tmp_path, _group())
+    (tmp_path / "corpus" / "session-0001.md").write_text("something else\n",
+                                                         encoding="utf-8")
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    with pytest.raises(ValueError, match="not this group's corpus"):
+        memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+
+def test_reuse_compiled_refuses_when_the_corpus_holds_an_extra_session(tmp_path):
+    """The graph would index a session this group does not contain."""
+    _already_compiled(tmp_path, _group())
+    (tmp_path / "corpus" / "session-0099.md").write_text("# stray\n",
+                                                         encoding="utf-8")
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    with pytest.raises(ValueError, match="unexpected"):
+        memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+
+def test_reuse_compiled_refuses_a_smaller_group_against_a_bigger_corpus(tmp_path):
+    _already_compiled(tmp_path, _group())
+    small = _group(context=repr(["Chat Time: 2024/01/01 (Mon) 09:00",
+                                 [{"role": "user", "content": "hello"}]]))
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    with pytest.raises(ValueError, match="unexpected"):
+        memory.ingest(small, work=tmp_path, reuse_compiled=True)
+
+
+def test_reuse_compiled_refuses_when_there_is_no_graph(tmp_path):
+    _already_compiled(tmp_path, _group(), graph=False)
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    with pytest.raises(FileNotFoundError, match="nothing to reuse"):
+        memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+
+def test_reuse_compiled_refuses_when_there_is_no_corpus(tmp_path):
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    with pytest.raises(FileNotFoundError, match="nothing to reuse"):
+        memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+
+def test_the_default_ingest_still_compiles_and_is_not_marked_reused(tmp_path):
+    """Every existing caller must be byte-identical: the flag is opt-in."""
+    compiled = []
+    memory = MabMemory(compile_fn=compiled.append)
+
+    result = memory.ingest(_group(), work=tmp_path)
+
+    assert compiled == [tmp_path.resolve()]
+    assert result.compiled is True
+    assert result.reused is False
+
+
+def test_reuse_refuses_a_graph_compiled_from_a_different_corpus(tmp_path):
+    """Verifying the CORPUS is not verifying the GRAPH.
+
+    ``ingest`` restages the corpus BEFORE compiling, so a work dir can hold one
+    group's freshly staged documents beside another group's graph — and the
+    corpus check passes on both. Reuse would then print "reused (earlier run)"
+    while retrieving from a different haystack than the one being scored, which
+    is the exact failure the flag's docstring claims to prevent.
+    """
+    _already_compiled(tmp_path, _group(), indexes=False)
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("must refuse, not compile"))
+
+    with pytest.raises(ValueError, match="does not index"):
+        memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+
+def test_reuse_accepts_a_graph_that_indexes_the_staged_corpus(tmp_path):
+    """The positive half — the guard must not refuse a legitimate reuse."""
+    _already_compiled(tmp_path, _group())
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+
+    result = memory.ingest(_group(), work=tmp_path, reuse_compiled=True)
+
+    assert result.reused is True
+
+
+def test_reuse_tolerates_a_relocated_work_directory(tmp_path):
+    """Source paths are compared by BASENAME, so a work dir moved between runs
+    reads as reusable rather than foreign — relocation is not corruption."""
+    _already_compiled(tmp_path, _group())
+    graph = tmp_path / ".tesserae" / "graph.json"
+    payload = json.loads(graph.read_text())
+    for node in payload["nodes"]:
+        node["source_path"] = "/somewhere/else/corpus/" + Path(node["source_path"]).name
+    graph.write_text(json.dumps(payload), encoding="utf-8")
+
+    memory = MabMemory(compile_fn=lambda w: pytest.fail("compiled anyway"))
+    assert memory.ingest(_group(), work=tmp_path, reuse_compiled=True).reused is True

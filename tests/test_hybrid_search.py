@@ -429,6 +429,63 @@ def test_vector_cache_scores_are_identical_cold_warm_and_uncached(tmp_path):
     assert warm_backend.calls == 0
 
 
+
+def test_vector_cache_scores_do_not_depend_on_the_order_texts_are_asked_for(tmp_path):
+    """The sidecar read sorts its hashes; no score may move because of it.
+
+    ``read_node_vector_blobs`` looks its hashes up in sorted order so a
+    corpus-sized read walks the primary key forwards rather than seeking around
+    it (241 ms unsorted against 179 ms sorted on this project's own 65,190-row
+    sidecar). The order a caller asks in is a node order, so sorting reshuffles
+    which key lands in which bound-parameter chunk — an ordering change deep
+    under the scoring path.
+
+    "Results must not depend on list position" is an invariant this repo has
+    reverted a change for before, so it is pinned here at the level that
+    matters: the same nodes, presented in a different order, must produce the
+    same per-node embedding score to the bit, and the ranked ids and scores
+    must be unchanged against the same query served with no cache at all.
+    """
+    from tesserae.retrieval.vector_cache import VectorCache
+
+    graph = _eight_node_graph()
+    query = "gaussian splatting"
+
+    cache = VectorCache.for_project(_project(tmp_path, "proj"))
+    hybrid_search(graph, query, backend=_CountingBackend(), vector_cache=cache)
+
+    warm_backend = _CountingBackend()
+    forwards = hybrid_search(
+        graph,
+        query,
+        top_k=len(graph.nodes),
+        backend=warm_backend,
+        vector_cache=cache,
+        candidate_filter=list(graph.nodes),
+    )
+    assert warm_backend.calls == 0  # the sidecar really did serve this run
+    backwards = hybrid_search(
+        graph,
+        query,
+        top_k=len(graph.nodes),
+        backend=_CountingBackend(),
+        vector_cache=cache,
+        candidate_filter=list(reversed(graph.nodes)),
+    )
+
+    def _embedding_by_node(result):
+        return {item.node.id: item.per_lane["embedding"] for item in result.scored}
+
+    assert _embedding_by_node(forwards) == _embedding_by_node(backwards)
+    assert forwards.total_matches == backwards.total_matches
+
+    # ...and the cached ranking is still the uncached ranking, ids and scores.
+    uncached = hybrid_search(graph, query, backend=_CountingBackend())
+    assert _scores(hybrid_search(
+        graph, query, backend=_CountingBackend(), vector_cache=cache
+    )) == _scores(uncached)
+
+
 def test_vector_cache_reembeds_changed_text_but_not_a_relocated_project(tmp_path):
     """The key is the embedded TEXT, not the node id or the project path.
 
@@ -983,3 +1040,144 @@ def test_mcp_search_nodes_advertises_explain_with_its_cost_warning(tmp_path):
         assert schema["explain"]["default"] is False
         # PROFILE's own posture: the flag costs time, and the description says so.
         assert "cost" in schema["explain"]["description"].lower()
+
+
+# ---------------------------------------------------------------------------
+# source_root: raw source text in the lexical lanes only
+# ---------------------------------------------------------------------------
+
+
+def _source_anchor_graph(root) -> ResearchGraph:
+    """Two anchor nodes whose descriptions say nothing the query can match.
+
+    The distinguishing words live only in the files, which is the whole point:
+    extraction builds a node's searchable text from name + description, so a
+    long document is otherwise reachable only through its summary.
+    """
+    (root / "alpha.md").write_text(
+        "Alpha session. The customer upgraded to a 940 Mbps fibre plan.",
+        encoding="utf-8",
+    )
+    (root / "beta.md").write_text(
+        "Beta session. The customer discussed sourdough starter hydration.",
+        encoding="utf-8",
+    )
+    return ResearchGraph(
+        nodes=[
+            ResearchNode(
+                id=f"doc-{name}",
+                name=f"{name} document",
+                type=ResearchNodeType.SOURCE_DOCUMENT,
+                description="a session transcript",
+                source_path=str(root / f"{name}.md"),
+            )
+            for name in ("alpha", "beta")
+        ]
+    )
+
+
+def test_source_root_makes_a_document_retrievable_through_its_own_text(tmp_path):
+    graph = _source_anchor_graph(tmp_path)
+    query = "Mbps fibre plan"
+
+    without = hybrid_search(graph, query, top_k=2, mode="bm25")
+    with_root = hybrid_search(graph, query, top_k=2, mode="bm25", source_root=tmp_path)
+
+    # Neither description mentions Mbps, so BM25 matches nothing at all and
+    # zero-scoring nodes never enter the result.
+    assert without.scored == []
+    # With the files in the lexical lane, alpha alone matches, on a term that
+    # exists only inside its file.
+    assert [s.node.id for s in with_root.scored] == ["doc-alpha"]
+    assert with_root.scored[0].score > 0.0
+
+
+def test_source_root_none_is_byte_identical_to_not_passing_it(tmp_path):
+    graph = _source_anchor_graph(tmp_path)
+    a = hybrid_search(graph, "session transcript", top_k=2)
+    b = hybrid_search(graph, "session transcript", top_k=2, source_root=None)
+    assert [(s.node.id, s.score) for s in a.scored] == [
+        (s.node.id, s.score) for s in b.scored
+    ]
+
+
+def test_source_root_leaves_the_embedding_lane_reading_node_text(tmp_path):
+    """The dense lane must not see raw text — pooling 8k chars into 256 dims is
+    the ablation failure that cost it 0.7857 -> 0.6578.
+
+    Spies on the VECTORISED implementation because that is the one that runs
+    whenever numpy is importable; the scalar fallback is only reached without it.
+    """
+    from tesserae.retrieval import hybrid as hybrid_module
+
+    graph = _source_anchor_graph(tmp_path)
+    seen: List[List[str]] = []
+    original = hybrid_module._embedding_scores_vectorized
+
+    def _spy(query, texts, backend, cache):
+        seen.append(list(texts))
+        return original(query, texts, backend, cache)
+
+    hybrid_module._embedding_scores_vectorized = _spy
+    try:
+        hybrid_search(graph, "fibre", top_k=2, mode="embedding", source_root=tmp_path)
+    finally:
+        hybrid_module._embedding_scores_vectorized = original
+
+    assert seen, "the embedding lane never ran"
+    assert not any("Mbps" in text for text in seen[0])
+    # ...while the lexical lanes DO get it, so the gate is real and not a
+    # coincidence of this fixture having no file text at all.
+    lex = hybrid_module._lexical_texts(
+        list(graph.nodes), [hybrid_module._node_text(n) for n in graph.nodes], tmp_path
+    )
+    assert any("Mbps" in text for text in lex)
+
+
+def test_source_root_reads_nothing_outside_the_root(tmp_path):
+    """``source_path`` is untrusted frontmatter. A node naming a file outside
+    the root contributes no text — otherwise a crafted document pastes
+    arbitrary files into a retrieval corpus and, downstream, an LLM prompt."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.md").write_text("SUPERSECRETTOKEN aardvark", encoding="utf-8")
+    confined = tmp_path / "project"
+    confined.mkdir()
+
+    graph = ResearchGraph(
+        nodes=[
+            ResearchNode(
+                id="doc-escape",
+                name="escaping document",
+                type=ResearchNodeType.SOURCE_DOCUMENT,
+                description="a session transcript",
+                source_path=str(confined / ".." / "outside" / "secret.md"),
+            )
+        ]
+    )
+
+    result = hybrid_search(
+        graph, "SUPERSECRETTOKEN aardvark", top_k=1, mode="bm25", source_root=confined
+    )
+    # No text was read, so the query matches nothing and the node is not
+    # returned. Had the file been read it would score above zero and rank first.
+    assert result.scored == []
+
+
+def test_source_root_ignores_non_anchor_nodes(tmp_path):
+    """A concept extracted FROM a paper must not become retrievable through the
+    paper's whole contents — every concept in it would then score alike."""
+    (tmp_path / "paper.md").write_text("mentions telescopes throughout", encoding="utf-8")
+    graph = ResearchGraph(
+        nodes=[
+            ResearchNode(
+                id="concept-x",
+                name="a concept",
+                type=ResearchNodeType.METHODOLOGICAL_CONCEPT,
+                description="a concept lifted from a paper",
+                source_path=str(tmp_path / "paper.md"),
+            )
+        ]
+    )
+    result = hybrid_search(graph, "telescopes", top_k=1, mode="bm25", source_root=tmp_path)
+    assert result.scored == []

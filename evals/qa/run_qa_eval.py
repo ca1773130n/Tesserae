@@ -157,6 +157,7 @@ def _build_benchmark(system: str, corpus: Sequence[str], questions: Sequence[Map
                     project_root=str(Path(args.project).expanduser()),
                     backend=args.backend,
                 answer_style=args.answer_style, route=args.route, top_k=args.top_k,
+                    grounding_quantile=args.grounding_quantile,
                     no_llm=args.no_llm, print_results=False,
                     results_file=str(args.answers_out) if args.answers_out else "",
                 ),
@@ -237,8 +238,15 @@ def answer_phase(benchmark: Any, questions: Sequence[Mapping[str, Any]],
                     answer = await benchmark.query_rag(text)
                 except Exception as exc:  # recorded, not raised: one bad question
                     answer = f"Error: {exc}"  # must not lose the other 35
-                rows.append({"question": text, "answer": answer,
-                             "gold": question["gold"], "stratum": question["stratum"]})
+                # Carry the abstention score when the harness recorded one, so
+                # a single run supports sweeping every gate quantile offline
+                # rather than re-spending the whole question set per threshold.
+                row = {"question": text, "answer": answer,
+                       "gold": question["gold"], "stratum": question["stratum"]}
+                _scores = getattr(benchmark, "grounding_scores", None)
+                if isinstance(_scores, dict) and text in _scores:
+                    row["grounding"] = _scores[text]
+                rows.append(row)
             return rows, meta
         finally:
             await benchmark.cleanup_rag()
@@ -530,6 +538,16 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Tesserae retrieval only — measures excerpts, not answers")
     parser.add_argument("--model", default=None,
                         help="answering LLM model id, for every arm that takes one")
+    parser.add_argument(
+        "--grounding-quantile", type=float, default=None,
+        help=(
+            "Opt-in abstention gate. An answer whose Novel Grounded Evidence "
+            "falls below this quantile of the corpus idf distribution is "
+            "replaced with a refusal. None (the default) is byte-identical to "
+            "no gate. The score is recorded per question either way, so ONE run "
+            "supports sweeping every quantile offline."
+        ),
+    )
     parser.add_argument("--answer-style", default="short-span",
                         choices=("short-span", "prose-cited"),
                         help="the shape EVERY arm is asked for. Defaults to short-span because EM and token F1 run over the whole answer string; prose-cited reproduces the product default and is not comparable with the baselines.")

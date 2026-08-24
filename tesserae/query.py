@@ -40,7 +40,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .ask_shape import SHAPE_GRAPH, SHAPE_LOOKUP, classify_ask_shape
 from .citation_names import NODE_CITATION_RE, rewrite_citations
@@ -89,6 +89,24 @@ class QueryResult:
     used_llm: bool
     fallback_reason: Optional[str]
 
+    #: Novel Grounded Evidence: the rare, source-attested vocabulary this
+    #: answer added beyond what the question already contained, in idf nats.
+    #: Higher is more grounded; near zero is the signature of a fluent
+    #: restatement of the question, which is what a fabrication looks like once
+    #: retrieval has already succeeded. ``None`` when there is no answer.
+    #:
+    #: **REPORTED, NEVER ENFORCED.** The product keeps answering; the number is
+    #: surfaced so a caller can decide. Refusing below a threshold raised
+    #: Youden J from +0.505 to +0.588 (honest leave-one-out) on a 352-question
+    #: benchmark, but it also newly refused 14 of 284 answerable questions and
+    #: cost 0.015 of token F1 — a trade a caller must opt into, not a default.
+    #: Turning an eval-only behaviour into the product default is a change this
+    #: repo has already reverted once.
+    #:
+    #: Distinct from ask_planner's older "grounding gate", which only asks
+    #: whether a cited answer carries a citation at all.
+    grounding: Optional[float] = None
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "question": self.question,
@@ -97,6 +115,7 @@ class QueryResult:
             "model": self.model,
             "used_llm": self.used_llm,
             "fallback_reason": self.fallback_reason,
+            "grounding": self.grounding,
         }
 
 
@@ -322,6 +341,8 @@ class WikiQuery:
         self._index_mtime: Optional[float] = None
         self._avg_len: float = 1.0
         self._system_blocks_cache: Optional[List[Dict]] = None
+        self._idf_cache: Optional[Tuple[Dict[str, float], int]] = None
+        self._idf_mtime: Optional[float] = None
         self._client: Any = None
         self._client_api_key: Optional[str] = None
 
@@ -376,6 +397,35 @@ class WikiQuery:
         except OSError:
             self._index_mtime = None
         return entries
+
+    def _grounding_for(
+        self, question: str, answer: Optional[str], hits: Sequence[QueryHit]
+    ) -> Optional[float]:
+        """:func:`grounding_score` with rarity measured over the whole index.
+
+        Attestation is checked against the pages actually shown to the model;
+        rarity is not, and must not be. A term's idf inside a five-page bundle
+        says nothing about whether it is rare, so the corpus-wide document
+        frequency comes from the search index — which already holds every
+        page's token list, so this costs one pass at first use and nothing
+        after. Cached against the index mtime, like the index itself.
+        """
+        if not answer:
+            return None
+        from .retrieval.grounding import idf_from_document_frequency
+
+        entries = self._load_index()
+        if self._idf_cache is None or self._idf_mtime != self._index_mtime:
+            df: Counter = Counter()
+            for entry in entries:
+                df.update(set(entry.tokens))
+            self._idf_cache = (
+                idf_from_document_frequency(df, len(entries)),
+                len(entries),
+            )
+            self._idf_mtime = self._index_mtime
+        idf, n_docs = self._idf_cache
+        return grounding_score(question, answer, hits, idf, n_docs)
 
     def search(self, question: str) -> List[QueryHit]:
         """BM25 over the search index, ``top_k`` highest-scoring entries.
@@ -549,6 +599,12 @@ class WikiQuery:
                 model=model,
                 used_llm=True,
                 fallback_reason=None,
+                # Scored here too, so the dry run exercises the same code the
+                # real path does. The stub body is not a real answer, so the
+                # NUMBER is meaningless — but a field that is only ever
+                # populated on the path nobody can run in a test is a field
+                # that silently rots.
+                grounding=self._grounding_for(question, answer_body, hits),
             )
 
         # Resolve API key + client.
@@ -668,13 +724,15 @@ class WikiQuery:
         # check above (names contain spaces and no longer match the regex).
         id_to_name = {h.node_id: h.title for h in hits if h.node_id and h.title}
         body_text = rewrite_citations(body_text, id_to_name)
+        answer_text = body_text.strip() + "\n"
         return QueryResult(
             question=question,
             hits=hits,
-            answer=body_text.strip() + "\n",
+            answer=answer_text,
             model=str(model_id),
             used_llm=True,
             fallback_reason=None,
+            grounding=self._grounding_for(question, answer_text, hits),
         )
 
     def _answer_via_cli(
@@ -742,13 +800,15 @@ class WikiQuery:
         # check above (names contain spaces and no longer match the regex).
         id_to_name = {h.node_id: h.title for h in hits if h.node_id and h.title}
         body_text = rewrite_citations(body_text, id_to_name)
+        answer_text = body_text.strip() + "\n"
         return QueryResult(
             question=question,
             hits=hits,
-            answer=body_text.strip() + "\n",
+            answer=answer_text,
             model="cli-oauth",
             used_llm=True,
             fallback_reason=None,
+            grounding=self._grounding_for(question, answer_text, hits),
         )
 
     # --------------------------------------------------------- prompt helpers
@@ -802,6 +862,67 @@ class WikiQuery:
 _SOURCE_BODY_LIMIT = 1000
 
 
+def _source_bodies(hits: Sequence[QueryHit]) -> List[str]:
+    """The source text, per hit, exactly as it is pasted into the prompt.
+
+    Factored out of :func:`_build_user_message` so the grounding score can be
+    computed against the bundle the model actually READ. Scoring against a
+    reconstruction — a BM25 re-retrieval, the excerpts alone — measures a
+    different thing than the model saw, which is the whole failure mode the
+    number exists to detect.
+    """
+    bodies: List[str] = []
+    for hit in hits:
+        body = ""
+        if hit.page_text is not None:
+            body = _strip_frontmatter(hit.page_text).strip()
+        elif hit.page_path is not None:
+            try:
+                raw = hit.page_path.read_text(encoding="utf-8")
+            except OSError:
+                raw = ""
+            body = _strip_frontmatter(raw).strip()
+        if not body:
+            body = hit.excerpt
+        bodies.append(body[:_SOURCE_BODY_LIMIT])
+    return bodies
+
+
+def grounding_score(
+    question: str,
+    answer: Optional[str],
+    hits: Sequence[QueryHit],
+    idf: Optional[Dict[str, float]] = None,
+    n_docs: int = 0,
+) -> Optional[float]:
+    """Novel Grounded Evidence for an answer, over the bundle it was read from.
+
+    Rare, source-attested vocabulary the answer adds that the question did not
+    already carry. See :mod:`tesserae.retrieval.grounding` for why the naive
+    version of this (extractive support, no question subtraction) measures
+    nothing: retrieval selected the sources BY the question, so restating the
+    question scores as fully supported, and fabrications restate the question
+    more than correct answers do.
+
+    ``idf``/``n_docs`` should come from the WHOLE corpus — see
+    :func:`~tesserae.retrieval.grounding.idf_from_document_frequency`. Omitting
+    them falls back to the shown bundle, which is defensible only when the
+    bundle IS the corpus; a ten-page bundle caps idf near 1.9 and flattens the
+    score. :meth:`WikiQuery._grounding_for` supplies the index-wide table.
+
+    ``None`` when there is no answer to score. **Reported, never enforced** —
+    see :attr:`QueryResult.grounding`.
+    """
+    if not answer:
+        return None
+    from .retrieval.grounding import corpus_idf, novel_grounded_evidence
+
+    bodies = _source_bodies(hits)
+    if idf is None or n_docs <= 0:
+        idf, n_docs = corpus_idf(bodies)
+    return novel_grounded_evidence(answer, question, bodies, idf, n_docs)
+
+
 def _build_user_message(question: str, hits: Sequence[QueryHit]) -> str:
     """Assemble the per-question user message.
 
@@ -822,19 +943,7 @@ def _build_user_message(question: str, hits: Sequence[QueryHit]) -> str:
     if not hits:
         parts.append("(no matching sources)")
         return "\n".join(parts)
-    for hit in hits:
-        body = ""
-        if hit.page_text is not None:
-            body = _strip_frontmatter(hit.page_text).strip()
-        elif hit.page_path is not None:
-            try:
-                raw = hit.page_path.read_text(encoding="utf-8")
-            except OSError:
-                raw = ""
-            body = _strip_frontmatter(raw).strip()
-        if not body:
-            body = hit.excerpt
-        body = body[:_SOURCE_BODY_LIMIT]
+    for hit, body in zip(hits, _source_bodies(hits)):
         node_id = hit.node_id or ""
         parts.append(
             f'<source kind="{_xml_escape(hit.kind)}" title="{_xml_escape(hit.title)}" node_id="{_xml_escape(node_id)}">'
