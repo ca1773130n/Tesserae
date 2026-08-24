@@ -371,8 +371,17 @@ def test_search_documents_drops_an_unmappable_hit_and_counts_it(tmp_path):
 
 
 def _met_meta(**overrides: Any) -> Dict[str, Any]:
+    """A meta describing a run that ACTUALLY HAPPENED.
+
+    The `evidence` block is not decoration. Without it these controls are a
+    hand-written claim, and a hand-written claim used to return zero blockers
+    and print a table captioned "in the same units as the published table" —
+    with no key, no judge and no run behind it. Declarations are checked
+    against the protocol; evidence is what says a run produced them.
+    """
     meta = {"llm_model": "gpt-5.4-mini", "embedding_model": "text-embedding-3-small",
-            "judge": "gpt-4o-mini", "evidence_budget": 10}
+            "judge": "gpt-4o-mini", "evidence_budget": 10,
+            "evidence": {"answer_calls": 300, "judge_calls": 300}}
     meta.update(overrides)
     return meta
 
