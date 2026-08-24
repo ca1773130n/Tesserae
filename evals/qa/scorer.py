@@ -282,6 +282,44 @@ def _mean(values: Sequence[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
+def mcnemar(a_correct: Sequence[bool], b_correct: Sequence[bool]) -> Dict[str, Any]:
+    """Exact McNemar on PAIRED per-question outcomes. Use this, not Fisher.
+
+    Two systems scored on the same questions are paired data, and comparing
+    their marginal rates throws that away. On the fabrication question the
+    difference is decisive: 6/48 vs 2/48 is Fisher p = 0.268, and 6/92 vs 2/92
+    is p = 0.278 — enlarging the probe set does not help, because the marginal
+    test cannot see that the two systems failed on the SAME questions or on
+    different ones. Detecting 6% vs 2% on marginals needs ~376 probes per arm.
+    McNemar conditions on the discordant pairs, which is where the information
+    actually is.
+
+    Returns ``{b, c, n_discordant, p_value, favours}`` where ``b`` is the count
+    of questions A got right and B wrong, and ``c`` the reverse. The p-value is
+    the exact two-sided binomial on the discordant pairs, so it is valid at the
+    small counts this benchmark produces — the chi-square approximation is not.
+
+    ``n_discordant`` is reported because it, not the total, is the sample size
+    that matters: two systems agreeing on 330 of 332 questions have n=2 however
+    large the set, and a p-value from that should be read as "no evidence"
+    rather than as "no difference".
+    """
+    if len(a_correct) != len(b_correct):
+        raise ValueError("paired comparison needs equal-length outcome vectors")
+    b = sum(1 for x, y in zip(a_correct, b_correct) if x and not y)
+    c = sum(1 for x, y in zip(a_correct, b_correct) if y and not x)
+    n = b + c
+    if n == 0:
+        return {"b": 0, "c": 0, "n_discordant": 0, "p_value": 1.0, "favours": None}
+    # Exact two-sided binomial(n, 0.5).
+    from math import comb
+
+    tail = sum(comb(n, k) for k in range(0, min(b, c) + 1)) / (2 ** n)
+    p = min(1.0, 2.0 * tail)
+    return {"b": b, "c": c, "n_discordant": n, "p_value": p,
+            "favours": None if b == c else ("A" if b > c else "B")}
+
+
 def discrimination(refusal_rate: float, hallucination_rate: float) -> Optional[float]:
     """Youden's J for unanswerability: P(refuse | unanswerable) - P(refuse | answerable).
 

@@ -1125,3 +1125,46 @@ def test_discrimination_reads_the_two_strata_together():
     # A refuse-everything system scores badly, which is the point.
     assert discrimination(refusal_rate=1.0, hallucination_rate=0.0) <= 0.0
     assert discrimination(None, 0.1) is None, "absent stratum is not a zero score"
+
+
+def test_mcnemar_uses_the_pairing_that_fisher_throws_away():
+    """Two systems on the same questions are PAIRED data.
+
+    6/48 vs 2/48 fabrications is Fisher p=0.268, and 6/92 vs 2/92 is p=0.278 —
+    enlarging the probe set does not help, because a marginal test cannot see
+    whether the two systems failed on the same questions or different ones.
+    """
+    from evals.qa.scorer import mcnemar
+
+    a = [False] * 6 + [True] * 62      # fabricates on 6
+    b = [False] * 2 + [True] * 66      # fabricates on 2
+    out = mcnemar(a, b)
+    assert out["favours"] == "B"
+    assert out["p_value"] < 0.27, "must beat the marginal test's p=0.268"
+    assert out["n_discordant"] == 4
+
+
+def test_mcnemar_reports_the_sample_size_that_actually_matters():
+    """Two systems agreeing on 330 of 332 have n=2 however large the set, and a
+    p-value from that is 'no evidence', not 'no difference'."""
+    from evals.qa.scorer import mcnemar
+
+    agree = mcnemar([True] * 330 + [True, False], [True] * 330 + [False, True])
+    assert agree["n_discordant"] == 2, "the total is not the sample size"
+    assert agree["p_value"] == 1.0
+
+    identical = mcnemar([True] * 68, [True] * 68)
+    assert identical["n_discordant"] == 0 and identical["favours"] is None
+
+
+def test_mcnemar_is_exact_because_the_counts_are_small():
+    """The chi-square approximation is invalid at the counts this benchmark
+    produces; a run with 3 discordant pairs must not be handed a normal
+    approximation's p-value."""
+    from evals.qa.scorer import mcnemar
+
+    # 3 discordant, all one way: exact two-sided binomial = 2 * 0.5^3 = 0.25
+    out = mcnemar([True, True, True], [False, False, False])
+    assert abs(out["p_value"] - 0.25) < 1e-9
+    with pytest.raises(ValueError):
+        mcnemar([True], [True, False])
