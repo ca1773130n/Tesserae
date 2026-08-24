@@ -123,3 +123,69 @@ def test_build_plan_records_install_agent_pointer_override(tmp_path: Path) -> No
     plan = build_plan(report, overrides={"install_agent_pointer": False})
     assert plan.install_agent_pointer is False
     assert plan.intent["install_agent_pointer"] is False
+
+
+def test_the_global_config_beats_detection_for_the_llm_provider(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Detection is a guess; the global config is a decision.
+
+    `detection.py` checks the Claude CLI FIRST, so a machine with both CLIs had
+    `llm_provider: "claude"` written into every new project however emphatically
+    the global config said `codex` — and the project value then shadowed the
+    global for good, because `resolve_llm_client_settings` reads the project
+    layer first.
+
+    Measured cost on 2026-08-24: a 1,552-document eval corpus compiled against a
+    Claude Code subscription the operator had globally configured to use Codex.
+    It hit the session limit at 5am and 1,116 documents (71.9%) fell back to
+    deterministic extraction, and `init` had also pinned
+    `llm_claude_config_dirs` to one specific account directory.
+    """
+    import shutil
+
+    from tesserae import llm_json
+
+    monkeypatch.setattr(
+        shutil, "which",
+        lambda name: "/fake/bin/claude" if name == "claude" else None,
+    )
+    monkeypatch.setattr(llm_json, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(
+        llm_json, "_load_global_llm_config",
+        lambda: {"llm_provider": "codex", "llm_model": "gpt-5.6-luna",
+                 "llm_codex_home": "/tmp/custom-codex"},
+    )
+    report = detect(tmp_path)
+    assert report.recommended.llm_provider == "claude", "detection still guesses claude"
+
+    plan = build_plan(report)
+    assert plan.llm_provider == "codex", (
+        "detection recommended claude; the global config said codex and wins"
+    )
+    assert plan.llm_model == "gpt-5.6-luna"
+    assert plan.codex_home == "/tmp/custom-codex", (
+        "the codex home must be configurable, not hardcoded"
+    )
+    assert not plan.claude_config_dir, (
+        "a claude account pin under a codex provider is what spent the wrong "
+        "subscription"
+    )
+
+
+def test_an_explicit_override_still_beats_the_global_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """override > global > detection, in that order."""
+    from tesserae import llm_json
+
+    monkeypatch.setattr(
+        llm_json, "_load_global_llm_config",
+        lambda: {"llm_provider": "codex", "llm_model": "gpt-5.6-luna"},
+    )
+    report = detect(tmp_path)
+    plan = build_plan(
+        report, overrides={"llm_provider": "custom", "llm_model": "opus"}
+    )
+    assert plan.llm_provider == "custom"
+    assert plan.llm_model == "opus"

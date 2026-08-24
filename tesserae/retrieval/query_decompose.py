@@ -22,15 +22,47 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import List, Optional
+from typing import List, Mapping, Optional
 
 from ..llm_json import LLMJsonClient, parse_json_tolerant
+# `STOPWORDS` and `_tokenize` are reused rather than restated. `grounding`
+# already imports `_tokenize` from `hybrid` for exactly this reason ("one
+# definition, no drift", rerank.py:41-44), and its STOPWORDS frozenset already
+# carries every question word the filter below needs. A sixth copy of a
+# stoplist in this repo would be a copy that can drift from the five others.
+from .grounding import STOPWORDS
+from .hybrid import _tokenize
 
 logger = logging.getLogger(__name__)
 
 # Minimum length (after strip) for a fragment to count as a real sub-query.
 # Filters out stray connectives / punctuation left behind by the split.
 _MIN_FRAGMENT_LEN = 3
+
+#: A term appearing in this fraction of the corpus or more is UBIQUITOUS and
+#: carries no discriminative signal, so it is stripped from the sub-query.
+#:
+#: The corpus-DEPENDENT half of the filter (``STOPWORDS`` is the
+#: corpus-independent half). Measured on LoCoMo conv-26, over the exact lexical
+#: strings the BM25/lexical lanes score: the two speakers who appear in all 19
+#: sessions are ``caroline`` at DF ratio 0.577 and ``melanie`` at 0.336, while
+#: the topic terms that actually separate one session from another sit far
+#: below — ``books`` 0.012, ``paint`` 0.012, ``pets`` 0.014, ``hike`` 0.017,
+#: ``pottery`` 0.075, ``lgbtq`` 0.157. 0.30 is the gap between those two
+#: populations. Both halves of the filter earn their place: the stoplist alone
+#: scores 47.2% pooled multi-hop ALL-gold@10, the DF rule alone 48.9%, both
+#: together 50.4%.
+#:
+#: MEDIUM confidence that 0.30 transfers off LoCoMo — mitigated by the fact
+#: that a parameter-free "drop the single most frequent content term" rule
+#: scored identically (50.4%) on the same sweep, so the constant is not
+#: carrying the result on its own.
+DEFAULT_UBIQUITY_DF_RATIO = 0.30
+
+#: Shortest token that can be a content word. This is grounding.py:129's
+#: ``len(t) > 2`` restated, and it is what covers the function words STOPWORDS
+#: deliberately leaves out ("of", "in", "to", …) rather than a second list.
+_MIN_CONTENT_LEN = 3
 
 # Clause boundaries, longest-token-first so " and " / " then " win over a
 # bare comma. Sentence terminators, ``?``/``;``, commas, and the two common
@@ -173,3 +205,64 @@ def decompose_query(
         # Empty / invalid / exception → deterministic fallback.
 
     return _fallback(query, cap)
+
+
+def discriminative_subquery(
+    query: str,
+    *,
+    doc_freq: Mapping[str, int],
+    n_docs: int,
+    ubiquity_df_ratio: float = DEFAULT_UBIQUITY_DF_RATIO,
+) -> str:
+    """``query`` with its corpus-ubiquitous and function words removed.
+
+    This is NOT :func:`decompose_query` and must not be confused with it. That
+    function splits a question into CLAUSES, which is the right move for a
+    conjunctive question ("how do I run the seeder *and* why does it fail?")
+    and the wrong one here: LoCoMo multi-hop questions are not conjunctive,
+    they are aggregation questions with one atomic clause whose ANSWER spans
+    sessions. Measured on conv-26, the clause split fires on 2 of 32 multi-hop
+    questions and both times wrongly ("What types of pottery have Melanie and
+    her kids made?" splits into ``['What types of pottery have Melanie',
+    'her kids made']``), and round-robin merging those fragments moves
+    multi-hop ALL-gold@10 46.9% -> 43.8%. Reach for that function for a
+    genuinely multi-clause query; reach for this one when the query is atomic
+    and one of its terms is drowning the rest.
+
+    The mechanism this removes: on a corpus where the same two people speak in
+    every session, the person's name is in most documents, so the ranking is
+    driven by it rather than by the rare topic term that actually names the
+    session the answer is in. Stripping both classes of ubiquitous token leaves
+    a sub-query the lanes can only satisfy with the topic.
+
+    ``doc_freq`` maps token -> number of documents containing it, counted over
+    the SAME strings the lanes score (see
+    :func:`~tesserae.retrieval.hybrid._lexical_texts`), and ``n_docs`` is how
+    many documents that was.
+
+    Returns ``""`` — the caller's signal to run ONE pass and not two — when the
+    filter kept nothing, or when it kept EVERYTHING (the sub-query would then
+    equal the query and the second search would be pure waste). It never
+    returns the query itself.
+
+    Pure, deterministic, no clock, no RNG, no LLM; never raises. Duplicate
+    content tokens are kept in order, because a repeated term is a repeated
+    term to BM25 and dropping the repeat would change the query's term
+    statistics.
+    """
+    stripped = (query or "").strip()
+    if not stripped or n_docs <= 0:
+        return ""
+    tokens = _tokenize(stripped)
+    if not tokens:
+        return ""
+    ceiling = ubiquity_df_ratio * float(n_docs)
+    kept = [
+        t for t in tokens
+        if t not in STOPWORDS
+        and len(t) >= _MIN_CONTENT_LEN
+        and float(doc_freq.get(t, 0)) <= ceiling
+    ]
+    if not kept or len(kept) == len(tokens):
+        return ""
+    return " ".join(kept)

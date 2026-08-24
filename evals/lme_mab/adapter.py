@@ -230,8 +230,7 @@ class Session:
         only exists in a filename or a heading level is a date the
         ``temporal-reasoning`` stratum cannot retrieve.
         """
-        header = f"# Session {self.index:04d}"
-        lines = [header, ""]
+        lines = [f"# {document_title(self.index)}", ""]
         if self.date:
             lines += [f"Chat Time: {self.date}", ""]
         else:
@@ -244,6 +243,20 @@ class Session:
             # retrieval key on "this is the answer" and score the leak.
             lines += [f"**{role}:**", "", content, ""]
         return "\n".join(lines).rstrip() + "\n"
+
+
+def document_title(index: int) -> str:
+    """The H1 of the staged document for session ``index``.
+
+    Written by :meth:`Session.render` and read back by
+    :attr:`MabHit.is_document_anchor`, and spelled out here so those two cannot
+    drift. A compile records this string as the name of the node that STANDS
+    FOR the document — ``tesserae.research_graph`` names a document anchor
+    ``extract_title(text, source_path)``, which for these documents is exactly
+    this heading — so equality with it is what distinguishes the anchor from
+    every other node the same file produced.
+    """
+    return f"Session {index:04d}"
 
 
 #: The inverse of :attr:`Session.document_name`. ``\d{4,}`` rather than ``\d+``
@@ -401,11 +414,84 @@ class IngestResult:
     #: :func:`sessions_agree` — ``None`` when there was nothing to cross-check.
     views_agree: Optional[bool]
     compiled: bool
+    #: True when a compiled graph already in ``work`` was reused instead of
+    #: rebuilt. ``compiled`` is then False — no compile ran in THIS run — and
+    #: the two flags together separate "never compiled" from "compiled
+    #: earlier", which the report must not print as the same thing.
+    reused: bool = False
 
     @property
     def approx_tokens(self) -> int:
         """Chars/4, as crude here as it is in :class:`MabGroup`."""
         return self.chars // 4
+
+
+
+def _graph_missing_sessions(graph_path: Path, corpus: Path) -> set:
+    """Staged session documents that the compiled graph does not index.
+
+    Empty means every document under ``corpus`` is reachable through some
+    node's ``source_path``. Compares BASENAMES: the compile records absolute
+    paths, and a work dir moved between runs would otherwise read as foreign
+    when it is merely relocated.
+    """
+    import json as _json
+
+    try:
+        payload = _json.loads(graph_path.read_bytes())
+    except (OSError, ValueError):
+        # An unreadable graph is not a mismatch; the caller's is_file check
+        # already passed, so let the normal load path report it.
+        return set()
+    indexed = set()
+    for node in payload.get("nodes") or []:
+        sp = node.get("source_path") if isinstance(node, dict) else None
+        if sp:
+            indexed.add(Path(str(sp)).name)
+    staged = {p.name for p in corpus.glob("*.md")}
+    return staged - indexed
+
+def _verify_staged(corpus: Path, sessions: Sequence[Any]) -> tuple:
+    """``(turns, chars)`` of ``sessions``, having proved they are already staged.
+
+    Raises unless every session renders byte for byte to the file already in
+    ``corpus``, and unless ``corpus`` holds nothing else. Both halves matter:
+    a CHANGED document means the compiled graph was built from text this run
+    would not stage, and an EXTRA document means the graph indexes a session
+    this group does not contain — retrievable evidence from a haystack the
+    questions were never asked about. Either way the reused graph is not this
+    group's graph, and the run must stop rather than report a number for it.
+    """
+    if not corpus.is_dir():
+        raise FileNotFoundError(
+            f"--reuse-compile: no staged corpus at {corpus}. There is nothing "
+            f"to reuse; run without the flag to stage and compile."
+        )
+    turns = chars = 0
+    mismatched: List[str] = []
+    for session in sessions:
+        body = session.render()
+        staged = corpus / session.document_name
+        if not staged.is_file():
+            mismatched.append(f"{session.document_name} (missing)")
+        elif staged.read_bytes() != body.encode("utf-8"):
+            mismatched.append(f"{session.document_name} (differs)")
+        turns += len(session.turns)
+        chars += len(body)
+    extra = sorted(
+        p.name for p in corpus.glob("*.md")
+        if p.name not in {s.document_name for s in sessions}
+    )
+    if mismatched or extra:
+        raise ValueError(
+            f"--reuse-compile: {corpus} is not this group's corpus — "
+            f"{len(mismatched)} document(s) missing or changed"
+            f"{': ' + ', '.join(mismatched[:5]) if mismatched else ''}"
+            f"{f'; {len(extra)} unexpected: ' + ', '.join(extra[:5]) if extra else ''}. "
+            f"The compiled graph there answers about a different haystack. "
+            f"Re-run without --reuse-compile to rebuild it."
+        )
+    return turns, chars
 
 
 def _default_compile(work: Path) -> None:
@@ -431,6 +517,53 @@ def _default_compile(work: Path) -> None:
         )
 
 
+#: How much of a document anchor's OWN session file joins its ANSWERING
+#: evidence. Deliberately a separate constant from
+#: :data:`tesserae.retrieval.hybrid.SOURCE_LEXICAL_CHARS` (8,000), because
+#: ranking and answering are different questions and sharing the number would
+#: couple the reproducible half of this benchmark to the unstable one.
+#:
+#: Ranking needs a query term to appear ANYWHERE in the scored prefix, and term
+#: presence saturates: a topically coherent session places itself on its first
+#: few thousand characters. Answering needs the answer SPAN itself, which is a
+#: different quantity — a session that ranks first on a term in its opening
+#: paragraph, with the answer at character 11,000, is a perfect retrieval and an
+#: unanswerable prompt.
+#:
+#: 2,400 is where three independent derivations land, within 5% of each other:
+#:
+#: * this corpus's own mean ROUND is 2,388 characters (642 rounds measured on
+#:   group 0; median 2,483, p90 3,300);
+#: * a round is the evidence unit of the published benchmark's best
+#:   configuration — arXiv:2410.10813 §E.5 provides "top-10 items" as rounds,
+#:   and §5.2 measures that replacing them with summaries or facts LOSES, which
+#:   is the substitution this adapter was making at 234 characters a hit;
+#: * ``tesserae.ask_planner._EVIDENCE_CLIP`` is 2,500 — the house figure for
+#:   chars per evidence block fed to synthesis.
+#:
+#: The cost is REAL, and its size is NOT established. A gold-answer survival
+#: ladder once stood here (53 verbatim golds, 71.7% surviving 2,400 chars,
+#: 84.9% at 4,000, 92.5% at 8,000). It does not reproduce: an independent
+#: review measured 36 verbatim and 58.3% under three normalisations, and a
+#: third implementation found 0 verbatim. Three methods, three answers — which
+#: means "appears verbatim in its aligned session" is not a well-defined
+#: predicate at this precision, not that one count is right. The numbers are
+#: removed rather than replaced with whichever is newest.
+#:
+#: What survives that disagreement: truncation loses answer spans the ranking
+#: cap never paid for, so 4,000 is the sensitivity arm if answering ever comes
+#: out below what retrieval predicts. What it buys is a budget
+#: that stays the same ORDER as the published top-10-rounds one rather than six
+#: times it: measured over the same 60 questions, K=10 costs 22,800 prompt
+#: characters on average (max 26,629) against 2,420 before.
+#:
+#: Truncation is from the FRONT because the answer is front-loaded here: gold
+#: offsets have median 268 and the benchmark's own ``has_answer`` turn has mean
+#: relative position 0.15, median 0.00. No smarter windowing is justified by
+#: that distribution.
+EVIDENCE_SOURCE_CHARS = 2_400
+
+
 def evidence_text(node: Any) -> str:
     """One retrieved node as the evidence string handed to the backbone.
 
@@ -438,6 +571,10 @@ def evidence_text(node: Any) -> str:
     to feed the scoring lanes and includes the node id and every metadata pair.
     Those are retrieval features, not evidence: a backbone reading them spends
     its context on slugs.
+
+    This is the NODE's own text and stops there. The session behind it is
+    appended only on the answering path, by :meth:`MabMemory.answer_evidence`,
+    and only for the node that IS the session — see :data:`EVIDENCE_SOURCE_CHARS`.
     """
     parts = [str(getattr(node, "name", "") or "").strip()]
     description = str(getattr(node, "description", "") or "").strip()
@@ -459,16 +596,84 @@ class MabHit:
     retrieval comparison scores exactly the documents the answer was built on.
     """
 
-    #: What the backbone reads. :func:`evidence_text` of the node.
+    #: The node's own evidence string. :func:`evidence_text` of the node, and
+    #: what the backbone reads unless :meth:`MabMemory.answer_evidence` expands
+    #: it.
     text: str
     #: The node's ``source_path``, ``""`` when it has none.
     source_path: str
+    #: The node's ``name``. Carried because it is the only field that separates
+    #: the node that IS a document from the ~103 nodes that merely inherited its
+    #: path — see :attr:`is_document_anchor`.
+    name: str = ""
+    #: The graph node's ``id``, or ``""`` when the caller carried none.
+    #:
+    #: This dataclass deliberately drops the node — see the class docstring — and
+    #: that is why the LoCoMo answering path could not follow a fact's
+    #: ``evidenced_by`` edge back to the transcript turn it was extracted from:
+    #: by the time a hit exists, the node is gone. The id is the smallest thing
+    #: that puts the edge back within reach without re-widening this into a node
+    #: wrapper. LongMemEval never sets it, nothing here reads it, and it reaches
+    #: no prompt byte — only :meth:`evals.locomo.adapter.LocomoMemory.
+    #: _answer_evidence_tiered` looks it up, and only when tiering is on.
+    #:
+    #: LAST, and defaulted, because all 15 construction sites in this repository
+    #: pass the preceding fields by keyword; a trailing defaulted field is
+    #: therefore additive at every one of them.
+    node_id: str = ""
 
     @property
     def document(self) -> Optional[int]:
         """The staged session index, or ``None`` when the node's provenance is
         not one of this adapter's documents. See :func:`document_index`."""
         return document_index(self.source_path)
+
+    @property
+    def is_document_anchor(self) -> bool:
+        """Does this node STAND FOR its ``source_path``, or merely come from it?
+
+        The distinction decides who gets the session text on the answering path,
+        and getting it wrong is the failure
+        ``hybrid._SOURCE_ANCHOR_TYPES``' docstring documents for the ranking
+        side: every node extracted from one document would carry that
+        document's entire contents, so eleven concepts from one chat become
+        eleven identical 22kB evidence items and the budget collapses to one
+        session.
+
+        **Node TYPE cannot make this call on this graph, and the measurement
+        says so.** ``hybrid._SOURCE_ANCHOR_TYPES`` matches 214 nodes of the
+        compiled group-0 graph — 127 ``SourceDocument``, 60 ``Project``, 17
+        ``Repository``, 10 ``Paper`` — and all 214 carry a
+        ``session-NNNN.md`` path, because every node in this graph came out of
+        a chat transcript. Only 111 of them are the transcripts. The other 103
+        are things somebody talked about: "20-Gallon Community Tank",
+        "AuctionZip", and 16 ``SourceDocument`` nodes that are books mentioned
+        in a chat ("Banksy: Wall and Piece", ``source_path`` session-0015.md).
+        ``session-0077.md`` alone mints 11 of them. Under the lexical lane 219
+        of 600 retrieved hits are such impostors — a third of all evidence.
+
+        Identity with the file is the test that works: the compile names a
+        document's anchor after the document's own H1, and
+        :func:`document_title` is that H1. Measured on the compiled group-0
+        graph, this rejects all 103 impostors and admits all 111 anchors.
+
+        It admits **128** nodes, not 111, and that overshoot is why
+        :meth:`MabMemory.answer_evidence` de-duplicates. Seventeen sessions also
+        carry a ``Session``-typed summary node named exactly ``Session NNNN``
+        beside their ``SourceDocument`` anchor — same name, same file — so both
+        pass this test. They are still 128 nodes over 111 distinct files, and
+        the property that matters is per FILE, not per node: over group 0's 60
+        real queries, 11 of them retrieved two such twins in one top-10 and
+        would have spent 12 of 600 evidence items on bytes the prompt already
+        held.
+
+        Metadata is not an alternative: those 111 anchors carry 16 distinct
+        metadata key-sets (``chat_time``, ``chatTime``, ``chat_date``,
+        ``session_date``, ...). It is LLM-extracted and inconsistent by
+        construction.
+        """
+        index = self.document
+        return index is not None and self.name == document_title(index)
 
 
 class MabMemory:
@@ -515,6 +720,7 @@ class MabMemory:
         *,
         work: Path,
         compile_project: bool = True,
+        reuse_compiled: bool = False,
     ) -> IngestResult:
         """Stage the group as one document per session, then compile in ``work``.
 
@@ -522,22 +728,59 @@ class MabMemory:
         documents from a previous group — a stale ``session-0113.md`` from a
         larger group would be retrievable evidence from a haystack this run
         never saw.
+
+        ``reuse_compiled`` measures against a graph a PREVIOUS run compiled,
+        which is the only way to re-measure a group without paying its compile
+        again. It writes nothing: rather than rebuild the corpus it VERIFIES
+        that every document this group would stage is already on disk byte for
+        byte, and raises if one differs. That check is the whole safety of the
+        flag — a graph compiled from a different corpus would answer questions
+        about a haystack this run never staged, and would look like a valid
+        measurement while doing it. It overrides ``compile_project``.
         """
         resolved = guard_work_dir(work)
         sessions = split_sessions(group)
 
         corpus = resolved / "corpus"
-        shutil.rmtree(corpus, ignore_errors=True)
-        corpus.mkdir(parents=True, exist_ok=True)
-        turns = chars = 0
-        for session in sessions:
-            body = session.render()
-            (corpus / session.document_name).write_text(body, encoding="utf-8")
-            turns += len(session.turns)
-            chars += len(body)
+        if reuse_compiled:
+            turns, chars = _verify_staged(corpus, sessions)
+            graph_path = resolved / ".tesserae" / "graph.json"
+            if not graph_path.is_file():
+                raise FileNotFoundError(
+                    f"--reuse-compile: no compiled graph at {graph_path}. There "
+                    f"is nothing to reuse; run without the flag to compile."
+                )
+            # Verifying the CORPUS is not verifying the GRAPH. ``ingest``
+            # restages the corpus BEFORE compiling, so a work dir can hold
+            # group 1's freshly staged documents beside group 0's graph, and
+            # the corpus check passes on both. Reuse would then report
+            # "reused (earlier run)" while retrieving from a different
+            # haystack than the one being scored — silently, which is the
+            # exact failure this flag's docstring claims to prevent.
+            #
+            # Tie them: every session document must be reachable as a
+            # source_path in the graph. Cheap (one load, a set difference) and
+            # it fails loudly rather than scoring the wrong corpus.
+            _missing = _graph_missing_sessions(graph_path, corpus)
+            if _missing:
+                raise ValueError(
+                    f"--reuse-compile: the graph at {graph_path} does not index "
+                    f"{len(_missing)} of the {len(sessions)} staged session "
+                    f"documents (e.g. {sorted(_missing)[:3]}). It was compiled "
+                    f"from a different group or an older corpus; recompile."
+                )
+        else:
+            shutil.rmtree(corpus, ignore_errors=True)
+            corpus.mkdir(parents=True, exist_ok=True)
+            turns = chars = 0
+            for session in sessions:
+                body = session.render()
+                (corpus / session.document_name).write_text(body, encoding="utf-8")
+                turns += len(session.turns)
+                chars += len(body)
 
-        if compile_project:
-            self._compile_fn(resolved)
+            if compile_project:
+                self._compile_fn(resolved)
         self.work = resolved
         self._graph = None  # a new corpus invalidates any graph already loaded
 
@@ -553,7 +796,8 @@ class MabMemory:
                 "context" if _sessions_from_context(group.context) else "haystack_sessions"
             ),
             views_agree=sessions_agree(group, sessions),
-            compiled=compile_project,
+            compiled=compile_project and not reuse_compiled,
+            reused=reuse_compiled,
         )
 
     # ------------------------------------------------------------------- query
@@ -620,11 +864,20 @@ class MabMemory:
             weights=self._weights,
             mode=self._mode,
             backend=self.embedding_backend(),
+            # The extraction pipeline builds a node's searchable text from its
+            # name and description, so a 14k-character chat session was
+            # retrievable only through 88-character concept summaries. Handing
+            # the lexical lanes the session file itself recovers that loss:
+            # recall@10 0.705 -> 0.820, MRR 0.584 -> 0.707 on group 0. Confined
+            # to the work directory, which is where this harness staged the
+            # sessions and the only tree its source_paths may name.
+            source_root=self.work,
         )
         hits = [
             MabHit(
                 text=evidence_text(scored.node),
                 source_path=str(getattr(scored.node, "source_path", "") or ""),
+                name=str(getattr(scored.node, "name", "") or ""),
             )
             for scored in result.scored
         ][:k]
@@ -638,8 +891,89 @@ class MabMemory:
         return hits
 
     def query(self, question: str, *, k: int = PROTOCOL_K) -> List[str]:
-        """The evidence strings of :meth:`query_hits`. See it for the contract."""
+        """The evidence strings of :meth:`query_hits`. See it for the contract.
+
+        The NODE strings, unexpanded. Answering reads
+        :meth:`answer_evidence` instead; this stays cheap so the retrieval path
+        does no file I/O it has no use for.
+        """
         return [hit.text for hit in self.query_hits(question, k=k)]
+
+    def answer_evidence(self, hits: Sequence[MabHit], *,
+                        expand: bool = True) -> List[str]:
+        """``hits`` as the strings the BACKBONE reads — the answering path only.
+
+        This closes a measured hole. ``query_hits`` passes ``source_root`` so
+        the lexical lanes rank a document anchor on the first 8,000 characters
+        of its own session file, and that text then dies as a local inside
+        ``hybrid_search``: the string that reached the backbone was
+        ``evidence_text``'s ``name — description — source: path``, measured over
+        group 0's 600 retrieved hits at mean 234.2 characters against source
+        files averaging 14,042. The backbone was reading **1.7% of the text the
+        retriever scored**, which is
+        ``tesserae.context_compiler``'s "the graph was contributing essentially
+        no text the prompt did not already have" transposed to the answering
+        side — except worse, because the prompt here has nothing else at all.
+        arXiv:2410.10813 §5.2 measured that exact substitution and found it
+        loses to raw dialogue text, so the arm was running the losing side of a
+        published ablation.
+
+        Two properties, both deliberate:
+
+        * **Only anchors expand, and each file at most once.** See
+          :attr:`MabHit.is_document_anchor`. A concept node keeps its summary,
+          which is honestly all the text it has. And a session's text goes to
+          the FIRST hit that stands for it, on the same rule
+          :meth:`documents_of` scores by — two nodes from one session are one
+          session, at the better rank. Without that, the 17 sessions carrying
+          both a ``SourceDocument`` anchor and a ``Session`` summary node of
+          the same name pay twice: measured, 11 of group 0's 60 questions
+          retrieved such a pair and would have spent 12 of 600 evidence items
+          re-sending bytes the prompt already had. No two evidence items in one
+          prompt can now be the same bytes, which is the whole point of the
+          gate.
+        * **Only the answering path calls this.** ``query_hits``,
+          :meth:`query`, :meth:`documents_of` and :meth:`search_documents` are
+          untouched, so recall@K and MRR cannot move by a byte and
+          ``--retrieval-only`` reads no session file it will not use.
+
+        ``source_path`` is UNTRUSTED — it arrives from document frontmatter —
+        and this side is where it matters most: ranking buries a stolen file in
+        a BM25 score, answering pastes it verbatim into an LLM prompt. So the
+        read goes through ``hybrid._confined_source``, rooted at the work
+        directory this adapter staged into, rather than a hand-rolled open().
+
+        ``expand=False`` returns ``[hit.text ...]`` — precisely what the
+        backbone read before this method existed. It is here so the two
+        evidence CONTENTS can be measured against each other over one frozen
+        retrieval, in one process, on one tree. The alternative was checking
+        out the parent commit to obtain the control arm, which moves the
+        retrieval code underneath the comparison and makes any difference
+        un-attributable. The closing of this hole was argued from a published
+        ablation and from character counts, never measured on this corpus's own
+        answers, so the control has to stay reachable. Nothing selects it by
+        default and it is not a fallback: `run.py --answer-evidence summary`
+        is the only caller.
+        """
+        if not expand:
+            return [hit.text for hit in hits]
+
+        from tesserae.retrieval.hybrid import _confined_source
+
+        root = self.work
+        cache: Dict[str, str] = {}
+        spent: set = set()
+        evidence: List[str] = []
+        for hit in hits:
+            raw = ""
+            if (root is not None and hit.is_document_anchor
+                    and hit.source_path not in spent):
+                raw = _confined_source(hit.source_path, root, cache)
+                if raw:
+                    spent.add(hit.source_path)
+            evidence.append(f"{hit.text}\n{raw[:EVIDENCE_SOURCE_CHARS]}"
+                            if raw else hit.text)
+        return evidence
 
     def search_documents(self, question: str, *, k: int = PROTOCOL_K) -> List[int]:
         """The session indices behind :meth:`query_hits`, ranked and de-duplicated.
@@ -689,6 +1023,7 @@ class MabMemory:
 
 
 __all__ = [
+    "EVIDENCE_SOURCE_CHARS",
     "IngestResult",
     "MabHit",
     "MabMemory",
@@ -703,6 +1038,7 @@ __all__ = [
     "RefusedToCompileInRepo",
     "Session",
     "document_index",
+    "document_title",
     "evidence_text",
     "guard_work_dir",
     "protocol_blockers",

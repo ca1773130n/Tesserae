@@ -31,6 +31,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import re
 import secrets
 import signal
@@ -170,6 +171,37 @@ def last_failure_kind() -> Optional[str]:
     ``None`` for this thread's most recent ``complete_json``. Only meaningful
     immediately after a None return."""
     return getattr(_LAST_FAILURE, "kind", None)
+
+
+#: The provider's LAST raw reply on this thread, before parsing.
+#:
+#: ``complete_json`` DESTROYS unparseable text: ``parse_json_tolerant`` returns
+#: None, ``_note_failure("unparseable")`` records why, and the caller gets None
+#: one frame above with nothing to recover from. Measured on the LoCoMo
+#: answering path (24-call raw probe at fan-out prompt size, 2026-08-23): 6 of
+#: 24 replies were shape failures and ZERO were transport failures — two were
+#: bare prose carrying the CORRECT answer, one was a correct refusal written as
+#: a bare JSON string. Every "the backbone returned nothing" row on that run was
+#: an answer already paid for and then thrown away inside this module.
+#:
+#: Thread-local for the same reason ``_LAST_FAILURE`` is: BatchIngestRunner
+#: shares ONE client across worker threads, so an instance attribute would
+#: report whichever worker wrote last. Only meaningful immediately after the
+#: ``complete_json`` whose text it describes — it is cleared on entry to every
+#: one, so a stale reply can never be attributed to a call that never answered.
+_LAST_RAW = threading.local()
+
+
+def _note_raw(text: Optional[str]) -> None:
+    """Record the raw text this thread's in-flight ``complete_json`` received."""
+    _LAST_RAW.text = text
+
+
+def last_raw_reply() -> Optional[str]:
+    """The provider's unparsed reply to this thread's most recent
+    ``complete_json``, or ``None`` when nothing was received. Read it only
+    immediately after that call: it is per-thread, not per-client."""
+    return getattr(_LAST_RAW, "text", None)
 
 
 #: Monotonic per-thread tally of on-disk cache consultations, so a caller can
@@ -474,6 +506,7 @@ class AnthropicLLMJsonClient:
         # Clear first: a caller reads last_failure_kind() only after a None
         # return, and a stale note from an earlier call would misattribute it.
         _note_failure(None)
+        _note_raw(None)  # ...and the same for the raw reply, for the same reason
         # Add a JSON-mode reminder to whatever system prompt the caller
         # supplied. Belt-and-suspenders even though the prompt should
         # already say "respond with JSON only".
@@ -536,6 +569,7 @@ class AnthropicLLMJsonClient:
                 return None
 
         text = _extract_text(response)
+        _note_raw(text)
         if not text:
             # A 200 with an empty body is a transport failure wearing a clean
             # status code, not a bad generation.
@@ -954,16 +988,22 @@ class ClaudeCLIJsonClient:
     ) -> Optional[Union[dict, list]]:
         # Clear first so a cache hit can't leave a stale note behind.
         _note_failure(None)
+        _note_raw(None)
         # Stitch system + user into a single prompt for the CLI's -p flag.
         prompt = _stitch_json_prompt(system=system, user=user, schema_name=schema_name)
         model, extra = self._cache_coords(schema_name)
         cached = _cli_cache_get(cache_key, model=model, prompt=prompt, extra=extra)
         if cached is not None:
+            # A replayed answer is still what the provider said; note it so a
+            # caller recovering an odd SHAPE behaves the same on a cache hit as
+            # on a live call, rather than only on the run that paid.
+            _note_raw(cached)
             return parse_json_tolerant(cached)
         raw = self._run_prompt(
             prompt,
             error_label=f"ClaudeCLIJsonClient.complete_json failed (schema={schema_name})",
         )
+        _note_raw(raw)
         if raw is None:
             # _run_prompt records "timeout" when that's what it was; every
             # other exhausted-all-config-dirs path means nothing was answered.
@@ -1058,6 +1098,134 @@ class ClaudeCLIJsonClient:
 #: assumed as the remedy.
 _TRANSPORT_RETRIES = 2
 _TRANSPORT_BACKOFF = 2.0  # seconds; doubled per attempt
+
+
+class OpenAIAPIJsonClient:
+    """The OpenAI HTTP API, for models the Codex CLI cannot serve.
+
+    Exists because the PUBLISHED LoCoMo grader is ``gpt-4o-mini`` and this
+    codebase could not reach it. Every OpenAI-family model routed through
+    :class:`CodexCLIJsonClient`, and Codex on a ChatGPT account answers
+    ``The 'gpt-4o-mini' model is not supported when using Codex with a ChatGPT
+    account`` — so every run reported ``judge: UNMET`` and no number this
+    project produced was comparable to a published one. That is a missing
+    capability, not a configuration choice.
+
+    Stdlib ``urllib`` rather than the ``openai`` package, following
+    :class:`~tesserae.retrieval.hybrid.OpenAIEmbeddingBackend`, which posts to
+    the same API the same way. A grader is a few hundred short calls; it does
+    not justify a dependency the base install would carry forever.
+
+    ``None`` on any failure, like every client here, so a caller that cannot
+    grade stops rather than scoring an ungraded answer WRONG.
+    """
+
+    name = "openai-api"
+
+    def __init__(self, model: str, *, api_key: Optional[str] = None,
+                 timeout: float = 120.0) -> None:
+        self.model = model
+        self._key = api_key or os.environ.get("OPENAI_API_KEY") or ""
+        self._timeout = timeout
+
+    @property
+    def available(self) -> bool:
+        return bool(self._key)
+
+    def _post(self, *, system: str, user: str, json_mode: bool) -> Optional[str]:
+        import json as _json
+        import urllib.error
+        import urllib.request
+
+        if not self._key:
+            return None
+        body = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            # The published grader runs at temperature 0. A judge that varies
+            # run to run is a judge whose disagreements cannot be told from the
+            # arms it is grading.
+            "temperature": 0,
+        }
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
+        req = urllib.request.Request(
+            "https://api.openai.com/v1/chat/completions",
+            data=_json.dumps(body).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self._key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                payload = _json.load(resp)
+        except urllib.error.HTTPError as exc:
+            # The body carries the reason ("model not found", "insufficient
+            # quota"); the status alone does not, and a judge that fails for a
+            # billing reason must not read as a judge that failed to parse.
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", "replace")[:400]
+            except Exception:  # pragma: no cover - best effort
+                pass
+            print(f"[openai-api] HTTP {exc.code} for {self.model}: {detail}",
+                  file=sys.stderr)
+            _note_failure("openai-api")
+            return None
+        except Exception as exc:  # pragma: no cover - network shapes vary
+            print(f"[openai-api] {type(exc).__name__} for {self.model}: {exc}",
+                  file=sys.stderr)
+            _note_failure("openai-api")
+            return None
+        try:
+            return str(payload["choices"][0]["message"]["content"])
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    def complete_json(
+        self,
+        *,
+        system: str,
+        user: str,
+        schema_name: str,
+        cache_key: Optional[str] = None,
+        max_retries: int = 2,
+    ) -> Optional[Union[dict, list]]:
+        _note_raw(None)  # cleared on entry so a stale reply cannot be misread
+        cached = _cli_cache_get(cache_key, model=self.model, prompt=f"{system}\n{user}",
+                                extra=schema_name)
+        if cached is not None:
+            _note_raw(cached)
+            return parse_json_tolerant(cached)
+        for _ in range(max(1, max_retries)):
+            raw = self._post(system=system, user=user, json_mode=True)
+            _note_raw(raw)
+            if raw is None:
+                continue
+            parsed = parse_json_tolerant(raw)
+            if parsed is not None:
+                _cli_cache_put(cache_key, raw, model=self.model,
+                               prompt=f"{system}\n{user}", extra=schema_name)
+                return parsed
+        return None
+
+    def complete_text(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_retries: int = 2,
+    ) -> Optional[str]:
+        for _ in range(max(1, max_retries)):
+            raw = self._post(system=system, user=user, json_mode=False)
+            if raw is not None:
+                return raw
+        return None
 
 
 class CodexCLIJsonClient:
@@ -1386,17 +1554,23 @@ class CodexCLIJsonClient:
     ) -> Optional[Union[dict, list]]:
         # Clear first so a cache hit can't leave a stale note behind.
         _note_failure(None)
+        _note_raw(None)
         # Same prompt stitching as the Claude CLI client: codex exec has no
         # separate system slot either, so prefix the JSON-only contract.
         prompt = _stitch_json_prompt(system=system, user=user, schema_name=schema_name)
         model, extra = self._cache_coords(schema_name)
         cached = _cli_cache_get(cache_key, model=model, prompt=prompt, extra=extra)
         if cached is not None:
+            # A replayed answer is still what the provider said; note it so a
+            # caller recovering an odd SHAPE behaves the same on a cache hit as
+            # on a live call, rather than only on the run that paid.
+            _note_raw(cached)
             return parse_json_tolerant(cached)
         raw = self._run_prompt(
             prompt,
             error_label=f"CodexCLIJsonClient.complete_json failed (schema={schema_name})",
         )
+        _note_raw(raw)
         if raw is None:
             # _run_prompt already recorded WHY (timeout vs unavailable) —
             # don't flatten a timeout back into a capacity outage. Only the

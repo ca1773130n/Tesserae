@@ -342,3 +342,747 @@ recall. A bundle of twenty citations from eight documents may serve an agent
 better than twenty documents' worth of shallower evidence — that is a different
 experiment (`evals/qa/` has the scorer) and it has not been run. Nor does it
 license a conclusion beyond one corpus, one embedder, and K = 10.
+
+## §14. Extraction text loss, not the retrieval unit
+
+§13 blamed `merge_node_group`'s singular `source_path` for the LongMemEval
+deficit. That was real but it was the smaller half. Decomposed on group 0:
+
+| what is retrieved | recall@10 |
+|---|---|
+| whole session documents (BM25) | 0.911 |
+| each session's concatenated GRAPH text, unit still the session | 0.756 |
+| graph nodes | 0.710 |
+
+The first step, **−0.155, is pure extraction text loss**; the second, −0.046,
+is the node-not-session retrieval unit that §13 named. Extraction loss is over
+three times larger.
+
+The cause is `_node_text` (`tesserae/retrieval/hybrid.py`): a node's searchable
+string is id + name + type + description + aliases + metadata. A 14k-character
+chat session was therefore reachable only through 88-character concept
+summaries. One question asked what speed a new internet plan was; the extractor
+minted 66 nodes for that session and not one mentions Mbps. The raw file does,
+and it was on disk the whole time at `node.source_path`.
+
+Giving document-anchor nodes their own file back, in the BM25 and lexical lanes
+only (PR #213), measured through the shipped adapter:
+
+| method | recall@10 | MRR |
+|---|---|---|
+| BM25 | 0.911 | 0.803 |
+| Tesserae, patched | **0.820** | **0.707** |
+| Tesserae, before | 0.705 | 0.584 |
+
++0.115 / +0.123, 8.4x the noise floor, 56% of the gap to BM25 closed on both
+metrics. The BM25 and Dense rows are bit-identical across the two runs, which
+is the control that the change touched only the arm that opted in.
+
+**The lexical-only gate is load-bearing.** Raw text in all three lanes scores
+0.803/0.612 — worse than lexical-only's 0.820/0.707 — because 8k characters
+mean-pooled into 256 dimensions is the per-file pooling failure already on
+record at 0.7857 -> 0.6578. A version of this change that "just adds the source
+text" would have measured as a smaller win and hidden the reason.
+
+This is the shape the competitor audit found everywhere: HippoRAG 2 adds
+passage nodes and says why in the paper ("concepts are concise but often entail
+information loss"); cognee keeps `DocumentChunk` text verbatim; A-Mem keeps the
+original interaction. The three systems that replace text with an extracted
+fact string — Zep, Mem0, Graphiti/MegaMem — report no LongMemEval retrieval
+recall at all. Structure should select text, not replace it.
+
+Does not license: any comparison to a published LongMemEval figure. The
+protocol here uses a local 256-dimension embedder where the published one fixes
+text-embedding-3-small, no answering was done, and the retrieval unit is this
+harness's choice. Nor does it license enabling `source_root` on the product
+query path: this raises prompt volume, and §12's audit blames volume for the
+52.9% fabrication rate. That measurement has not been run.
+
+## §15. The lane weights were already right
+
+`DEFAULT_WEIGHTS = {bm25: 1.0, lexical: 1.0, embedding: 1.0}` is a default that
+predates any measurement, and on group 0 the BM25 lane scores 0.911 alone while
+the dense lane scores 0.425 — an obvious-looking case for reweighting. It is
+not one.
+
+Swept over 32 configurations (bm25 pinned at 1.0; lexical and embedding each
+over {0, 0.25, 0.5, 1.0}), scored two ways: full-set, and 2-fold cross-validated
+by even/odd question index — tune on one fold, report the held-out other, both
+directions. Script:
+`~/.blackhole/Tesserae/2026-08-21/weight_sweep.py`.
+
+| | equal weights (CV) | best (CV) | full-set argmax | optimism gap |
+|---|---|---|---|---|
+| before #213 | 0.705 | 0.706 | 0.744 | **+0.037** |
+| with #213 | 0.820 | 0.824 | 0.861 | **+0.037** |
+
+Reweighting buys **+0.001 and +0.004** cross-validated. The optimism gap is
++0.037 in both blocks, which almost exactly accounts for the "+0.039 from
+reweighting alone" that the benchmark-first design proposal reported and that
+this document previously repeated. That figure was a full-set argmax over 32
+configurations scored on the same 60 questions. It does not survive a held-out
+split and should not be quoted again.
+
+The two folds do not even agree on the winner: tuning on even picks
+`1/0.25/0.5`, tuning on odd picks `1/0.0/0.5`. An argmax unstable across a
+coin-flip split is noise being read as structure.
+
+What the grid does establish, against the intuition that a weak lane dilutes a
+strong one: **both non-BM25 lanes pay for themselves.** With #213 on, removing
+the embedding lane (`1/1.0/0.0`) gives 0.758 and removing the lexical lane
+(`1/0.0/0.0`) gives 0.802, both below equal weights' 0.820. RRF fuses RANKS, so
+a lane with a worse average still contributes on the questions where it is
+right. "We fuse a 0.911 lane with a 0.425 lane at equal weight" is a true
+sentence that licenses no conclusion.
+
+Does not license: extending this to another corpus. It is one split of one
+group, n=60, and the relevant claim is only that this knob is not where the
+remaining 0.091 to BM25 is hiding.
+
+## §16. Semantic reach pays where words do not match — the graph does not
+
+Every question set used against Tesserae was authored FROM its documents, so
+questions quote their sources. Measured on the 284: the median question already
+contains **30%** of its gold answer's content words (IDF-weighted 26%), and only
+**12 of 284 (4.2%)** share none. That is the regime where lexical matching is
+strongest and structure is dead weight, and it is where every comparison in this
+document was run.
+
+The claim worth testing is an INTERACTION, not a level: does non-lexical
+retrieval pay MORE as the question stops sharing vocabulary with its answer?
+Stratifying the same 284 into overlap quartiles (n=71 each, mean overlap 0.104 /
+0.244 / 0.358 / 0.534) and scoring gold-document recall@10, paired bootstrap
+5,000 resamples:
+
+| stratum | overlap | BM25 | Hybrid − BM25 | Graph − BM25 |
+|---|---|---|---|---|
+| Q1 words don't match | 0.104 | 0.740 | **+0.076 [+0.029, +0.126]** | −0.007 [−0.064, +0.054] |
+| Q2 | 0.244 | 0.867 | +0.022 [−0.014, +0.058] | **−0.085 [−0.146, −0.025]** |
+| Q3 | 0.358 | 0.906 | +0.023 [−0.005, +0.052] | −0.038 [−0.085, +0.005] |
+| Q4 words do match | 0.534 | 0.930 | +0.019 [−0.005, +0.042] | **−0.097 [−0.146, −0.052]** |
+
+**The trend is confirmed: +0.058 [+0.006, +0.110].** The hybrid's edge over BM25
+is four times larger where words do not match, and the CI on the difference of
+gaps excludes zero. This is the first statistically significant win for
+non-lexical retrieval anywhere in this document.
+
+Two things follow, and they point opposite ways.
+
+**The regime is real.** Fusion beats BM25 significantly in Q1 and nowhere else —
+every other stratum's CI straddles zero. The +0.035 fusion win recorded earlier
+was an average over a set that is 96% lexically-assisted; it is not a uniform
+gain, it is a large gain on a quarter of the questions and nothing on the rest.
+
+**The graph is not what delivers it.** The graph re-ranker is statistically tied
+with BM25 in Q1 and significantly WORSE in Q2 and Q4. It is least harmful
+exactly where the ontology argument predicts it should be strongest, and it
+costs −0.097 on the questions BM25 already answers. What buys semantic reach
+today is a 256-dimension static embedding, not concepts and relationships.
+
+This refines §1's "graph contribution −0.002 [−0.025, +0.022]". That average hid
+a real structure: not uniformly flat, but tied where lexical fails and clearly
+harmful where it succeeds.
+
+Two experiments follow directly, neither needing a recompile:
+
+1. **Gate the graph on lexical confidence.** −0.097 in Q4 is the price of
+   consulting it when BM25 is already right. A gate cannot help Q1 but it makes
+   the re-ranker conditionally neutral instead of uniformly negative.
+2. **Seed PPR the way HippoRAG 2 does.** `curve.SEED_K = 25`, and §12 measured
+   the planner's walk delivering exactly ONE node. HippoRAG 2 seeds PPR with
+   ALL passage nodes and says why: activating a broad set is what uncovers
+   multi-hop chains. That is the largest architectural divergence from the
+   system that wins this benchmark family.
+
+Does not license: a claim that a knowledge graph cannot buy semantic reach. It
+licenses only that THIS graph, at THIS seeding, on THIS corpus, does not — while
+a 256-dimension embedding does, significantly, in the quarter of questions where
+it matters. Reproduce with
+`~/.blackhole/Tesserae/2026-08-21/lexical_strata.py` and `strata_ci.py`.
+
+## §17. The graph beats BM25 — once the walk is seeded the way the field seeds it
+
+§16 found the regime (questions whose words do not match their answer) but also
+found the graph tied-to-harmful inside it. That was a property of the SEEDING,
+not of the graph.
+
+`personalized_pagerank` spread teleport mass uniformly over its seeds, so the
+only way to seed widely was to seed badly: uniform mass over every node is not a
+personalized walk, it is plain PageRank. The shipped caller compensated by
+seeding narrowly — top 25 — which can re-rank what lexical search already found
+and cannot reach past it. `seed_weights` (committed 9921206c) is the half of
+HippoRAG 2's design Tesserae could not express.
+
+Measured on Q1, the 71 lowest-overlap questions, R@10 against BM25's 0.740,
+paired bootstrap 4,000 resamples:
+
+| seeding | R@10 | gap vs BM25 |
+|---|---|---|
+| k=25, uniform (what shipped) | 0.733 | −0.007 [−0.065, +0.056] |
+| **k=200, weighted** | **0.814** | **+0.075 [+0.019, +0.133]** |
+| ALL nodes, weighted | 0.622 | −0.118 [−0.199, −0.042] |
+| ALL nodes, uniform | 0.130 | −0.609 [−0.681, −0.539] |
+
+**The two controls carry the argument.** Broad + uniform collapses to 0.130 —
+the predicted degeneration to plain PageRank, and the reason "just seed
+everything" is not the lesson. The same broad seeds, weighted, recover ~+0.49.
+Breadth is worthless without the personalization; the personalization is what
+makes breadth affordable. And breadth past ~300 stops paying regardless.
+
+**It survives a held-out split**, which the lane-weight lever in §15 did not:
+
+| seed k | 50 | 100 | 150 | 200 | 300 | 400 | 600 |
+|---|---|---|---|---|---|---|---|
+| gap | +0.062 | +0.078 | +0.070 | +0.075 | +0.063 | +0.031 | −0.008 |
+| CI excludes 0 | yes | yes | yes | yes | yes | no | no |
+
+Cross-validated gap **+0.063** against a full-set argmax of +0.078 — an optimism
+gap of +0.015, versus §15's +0.037 which consumed its whole effect. A smooth
+plateau from 50 to 300 with graceful decay past 400 is what a real effect looks
+like; a spike at one k would not have been one.
+
+`SEED_K` is therefore 150 — the CENTRE of the plateau, deliberately not the
+k=100 argmax, because picking the argmax on the questions you score is the error
+§15 records.
+
+**This is the first time in this document that the graph beats a lexical
+baseline on anything.** It is also narrow: the win lives in one stratum, and in
+the high-overlap stratum the walk still costs −0.060. The honest claim is
+conditional — structure pays where vocabulary fails, and should not be consulted
+where it does not.
+
+Does not license: enabling this on the product ask path. That path's PPR is
+budget-capped at `_CONTEXT_BUDGET = 1_800` against 4,000-character bodies and
+§12 measured it delivering exactly ONE node, so the seeding change cannot help
+there until the budget is fixed too. Nor does it license a claim about
+LongMemEval: this is the demo corpus, gold-DOCUMENT recall, n=71 in the stratum
+that matters. Reproduce with `~/.blackhole/Tesserae/2026-08-21/broad_seed.py`
+and `seed_k_cv.py`.
+
+## §18. The bundle delivered one node because the first body ate the budget
+
+§12 measured the ask path's `compile_context` bundle delivering exactly ONE node
+in 31/31 runs, and in 28/31 that node's source document was already among the
+ten the fusion lane had ranked — so the graph contributed essentially no text
+the prompt did not already have. §17's better seeding could not reach a user
+through that.
+
+The cause is an arithmetic mismatch, not a design choice.
+`SOURCE_EXCERPT_CHARS = 4_000` is the per-node body; `_CONTEXT_BUDGET = 1_800`
+is the ask path's whole bundle. The first ranked body overflows the budget on
+its own, hits the "always include the FIRST selectable node, truncating to fit"
+branch, and breaks the walk.
+
+**Raising the budget is the wrong fix.** 1,800 is sized so the assembled bundle
+survives `_EVIDENCE_CLIP = 2_500` downstream; a larger bundle is computed, paid
+for, and thrown away. Spending the SAME budget across several nodes costs no
+extra prompt bytes — which matters, because §12 blames prompt VOLUME for the
+52.9% fabrication rate.
+
+Each node now claims at most `budget // _TARGET_BUNDLE_NODES` (5), and the raw
+source substitution is skipped when that share falls under `_MIN_SOURCE_EXCERPT`
+(900) — below which the first few hundred characters of a paper are title and
+boilerplate, while the extracted description is dense and already about what
+matched. Measured over the same 31 questions, budget unchanged:
+
+| | before | after |
+|---|---|---|
+| nodes per bundle | 1 in 31/31 | min 5, **median 7**, max 14 |
+| bundles adding a document the fusion top-10 missed | 3/31 (9.7%) | **19/31 (61.3%)** |
+| chars used | ~1,800 | 1,698 (cap 1,800) |
+
+A 6.3x rise in novel-document contribution at zero prompt cost.
+
+**A floor was required, and finding it was the useful part.** The first version
+capped every body unconditionally, which broke 10 multi-pool reservation tests.
+Those tests run at `budget=400`, where a five-way split leaves 80 characters per
+node — a sentence opening, not evidence. The tests were not stale: they were
+right, and the change was wrong for tight budgets. Below `_MIN_NODE_SHARE`
+(300) the original first-body-takes-what-it-needs behaviour stands. That keeps
+`budget=400` byte-identical, leaves the default 32,000 path untouched (its share
+exceeds `SOURCE_EXCERPT_CHARS`, so nothing is capped), and redistributes only in
+the band the ask path actually occupies.
+
+Does not license: any claim about answer quality. This measures what reaches the
+prompt, not what the model does with it. Whether seven documents at 360
+characters beat one at 1,800 for token F1 — or for fabrication, where more
+distinct near-miss material is exactly the mechanism §12 blames — is unrun.
+Reproduce with `~/.blackhole/Tesserae/2026-08-21/bundle_nodes.py`.
+
+## §19. Retrieval was saturated, and the tie was the metric
+
+Three findings from reading the persisted per-question answers, and each
+overturns something this document previously asserted.
+
+**Retrieval had no headroom.** The gold document reaches the top 10 for
+**282 of 284 questions (99.3%)**. Going from "at least one gold document
+retrieved" to "all gold documents retrieved" is worth **+0.006 token F1**
+(0.326 -> 0.332). Every retrieval improvement recorded in §14 through §18 was
+optimising a stage with two questions of headroom. That is why none of them
+converted, and it is the honest explanation for a pattern this document
+previously attributed to synthesis.
+
+**§16's stratification used the wrong variable.** It split questions by
+question-to-ANSWER content-word overlap. The retriever matches the question
+against the DOCUMENT, so that split was never a proxy for retrieval difficulty.
+On the answer side the predicted interaction does not merely fail to appear, it
+inverts: Tesserae's edge over the baseline is SMALLEST in the lowest-overlap
+quartile (-0.040 [-0.075, -0.004]) and largest in the highest, trend
+-0.062 [-0.113, -0.012]. Gold length is flat across quartiles, so it is not a
+length proxy. §16's retrieval measurement stands as measured; its
+INTERPRETATION as a vocabulary-mismatch regime does not.
+
+**The 0.325-vs-0.326 tie was an artifact of the scorer.** 277 of 284 short-span
+answers carried a bracketed provenance citation — median 11 tokens on a median
+19-token answer — which the retrieval baseline never emits. Token F1 counted
+every one as a false positive, on one arm only.
+
+| | macro F1 | precision |
+|---|---|---|
+| as scored | 0.3254 | 0.306 |
+| citations not scored as content | **0.3534** | **0.427** |
+| retrieval baseline | 0.320 | — |
+
+Against the baseline that is **+0.034 [+0.016, +0.051]** — a significant win
+that read as a tie for the whole of this project's published comparison.
+
+The root cause was a self-contradicting prompt: `_SHORT_SPAN_PREAMBLE_HEADER`
+forbids citations while the synthesis user message demanded them, and the model
+obeyed the user message. Both halves are fixed (615352ee): the citation
+instruction is prose-cited only, and `normalize_answer` strips bracketed spans
+before scoring, identically for every arm and for the gold.
+
+Widening the pattern beyond `NODE_CITATION_RE`'s id-shaped class was necessary
+and had to be checked rather than assumed: the planner cites node NAMES, so 83%
+of the 822 citations in a real run contain a space. Brackets appear in 0 of 284
+gold answers and 0 of 284 questions, which is what makes the wider pattern safe.
+
+**Two more corrections to the record.** Reading the 20 lowest-F1 answers whose
+retrieval succeeded: 12/20 are right-fact-wrong-form, 3/20 right-document-wrong-
+span, 5/20 genuine synthesis failures — so most of the residual gap is still
+shape, not knowledge. And the baseline buys part of its apparent parity by
+refusing: 24/284 (8.5%) refusals against Tesserae's 7/284 (2.5%), each scoring
+0.000. Excluding each arm's own refusals: baseline 0.349, Tesserae 0.362.
+
+A compliant short-span system's ceiling on this set is about **0.603**, not 1.0
+— the prompt asks for the shortest span while 84.9% of golds are two-clause
+prose over 20 tokens. 0.353 is 59% of achievable, not 35% of perfect.
+
+Does not license: any claim that the retrieval work was wasted. It is
+measurable on LongMemEval, where retrieval is NOT saturated. It licenses only
+that this corpus cannot see retrieval improvements, and that every comparison
+published here before 615352ee understated Tesserae by roughly 0.028 F1.
+
+## §20. The 2026 literature says we benchmarked the wrong half
+
+Two independent June-2026 results, both against the thesis this project is
+built on, and both consistent with everything measured here.
+
+**"Exploring Cross-Scenario Generality of Agentic Memory Systems: Diagnostics
+and a Strong Baseline"** (arXiv 2606.04315, Chen et al.) revisits EIGHT memory
+systems across five scenarios — single-turn QA, multi-session chat,
+agentic-trajectory QA, memory stress tests, long-horizon agentic tasks. Their
+finding, quoted: *"The harness, which self-manages flat text-file storage via
+tool calls, achieves the best cross-task ranking, suggesting that memory
+performance hinges on giving the agent active control over storage and
+retrieval rather than on a passive store behind a fixed pipeline."* They ship it
+as AutoMEM.
+
+**Memanto** (arXiv 2604.22085) reaches SOTA with a vector-only design that
+"eliminates graph infrastructure and LLM-mediated ingestion entirely", using a
+typed schema of thirteen semantic categories and zero-cost ingestion.
+
+Flat files plus tool calls beat eight engineered systems; vectors without a
+graph beat the graph systems. Both agree that structure is not where the win is.
+
+**Everything measured in this document agrees.** The graph as a re-ranker:
+-0.002 [-0.025, +0.022]. Raw source text over extracted summaries: +0.115 on
+LongMemEval. BM25 over Tesserae on BOTH foreign conversational benchmarks
+(LoCoMo MRR 0.785 vs 0.626; LongMemEval 0.803 vs 0.707). Extraction text loss
+was three times the retrieval-unit loss. Every one of those is the same result
+the field just published.
+
+**But the conclusion is not "Tesserae is beaten", because of what the paper
+identifies as the deciding variable.** It is not structure versus text. It is
+AGENT CONTROL versus a passive pipeline. And Tesserae already has the former:
+an MCP server exposing ~24 tools — graph_map, node_context, search_facts,
+compile_context, timeline, verify_claim — through which an agent decides what
+to fetch and when.
+
+Every benchmark arm in this repository bypasses it. `evals/lme_mab/adapter.py`
+and `evals/locomo/adapter.py` both call `hybrid_search` directly and hand the
+result to a backbone: one search, fixed K, no agency. Runtime-verified on
+LongMemEval — 0 calls to compile_context, 0 to local_scope, 0 to PPR over 60
+real queries. That is precisely the passive-store configuration the paper
+measures as the LOSING one, and it is the only configuration this project has
+ever benchmarked.
+
+So the retrieval deficits recorded here are real and are measurements of the
+wrong artifact. They compare a fixed pipeline against BM25. They say nothing
+about the product surface, which no number in this document describes.
+
+Does not license: a claim that the tool-driven path would do better. It has
+never been run, and the honest prior from this document is that it will
+disappoint — five improvements were shipped today and one transferred. What it
+licenses is that the next measurement should be an AGENT holding the MCP tools
+against the same LoCoMo questions, scored the same way, because that is the
+system we ship and the configuration the field says decides the outcome.
+
+## §21. The agentic path cannot be scored by the retrieval metric
+
+§20 concluded the next measurement should be an agent holding the MCP tools
+rather than a fixed pipeline. `ask_planner.plan_and_answer` already IS that
+configuration — eight primitives, up to `MAX_STEPS = 5`, sequence chosen by the
+LLM per question. Run against the compiled LoCoMo conv-26 project it works, at
+about 25 s and several LLM calls per question against the one-shot path's one.
+
+Four questions, one per category, showed a clean split — and the obvious reading
+of it is wrong.
+
+| category | tools chosen | hits | answer |
+|---|---|---|---|
+| temporal | timeline | 0 | "Last Friday" vs *7 May 2023* — wrong |
+| multi-hop | recent_sessions, session_findings x2 | 0 | wrong |
+| open-domain | wiki_search, search_facts | 8 | substantially right |
+| single-hop | wiki_search, search_facts | 3 | right |
+
+The tempting conclusion — that the non-wiki tools are EMPTY on a chat corpus and
+the planner wastes its budget on them — is FALSE, and measuring it directly is
+what shows that. Executing each primitive by hand against the same question:
+
+| tool | evidence chars | hits |
+|---|---|---|
+| wiki_search | 912 | **8** |
+| compile_context | 2,500 | 0 |
+| timeline | 2,500 | 0 |
+| search_facts | 2,500 | 0 |
+| session_findings | 2,500 | 0 |
+| recent_sessions | 1,317 | 0 |
+
+Every tool returns substantial evidence. What only `wiki_search` returns is
+`hits` — the wiki-page objects that carry `source_path`, and `source_path` is
+the ONLY thing that maps a result back to a session.
+
+So `hits = 0` means "no page objects", never "no evidence". And the retrieval
+metric — recall@K and MRR of the gold session — reads exclusively from hits.
+
+**An agentic arm scored by that metric would report recall near zero on every
+question where the planner chose a non-wiki tool, for a reason that has nothing
+to do with how well it remembered.** Roughly half of the sampled questions.
+That number would have been published as the agentic path losing badly, and it
+would have been an artifact of the instrument, not a property of the system.
+
+This is the same class of error as the citation footer in §19: a metric charging
+a system for a behaviour that is not what the metric claims to measure. It was
+caught here only because the tools were executed individually instead of the
+"hits=0 means nothing came back" reading being trusted.
+
+What follows: an agentic arm needs a retrieval metric defined over the evidence
+it ACTUALLY consumed, not over wiki hits. Either every primitive carries
+provenance, or the agentic arm is scored on answers alone and its retrieval
+column is declared NOT MEASURABLE rather than printed as zero.
+
+Does not license: any claim about agentic-path quality. n = 4 for the tool
+split, and the 16-question probe measuring the tool-choice/quality correlation
+was still running when this was written. The nondeterminism is also real — the
+same temporal question answered "Yesterday" on one run and "Last Friday" on the
+next, so replicates are mandatory for this path in a way they are not for the
+deterministic one.
+
+## §22. Replicates grew the effect instead of dissolving it
+
+§21 measured the planner's routing rule on one run per arm and recorded the
+quality effect as unresolved: blended token F1 0.274 -> 0.297 (+0.023), with
+-0.054 on previously-fine questions that could not be told from resampling. The
+prediction on record was that replicates would dissolve both.
+
+They did not. 3 replicates x 2 rules x 16 questions, identical code — the BEFORE
+arm reconstructed by swapping the rule paragraph back into `_PLANNER_SYSTEM`,
+which `ask_planner` reads as a module global at call time.
+
+| arm | replicate means | mean | within-arm sd | reached a document tool |
+|---|---|---|---|---|
+| before | 0.278, 0.256, 0.260 | 0.265 | **0.010** | 26/48 (54%) |
+| after | 0.303, 0.369, 0.296 | **0.323** | 0.033 | **48/48 (100%)** |
+
+The single-run estimate UNDERSTATED the effect: +0.023 became +0.058. Noise does
+not behave that way, and the within-arm spread (0.010 and 0.033) is smaller than
+the gap.
+
+**Two tests, and the disagreement is the finding.**
+
+Exact permutation over the six replicate means: 1 of 20 arrangements reaches the
+observed gap, p = 0.050 one-sided. All three BEFORE runs fall below all three
+AFTER runs. But 1/20 is the FLOOR of a 3v3 design — that p-value means "as
+extreme as this design can report", not "strong evidence". Five replicates per
+arm would give 1/252 if the separation held.
+
+Paired by question, each question a mean of its three replicates: **+0.0578
+[-0.0386, +0.1675]**, and the CI includes zero. 6 questions improved, 6 were
+unchanged, 4 got worse.
+
+Both are correct. The rule reliably helps the RUN AVERAGE and unreliably helps
+the INDIVIDUAL QUESTION, and 16 questions cannot resolve the second. This is the
+same shape as §15's lane weights and §17's seeding plateau: what separates a
+real effect from a fitted one here is consistency across resamples, not a single
+point estimate.
+
+The MECHANICAL claim is settled and needs no statistics: document-tool reach
+went 54% -> 100%, on every replicate.
+
+Does not license: quoting +0.058 as the rule's value. It is one conversation,
+16 questions, a nondeterministic path, and a design whose best possible p-value
+is 0.050. It licenses keeping the rule — the defect it fixes is real, the
+direction is consistent across every replicate, and the estimate grew rather
+than shrank under repetition.
+
+## §23. Provenance was never missing from the data — only from the f-string
+
+§21 recorded that only `wiki_search` returns `hits`, so the retrieval metric
+cannot see a plan built from any other primitive. The natural reading is that
+the dated primitives have no document behind them. They do. On the compiled
+conv-26 graph 344 of 345 nodes (99.7%) carry a top-level `source_path` and all
+344 resolve to a file on disk; the sole exception is the one Synthesis node,
+which is a compile artifact. Every one of the five graph-backed primitives held
+that value in a live object and dropped it at the point of string formatting.
+
+`compile_context` is the sharpest case. It prints every path it has, into a
+`## Citations` legend at the end of a body measuring mean 4701 chars, and then
+`_EVIDENCE_CLIP` cuts at 2500. Measured: **0 of 222 citation paths survived, in
+0 of 16 questions.**
+
+**What was built.** `plan_and_answer(..., provenance=True)` adds a `sources`
+list to each entry of `plan.executed`: the documents behind that step's rows,
+in the order the primitive ranked them. Off by default, and `ask_project` never
+passes it, so the product envelope is unchanged. Verified on conv-26 — evidence
+text, `hits` and the synthesis prompt hash identically with the flag on and off,
+across three questions and six primitives.
+
+Three design decisions, each forced by a measurement.
+
+*Resolved before stringification, not parsed back out.* The clip destroys 100%
+of `compile_context`'s paths, 70% of `timeline`'s rendered lines and 54% of
+`search_facts`' inline ids. A text round-trip would have measured well on short
+answers and failed silently on long ones.
+
+*Per-step, never a plan-wide union.* A union is ordered by plan position, and
+position is the thing this repo has reverted for: concatenating a real plan's
+steps scored recall@10 0.333 where its own best single step scored 0.583,
+because the good step's rows landed after another step's. Per-step lists let a
+consumer fuse.
+
+*Not synthetic `QueryHit`s.* `hits` is consumed as wiki results with an href, a
+comparable score and page text — a temporal fact has none of the three — and it
+feeds a caller-side LRU bump, which would turn a read into a disk side effect.
+
+**What each primitive's provenance is worth**, scored through the shipped code
+on the 6 dated-only probe questions (conv-26, 19 sessions; random floor
+recall@10 0.526 / MRR 0.173):
+
+| step | recall@10 | MRR | sessions returned |
+|---|---:|---:|---|
+| `search_facts` limit=20 | 0.750 | **0.489** | 5–12 |
+| `search_facts` limit=10 | 0.667 | 0.472 | 4–7 |
+| `compile_context` | 0.667 | 0.319 | 5–9 |
+| `timeline` limit=50 | 0.583 | 0.163 | 13–16 |
+| `wiki_search` top_k=8 | 0.583 | 0.173 | 8 |
+| `session_findings` | 0.167 | 0.033 | 7 |
+| `recent_sessions` | 0.167 | 0.024 | 8 |
+| CONTROL: all 19 in corpus order | 0.583 | 0.295 | 19 |
+
+Read the control row first. `timeline` is not a ranking — it is a chronological
+sweep that returns most of the corpus in roughly corpus order, and it loses to
+`range(1, 20)` on MRR. `recent_sessions` and `session_findings` sit far below
+the floor and cannot rise: conv-26 extracted 8 Session nodes and 9 finding-
+bearing documents out of 19 files, so they top out at 42% and 47% corpus reach
+regardless of plumbing. That is an extraction-coverage defect, not this one.
+
+`search_facts` is the outlier worth keeping: 2.8x the floor's MRR while
+returning 4–7 sessions where the document arm returns 8. High precision, under
+budget — the complementary profile to `wiki_search`, which finds a different
+2/6 questions at rank 1.
+
+A projected fact resolves through
+`subject_id` and `object_id`; the shipped code records subject first, then
+object, deduped on first occurrence. Subject-only was measured head to head:
+
+| | subject-only | subject+object (shipped) |
+|---|---:|---:|
+| `search_facts` limit=10 | 0.667 / **0.500** | 0.667 / 0.472 |
+| `search_facts` limit=20 | 0.750 / **0.521** | 0.750 / 0.489 |
+| `timeline` limit=50 | 0.417 / 0.100 | **0.583** / **0.163** |
+
+Subject-only wins `search_facts`' MRR by 0.028–0.032 at identical recall, which
+at n=6 is one question changing rank by one. It loses `timeline` on both. Both
+endpoints also carry the coverage argument: 650/650 conv-26 facts have at least
+one endpoint with a `source_path`, and only the union reaches all of them.
+
+**The case that actually pays is `compile_context`, and it costs nothing.** The
+shipped routing fix left 6 of 48 rows (12.5%) scoring zero recall, and every one
+of them reached a document tool — they are `compile_context`-only plans, which
+`hits` cannot see. Scored through the shipped provenance on exactly those 5
+distinct questions:
+
+| | recall@10 | MRR | first-gold ranks |
+|---|---:|---:|---|
+| `compile_context` provenance | **1.000** | 0.517 | 2, 3, 4, 1, 2 |
+| `wiki_search` (document arm) | 0.900 | **0.569** | 5, 1, 1, 7, 2 |
+
+Parity or better, from data the compiler had already computed and the planner
+was throwing away.
+
+`source_path` is document frontmatter, so
+`_confined_doc` resolves-then-compares against the project root and additionally
+requires `is_file()`. Provenance naming a document that is not on disk is
+invented provenance, which is worse than none; requiring the stat makes "we
+never fabricate a source" a property of the code rather than a claim in a
+docstring. Both guards are mutation-tested: dropping either one is caught by the
+test named for it.
+
+`activity_summary` and `decisions` were deliberately left alone. Neither reads
+`graph.json` — the first builds a wall-clock digest of transcripts,
+commits and PRs, the second parses `AskUserQuestion` blocks out of Claude Code
+JSONL whose session id is a transcript, not a corpus document. They report
+`sources: []`, which is the honest answer. No plumbing can give them a document
+and inventing one would be the worst version of this change.
+
+Does not license: calling this an answer-quality improvement. It never touches
+the prompt. Provenance from the dated primitives as a plan actually ran them
+scores recall@10 0.333 — below the random floor and below the constant ranker.
+It makes the arm scoreable and the score is bad, which is a finding, not a fix.
+Nor does it license a number for `search_facts`' fused value: n=6, one
+conversation, and nothing here fused anything.
+
+## §24. The scoreability bought what it promised and nothing more
+
+§23 shipped `provenance=True` on the argument that it costs nothing and buys a
+retrieval column. Both halves are now measured on the same 16 questions and the
+same seed §22 used, 3 replicates x 16, 48 planner calls.
+
+The cost half is a null, and the two tests agree for once.
+
+| arm | replicate means | mean | sd |
+|---|---|---|---|
+| §22 AFTER (recorded) | 0.303, 0.369, 0.296 | 0.323 | 0.033 |
+| `provenance=True` | 0.389, 0.305, 0.368 | 0.354 | 0.036 |
+
+The replicate means interleave completely: 0.296 B, 0.303 B, 0.305 A, 0.368 A,
+0.369 B, 0.389 A. Exact permutation p = 0.150 one-sided, three times this
+design's floor; paired by question, +0.0315 [-0.0174, +0.0885], containing zero;
+5 questions better, 6 unchanged, 5 worse. Byte identity was re-checked before
+the run on 96 cells (16 questions x 6 primitives) rather than the commit's 18.
+
+So +0.0315 is not an effect, it is this path's run-to-run drift across two days
+of identical execution code, and that is the number worth keeping: it is 54% of
+the +0.058 §22 attributed to the routing rule. §22 stands, its replicate means
+being disjoint where these interleave, but the drift bounds how much of +0.058
+a reader should treat as settled.
+
+The retrieval half is a first measurement, at K=10 over 19 sessions, random
+floor recall 0.526 / MRR 0.181:
+
+| policy | recall@10 | MRR | empty rows |
+|---|---|---|---|
+| hits only, the instrument before §23 | 0.358 | 0.245 | 14 |
+| plan concatenation | 0.688 | 0.365 | 0 |
+| reciprocal-rank fusion over steps | 0.667 | 0.428 | 0 |
+| best single step (oracle) | 0.740 | 0.513 | 2 |
+| all 19 sessions in corpus order | 0.615 | 0.236 | 0 |
+
+Read the constant ranker first. Ignoring the question entirely scores
+0.615 / 0.236 against the old instrument's 0.358 / 0.245, so the hits-only
+instrument sits below the constant ranker and the random floor ON RECALL
+(0.358 vs 0.615 vs 0.526) and ABOVE both on MRR (0.245 vs 0.236 vs 0.181).
+An earlier version of this paragraph said "below both", and repeated it in the
+run report and in the commit message; it is true of recall only, and an
+independent re-derivation over all 48 persisted rows is what caught it. The
+recall half is the load-bearing one — a metric that scores the shipped path
+worse than a constant is not
+measuring the path, which is what §21 predicted from n=4 and this measures end to
+end. Split by whether a plan reached `wiki_search`: on the 34 rows that did,
+hits give 0.505 / 0.346 and sources 0.652 / 0.343, so provenance adds recall and
+nothing to MRR. On the 14 that did not, hits give 0.000 / 0.000 and sources
+0.774 / 0.419. Every one of those 14 contains `compile_context`, as §23 inferred;
+the count is 14 of 48 rather than 6, and it is now a record rather than an
+inference. RRF beating concatenation by 0.063 MRR is the first evidence for
+per-step lists being the right shape, which §23 chose on reasoning alone.
+
+Scored with the planner's own argument strings, which had never been recorded,
+`search_facts` leads at 0.778 / 0.555 and `wiki_search` is fourth at
+0.505 / 0.346, below the constant ranker on recall. That ordering is not the one
+the question-text queries in §23 gave.
+
+Two defects surfaced only because provenance separates "retrieved nothing" from
+"retrieved something unscoreable", both reproducing with zero LLM calls. All 4
+`recent_sessions` invocations returned nothing: the planner anchors "recent" to
+wall-clock today and passes `since` values in 2026 against a 2023 corpus. And
+any `since` bound zeroes `timeline` here, because every event on this corpus is
+undated, so the same query returns 6 sources with no bound and 0 with
+`since: 1900-01-01`. Neither is in the provenance change; neither is fixed.
+
+Does not license: an answering claim in either direction, this being a null.
+Nor quoting 0.688 as the agentic path's retrieval: one conversation, 19
+sessions, 16 questions, one backbone, one day, and the oracle row is an oracle.
+Nor reading the per-primitive ordering as general, at n from 2 to 34. And
+specifically not the tempting claim that the old instrument was blind to the
+best-answering plans: those 14 rows do carry the higher token F1, 0.464 against
+0.309, but 10 of them are category 4 and paired within question the non-wiki
+path wins none of 7. Checked, confounded, withdrawn. Full rows and scripts at
+`.blackhole/Tesserae/2026-08-21/provenance/`.
+
+## §25. Tokens to a correct answer — the first measurement of the actual claim
+
+Every prior section measured retrieval: did the right document rank first. The
+product claim is different — BM25 finds the region, Tesserae compiles the
+background, and at hundreds of millions of documents nobody can paste documents
+into a prompt. So the axis is ACCURACY AT A FIXED TOKEN BUDGET, and BM25 is a
+component of two of the three arms rather than a rival.
+
+conv-26, the protocol 16, 3 replicates, gpt-5.6-luna, deterministic judge,
+canary passed, 529 calls declared and 529 spent. Token F1:
+
+| arm | 512 | 2,048 | 8,192 | unbudgeted |
+|---|---|---|---|---|
+| A bm25_docs | **0.191** | 0.166 | 0.373 | — |
+| B bm25_compiled | 0.059 | **0.280** | **0.400** | — |
+| C graph_only | 0.002 | 0.265 | 0.367 | — |
+| floor closed_book | | | | 0.000 |
+| ceiling whole_corpus | | | | **0.484** |
+
+Paired bootstrap, question-level, replicates averaged first:
+
+| rung | B − A | C − A |
+|---|---|---|
+| 512 | **−0.132 [−0.289, −0.013]** | **−0.189 [−0.352, −0.055]** |
+| 2,048 | +0.114 [−0.010, +0.271] | +0.100 [−0.047, +0.274] |
+| 8,192 | +0.027 [−0.058, +0.142] | −0.006 [−0.140, +0.133] |
+
+**At 512 tokens truncated raw documents beat compiled context, significantly.**
+That is the falsifying result the instrument was built to permit, and it fired.
+Compilation carries overhead that does not repay itself below roughly 2k.
+
+At 2,048 the direction favours compilation on all three replicates with
+within-arm sd 0.023-0.031, below the gap — but the paired CI grazes zero at
+n=16. A 4.04x token ratio does exist there (B scores 0.280 at 1,961 tokens; A
+needs 7,914 to exceed it) and the measuring agent declined to headline it,
+correctly: the correctness levels differ, so it is a ratio between unlike things.
+
+**Two adversarial findings weaken the only significant result, and both are
+recorded rather than argued with.** At the 512 rung arms B and C sent
+BYTE-IDENTICAL prompts on 14 of 16 questions, so the two intervals excluding
+zero are ONE result presented as two. And the Qwen3 tokenizer proxy factor is
+ARM-DEPENDENT — 3.20 chars/token for wiki text against 4.31 for a compiled
+brief, a 35% spread — so a 512-token rung is a different real budget per arm,
+and the largest excursion sits on exactly the rung carrying the conclusion.
+
+**The corpus cannot test the claim it was built for.** conv-26 in its entirety
+is 19,710 tokens: it fits in any context window, and the whole_corpus ceiling
+(0.484) beats every budgeted arm. A regime where compilation must win is one
+where the corpus does NOT fit, and this one does. What this measures is the
+instrument, not the thesis.
+
+Does not license: "compiled context is more efficient than documents". The only
+intervals excluding zero say the opposite, at one rung, confounded two ways.
+It licenses that the instrument works, that the falsification path is real, and
+that the interesting band is 2k-8k on a corpus large enough that pasting it is
+not an option.

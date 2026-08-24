@@ -4197,7 +4197,17 @@ def _strip_generated_layer(graph: ResearchGraph) -> ResearchGraph:
 def load_graph_file(path: str | Path) -> ResearchGraph:
     # Body moved verbatim to ``research_graph.graph_from_payload`` so the
     # code-graph cache can rehydrate without importing this module (circular).
-    return graph_from_payload(json.loads(Path(path).read_text(encoding="utf-8")))
+    #
+    # ``read_bytes``, not ``read_text``: a single astral character anywhere in
+    # the file (the real graph.json has one at U+1FA38) forces CPython to store
+    # the ENTIRE decoded string as UCS-4 at 4 bytes/char. On the 76 MB graph
+    # that stage alone peaks at 895 MB RSS versus 595 MB from bytes (1.5x, and
+    # 1.7x faster). An earlier version of this comment claimed 682 MB versus
+    # 87 MB; the 87 MB figure was impossible, since the parsed payload alone is
+    # ~500 MB.
+    # ``json.loads`` accepts bytes and returns an identical object, so this
+    # cannot change what is loaded — only what it costs to load it.
+    return graph_from_payload(json.loads(Path(path).read_bytes()))
 
 
 def resolve_project_input(project_root: Path, item: str | Path) -> Path:

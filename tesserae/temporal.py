@@ -124,7 +124,7 @@ _TS_METADATA_KEYS: Tuple[str, ...] = (
 
 _LEADING_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
 
-# LAST rung: a date the ingest path already spells out. Research corpora land
+# FOURTH rung: a date the ingest path already spells out. Research corpora land
 # in dated directories (``data/research/daily/2026-04-06/papers/…``), and
 # ``extract_source_metadata`` already reads exactly this segment — but only for
 # the SourceDocument, never for the Claims, EvidenceSpans and Concepts minted
@@ -139,8 +139,10 @@ _LEADING_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
 # ``first_seen_at`` already means everywhere else here. Never read it as a
 # publication date.
 #
-# It is the last rung ON PURPOSE: a directory date is coarser than anything
-# above it, so it may only fill a gap, never shadow one. And it is pure bytes —
+# It sits BELOW the metadata and name rungs ON PURPOSE: a directory date is
+# coarser than either, so it may only fill a gap, never shadow one. Only the
+# document rung below it is lower, and for the opposite reason — that one is
+# model-transcribed where this one is laid down by ingest. And it is pure bytes —
 # the path string is already inside graph.json, so no file, no git history and
 # no clock is consulted, which is what keeps it byte-idempotent and portable to
 # a fresh clone.
@@ -190,6 +192,165 @@ _LEADING_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
 # max rule a fact cannot predate either endpoint, so the old value was too
 # early precisely because one endpoint was unknown.
 _PATH_DATE = re.compile(r"(?:^|[/\\])(\d{4}-\d{2}-\d{2})(?=[/\\])")
+
+
+# FINAL rung: the date the DOCUMENT states about itself, propagated to every
+# node minted from that document by ``source_path``.
+#
+# WHAT IT FIXES. On a corpus whose documents carry their date in the BODY
+# rather than in a dated directory — a chat log, a transcript, a meeting note —
+# every rung above misses on every node, and the miss is total rather than
+# partial. Measured on the compiled LoCoMo conv-26 graph (345 nodes, 650
+# edges): 0 nodes and 0 facts dated, so ``facts_since`` excluded 650 of 650 at
+# EVERY pivot including 1900-01-01, and ``timeline`` under any ``since``
+# returned an empty chronology over a corpus that spans May to October 2023.
+# An empty result reads as "nothing happened in that window", never as "this
+# corpus's clock is written somewhere I do not look" — the same silent shape
+# ``ask_planner._TS_KEYS`` was widened for, one layer down.
+#
+# WHY BY ``source_path`` AND NOT BY NODE. The date exists on the document node
+# alone (27 of 345 on conv-26); the 218 Claim / EvidenceSpan / Concept nodes
+# that carry the corpus have no date key at all. Reading only the node's own
+# metadata dates 21 nodes and 268 of 650 edges; propagating the document's date
+# along ``source_path`` dates 344 and 650 of 650. Every node names its
+# producing file in the top-level ``source_path`` FIELD, so this is a dict
+# lookup on bytes already inside graph.json — no file, no clock, no edge walk,
+# and byte-idempotent for the same reason the path rung is.
+#
+# WHY LAST, AND WHY THAT IS NOT NEGOTIABLE. These values are LLM-transcribed
+# from the document body, and the header above already records why bare
+# ``date`` metadata was rejected as a HIGH rung: of 400 sampled across all
+# nodes, 22 disagreed with their own file and 148 named a date the file does
+# not contain. Sitting below :func:`_source_path_date` makes the rung purely
+# additive — it may fill a hole, never shadow a deterministic date. Measured on
+# this project's live graph (62,366 nodes / 136,297 edges): of the nodes the
+# shipped ladder already dates, ZERO change; node coverage 83.5% -> 85.0% and
+# edge coverage 88.8% -> 89.8%. The ordering is load-bearing on real data —
+# 1,033 document nodes hold a body date that disagrees with their ingest
+# directory (a tweet published 2026-07-15 filed under ``daily/2026-07-17/``),
+# and the directory is the OBSERVATION day this field means everywhere else.
+#
+# WHY THE RESTRICTION TO DOCUMENT NODES IS THE WHOLE SAFETY ARGUMENT. A naive
+# union of date-ish metadata over ALL nodes reads narrative prose as a clock:
+# conv-26's Event nodes carry ``date: 'Friday before 15 July 2023'``,
+# ``timeframe``, ``when`` and ``years_ago: 5``, and 16 of 46 of them are
+# relative to a session they do not name. Restricted to the two types that ARE
+# a document, the header's own objection does not survive re-measurement: on
+# the live graph the rung fires for 30 document nodes, and all 30 dates are
+# present verbatim in the file they claim to date (0 absent, 0 unreadable).
+_DOC_DATE_TYPES = (ResearchNodeType.SOURCE_DOCUMENT, ResearchNodeType.SESSION)
+
+#: Keys a document may state its own date under, most specific first.
+#: ``chat_time`` is a transcript header ("Chat Time: 1:56 pm on 8 May, 2023"),
+#: ``date``/``timestamp`` the spellings the same extractor volunteers for the
+#: same line. Deliberately NOT here: ``time`` (a bare "14:31" with no day),
+#: ``when`` / ``timing`` / ``timeframe`` / ``approx_date`` / ``years_ago``,
+#: every one of which is relative prose on the nodes that carry it.
+_DOC_TS_KEYS: Tuple[str, ...] = ("chat_time", "date", "timestamp")
+
+#: The non-ISO spelling this normalises: a clock time, a separator, then a
+#: day-month-year — ``1:56 pm on 8 May, 2023`` and ``2:35 pm, 16 March 2023``.
+#: 13 of conv-26's 19 document dates are written this way and ``_parse_iso``
+#: rejects all 13, which is why widening the KEY set alone would have moved
+#: nothing — the rung would have found a string no filter could order.
+#:
+#: BOTH separators, because assuming one was wrong: ``on`` alone read 9 of the
+#: 10 compiled LoCoMo conversations and silently dropped 13 documents across
+#: conv-30/41/42/47/50, whose extractor wrote the comma form instead. The miss
+#: was invisible from conv-26, which contains no example of it — an alternate
+#: spelling costs a branch here and a whole corpus's clock when it is missing.
+_CHAT_TIME = re.compile(
+    r"^(\d{1,2}):(\d{2})\s*([ap])\.?m\.?\s*(?:on\s+|,\s*)(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})$",
+    re.IGNORECASE,
+)
+
+_MONTH_NAMES = {
+    name: index
+    for index, name in enumerate(
+        (
+            "january", "february", "march", "april", "may", "june",
+            "july", "august", "september", "october", "november", "december",
+        ),
+        start=1,
+    )
+}
+
+
+def _normalise_doc_ts(raw: object) -> Optional[str]:
+    """A document's stated date as an orderable ISO string, else ``None``.
+
+    VERBATIM WHENEVER POSSIBLE. A value :func:`_parse_iso` already accepts is
+    returned untouched, so this cannot drift a source format that works today —
+    the invariant :func:`_source_ts` documents holds for every string that
+    reaches a filter unchanged. Normalisation runs ONLY on a value that no
+    consumer could order anyway, where the alternative is not "the raw string"
+    but "undated".
+
+    Exactly one alternate spelling is recognised, and an unrecognised one
+    returns ``None`` rather than a guess: a date this cannot read is a document
+    whose clock is genuinely unknown, and inventing an ordering for it is the
+    defect the ladder's exclusions exist to prevent. Candidates are validated as
+    real calendar days, so ``13:99 pm on 45 Foo, 2023`` cannot enter the ladder
+    as an unorderable string.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    text = raw.strip()
+    if _parse_iso(text) is not None:
+        return text
+    match = _CHAT_TIME.match(text)
+    if not match:
+        return None
+    hour, minute, meridiem, day, month_name, year = match.groups()
+    month = _MONTH_NAMES.get(month_name.lower())
+    if month is None:
+        return None
+    hour24 = int(hour) % 12 + (12 if meridiem.lower() == "p" else 0)
+    if int(minute) > 59:
+        return None
+    try:
+        date(int(year), month, int(day))
+    except ValueError:
+        return None
+    return f"{int(year):04d}-{month:02d}-{int(day):02d}T{hour24:02d}:{int(minute):02d}:00"
+
+
+def document_dates(graph: ResearchGraph) -> Dict[str, str]:
+    """``source_path`` -> the date the document at that path states about itself.
+
+    Derived from the graph rather than passed in, for the same reason
+    :func:`graph_project_roots` is: every consumer of a compiled ``graph.json``
+    resolves the same index without an argument or a filesystem probe. A graph
+    whose documents state no date yields an empty index, which disables the
+    rung rather than falling back to anything.
+
+    ONE DATE PER PATH, CHOSEN DETERMINISTICALLY. A file is routinely described
+    by more than one document node — conv-26 extracts both a ``SourceDocument``
+    and a ``Session`` for 5 of its 19 sessions — so the winner is the minimum of
+    ``(type rank, key rank, value, node id)``: the node that IS the file beats a
+    summary OF it, the transcript header beats a re-spelling of it, and the
+    remaining ties break on bytes so no dict or set iteration order can reach
+    the artifact.
+    """
+    index: Dict[str, Tuple[int, int, str, str]] = {}
+    for node in graph.nodes:
+        if node.type not in _DOC_DATE_TYPES:
+            continue
+        source_path = getattr(node, "source_path", None)
+        if not isinstance(source_path, str) or not source_path.strip():
+            continue
+        type_rank = _DOC_DATE_TYPES.index(node.type)
+        meta = getattr(node, "metadata", None) or {}
+        for key_rank, key in enumerate(_DOC_TS_KEYS):
+            stamp = _normalise_doc_ts(meta.get(key))
+            if not stamp:
+                continue
+            candidate = (type_rank, key_rank, stamp, node.id)
+            prior = index.get(source_path)
+            if prior is None or candidate < prior:
+                index[source_path] = candidate
+            break
+    return {path: entry[2] for path, entry in index.items()}
 
 
 def graph_project_roots(graph: ResearchGraph) -> Tuple[str, ...]:
@@ -269,13 +430,17 @@ def _parse_iso(value: object) -> Optional[datetime]:
 
 
 def _source_ts(
-    node: Optional[ResearchNode], roots: Iterable[str] = ()
+    node: Optional[ResearchNode],
+    roots: Iterable[str] = (),
+    doc_dates: Optional[Dict[str, str]] = None,
 ) -> Optional[str]:
     """First source-derived timestamp on ``node``, VERBATIM.
 
     The ladder, most specific first: :data:`_TS_METADATA_KEYS`, then a leading
     date in the node's own name, then a dated directory segment of its
-    ``source_path`` relative to one of ``roots`` (:func:`_source_path_date`).
+    ``source_path`` relative to one of ``roots`` (:func:`_source_path_date`),
+    then the date the document at that ``source_path`` states about itself
+    (:func:`document_dates`).
 
     ``roots`` comes from :func:`graph_project_roots`. It defaults to empty, and
     empty DISABLES the path rung — a caller that does not know where the
@@ -283,10 +448,22 @@ def _source_ts(
     checkout happens to sit in, and must not guess. Every in-tree caller passes
     the graph's own roots.
 
+    ``doc_dates`` comes from :func:`document_dates` and defaults to empty for
+    the same shape of reason, though it is an information bound rather than a
+    safety one: without the index there is nothing to look a path up in.
+    :meth:`TemporalFactProjector.project` and :mod:`tesserae.lint`'s mirror of
+    it pass the graph's own index. :mod:`tesserae.okf` and
+    :mod:`tesserae.charter` deliberately do NOT yet — both WRITE the stamp into
+    an artifact (``generated.at``, a domain clock) rather than filtering on it,
+    so widening them changes emitted bytes and wants its own measurement. That
+    is a recorded scope boundary, not an oversight; close it with numbers.
+
     Returns the raw string exactly as stored so the artifact never
     normalises a source format (a normalisation would drift between a
     date-only and a datetime-precision source). Parsing happens only in
-    :func:`_parse_iso` for comparison.
+    :func:`_parse_iso` for comparison. The last rung is the one exception and
+    is bounded to earn it — see :func:`_normalise_doc_ts`, which rewrites a
+    value ONLY when no consumer could have ordered it as stored.
     """
     if node is None:
         return None
@@ -298,7 +475,13 @@ def _source_ts(
     match = _LEADING_DATE.match(getattr(node, "name", "") or "")
     if match:
         return match.group(1)
-    return _source_path_date(getattr(node, "source_path", None), roots)
+    source_path = getattr(node, "source_path", None)
+    path_date = _source_path_date(source_path, roots)
+    if path_date:
+        return path_date
+    if not doc_dates or not isinstance(source_path, str):
+        return None
+    return doc_dates.get(source_path)
 
 
 def _source_path_date(
@@ -480,6 +663,11 @@ class TemporalFactProjector:
         # The path rung's bound, read off the graph itself so the projection
         # stays a pure function of graph.json (see _PATH_DATE, bound 1).
         roots = graph_project_roots(graph)
+        # The document rung's index, read off the same bytes for the same
+        # reason. Built ONCE per projection rather than per edge: it is a scan
+        # of every node, and _fact_from_edge runs 136,297 times on the live
+        # graph.
+        doc_dates = document_dates(graph)
         facts: List[TemporalFact] = []
         edge_to_fact_id: Dict[tuple, str] = {}
         for edge in graph.edges:
@@ -489,7 +677,7 @@ class TemporalFactProjector:
                 continue
             fact = self._fact_from_edge(
                 subject, edge.type, obj, edge.evidence, edge.metadata,
-                memory_by_id=memory_by_id, roots=roots,
+                memory_by_id=memory_by_id, roots=roots, doc_dates=doc_dates,
             )
             facts.append(fact)
             edge_to_fact_id[(fact.subject_id, fact.predicate, fact.object_id)] = fact.id
@@ -516,10 +704,10 @@ class TemporalFactProjector:
             # observed. An undated superseder cannot close the interval:
             # ``current`` still flips (we know it ended) but ``valid_to``
             # stays None (we do not know when) — never a guessed boundary.
-            ts = _source_ts(nodes.get(winner_id), roots)
+            ts = _source_ts(nodes.get(winner_id), roots, doc_dates)
             if ts is None:
                 continue
-            if _winner_precedes_loser(ts, _source_ts(nodes.get(loser_id), roots)):
+            if _winner_precedes_loser(ts, _source_ts(nodes.get(loser_id), roots, doc_dates)):
                 continue
             entry = (ts, fact.predicate, winner_id)
             prior = ended_by.get(loser_id)
@@ -602,7 +790,7 @@ class TemporalFactProjector:
         os.replace(tmp, output)
         return facts
 
-    def _fact_from_edge(self, subject: ResearchNode, predicate: str, obj: ResearchNode, evidence: Optional[str], metadata: Dict[str, object], *, memory_by_id: Optional[Dict[str, Any]] = None, roots: Iterable[str] = ()) -> TemporalFact:
+    def _fact_from_edge(self, subject: ResearchNode, predicate: str, obj: ResearchNode, evidence: Optional[str], metadata: Dict[str, object], *, memory_by_id: Optional[Dict[str, Any]] = None, roots: Iterable[str] = (), doc_dates: Optional[Dict[str, str]] = None) -> TemporalFact:
         # valid_from = MAX over (subject ts, object ts, edge-metadata ts).
         # Reading only ``analysis_date`` (which exists on Paper nodes and
         # essentially nowhere else) is why every session finding landed in the
@@ -610,8 +798,8 @@ class TemporalFactProjector:
         # corpus. See _TS_METADATA_KEYS for the ladder and its exclusions.
         valid_from = _latest_ts(
             (
-                _source_ts(subject, roots),
-                _source_ts(obj, roots),
+                _source_ts(subject, roots, doc_dates),
+                _source_ts(obj, roots, doc_dates),
                 first_string(metadata.get("analysis_date")) if metadata else None,
             )
         )

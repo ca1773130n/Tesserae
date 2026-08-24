@@ -10,7 +10,10 @@ from __future__ import annotations
 
 from typing import List, Optional, Union
 
-from tesserae.retrieval.query_decompose import decompose_query
+from tesserae.retrieval.query_decompose import (
+    decompose_query,
+    discriminative_subquery,
+)
 
 
 class _StubArrayClient:
@@ -202,3 +205,93 @@ def test_deterministic_repeated_calls():
     a = decompose_query(q, json_client=client)
     b = decompose_query(q, json_client=_StubArrayClient(["alpha", "beta", "gamma"]))
     assert a == b
+
+
+# ---------------------------------------------------------------------------
+# discriminative_subquery — the ubiquity filter
+# ---------------------------------------------------------------------------
+
+
+def test_discriminative_subquery_drops_corpus_ubiquitous_terms():
+    """The corpus-DEPENDENT half of the filter.
+
+    ``melanie`` is in 60% of the corpus and discriminates nothing; ``pottery``
+    is in 2% and is the only term that names a session. Stripping the first is
+    what lets the lanes rank on the second.
+    """
+    doc_freq = {"melanie": 60, "pottery": 2, "kids": 5}
+    assert discriminative_subquery(
+        "What types of pottery have Melanie and her kids made?",
+        doc_freq=doc_freq, n_docs=100,
+    ) == "types pottery kids made"
+
+
+def test_discriminative_subquery_drops_stopwords_and_short_tokens():
+    """The corpus-INDEPENDENT half, reusing grounding.STOPWORDS.
+
+    Every question word here is absent from ``doc_freq`` entirely, so the DF
+    rule alone would keep all of them — the stoplist is what removes them, and
+    the two halves are measured to be worth 47.2% / 48.9% / 50.4% apart and
+    together.
+    """
+    assert discriminative_subquery(
+        "When did they go to the kiln?", doc_freq={"kiln": 1}, n_docs=100,
+    ) == "kiln"
+
+
+def test_discriminative_subquery_returns_empty_when_nothing_is_filtered():
+    """``""`` is the caller's signal to run ONE pass, never the query itself."""
+    # Nothing filtered: every token is a rare content word, so a second search
+    # would repeat the first exactly.
+    assert discriminative_subquery(
+        "pottery kiln glaze", doc_freq={"pottery": 1, "kiln": 1, "glaze": 1},
+        n_docs=100,
+    ) == ""
+    # Everything filtered: the sub-query would be empty and BM25 would score
+    # the whole corpus at zero.
+    assert discriminative_subquery(
+        "what is it", doc_freq={}, n_docs=100,
+    ) == ""
+    assert discriminative_subquery(
+        "melanie caroline", doc_freq={"melanie": 60, "caroline": 90}, n_docs=100,
+    ) == ""
+
+
+def test_discriminative_subquery_degenerate_inputs_never_raise():
+    """Pure, total, and no clock: the conventions this module declares."""
+    assert discriminative_subquery("", doc_freq={}, n_docs=10) == ""
+    assert discriminative_subquery("   ", doc_freq={}, n_docs=10) == ""
+    assert discriminative_subquery("pottery", doc_freq={}, n_docs=0) == ""
+    assert discriminative_subquery("!!! ???", doc_freq={}, n_docs=10) == ""
+
+
+def test_discriminative_subquery_keeps_repeated_content_tokens():
+    """A repeated term is a repeated term to BM25, so the repeat stays."""
+    assert discriminative_subquery(
+        "pottery pottery kiln", doc_freq={"pottery": 1, "kiln": 1, "melanie": 90},
+        n_docs=100,
+    ) == ""
+    assert discriminative_subquery(
+        "melanie pottery pottery", doc_freq={"pottery": 1, "melanie": 90},
+        n_docs=100,
+    ) == "pottery pottery"
+
+
+def test_discriminative_subquery_ratio_is_a_knob():
+    """The 0.30 default is MEDIUM confidence off LoCoMo, so it is tunable."""
+    doc_freq = {"melanie": 40, "pottery": 2}
+    assert discriminative_subquery(
+        "melanie pottery", doc_freq=doc_freq, n_docs=100,
+    ) == "pottery"
+    # Raise the ceiling above melanie's 0.40 and nothing is ubiquitous any
+    # more, so the whole query survives and there is no second pass.
+    assert discriminative_subquery(
+        "melanie pottery", doc_freq=doc_freq, n_docs=100, ubiquity_df_ratio=0.5,
+    ) == ""
+
+
+def test_discriminative_subquery_is_deterministic():
+    doc_freq = {"melanie": 60, "pottery": 2}
+    q = "What did Melanie say about pottery?"
+    assert (discriminative_subquery(q, doc_freq=doc_freq, n_docs=100)
+            == discriminative_subquery(q, doc_freq=doc_freq, n_docs=100))

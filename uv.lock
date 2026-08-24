@@ -4889,6 +4889,10 @@ raganything-semantic = [
     { name = "raganything", extra = ["all"] },
     { name = "sentence-transformers" },
 ]
+rerank = [
+    { name = "torch" },
+    { name = "transformers" },
+]
 semantic = [
     { name = "model2vec" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -4919,8 +4923,10 @@ requires-dist = [
     { name = "raganything", extras = ["all"], marker = "extra == 'raganything-semantic'", specifier = ">=1.3.0" },
     { name = "rich", specifier = ">=13" },
     { name = "sentence-transformers", marker = "extra == 'raganything-semantic'", specifier = ">=3.0" },
+    { name = "torch", marker = "extra == 'rerank'", specifier = ">=2.2" },
+    { name = "transformers", marker = "extra == 'rerank'", specifier = ">=4.51" },
 ]
-provides-extras = ["synthesis-llm", "raganything", "raganything-all", "raganything-semantic", "semantic", "ingest-url", "kuzu"]
+provides-extras = ["synthesis-llm", "raganything", "raganything-all", "raganything-semantic", "semantic", "ingest-url", "kuzu", "rerank"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]

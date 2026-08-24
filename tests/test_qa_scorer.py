@@ -1168,3 +1168,53 @@ def test_mcnemar_is_exact_because_the_counts_are_small():
     assert abs(out["p_value"] - 0.25) < 1e-9
     with pytest.raises(ValueError):
         mcnemar([True], [True, False])
+
+
+# ---------------------------------------------------------------------------
+# Bracketed provenance citations must not be scored as content
+# ---------------------------------------------------------------------------
+
+
+def test_citations_are_not_counted_against_a_system_that_emits_them():
+    """Token F1 charged one arm for citing its sources.
+
+    277 of 284 Tesserae short-span answers carried a bracketed citation (median
+    11 tokens on a median 19-token answer) while the retrieval baseline emitted
+    none, so every citation token was a false positive on one arm only. Measured
+    on the real 284 answers, stripping moves macro F1 0.3254 -> 0.3534.
+    """
+    gold = "The learned ConvGRU update operator plus the Dense Bundle Adjustment layer"
+    cited = "Learned recurrent update operator [DSO] [Keyframe Graph]"
+    bare = "Learned recurrent update operator"
+
+    assert token_f1(cited, gold)["f1"] == token_f1(bare, gold)["f1"]
+    assert token_f1(cited, gold)["precision"] == token_f1(bare, gold)["precision"]
+
+
+def test_citation_stripping_matches_the_forms_actually_emitted():
+    """The planner cites node NAMES, not ids: 83% of 822 citations measured on a
+    real run contain a space. An id-shaped pattern matched only 17% of them."""
+    for citation in (
+        "[DSO]",
+        "[Keyframe Graph]",
+        "[MERF: Memory-Efficient Radiance Fields for Real-time View Synthesis]",
+        "[wiki search]",
+        "[arxiv-2303-11328]",
+        "[Co-SLAM: Joint Coordinate and Sparse Parametric Encodings]",
+    ):
+        assert normalize_answer(f"answer {citation}") == "answer", citation
+
+
+def test_stripping_leaves_ordinary_punctuation_and_hyphenation_alone():
+    """The pattern is greedy inside brackets but must not reach outside them —
+    a widened pattern that ate real tokens would silently inflate every score."""
+    assert normalize_answer("gpt-5.4 co-slam") == "gpt 5 4 co slam"
+    assert normalize_answer("1,000 frames") == "1 000 frames"
+    assert normalize_answer("a [ref] b") == "b"  # 'a' is an article, dropped
+
+    # A SINGLE character in brackets survives: the pattern requires 2+, because
+    # every citation form observed is a node name of at least two characters,
+    # while a lone bracketed character is far more likely to be notation than
+    # provenance. Conservative on purpose — the cost of leaving one is a token,
+    # the cost of eating content is a silently inflated score.
+    assert normalize_answer("alpha [x] beta") == "alpha x beta"

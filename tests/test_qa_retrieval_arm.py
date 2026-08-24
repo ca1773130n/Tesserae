@@ -145,3 +145,65 @@ def test_an_empty_index_refuses_instead_of_answering() -> None:
     b.rag_client = _Client()
     with pytest.raises(RuntimeError, match="no documents to retrieve from"):
         asyncio.run(b.query_rag("alpha"))
+
+
+# ---------------------------------------------------- opt-in abstention gate
+
+
+def _gated_arm(answer: str, quantile=None, docs=None):
+    """A 20-document corpus, so idf can tell a rare term from a common one."""
+    # "zephyrine" sits in the FIRST document so it survives top_k: BM25 ties
+    # across this corpus and the arm breaks ties by index. A rare term in a
+    # document the model was never shown is correctly refused, which is what
+    # test_invented_vocabulary_does_not_satisfy_the_gate pins.
+    docs = docs or (
+        ["alpha beta gamma delta zephyrine corpus filler text"]
+        + [f"alpha beta gamma delta rare{i} corpus filler text" for i in range(19)]
+    )
+
+    class _Fixed:
+        def complete_text(self, *, system, user): return answer
+
+    b = QABenchmarkRetrieval(list(docs), [], RetrievalConfig(
+        lane="bm25", top_k=5, grounding_quantile=quantile))
+    b.rag_client = _Fixed()
+    for i, d in enumerate(docs):
+        asyncio.run(b.insert_document(d, i))
+    return b
+
+
+def test_the_grounding_gate_is_off_unless_a_run_asks_for_it() -> None:
+    """Default None is today's behaviour byte for byte.
+
+    This repository has reverted a change that made an eval-only behaviour the
+    product default. The flag exists so a run can opt in; nothing else in the
+    arm may notice it is there.
+    """
+    assert RetrievalConfig().grounding_quantile is None
+    b = _gated_arm("alpha beta gamma")          # a pure question restatement
+    assert asyncio.run(b.query_rag("alpha beta gamma")) == "alpha beta gamma"
+
+
+def test_an_answer_that_only_restates_the_question_is_refused_when_gated() -> None:
+    """The failure mode the gate exists for: fluent, on-topic, adds nothing.
+
+    Retrieval selected these documents BY the question's terms, so echoing the
+    question looks perfectly *extractively supported*. Subtracting the
+    question's own vocabulary is what makes the score mean anything — measured
+    detector AUC 0.587 before that subtraction and 0.746 after.
+    """
+    b = _gated_arm("alpha beta gamma", quantile=0.25)
+    assert asyncio.run(b.query_rag("alpha beta gamma")) == "", \
+        "an empty answer is what scorer.is_refusal reads as a refusal"
+
+
+def test_a_rare_source_attested_term_passes_the_gate() -> None:
+    """The gate must not simply refuse everything: novel evidence gets through."""
+    b = _gated_arm("zephyrine", quantile=0.25)
+    assert asyncio.run(b.query_rag("alpha beta gamma")) == "zephyrine"
+
+
+def test_invented_vocabulary_does_not_satisfy_the_gate() -> None:
+    """Rare is not enough — the term has to be in the documents that were shown."""
+    b = _gated_arm("flombulator", quantile=0.25)
+    assert asyncio.run(b.query_rag("alpha beta gamma")) == ""

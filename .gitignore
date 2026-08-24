@@ -14,10 +14,12 @@ output/
 evals/*
 !evals/__init__.py
 !evals/metrics.py
+!evals/deepscholar/
 !evals/federation/
 !evals/growth/
 !evals/qa/
 !evals/lme_mab/
+!evals/locomo/
 !evals/tck/
 !evals/selfimprove/
 

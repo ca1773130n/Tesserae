@@ -919,8 +919,8 @@ class WikiLinter:
             from .research_graph import graph_from_payload
             from .temporal import (_boundary_precedes_start, _closing_roles,
                                    _end_sort_key, _latest_ts, _source_ts,
-                                   _winner_precedes_loser, first_string,
-                                   graph_project_roots)
+                                   _winner_precedes_loser, document_dates,
+                                   first_string, graph_project_roots)
 
             graph = graph_from_payload(
                 {"nodes": list(nodes_by_id.values()), "edges": edges}
@@ -949,11 +949,16 @@ class WikiLinter:
         # rung — this probe must mirror it exactly or the number it reports is
         # not the one ``timeline()`` serves.
         roots = graph_project_roots(graph)
+        # And the document rung's index, for the same reason: a probe that
+        # reads a NARROWER ladder than the projector reports facts as undated
+        # that timeline() orders perfectly well, which is a lint finding
+        # nobody can act on.
+        doc_dates = document_dates(graph)
         ts_cache: Dict[str, Optional[str]] = {}
 
         def source_ts(node_id: str) -> Optional[str]:
             if node_id not in ts_cache:
-                ts_cache[node_id] = _source_ts(nodes.get(node_id), roots)
+                ts_cache[node_id] = _source_ts(nodes.get(node_id), roots, doc_dates)
             return ts_cache[node_id]
 
         # Pass 1, mirroring TemporalFactProjector.project: one fact per edge
@@ -1040,8 +1045,10 @@ class WikiLinter:
                 "temporal._source_ts ladder misses: none of "
                 "_TS_METADATA_KEYS (first_seen_at, analysis_date, ended_at, "
                 "started_at, updated_at, created), no leading date in the "
-                "node name, and no whole dated DIRECTORY segment in the "
-                "project-root-relative part of its source_path. Stamp one at "
+                "node name, no whole dated DIRECTORY segment in the "
+                "project-root-relative part of its source_path, and no date "
+                "stated by the document at that source_path (document_dates). "
+                "Stamp one at "
                 "extraction time on the node types that dominate the count, "
                 "or ingest their sources under a dated directory inside the "
                 "project. A path outside every root a Session node declares "

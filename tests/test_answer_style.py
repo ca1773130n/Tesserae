@@ -111,3 +111,44 @@ def test_short_span_is_exempt_from_the_citation_gate() -> None:
     src = inspect.getsource(ask_planner)
     gate = 'answer_style != "short-span" and not NODE_CITATION_RE.search(body)'
     assert gate in src, "the citation gate must be style-aware, or short-span never plans"
+
+
+def test_short_span_does_not_ask_for_citations_it_forbids():
+    """The user message contradicted the system preamble, and the model obeyed
+    the user message.
+
+    ``_SHORT_SPAN_PREAMBLE_HEADER`` says "No explanation, no full sentence, no
+    citations, no markdown". The synthesis message asked for the opposite:
+    "Cite every factual claim with [<node_id>]". 277 of 284 short-span answers
+    came back carrying a bracketed footer — median 11 tokens on a median
+    19-token answer — and token F1 scores every one as a false positive. The arm
+    measured 0.325 where its content scores 0.353, turning a significant win
+    over the retrieval baseline into an apparent tie.
+    """
+    from tesserae.ask_planner import _build_synthesis_message
+
+    evidence = [{"action": "search_nodes", "args": {"q": "x"}, "content": "Some evidence."}]
+
+    short = _build_synthesis_message("q?", evidence, [], answer_style="short-span")
+    assert "Cite every factual claim" not in short
+    assert "[<node_id>]" not in short
+
+    prose = _build_synthesis_message("q?", evidence, [], answer_style="prose-cited")
+    assert "Cite every factual claim" in prose
+
+    # The rest of the header is shared, so a future edit cannot drop the kg
+    # guidance from one style while keeping it in the other.
+    for message in (short, prose):
+        assert "live knowledge-graph query results" in message
+        assert "strictly from the supplied sources" in message
+
+
+def test_prose_cited_remains_the_default_for_the_synthesis_message():
+    """Product default is prose-cited; short-span is the eval opt-in. A previous
+    change inverted this and broke two tests that were right."""
+    from tesserae.ask_planner import _build_synthesis_message
+
+    default = _build_synthesis_message(
+        "q?", [{"action": "search_nodes", "args": {}, "content": "e"}], []
+    )
+    assert "Cite every factual claim" in default

@@ -281,6 +281,151 @@ def test_nested_project_roots_relativise_against_the_innermost_one():
     assert _source_path_date(corpus_dated, roots) == "2026-04-06"
 
 
+# ------------------------------------------------- the document-stated rung
+
+
+def _source_doc(node_id, name, source_path, **metadata):
+    return ResearchNode(
+        id=node_id,
+        name=name,
+        type=ResearchNodeType.SOURCE_DOCUMENT,
+        description=f"description of {name}",
+        source_path=source_path,
+        metadata=dict(metadata),
+    )
+
+
+# A transcript corpus: no dated directory anywhere in the path, so every rung
+# above the document rung misses on every node. This is the conv-26 shape.
+_CHAT_PATH = "/repo/conversations/conv-26/corpus/session-0001.md"
+
+
+def test_document_stated_date_dates_the_nodes_extracted_from_that_file():
+    """The defect: a corpus whose dates live in the BODY dated NOTHING.
+
+    On the compiled LoCoMo conv-26 graph every one of 650 facts carried the
+    literal ``"undated"``, so ``facts_since`` excluded all 650 at EVERY pivot
+    including 1900-01-01 and ``timeline`` answered an empty chronology over a
+    corpus spanning May to October 2023. The date is on the document node and
+    nowhere else; the Claim and EvidenceSpan nodes that carry the corpus have
+    no date key at all, and reach it only through their own ``source_path``.
+    """
+    doc = _source_doc(
+        "SourceDocument:s1", "Session 0001", _CHAT_PATH,
+        chat_time="1:56 pm on 8 May, 2023",
+    )
+    claim = ResearchNode(
+        id="Claim:a", name="a claim", type=ResearchNodeType.CLAIM,
+        source_path=_CHAT_PATH,
+    )
+    span = _span("EvidenceSpan:a", "some evidence", _CHAT_PATH)
+    graph = _rooted(
+        [doc, claim, span],
+        [ResearchEdge(source=claim.id, target=span.id, type="evidenced_by")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    # Neither endpoint of this edge is the document, so the date can only have
+    # arrived by source_path — the propagation the fix turns on.
+    assert _fact(facts, "evidenced_by").valid_from == "2023-05-08T13:56:00"
+    kept, undated_excluded = facts_since(facts, "2023-01-01")
+    assert [f.predicate for f in kept] == ["evidenced_by"]
+    assert undated_excluded == 0
+
+
+def test_document_date_rung_reads_both_transcript_spellings():
+    """Widening the KEY set alone would have moved nothing.
+
+    13 of conv-26's 19 document dates are ``1:56 pm on 8 May, 2023``, which
+    ``_parse_iso`` rejects, so the rung would have found a string no filter
+    could order. The comma form is the same defect one corpus over: reading
+    only ``on`` dropped 13 documents across five of the ten compiled LoCoMo
+    conversations, and conv-26 contains no example of it.
+    """
+    from tesserae.temporal import _normalise_doc_ts
+
+    assert _normalise_doc_ts("1:56 pm on 8 May, 2023") == "2023-05-08T13:56:00"
+    assert _normalise_doc_ts("2:35 pm, 16 March 2023") == "2023-03-16T14:35:00"
+    assert _normalise_doc_ts("12:09 am on 13 September, 2023") == "2023-09-13T00:09:00"
+
+    # A value a consumer can ALREADY order comes back untouched: the rung may
+    # not drift a source format that works today.
+    assert _normalise_doc_ts("2023-06-27T10:37:00") == "2023-06-27T10:37:00"
+    assert _normalise_doc_ts("2023-07-03") == "2023-07-03"
+
+    # Prose, an impossible day and an empty value are refusals, never guesses.
+    assert _normalise_doc_ts("the Friday before 15 July 2023") is None
+    assert _normalise_doc_ts("1:56 pm on 31 February, 2023") is None
+    assert _normalise_doc_ts("") is None
+    assert _normalise_doc_ts(None) is None
+
+
+def test_document_date_rung_ignores_narrative_dates_on_other_node_types():
+    """The restriction to document nodes IS the safety argument.
+
+    A union of date-ish metadata over ALL nodes reads narrative prose as a
+    clock: 16 of conv-26's 46 Event nodes carry a relative ``date`` like
+    "Friday before 15 July 2023", and one shares its ``source_path`` with the
+    SourceDocument whose ``chat_time`` is the real header. The Event's own
+    string must never date anything, and must never outrank the document's.
+    """
+    from tesserae.temporal import document_dates
+
+    doc = _source_doc(
+        "SourceDocument:s8", "Session 0008", _CHAT_PATH,
+        chat_time="1:51 pm on 15 July, 2023",
+    )
+    event = ResearchNode(
+        id="Event:pottery", name="Pottery Workshop with Kids",
+        type=ResearchNodeType.EVENT, source_path=_CHAT_PATH,
+        metadata={"date": "Friday before 15 July 2023", "years_ago": 5},
+    )
+    graph = _rooted(
+        [doc, event],
+        [ResearchEdge(source=event.id, target=doc.id, type="derived_from")],
+    )
+
+    assert document_dates(graph) == {_CHAT_PATH: "2023-07-15T13:51:00"}
+    assert _fact(facts_of := TemporalFactProjector().project(graph),
+                 "derived_from").valid_from == "2023-07-15T13:51:00"
+    assert all(f.valid_from != "Friday before 15 July 2023" for f in facts_of)
+
+
+def test_dated_ingest_path_never_shadows_a_document_stated_date():
+    """The document rung is LAST, and that ordering is load-bearing.
+
+    These values are LLM-transcribed from the body, and ``valid_from`` means
+    the day Tesserae OBSERVED the document, not the day its subject happened.
+    On this project's live graph 1,033 document nodes state a body date that
+    disagrees with the dated directory they were ingested under — a post
+    published 2026-07-15 filed under ``daily/2026-07-17/`` — so a rung placed
+    any higher would rewrite a deterministic observation with model output.
+    """
+    body_date = "2026-07-15T23:06:54"
+    dated_path = "/repo/data/research/daily/2026-07-17/posts/p.md"
+    undated_path = "/repo/data/research/inbox/q.md"
+
+    dated_doc = _source_doc("SourceDocument:p", "a post", dated_path, date=body_date)
+    dated_span = _span("EvidenceSpan:a", "some evidence", dated_path)
+    plain_doc = _source_doc("SourceDocument:q", "another post", undated_path, date=body_date)
+    plain_span = _span("EvidenceSpan:b", "more evidence", undated_path)
+    graph = _rooted(
+        [dated_doc, dated_span, plain_doc, plain_span],
+        [
+            ResearchEdge(source=dated_span.id, target=dated_doc.id, type="derived_from"),
+            ResearchEdge(source=plain_span.id, target=plain_doc.id, type="derived_from"),
+        ],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    # The ingest directory wins wherever it exists...
+    assert _fact(facts, "derived_from", dated_span.id).valid_from == "2026-07-17"
+    # ...and the SAME body date is what dates the file it does not.
+    assert _fact(facts, "derived_from", plain_span.id).valid_from == body_date
+
+
 def test_source_path_outside_every_project_root_is_undated():
     """D1, stated rule: a path this project's ingest did not lay out is undated.
 
