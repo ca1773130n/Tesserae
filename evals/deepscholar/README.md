@@ -5,7 +5,7 @@ on the same budget, through the same model — so that any difference between
 their scores belongs to how the evidence was chosen and not to anything else.
 
 * **`tesserae`** — stage the parent paper's cited abstracts, compile them,
-  and walk `Paper --supports_claim--> Claim --evidenced_by--> EvidenceSpan` for
+  and walk `SourceDocument --contains--> EvidenceSpan <--evidenced_by-- Claim` for
   verbatim, paper-anchored sentences.
 * **`bm25`** — the flat control. Okapi BM25 over the same abstracts. No graph,
   no claim node, no `evidenced_by` edge.

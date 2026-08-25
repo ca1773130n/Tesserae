@@ -11,10 +11,18 @@ Three things are pinned, and each is a way the comparison could be quietly void:
   one prompt builder, and the tests assert the resulting prompts differ ONLY in
   the evidence block. A control that got a different prompt would not be a
   control, and the difference would not show up in any score.
-* **The Tesserae arm reads the graph.** Claim sentences reach the writer,
-  through the ``supports_claim`` / ``evidenced_by`` / ``part_of`` edges and not
-  through the abstract; and a paper the graph is thin about still gets cited,
-  because a claim-only renderer cannot reach a third of a real corpus.
+* **The Tesserae arm reads the graph.** Claim sentences reach the writer
+  through the graph's edges and not through the abstract; and a paper the graph
+  is thin about still gets cited, because a claim-only renderer cannot reach a
+  third of a real corpus.
+
+  Two edge vocabularies are exercised on purpose. The synthetic fixtures build
+  ``Paper``/``arxiv_id``/``part_of``; ``tesserae compile`` emits
+  ``SourceDocument``/``arxiv``/``contains`` and hangs claims off the span via
+  ``evidenced_by``. Only the first was ever tested, so the arm resolved 1 node
+  of a 14-paper corpus in production while this suite stayed green — see
+  ``test_a_compiler_shaped_graph_reaches_span_and_claim``, which pins the shape
+  the compiler actually writes.
 * **The control does not.** ``bm25_cards`` has nowhere in its signature to
   accept a graph, and the test that asserts it never reads one is the test that
   keeps a later edit from smuggling one in.
@@ -30,8 +38,10 @@ import pytest
 from evals.deepscholar.control import ORIGIN_BM25, bm25_cards, rank_papers
 from evals.deepscholar.dataset import CitedPaper, ParentPaper, Query
 from evals.deepscholar.evidence import (
+    ORIGIN_CLAIM,
     EvidenceBudget,
     EvidenceCard,
+    _papers_by_arxiv,
     apply_budget,
     graph_cards,
     render_table,
@@ -440,3 +450,69 @@ def test_both_arms_get_the_identical_system_prompt_and_retry_policy(staged):
     render(QUERY, control, backbone=right)
     assert left.calls[0][0] == right.calls[0][0] == SYSTEM_PROMPT
     assert len(left.calls) == len(right.calls) == 1
+
+
+# ------------------------------------------- the graph the COMPILER produces
+
+
+def _compiler_shaped_graph(tmp_path: Path) -> ResearchGraph:
+    """The node and edge shapes `tesserae compile` actually emits.
+
+    Every fixture above builds `Paper` nodes carrying `arxiv_id` and attaches
+    spans with `part_of`. The compiler builds none of those: it emits
+    `SourceDocument` carrying `arxiv`, attaches spans with `contains`, and
+    hangs claims off the span via `evidenced_by` rather than off the document
+    via `supports_claim`.
+
+    Measured on a staged 14-paper corpus before the fix: `_papers_by_arxiv`
+    resolved 1 node (the parent paper, whose frontmatter declares
+    `type: Paper`), `part_of` was 0 edges, and the arm emitted ONE card
+    against the control's fourteen. The suite was green throughout, because
+    every fixture in it encoded the shape the code expected instead of the
+    shape the compiler writes.
+    """
+    nodes = [
+        ResearchNode(
+            id=f"SourceDocument:{PAPER_A.arxiv_bare}",
+            name=PAPER_A.title,
+            type=ResearchNodeType("SourceDocument"),
+            description="",
+            source_path=None,
+            metadata={"arxiv": PAPER_A.arxiv_bare, "version": "v1"},
+        ),
+        ResearchNode(
+            id="EvidenceSpan:s1", name="span", type=ResearchNodeType("EvidenceSpan"),
+            description="Null It Out removes concept subspaces by projection.",
+            metadata={},
+        ),
+        ResearchNode(
+            id="Claim:c1", name="claim", type=ResearchNodeType("Claim"),
+            description="Iterative nullspace projection erases linear concepts.",
+            metadata={},
+        ),
+    ]
+    edges = [
+        ResearchEdge(source=nodes[0].id, target="EvidenceSpan:s1", type="contains"),
+        ResearchEdge(source="Claim:c1", target="EvidenceSpan:s1", type="evidenced_by"),
+    ]
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_a_compiler_shaped_graph_resolves_its_papers(tmp_path: Path):
+    """`SourceDocument` + `arxiv` must resolve, or every cited paper is skipped."""
+    graph = _compiler_shaped_graph(tmp_path)
+    assert set(_papers_by_arxiv(graph)) == {PAPER_A.arxiv_bare}
+
+
+def test_a_compiler_shaped_graph_reaches_span_and_claim(tmp_path: Path):
+    """`contains` reaches the span and `evidenced_by` reaches the claim behind
+    it. Before the fix this card came back empty and fell through to the
+    abstract fallback, which is what made the arm look like it had no evidence."""
+    query = Query(parent=PARENT, corpus=(PAPER_A,))
+    cards = graph_cards(_compiler_shaped_graph(tmp_path), query, root=tmp_path,
+                        fill_from_abstract=False)
+    assert len(cards) == 1, "the cited paper must produce a card"
+    text = " ".join(cards[0].lines)
+    assert "nullspace projection" in text, "the claim must reach the writer"
+    assert "concept subspaces" in text, "the span must reach the writer"
+    assert cards[0].origin == ORIGIN_CLAIM
