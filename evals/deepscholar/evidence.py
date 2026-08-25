@@ -10,9 +10,17 @@ one implementation of each and both import it.
 What the Tesserae arm does differently is the only thing it is allowed to do
 differently — WHICH sentences. It walks the compiled graph:
 
-    Paper --supports_claim--> Claim --evidenced_by--> EvidenceSpan --part_of--> Paper
+    SourceDocument --contains--> EvidenceSpan <--evidenced_by-- Claim
 
-and takes ``Claim.description``, which the deterministic extractor sets to a
+walking the last hop BACKWARD, because that is the direction the compiler
+writes it. The older reading of this path —
+``Paper --supports_claim--> Claim --evidenced_by--> EvidenceSpan --part_of--> Paper``
+— described a graph nothing produces: measured across a staged 14-paper corpus
+and a 1,552-paper pool, ``part_of`` is 0 edges in both, and ``supports_claim``
+runs from Project/Capability/Algorithm rather than from the document. Both
+vocabularies are accepted now; only the one above is load-bearing.
+
+The arm takes ``Claim.description``, which the deterministic extractor sets to a
 verbatim sentence of the abstract. So every line on a card is a span that
 resolves back to the paper it is printed under. The control has no such edge and
 picks sentences lexically; see :mod:`evals.deepscholar.control`.
@@ -209,21 +217,64 @@ def _index_by_type(graph) -> Dict[str, List]:
     return buckets
 
 
-def _papers_by_arxiv(graph) -> Dict[str, object]:
-    """Paper nodes keyed on BARE arXiv id.
+#: Node types that can stand for a cited paper, and the metadata keys an arXiv
+#: id has been observed under. Both are plural because the compiler and this
+#: module disagreed for as long as the arm existed: the compiler emits
+#: ``SourceDocument`` carrying ``arxiv``, while this module looked only for
+#: ``Paper`` carrying ``arxiv_id``. Measured on a staged 14-paper corpus, that
+#: resolved 1 node — the PARENT paper, whose ``paper.md`` frontmatter declares
+#: ``type: Paper`` — so all 14 cited papers hit the ``continue`` below and the
+#: arm wrote its section from a single abstract-fallback card against the
+#: control's 14. Every DeepScholar number this arm ever produced was that.
+#:
+#: Both spellings are kept rather than migrated: `Paper`/`arxiv_id` is what the
+#: synthetic fixtures in ``tests/test_deepscholar_arms.py`` build, and those
+#: fixtures encode a graph the compiler does not produce — which is precisely
+#: why a green suite never caught this.
+PAPER_NODE_TYPES = ("SourceDocument", "Paper")
+ARXIV_METADATA_KEYS = ("arxiv", "arxiv_id")
 
-    Bare, not versioned, because that is the form
-    ``extract_source_metadata`` normalises to — it matches ``(\\d{4}\\.\\d{4,6})``
-    and drops the suffix. The versioned id never comes from the graph; it comes
-    from the dataset row, through :class:`~evals.deepscholar.dataset.CitedPaper`.
+
+def _arxiv_of(node) -> str:
+    """The bare arXiv id a node claims, from metadata or its frontmatter.
+
+    Bare, not versioned, because that is the form ``extract_source_metadata``
+    normalises to — it matches ``(\\d{4}\\.\\d{4,6})`` and drops the suffix. The
+    versioned id never comes from the graph; it comes from the dataset row,
+    through :class:`~evals.deepscholar.dataset.CitedPaper`.
+
+    ``frontmatter`` is searched too: a document whose own header declares
+    ``type: Paper`` nests its identifiers one level down, so the id is present
+    but not where the flat lookup reaches.
+    """
+    metadata = node.metadata or {}
+    sources = [metadata]
+    nested = metadata.get("frontmatter")
+    if isinstance(nested, dict):
+        sources.append(nested)
+    for source in sources:
+        for key in ARXIV_METADATA_KEYS:
+            value = str(source.get(key) or "").strip()
+            if value:
+                return value.split("v")[0] if "v" in value[4:] else value
+    return ""
+
+
+def _papers_by_arxiv(graph) -> Dict[str, object]:
+    """Every node that can stand for a cited paper, keyed on bare arXiv id.
+
+    First writer wins, and ``SourceDocument`` is checked before ``Paper`` so a
+    corpus that yields both for one id resolves to the document the spans
+    actually hang off.
     """
     found: Dict[str, object] = {}
-    for node in graph.nodes:
-        if node.type.value != "Paper":
-            continue
-        arxiv_id = str((node.metadata or {}).get("arxiv_id") or "").strip()
-        if arxiv_id and arxiv_id not in found:
-            found[arxiv_id] = node
+    for wanted in PAPER_NODE_TYPES:
+        for node in graph.nodes:
+            if node.type.value != wanted:
+                continue
+            arxiv_id = _arxiv_of(node)
+            if arxiv_id and arxiv_id not in found:
+                found[arxiv_id] = node
     return found
 
 
@@ -319,11 +370,32 @@ def graph_cards(
             if claim is None or claim.type.value not in CLAIM_TYPES:
                 continue
             claims.append(claim.description or claim.name)
-        for source in in_edges.get(node.id, {}).get("part_of", []):
+        # Every way an EvidenceSpan is attached to its paper, because the
+        # compiler uses none of the one this walk originally asked for.
+        # Measured across both a staged per-query corpus and the 1,552-paper
+        # pool: `part_of` is 0 edges in BOTH, while the spans hang off
+        # `SourceDocument -contains-> EvidenceSpan` (outgoing) and
+        # `EvidenceSpan -derived_from-> SourceDocument` (incoming).
+        # `part_of` is retained because the synthetic fixtures build it.
+        span_ids = list(out_edges.get(node.id, {}).get("contains", []))
+        for edge_type in ("part_of", "derived_from"):
+            span_ids += in_edges.get(node.id, {}).get(edge_type, [])
+        for source in span_ids:
             span = by_id.get(source)
             if span is None or span.type.value != "EvidenceSpan":
                 continue
             spans.append(span.description or span.name)
+            # A paper's claims are reachable ONLY through its spans. Measured:
+            # `supports_claim` runs Project/Capability/Algorithm -> Claim and
+            # never SourceDocument -> Claim, so the direct hop above found 5
+            # claims across 14 papers. The provenance path the compiler
+            # actually builds is Claim -evidenced_by-> EvidenceSpan, walked
+            # BACKWARD from the span this document contains.
+            for claimant in in_edges.get(source, {}).get("evidenced_by", []):
+                claim = by_id.get(claimant)
+                if claim is None or claim.type.value not in CLAIM_TYPES:
+                    continue
+                claims.append(claim.description or claim.name)
 
         # One dedup over the concatenation, in priority order, so a sentence
         # that is both a Claim and the EvidenceSpan evidencing it — which is
