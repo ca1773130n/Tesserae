@@ -984,6 +984,14 @@ def canonical_synthesis_id_seed(title: str) -> str:
 
 _CROSS_TYPE_MERGE_PRIORITY: Dict["ResearchNodeType", int] = {}  # late-binding
 
+#: Node types that stand for an ingested document rather than a concept found
+#: inside one. Late-bound with the priority table for the same reason.
+#: ``tesserae.retrieval.hybrid`` holds the identical set for its own lexical
+#: anchor test; both exist because a document must stay addressable even after
+#: its ``SourceDocument`` anchor loses a cross-type merge.
+SOURCE_ANCHOR_TYPES: FrozenSet["ResearchNodeType"] = frozenset()
+_SOURCE_ANCHOR_TYPE_VALUES: FrozenSet[str] = frozenset()
+
 
 def _init_cross_type_priority() -> None:
     # Defer assignment until ResearchNodeType is fully defined.
@@ -1005,6 +1013,51 @@ def _init_cross_type_priority() -> None:
         ResearchNodeType.CLAIM: 50,
         ResearchNodeType.SOURCE_DOCUMENT: 10,
     }
+    global SOURCE_ANCHOR_TYPES, _SOURCE_ANCHOR_TYPE_VALUES
+    SOURCE_ANCHOR_TYPES = frozenset(
+        {
+            ResearchNodeType.SOURCE_DOCUMENT,
+            ResearchNodeType.PAPER,
+            ResearchNodeType.SOURCE_FILE,
+            ResearchNodeType.REPOSITORY,
+            ResearchNodeType.PROJECT,
+        }
+    )
+    _SOURCE_ANCHOR_TYPE_VALUES = frozenset(t.value for t in SOURCE_ANCHOR_TYPES)
+
+
+def is_source_anchor(node: "ResearchNode") -> bool:
+    """Does this node stand for an ingested document?
+
+    A type test alone does NOT answer that, and every caller that used one has
+    been wrong since cross-type merging landed. ``SOURCE_DOCUMENT`` sits at
+    priority 10 in :data:`_CROSS_TYPE_MERGE_PRIORITY` — the floor of a table
+    whose next-lowest entry is 50 — so a same-named ``Paper`` (100) absorbs the
+    document's anchor and the surviving node's ``type`` is ``Paper``. Measured
+    on a compiled 148-paper corpus, 23% of documents lost their anchor that way;
+    on a 1552-abstract corpus, 138 of them.
+
+    The merge is not the defect. It deliberately records what it absorbed —
+    "so downstream code ... can still observe" it (see the comment at the
+    ``merged_types_buf`` write) — and consumers simply never read it. This
+    reads it, so a document stays recognisable as a document whichever type won.
+
+    Deliberately NOT a fix to the priority table: raising ``SOURCE_DOCUMENT``
+    above ``Paper`` would change the surviving type of every same-named pair,
+    rewrite ``graph.json`` for every existing project, and merely move the loss
+    onto callers looking for ``Paper``. This costs no recompile.
+    """
+    # Same lazy-init guard the merge uses: the tables are populated on first
+    # need, so a caller that asks before any merge has run would otherwise read
+    # an empty set and report every node as "not a document".
+    if not SOURCE_ANCHOR_TYPES:
+        _init_cross_type_priority()
+    if node.type in SOURCE_ANCHOR_TYPES:
+        return True
+    merged = (node.metadata or {}).get("merged_types") or ()
+    if isinstance(merged, str):
+        merged = (merged,)
+    return any(str(t) in _SOURCE_ANCHOR_TYPE_VALUES for t in merged)
 
 
 def merge_cross_type_duplicates(
@@ -4029,3 +4082,16 @@ def link_paper_repo_pairs(graph: ResearchGraph) -> ResearchGraph:
         )
         existing_edge_keys.add(key)
     return ResearchGraph(nodes=nodes, edges=edges)
+
+
+# Populate the cross-type priority table and the anchor sets at import.
+#
+# They are assigned inside a function so they can be written after
+# ``ResearchNodeType`` exists, and until now nothing called it except the merge
+# itself — so ``from tesserae.research_graph import SOURCE_ANCHOR_TYPES`` bound
+# the EMPTY frozenset the declaration created, and stayed bound to it after the
+# lazy init rebound the module attribute. A caller testing membership against
+# that stale object gets False for every node. Calling it here, at the bottom of
+# the module where every type is defined, means the imported object is the real
+# one. The lazy guards stay as belt and braces.
+_init_cross_type_priority()

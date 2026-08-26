@@ -233,3 +233,55 @@ def test_extractable_vocabulary_excludes_code_types_and_keeps_document_types():
 
     for kept in ("Repository", "Project", "SourceDocument", "Paper", "SessionInsight"):
         assert kept in EXTRACTABLE_NODE_TYPES, f"{kept} is a document type and must stay extractable"
+
+
+# ------------------------------------- the document anchor survives a merge
+
+
+def test_a_paper_that_absorbed_a_source_document_is_still_a_document():
+    """`SOURCE_DOCUMENT` sits at priority 10 and `PAPER` at 100, so a same-named
+    Paper takes the anchor and the survivor's `type` is `Paper`. Measured on two
+    real corpora, a bare type test lost 138 of 1552 documents and 34 of 148."""
+    from tesserae.research_graph import (ResearchNode, ResearchNodeType,
+                                         is_source_anchor)
+
+    absorbed = ResearchNode(
+        id="Paper:x", name="X", type=ResearchNodeType("Paper"),
+        metadata={"merged_types": ["SourceDocument"]},
+    )
+    assert is_source_anchor(absorbed)
+
+
+def test_a_concept_that_absorbed_a_source_document_is_still_a_document():
+    """The winner is not always a Paper — `Concept` and `ApproachFamily` take
+    the anchor too, so the test cannot special-case one surviving type."""
+    from tesserae.research_graph import (ResearchNode, ResearchNodeType,
+                                         is_source_anchor)
+
+    node = ResearchNode(
+        id="Concept:x", name="X", type=ResearchNodeType("Concept"),
+        metadata={"merged_types": ["SourceDocument"]},
+    )
+    assert is_source_anchor(node)
+
+
+def test_an_ordinary_claim_is_not_a_document_anchor():
+    """The test must stay narrow: recovering documents is worthless if it also
+    reports every concept in the graph as an ingested file."""
+    from tesserae.research_graph import (ResearchNode, ResearchNodeType,
+                                         is_source_anchor)
+
+    assert not is_source_anchor(
+        ResearchNode(id="Claim:x", name="X", type=ResearchNodeType("Claim"))
+    )
+
+
+def test_the_anchor_set_is_populated_at_import_not_on_first_merge():
+    """`SOURCE_ANCHOR_TYPES` is assigned inside a function so it can be written
+    after `ResearchNodeType` exists. Until that function ran, `from ... import
+    SOURCE_ANCHOR_TYPES` bound the EMPTY declaration and stayed bound to it —
+    every membership test returning False, silently."""
+    from tesserae.research_graph import SOURCE_ANCHOR_TYPES, ResearchNodeType
+
+    assert ResearchNodeType.SOURCE_DOCUMENT in SOURCE_ANCHOR_TYPES
+    assert ResearchNodeType.PAPER in SOURCE_ANCHOR_TYPES
