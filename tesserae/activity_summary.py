@@ -34,7 +34,8 @@ from tesserae.harness_sessions import (
     _rows_match_project,
     discover_harness_roots,
 )
-from tesserae.research_graph import SESSION_FINDING_TYPES, ResearchNodeType
+from tesserae.research_graph import (SESSION_FINDING_TYPES, ResearchNodeType,
+                                     is_source_anchor)
 
 # String values of the six structured session-finding node types. Findings are
 # matched on ``node.type.value`` (a string), so mirror the canonical enum set
@@ -675,8 +676,13 @@ def gather_docs(
     """
     out: List[DocItem] = []
     for node in graph.nodes:
-        tname = getattr(node.type, "value", node.type)
-        if tname not in _DOC_TYPE_VALUES:
+        # Merge-aware, not a bare type test. A same-named ``Paper`` absorbs the
+        # document's ``SourceDocument`` anchor (priority 100 vs 10), and the
+        # surviving node's ``type`` is then ``Paper`` — measured at 23% of
+        # documents on one compiled corpus and 138 of 1552 on another. A
+        # ``tname in _DOC_TYPE_VALUES`` test silently drops every one of them
+        # from the ingested-docs report.
+        if not is_source_anchor(node):
             continue
         meta = getattr(node, "metadata", None) or {}
         raw_source_path = getattr(node, "source_path", None) or meta.get("source_path")
