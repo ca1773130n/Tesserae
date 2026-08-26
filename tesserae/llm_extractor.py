@@ -211,6 +211,8 @@ def graph_from_llm_payload(payload: Mapping[str, object], source_path: Optional[
         print(f"  extract: dropped {dropped_edges} edge(s) with unknown type/endpoints "
               f"from {source_path or 'payload'}", file=sys.stderr)
 
+    _attach_orphan_spans(builder, key_to_node, source_kind, source_path)
+
     graph = builder.build()
     # Bug A: the LLM occasionally returns ``Concept``-typed nodes whose
     # names are literally filenames (``feature-map.md``, ``pyproject.toml``).
@@ -220,6 +222,60 @@ def graph_from_llm_payload(payload: Mapping[str, object], source_path: Optional[
     graph = filter_filename_shaped_concepts(graph)
     validate_research_graph(graph)
     return graph
+
+
+def _attach_orphan_spans(builder, key_to_node, source_kind, source_path) -> int:
+    """Link every EvidenceSpan to the document it was extracted from.
+
+    Node ``source_path`` is stamped unconditionally a few lines above; edges are
+    built ONLY from ``payload["edges"]``. So whether a span can be reached from
+    its own document is at the model's discretion, and the model mostly does not
+    bother. Measured on two compiled corpora:
+
+        abstracts   1,752 of 6,210 spans reachable   (28.2%)
+        full papers   124 of 1,173 spans reachable   (10.6%)
+
+    A span nothing points at is not merely untidy — it is evidence the packer
+    cannot find. The full-paper arm filled its prompt from 4.8 documents against
+    the control's 5.4 for exactly this reason: it walks
+    ``SourceDocument -contains-> EvidenceSpan`` and nine tenths of the spans
+    were not on the other end of one.
+
+    This is deterministic, not inferred. The span carries the path of the file
+    it came from; ``contains`` restates that fact as an edge. Nothing is
+    invented, no span is attached to a document it did not come from, and a
+    span the model DID link is left alone — ``add_edge`` is keyed on
+    ``(source, type, target)``, so a re-add would be a no-op anyway, but not
+    re-adding keeps the model's own evidence string intact.
+
+    Takes effect on the NEXT compile. Existing graphs keep their orphans, which
+    is why consumers should also resolve spans by ``source_path``.
+    """
+    anchor_type = source_kind_to_node_type(source_kind, source_path)
+    anchor = next((n for n in key_to_node.values() if n.type == anchor_type), None)
+    if anchor is None:
+        return 0
+    linked = {
+        edge.target for edge in builder._edges.values()
+        if edge.source == anchor.id and edge.type == "contains"
+    } | {
+        edge.source for edge in builder._edges.values()
+        if edge.target == anchor.id and edge.type in ("derived_from", "part_of")
+    }
+    attached = 0
+    for node in key_to_node.values():
+        if node.id == anchor.id or node.id in linked:
+            continue
+        if node.type != ResearchNodeType.EVIDENCE_SPAN:
+            continue
+        # Only a span that really came from THIS document. A payload may carry a
+        # span the model attributed elsewhere; inventing containment for it would
+        # be exactly the fabricated provenance this project exists to prevent.
+        if node.source_path and anchor.source_path and node.source_path != anchor.source_path:
+            continue
+        builder.add_edge(anchor, "contains", node)
+        attached += 1
+    return attached
 
 
 def validate_research_graph(graph: ResearchGraph) -> None:
