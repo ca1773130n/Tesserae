@@ -799,21 +799,81 @@ def _bm25_scores_indexed(
 # ---------------------------------------------------------------------------
 
 
+#: A query term occurring in more than this share of the haystacks carries no
+#: ranking information — it separates nothing. Matched by eye to the BM25 lane's
+#: own behaviour, where such a term's IDF collapses toward zero; this lane has no
+#: IDF, so the cut has to be explicit.
+LEXICAL_DF_CEILING = 0.30
+
+#: A query token shorter than this never prefix-expands. "in" is a prefix of
+#: "inference" and "information", so allowing short prefixes would reinstate
+#: exactly the stopword blowout this lane was fixed to remove. Four characters
+#: keeps "splat" -> "splatting" and "graph" -> "graphs" while refusing "in",
+#: "the", "for", "and".
+PREFIX_MIN_LEN = 4
+
+
 def _lexical_scores(
     query: str,
     haystacks: Sequence[str],
 ) -> List[float]:
-    """Case-folded term-presence count — matches the historical search_nodes
-    behaviour and the FTS5 ``MATCH`` semantics closely enough that we can fold
-    them into the same lane when the SQL index is unavailable."""
-    terms = [term.casefold() for term in query.split() if term.strip()]
+    """Fraction of the query's DISCRIMINATING tokens that a haystack contains.
+
+    Token matching, not substring matching, because FTS5 ``MATCH`` — the
+    semantics this lane exists to stand in for — is token-based.
+
+    Three defects are fixed here, and together they cost 0.039 recall@10 on a
+    120-question benchmark over a 25,410-node graph (0.476 -> 0.515 measured
+    with this lane simply disabled, which scored no worse than this rebuild):
+
+    * ``query.split()`` is not tokenisation. It left punctuation attached, so
+      ``complexity?`` matched nothing at all, while bare ``in``/``the``/``to``
+      matched almost every node in the graph.
+    * ``term in folded`` is substring containment, so ``in`` scored a hit on
+      "training", "domain" and "inference" alike.
+    * The count was unnormalised, so a long node outscored a precise one purely
+      by having more text, and the lane fused into RRF at weight 1.0 — equal to
+      BM25 (see ``DEFAULT_WEIGHTS``).
+
+    Scoring the FRACTION of discriminating query tokens present keeps the score
+    in [0, 1] regardless of node length, so length no longer buys rank.
+    """
+    terms = list(dict.fromkeys(_tokenize(query)))
     if not terms:
         return [0.0] * len(haystacks)
-    scores: List[float] = []
-    for hay in haystacks:
-        folded = hay.casefold()
-        scores.append(float(sum(1 for term in terms if term in folded)))
-    return scores
+    token_sets = [set(_tokenize(hay)) for hay in haystacks]
+    if not token_sets:
+        return []
+
+    # PREFIX, not substring. Dropping substring matching outright broke the
+    # thing it was right about: "splat" must still find "splatting". What it was
+    # wrong about is matching INSIDE a word — "in" hitting "training",
+    # "domain", "inference". A prefix keeps the first and refuses the second.
+    #
+    # Expansion happens once against the vocabulary rather than per haystack:
+    # scanning every node's tokens for every term was ~20M string comparisons a
+    # query on a 25k-node graph.
+    vocab = set()
+    for s in token_sets:
+        vocab |= s
+    expanded: List[set] = []
+    for t in terms:
+        matches = {t} if t in vocab else set()
+        if len(t) >= PREFIX_MIN_LEN:
+            matches |= {w for w in vocab if w.startswith(t)}
+        expanded.append(matches)
+
+    ceiling = max(1, int(len(token_sets) * LEXICAL_DF_CEILING))
+    kept = [m for m in expanded
+            if m and sum(1 for s in token_sets if s & m) <= ceiling]
+    # Every term is ubiquitous (a short, wholly generic query): fall back to the
+    # full term list rather than returning an all-zero lane, which would hand
+    # the fusion a silently dead input.
+    if not kept:
+        kept = [m for m in expanded if m]
+    if not kept:
+        return [0.0] * len(haystacks)
+    return [float(sum(1 for m in kept if s & m)) / len(kept) for s in token_sets]
 
 
 # ---------------------------------------------------------------------------
