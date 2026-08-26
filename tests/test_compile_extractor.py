@@ -705,3 +705,100 @@ def test_a_killed_compile_replays_its_finished_documents_for_free(tmp_path, monk
     shutil.rmtree(cache_dir)
     BatchIngestRunner(extractor, tmp_path / "cleared.json").run(paths)
     assert client.calls == before + 6
+
+
+# ------------------------------------------- chunked extraction (density)
+
+
+def _stub_extract(seen):
+    from tesserae.llm_extractor import graph_from_llm_payload
+
+    def go(text, source_path=None, source_kind="SourceDocument", guidance=""):
+        seen.append(len(text))
+        i = len(seen)
+        return graph_from_llm_payload(
+            {"nodes": [{"name": "Doc", "type": "SourceDocument"},
+                       {"name": f"Algo{i}", "type": "Algorithm"}],
+             "edges": []},
+            source_path=source_path, source_kind=source_kind,
+        )
+    return go
+
+
+def _long_text():
+    return ("A sentence stating a relation. " * 30 + "\n\n") * 20
+
+
+def test_a_small_document_still_takes_the_single_call_path():
+    """The historical path must be byte-identical for anything that fits, or
+    every cached extraction in every project is invalidated."""
+    from tesserae.llm_extractor import extract_in_chunks
+
+    seen = []
+    extract_in_chunks("short. " * 20, "/tmp/d.md", "SourceDocument", "", _stub_extract(seen))
+    assert len(seen) == 1
+
+
+def test_a_large_document_is_split_and_every_chunk_contributes():
+    """One call over a 38KB paper returned 20.9 factual relations; the same
+    prompt over 4,000-char chunks returned 124.8. The compile embedded the
+    whole document and never split it."""
+    from tesserae.llm_extractor import extract_in_chunks
+
+    seen = []
+    g = extract_in_chunks(_long_text(), "/tmp/d.md", "SourceDocument", "", _stub_extract(seen))
+    assert len(seen) > 1
+    algos = [n for n in g.nodes if n.type.value == "Algorithm"]
+    assert len(algos) == len(seen), "a chunk's findings must survive the merge"
+
+
+def test_the_document_anchor_is_merged_not_duplicated():
+    """Every chunk emits its own anchor for the same file; they must collapse
+    to one, or the document appears N times in the graph."""
+    from tesserae.llm_extractor import extract_in_chunks
+
+    g = extract_in_chunks(_long_text(), "/tmp/d.md", "SourceDocument", "", _stub_extract([]))
+    assert len([n for n in g.nodes if n.type.value == "SourceDocument"]) == 1
+
+
+def test_one_bad_chunk_does_not_cost_the_whole_document():
+    """Losing a chunk costs its relations; raising costs all of them."""
+    from tesserae.llm_extractor import GraphJSONValidationError, extract_in_chunks, graph_from_llm_payload
+
+    calls = [0]
+
+    def flaky(text, source_path=None, source_kind="SourceDocument", guidance=""):
+        calls[0] += 1
+        if calls[0] == 2:
+            raise GraphJSONValidationError("truncated JSON")
+        return graph_from_llm_payload(
+            {"nodes": [{"name": f"E{calls[0]}", "type": "Algorithm"}], "edges": []},
+            source_path=source_path, source_kind=source_kind)
+
+    g = extract_in_chunks(_long_text(), "/tmp/d.md", "SourceDocument", "", flaky)
+    assert [n for n in g.nodes if n.type.value == "Algorithm"]
+
+
+def test_every_chunk_failing_still_raises():
+    """Degrading to an empty graph would report a document as extracted when
+    nothing was — the silent-success shape this project keeps hitting."""
+    import pytest as _pytest
+    from tesserae.llm_extractor import GraphJSONValidationError, extract_in_chunks
+
+    def always(text, source_path=None, source_kind="SourceDocument", guidance=""):
+        raise GraphJSONValidationError("bad")
+
+    with _pytest.raises(GraphJSONValidationError):
+        extract_in_chunks(_long_text(), "/tmp/d.md", "SourceDocument", "", always)
+
+
+def test_splitting_is_deterministic_and_bounded():
+    """Same text in, same pieces out — the compile's byte-idempotence depends
+    on it, and no piece may exceed the limit it was split to."""
+    from tesserae.llm_extractor import EXTRACT_CHUNK_CHARS, split_for_extraction
+
+    text = _long_text()
+    first = split_for_extraction(text)
+    assert first == split_for_extraction(text)
+    assert max(len(p) for p in first) <= EXTRACT_CHUNK_CHARS
+    assert split_for_extraction(text, -1) == [text], "0/negative disables splitting"
