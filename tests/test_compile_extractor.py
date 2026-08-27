@@ -705,3 +705,77 @@ def test_a_killed_compile_replays_its_finished_documents_for_free(tmp_path, monk
     shutil.rmtree(cache_dir)
     BatchIngestRunner(extractor, tmp_path / "cleared.json").run(paths)
     assert client.calls == before + 6
+
+
+# ------------------------------------ spans must be reachable from their doc
+
+
+def _payload(nodes, edges=()):
+    return {"nodes": list(nodes), "edges": list(edges)}
+
+
+def test_a_span_the_model_did_not_link_is_still_reachable_from_its_document():
+    """`source_path` is stamped on every node; edges come only from what the
+    model emitted. So reachability was the model's discretion, and it mostly
+    declined: 28.2% of spans on one compiled corpus, 10.6% on another. A span
+    nothing points at is evidence the packer cannot find."""
+    from tesserae.llm_extractor import graph_from_llm_payload
+
+    g = graph_from_llm_payload(
+        _payload([
+            {"name": "Doc", "type": "SourceDocument"},
+            {"name": "s1", "type": "EvidenceSpan", "description": "a measured claim"},
+            {"name": "s2", "type": "EvidenceSpan", "description": "another one"},
+        ]),
+        source_kind="SourceDocument", source_path="/tmp/doc.md",
+    )
+    spans = {n.id for n in g.nodes if n.type.value == "EvidenceSpan"}
+    reached = {e.target for e in g.edges if e.type == "contains"}
+    assert spans and spans <= reached
+
+
+def test_a_span_the_model_attributed_elsewhere_is_not_adopted():
+    """Inventing containment for a span that names another file would be
+    fabricated provenance — the one thing this project must never do."""
+    from tesserae.llm_extractor import graph_from_llm_payload
+
+    g = graph_from_llm_payload(
+        _payload([
+            {"name": "Doc", "type": "SourceDocument"},
+            {"name": "s", "type": "EvidenceSpan", "description": "x",
+             "source_path": "/tmp/somewhere-else.md"},
+        ]),
+        source_kind="SourceDocument", source_path="/tmp/doc.md",
+    )
+    assert not [e for e in g.edges if e.type == "contains"]
+
+
+def test_an_edge_the_model_did_emit_keeps_its_own_evidence():
+    """Re-adding would be a no-op on the builder's (source, type, target) key,
+    but it would also discard the model's evidence string. Leave it alone."""
+    from tesserae.llm_extractor import graph_from_llm_payload
+
+    g = graph_from_llm_payload(
+        _payload(
+            [{"name": "Doc", "type": "SourceDocument"},
+             {"name": "s", "type": "EvidenceSpan", "description": "x"}],
+            [{"source": "Doc", "type": "contains", "target": "s",
+              "evidence": "the model's own words"}],
+        ),
+        source_kind="SourceDocument", source_path="/tmp/doc.md",
+    )
+    edges = [e for e in g.edges if e.type == "contains"]
+    assert len(edges) == 1 and edges[0].evidence == "the model's own words"
+
+
+def test_non_span_nodes_are_not_swept_into_the_document():
+    """Scoped to EvidenceSpan on purpose. Attaching every extracted node would
+    add an edge per node and change what `contains` means."""
+    from tesserae.llm_extractor import graph_from_llm_payload
+
+    g = graph_from_llm_payload(
+        _payload([{"name": "Doc", "type": "SourceDocument"},
+                  {"name": "c", "type": "Claim", "description": "z"}]),
+        source_kind="SourceDocument", source_path="/tmp/doc.md",
+    )
+    assert not [e for e in g.edges if e.type == "contains"]
