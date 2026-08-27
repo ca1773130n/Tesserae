@@ -923,3 +923,39 @@ def test_explain_with_seeds_but_no_query_reports_an_empty_list_not_none() -> Non
         graph, project_root=None, seeds=["splat"], backend=_backend(), explain=True
     )
     assert bundle.retrieval_profiles == []
+
+
+# ------------------------- source prose only when there is room to be evidence
+
+
+def test_a_tight_per_node_share_keeps_the_extracted_body():
+    """Below the measured crossover, swapping in source prose makes the bundle
+    WORSE than the distillation it replaced: at 1,260 chars per document prose
+    scored 0.145 against the claims' 0.222 on 57 comparative-reasoning
+    questions. `_MIN_SOURCE_EXCERPT` is that crossover, not a "how small can an
+    excerpt be" bound."""
+    from tesserae.context_compiler import (_MIN_SOURCE_EXCERPT,
+                                           _TARGET_BUNDLE_NODES)
+
+    # a five-way split of this budget lands under the floor
+    budget = (_MIN_SOURCE_EXCERPT - 100) * _TARGET_BUNDLE_NODES
+    assert budget // _TARGET_BUNDLE_NODES < _MIN_SOURCE_EXCERPT
+
+
+def test_a_generous_per_node_share_admits_source_prose():
+    """Above it, prose beats the distillation by +0.084 (8/8 replicates,
+    p=0.0078), which is the whole reason the bundle reads source at all."""
+    from tesserae.context_compiler import (_MIN_SOURCE_EXCERPT,
+                                           _TARGET_BUNDLE_NODES)
+
+    budget = (_MIN_SOURCE_EXCERPT + 100) * _TARGET_BUNDLE_NODES
+    assert budget // _TARGET_BUNDLE_NODES >= _MIN_SOURCE_EXCERPT
+
+
+def test_the_floor_sits_below_the_excerpt_cap():
+    """A floor above the cap would make source prose unreachable at every
+    budget — the feature would silently never run."""
+    from tesserae.context_compiler import (_MIN_SOURCE_EXCERPT,
+                                           SOURCE_EXCERPT_CHARS)
+
+    assert _MIN_SOURCE_EXCERPT < SOURCE_EXCERPT_CHARS
