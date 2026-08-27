@@ -611,10 +611,35 @@ class LLMResearchExtractor:
 #: corpus and the graph arm of every retrieval benchmark packed thinner
 #: evidence than raw text.
 #:
-#: THE COST IS REAL AND IS NOT DOLLARS ON A SUBSCRIPTION: an N-chunk document
-#: costs N extraction calls instead of 1, so a large corpus takes proportionally
-#: longer to compile. 4,000 matches the size the 6x was measured at; raising it
-#: trades density back for speed on a curve nobody has measured yet.
+#: THIS IS A DIAL, NOT A TUNED OPTIMUM. The curve has since been measured, 8
+#: papers per point, and there is no knee to find:
+#:
+#:     chunk chars   calls/paper   relations   relations per call
+#:           2,000            21       208.6                  9.9
+#:           4,000            11       135.6                 12.3
+#:           8,000             6        83.2                 13.9
+#:          16,000             3        57.5                 19.2
+#:          32,000             2        42.4                 21.2
+#:       whole doc             1        20.9                 20.9
+#:
+#: Relations are roughly CALLS x a bounded per-call yield. The model answers
+#: each request with a "complete" graph of ~1,200-1,400 output tokens whatever
+#: it was shown — measured with `finish_reason == "stop"` and confirmed by
+#: raising `max_tokens` 6.4x, which bought 20% more output and 5 more relations.
+#: It is not truncation and not a token cap, so no parameter buys this; only
+#: asking more times does.
+#:
+#: Note the last column: LARGER chunks are more efficient per call. Small chunks
+#: win on total only by making more requests, and each request costs a process
+#: spawn on the CLI providers. Choosing this number is choosing how much compile
+#: time to spend on density:
+#:
+#:     2,000  +54% relations, +91% calls   (~17h for 148 full papers)
+#:     4,000  the default                  (~9h)
+#:     8,000  -39% relations, -45% calls   (~5h)
+#:
+#: 4,000 is a defensible middle, not a discovered optimum. Raise it when compile
+#: time matters more than density; lower it for a small, high-value corpus.
 EXTRACT_CHUNK_CHARS = int(os.environ.get("TESSERAE_EXTRACT_CHUNK_CHARS", "4000"))
 
 #: Paragraph break preferred within this many characters of the target size, so
