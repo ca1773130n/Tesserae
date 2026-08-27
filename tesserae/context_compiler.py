@@ -228,7 +228,30 @@ _MIN_NODE_SHARE = 300
 #: are title, authors and boilerplate, where the extracted description is dense
 #: and already about the thing that matched. So the substitution is skipped
 #: rather than performed badly when the per-node share cannot afford it.
-_MIN_SOURCE_EXCERPT = 900
+#: The smallest per-document share worth spending on SOURCE PROSE. Below it the
+#: bundle keeps the extracted body (claims/description) instead.
+#:
+#: 900 was a guess and it sat inside the range where prose is WORSE than the
+#: distillation it replaces. Measured on 148 full papers and 57
+#: comparative-reasoning questions, budget-matched, same backbone and judge —
+#: required-point coverage against a BM25 passage control at 0.290:
+#:
+#:     chars per document    extracted claims    source prose
+#:                  4,300               0.218           0.371
+#:                  2,500               0.227           0.332
+#:                  1,260               0.222           0.145
+#:
+#: A claim is a self-contained sentence, so slicing it thinner costs almost
+#: nothing — the claims column is flat. A passage needs contiguous room to carry
+#: an argument, and below roughly 2,500 characters it stops being evidence and
+#: becomes an opening paragraph: at 1,260 it scores BELOW the claims it
+#: displaced. The crossover is between 1,260 and 2,500; 2,500 is the measured
+#: side of it.
+#:
+#: So this is not a "how small can an excerpt be" bound. It is the point below
+#: which swapping prose in makes the bundle worse, and the old 900 put budgets
+#: from ~4,500 to ~12,500 (five-way split) on the wrong side of it.
+_MIN_SOURCE_EXCERPT = 2_500
 
 
 def _source_text(node: ResearchNode, cache: Dict[str, str],
