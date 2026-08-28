@@ -1261,6 +1261,29 @@ class ProjectWiki:
         _before_rag = graph
         graph = self._merge_configured_raganything_graph(graph, cfg)
         self._record_producer_provenance("__raganything__", _before_rag, graph)
+
+        # Entity resolution: reuse a node when an existing one MEANS the same
+        # thing, not only when it is spelled the same. Runs here, after every
+        # producer has contributed, because the duplicates worth collapsing are
+        # the ones different files and different chunks minted separately —
+        # "ResNet-50" from one paper and "ResNet 50" from another.
+        #
+        # Measured on a 148-paper corpus: 2,317 names owned by more than one
+        # node, and `verify_claim` refusing 226 of 426 claims whose supporting
+        # edge was present. At the default threshold this collapses 387 of them
+        # and takes confirmations from 26 to 36, with specificity unchanged at
+        # 1.000 — see `tesserae/entity_resolution.py` for the whole curve.
+        #
+        # Cheap and fail-open: 2.7s on 41,726 nodes, and a missing or failing
+        # embedder returns the graph untouched rather than aborting a compile
+        # that has already spent hours.
+        from .entity_resolution import resolve_entities
+
+        _before_er = graph
+        graph, _er_merged = resolve_entities(graph)
+        if _er_merged:
+            logger.info("entity resolution: merged %d duplicate entities", _er_merged)
+            self._record_producer_provenance("__entity_resolution__", _before_er, graph)
         # Provenance-driven incremental differ (Codex B1/B2/B3/B4). Only runs
         # when an incremental compile is genuinely admissible — decided up
         # front in ``incremental_active`` (flag on + sidecar present + covers
