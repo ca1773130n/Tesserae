@@ -63,8 +63,45 @@ jobs:
             exit 1
           fi
 
+      # A version already on the registry is a NO-OP, not a failure.
+      #
+      # npm refuses to republish a version and cannot be made to, even after an
+      # unpublish. So any second push of the same tag turns this workflow red
+      # with `You cannot publish over the previously published versions`, and a
+      # tag gets re-pushed for ordinary reasons — a tag pointed at the wrong
+      # commit and corrected, a re-run of a release. That red run says nothing
+      # about the package, which is already published and correct.
+      #
+      # This CANNOT hide a forgotten version bump: the step above fails the job
+      # when npm/package.json disagrees with the tag, and it runs first. The
+      # only thing reaching here with an existing version is a deliberate
+      # re-tag of a release that already shipped.
+      #
+      # It is loud on purpose. A silent skip would be the "reported success,
+      # published nothing" failure this repository has been bitten by before,
+      # so the summary says which version was found and where.
+      - name: Skip if this version is already published
+        id: existing
+        run: |
+          name=$(node -p "require('./npm/package.json').name")
+          ver=$(node -p "require('./npm/package.json').version")
+          if npm view "$name@$ver" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$name@$ver is already on the registry — skipping publish."
+            {
+              echo "### npm publish skipped"
+              echo ""
+              echo "\`$name@$ver\` is already published, so this tag push is a no-op."
+              echo "The package was published by an earlier run and is unchanged."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+            echo "$name@$ver is not on the registry — publishing."
+          fi
+
       # ponytail: no `npm ci` / `npm test` — the wrapper has no dependencies,
       # no lockfile and no test script. Add them when it grows any.
       - name: Publish
+        if: steps.existing.outputs.already != 'true'
         run: npm publish --access public
         working-directory: npm
