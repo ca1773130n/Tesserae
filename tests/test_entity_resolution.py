@@ -128,3 +128,16 @@ def test_the_default_threshold_is_the_conservative_end_of_the_measured_curve():
     71% of the gain for 18% of the merges, because the curve was measured on one
     corpus and over-merging is the failure that cannot be undone."""
     assert DEFAULT_SIMILARITY >= 0.95
+
+
+def test_the_compile_actually_calls_the_pass():
+    """A module nobody calls is a module that does nothing. This shipped once as
+    a library function with no caller; the pass has to run inside `compile()` or
+    every measurement behind it is theoretical."""
+    import inspect
+
+    from tesserae import project
+
+    src = inspect.getsource(project)
+    assert "resolve_entities" in src, "entity resolution is not wired into the compile"
+    assert "from .entity_resolution import resolve_entities" in src
