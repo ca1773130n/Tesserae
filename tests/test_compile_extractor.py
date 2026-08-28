@@ -874,3 +874,66 @@ def test_non_span_nodes_are_not_swept_into_the_document():
         source_kind="SourceDocument", source_path="/tmp/doc.md",
     )
     assert not [e for e in g.edges if e.type == "contains"]
+
+
+# --------------------- chunks disagreeing about a type are one entity
+
+
+def _n(nid, name, typ):
+    from tesserae.research_graph import ResearchNode, ResearchNodeType
+    return ResearchNode(id=nid, name=name, type=ResearchNodeType(typ))
+
+
+def test_chunks_that_disagree_about_a_type_collapse_to_one_node():
+    """Node ids are type+name, so two chunks agreeing on both already produce
+    one node. What they disagree about is the TYPE — chunk 1 calls "ResNet" a
+    Model, chunk 7 an Algorithm — and `merge_cross_type_duplicates` will not
+    merge those because ACROSS FILES "F1" the Metric and "F1" the Benchmark are
+    genuinely different. Inside one document they are not."""
+    from tesserae.llm_extractor import _collapse_same_name_within_document
+    from tesserae.research_graph import ResearchEdge, ResearchGraph
+
+    g = _collapse_same_name_within_document(ResearchGraph(
+        nodes=[_n("Model:r", "ResNet", "Model"), _n("Algorithm:r", "resnet", "Algorithm"),
+               _n("Metric:f1", "F1", "Metric")],
+        edges=[ResearchEdge(source="Algorithm:r", type="uses_metric", target="Metric:f1")],
+    ))
+    assert len(g.nodes) == 2
+    # Case-insensitive: the surviving DISPLAY name comes from whichever node
+    # won, and resolution casefolds anyway. The merge is about identity.
+    assert sorted(n.name.casefold() for n in g.nodes) == ["f1", "resnet"]
+
+
+def test_the_collapse_redirects_edges_and_drops_self_loops():
+    """An edge between two nodes that turn out to be one entity says nothing."""
+    from tesserae.llm_extractor import _collapse_same_name_within_document
+    from tesserae.research_graph import ResearchEdge, ResearchGraph
+
+    g = _collapse_same_name_within_document(ResearchGraph(
+        nodes=[_n("Model:r", "ResNet", "Model"), _n("Algorithm:r", "ResNet", "Algorithm")],
+        edges=[ResearchEdge(source="Model:r", type="extends", target="Algorithm:r")],
+    ))
+    assert len(g.nodes) == 1 and not g.edges
+
+
+def test_the_collapse_is_deterministic_under_node_order():
+    """The compile is byte-idempotent; a winner that depended on dict order
+    would break that."""
+    from tesserae.llm_extractor import _collapse_same_name_within_document
+    from tesserae.research_graph import ResearchGraph
+
+    nodes = [_n("Model:r", "ResNet", "Model"), _n("Algorithm:r", "resnet", "Algorithm"),
+             _n("ArchitecturePattern:r", "RESNET", "ArchitecturePattern")]
+    a = _collapse_same_name_within_document(ResearchGraph(nodes=nodes, edges=[]))
+    b = _collapse_same_name_within_document(ResearchGraph(nodes=list(reversed(nodes)), edges=[]))
+    assert [n.id for n in a.nodes] == [n.id for n in b.nodes]
+
+
+def test_distinct_names_are_left_alone():
+    """The rule is same NAME. Collapsing anything else would merge the corpus."""
+    from tesserae.llm_extractor import _collapse_same_name_within_document
+    from tesserae.research_graph import ResearchGraph
+
+    nodes = [_n("Model:a", "ResNet", "Model"), _n("Model:b", "DenseNet", "Model")]
+    g = _collapse_same_name_within_document(ResearchGraph(nodes=nodes, edges=[]))
+    assert len(g.nodes) == 2

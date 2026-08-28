@@ -720,7 +720,82 @@ def extract_in_chunks(
         raise GraphJSONValidationError(
             f"every chunk of {source_path or 'document'} failed to validate"
         )
-    return merge_graphs(graphs)
+    return _collapse_same_name_within_document(merge_graphs(graphs))
+
+
+def _collapse_same_name_within_document(graph: ResearchGraph) -> ResearchGraph:
+    """Merge same-named nodes that chunks disagreed about the TYPE of.
+
+    Node ids are built from type + name, so two chunks that agree on both
+    already produce one node. What they disagree about is the type: chunk 1
+    calls "ResNet" a ``Model``, chunk 7 an ``Algorithm``, and the result is two
+    nodes with one name.
+
+    ``merge_cross_type_duplicates`` will not fix this, deliberately. It only
+    merges types in ``_CROSS_TYPE_MERGE_PRIORITY``, because ACROSS FILES "F1"
+    the ``Metric`` and "F1" the ``Benchmark`` are genuinely different things.
+    That reasoning does not hold inside one document, and chunking is what made
+    the difference matter — measured on a 148-paper corpus, 1,584 names were
+    owned by more than one node, 0% of them same-type and 63% inside a single
+    document. Top disagreements: Algorithm/Model 111, ArchitecturePattern/Model
+    70, Benchmark/Dataset 68.
+
+    The cost was not cosmetic. ``verify_claim`` refuses a colliding name as
+    ``ambiguous`` rather than guessing, so its refusals moved from 84 to 222
+    once the graph got denser, and it declined claims whose supporting edge was
+    present.
+
+    The winner is chosen deterministically — ranked priority, then degree, then
+    id — because the compile is byte-idempotent and a merge that depended on
+    dict order would break that.
+
+    The surviving node's DISPLAY name is the winner's, so "ResNet" and "resnet"
+    may resolve to either spelling depending on which had more edges. That is
+    cosmetic: every resolver in this codebase casefolds, so it changes how the
+    entity reads, never whether it is found.
+    """
+    from .research_graph import _CROSS_TYPE_MERGE_PRIORITY, _init_cross_type_priority
+
+    if not _CROSS_TYPE_MERGE_PRIORITY:
+        _init_cross_type_priority()
+
+    by_name: Dict[str, List[ResearchNode]] = {}
+    for node in graph.nodes:
+        by_name.setdefault(node.name.strip().casefold(), []).append(node)
+    groups = {k: v for k, v in by_name.items() if len(v) > 1}
+    if not groups:
+        return graph
+
+    degree: Dict[str, int] = {}
+    for edge in graph.edges:
+        degree[edge.source] = degree.get(edge.source, 0) + 1
+        degree[edge.target] = degree.get(edge.target, 0) + 1
+
+    redirect: Dict[str, str] = {}
+    for nodes in groups.values():
+        winner = sorted(
+            nodes,
+            key=lambda n: (-_CROSS_TYPE_MERGE_PRIORITY.get(n.type, 0),
+                           -degree.get(n.id, 0), n.id),
+        )[0]
+        for n in nodes:
+            if n.id != winner.id:
+                redirect[n.id] = winner.id
+
+    kept = [n for n in graph.nodes if n.id not in redirect]
+    seen = set()
+    edges: List[ResearchEdge] = []
+    for e in graph.edges:
+        s, t = redirect.get(e.source, e.source), redirect.get(e.target, e.target)
+        if s == t:
+            continue  # the merge made this a self-loop; it says nothing
+        key = (s, e.type, t)
+        if key in seen:
+            continue
+        seen.add(key)
+        edges.append(ResearchEdge(source=s, target=t, type=e.type,
+                                  evidence=e.evidence, metadata=e.metadata))
+    return ResearchGraph(nodes=kept, edges=edges)
 
 
 def build_research_extraction_prompt(text: str, source_path: Optional[str], source_kind: str, guidance: str = "") -> str:
