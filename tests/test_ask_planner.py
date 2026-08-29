@@ -1158,21 +1158,26 @@ def test_ask_planner_computes_the_flags_from_its_own_source_blocks():
 # costing no tokens and no network, and a cascade that switched itself on would
 # break that for every existing caller.
 
-def test_band_adjudication_is_off_unless_asked_for(monkeypatch):
+def test_band_adjudication_is_on_unless_switched_off(monkeypatch):
+    """The free check alone is less accurate than a model (0.872 vs 0.928 on
+    750 held-out pairs) and no model-free variant closes that; the cascade
+    does (0.935 on 40% of the calls). Inside `ask` a client is already in hand,
+    so the accurate behaviour is the default and `off` is the opt-out."""
     from tesserae.ask_planner import _verify_band
+    from tesserae.verify_answer import UNCERTAIN_HIGH, UNCERTAIN_LOW
 
     monkeypatch.delenv("TESSERAE_VERIFY_BAND", raising=False)
-    assert _verify_band() is None
-    for off in ("", "0", "off", "false", "no"):
+    assert _verify_band() == (UNCERTAIN_LOW, UNCERTAIN_HIGH)
+    for off in ("0", "off", "false", "no", "OFF"):
         monkeypatch.setenv("TESSERAE_VERIFY_BAND", off)
-        assert _verify_band() is None, f"{off!r} must not enable the cascade"
+        assert _verify_band() is None, f"{off!r} must disable the cascade"
 
 
 def test_band_adjudication_reads_on_and_explicit_bands(monkeypatch):
     from tesserae.ask_planner import _verify_band
     from tesserae.verify_answer import UNCERTAIN_HIGH, UNCERTAIN_LOW
 
-    for on in ("1", "on", "true", "yes", "default", "ON"):
+    for on in ("", "1", "on", "true", "yes", "default", "ON"):
         monkeypatch.setenv("TESSERAE_VERIFY_BAND", on)
         assert _verify_band() == (UNCERTAIN_LOW, UNCERTAIN_HIGH)
     monkeypatch.setenv("TESSERAE_VERIFY_BAND", "0.25-0.80")
@@ -1242,7 +1247,7 @@ class VerdictClient(FakeClient):
 
 
 def test_envelope_reports_no_cascade_when_it_is_off(tmp_path, monkeypatch):
-    monkeypatch.delenv("TESSERAE_VERIFY_BAND", raising=False)
+    monkeypatch.setenv("TESSERAE_VERIFY_BAND", "off")
     wiki = _make_project(tmp_path)
     client = VerdictClient(PLAN, "Recently the extraction cache shipped [kg-step-1-recent_sessions].")
 
@@ -1288,3 +1293,17 @@ def test_a_judge_saying_unsupported_flags_through_the_envelope(tmp_path, monkeyp
     assert envelope["adjudicated"] >= 1
     assert envelope["unsupported"], "the judge's verdict must reach the envelope"
     assert envelope["supported_rate"] == 0.0
+
+
+
+def test_the_cascade_runs_by_default_when_a_client_is_in_hand(tmp_path, monkeypatch):
+    monkeypatch.delenv("TESSERAE_VERIFY_BAND", raising=False)
+    wiki = _make_project(tmp_path)
+    client = VerdictClient(PLAN, "Recently the extraction cache shipped [kg-step-1-recent_sessions].")
+
+    envelope = plan_and_answer(wiki, "what happened recently?", client=client)
+
+    assert envelope is not None
+    # ran: an int, never None — even when nothing fell in the band
+    assert isinstance(envelope["adjudicated"], int)
+    assert len(client.verdict_calls) == envelope["adjudicated"]

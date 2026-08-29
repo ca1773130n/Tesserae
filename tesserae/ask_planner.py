@@ -1313,19 +1313,27 @@ _ADJUDICATE_SYSTEM = (
 def _verify_band() -> Optional[Tuple[float, float]]:
     """The coverage band to spend a model on, read from ``TESSERAE_VERIFY_BAND``.
 
-    OFF by default, and deliberately so: the per-sentence check is documented as
-    costing no tokens and no network, and a cascade that switched itself on
-    would quietly break that promise for every existing caller.
+    ON by default inside ``ask``. The free check alone is measurably less
+    accurate than a model — 0.872 against 0.928 on 750 held-out sentence pairs,
+    and no model-free variant closes that (stemming, character n-grams, rarity
+    weighting and a local embedding were each tried and none beat plain
+    coverage). Deferring only the uncertain band recovers it: 0.935 on 40% of
+    the calls, indistinguishable from asking about every sentence (p=0.53).
+    ``ask`` already holds a model client and has already spent tokens on the
+    answer, so the marginal cost of accurate flags is small and the default is
+    the accurate one. The library function ``check_against_evidence`` is
+    untouched and still costs nothing; a caller wanting that here sets
+    ``TESSERAE_VERIFY_BAND=off``.
 
-    ``1``/``on``/``true``/``default`` selects the measured band; ``lo-hi`` (for
-    example ``0.30-0.70``) overrides it. A value that parses as neither is
+    ``off``/``0``/``false``/``no`` disables it; ``lo-hi`` (for example
+    ``0.30-0.70``) overrides the band. A value that parses as neither is
     reported on stderr rather than ignored — a silently dropped setting looks
     exactly like a cascade that ran and found nothing.
     """
     raw = os.environ.get("TESSERAE_VERIFY_BAND", "").strip().lower()
-    if raw in ("", "0", "off", "false", "no"):
+    if raw in ("0", "off", "false", "no"):
         return None
-    if raw in ("1", "on", "true", "yes", "default"):
+    if raw in ("", "1", "on", "true", "yes", "default"):
         from .verify_answer import UNCERTAIN_HIGH, UNCERTAIN_LOW
 
         return (UNCERTAIN_LOW, UNCERTAIN_HIGH)
@@ -1535,9 +1543,9 @@ def _plan_and_answer(
         if _sources:
             _evidence = "\n\n".join(_sources)
             _report = check_against_evidence(body, _evidence)
-            # Cascade, off unless asked for. The check decides the sentences it
-            # is confident about and a model re-decides only the uncertain
-            # band: measured at the judge's own accuracy on 42% of the calls.
+            # Cascade, on unless switched off. The check decides the sentences
+            # it is confident about and a model re-decides only the uncertain
+            # band: measured at the judge's own accuracy on 40% of the calls.
             _band = _verify_band()
             if _band is not None and client is not None:
                 from .verify_answer import adjudicate_uncertain
