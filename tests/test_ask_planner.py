@@ -1115,3 +1115,39 @@ def test_a_step_that_raised_reports_no_sources():
     import inspect
     src = inspect.getsource(AP._plan_and_answer)
     assert 'if entry.get("ok", True) else []' in src
+
+
+# ------------------------------- per-sentence review flags on the envelope
+
+
+def test_the_envelope_carries_unsupported_sentences_and_a_rate():
+    """`grounding` is one number for a whole answer — it says something is wrong
+    but not WHERE. These name the sentences and the words that were missing."""
+    from tesserae.verify_answer import check_against_evidence
+
+    evidence = ("ResNet-50 was evaluated on the ImageNet benchmark and reached "
+                "76.1 top-1 accuracy under a single-crop protocol.")
+    answer = ("ResNet-50 reached 76.1 top-1 accuracy on ImageNet. "
+              "It also outperformed DenseNet on CIFAR-100 segmentation tasks.")
+    report = check_against_evidence(answer, evidence)
+    flagged = report.flagged()
+    assert len(flagged) == 1
+    assert "densenet" in flagged[0].missing
+    assert report.supported_rate == 0.5
+
+
+def test_ask_planner_computes_the_flags_from_its_own_source_blocks():
+    """The flags must come from the SAME blocks the grounding score used. A
+    recomputation from hit excerpts would judge the answer against text the
+    model was never shown."""
+    import inspect
+
+    from tesserae import ask_planner
+
+    src = inspect.getsource(ask_planner)
+    assert "check_against_evidence" in src, "the evidence check is not wired into ask"
+    assert 'envelope: Dict[str, Any] = {' in src
+    assert '"unsupported": _unsupported' in src
+    # bound before the try that can fail on import — otherwise the second
+    # consumer swallows a NameError and reports "no flags" for an unchecked query
+    assert "_sources: List[str] = []" in src

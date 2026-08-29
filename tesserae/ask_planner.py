@@ -1422,6 +1422,11 @@ def _plan_and_answer(
     # ``source_blocks_of``. ``None`` when it cannot be computed, which a gate
     # must treat as "do not gate" rather than as a low score.
     _grounding: Optional[float] = None
+    # Bound OUTSIDE the try: the block below can fail on its import, and two
+    # consumers read this now. An unbound name would reach the second one as a
+    # swallowed NameError and report "no flags" for a query that was never
+    # checked — the silent-success shape this file has been bitten by before.
+    _sources: List[str] = []
     try:
         from .retrieval.grounding import corpus_idf, novel_grounded_evidence
 
@@ -1432,10 +1437,45 @@ def _plan_and_answer(
     except Exception:  # pragma: no cover - a scoring aid must never fail a query
         _grounding = None
 
+    # Per-sentence review flags, against the SAME source blocks the grounding
+    # score used. `grounding` is one number for the whole answer, which tells a
+    # reader something is wrong but not WHERE; this names the sentences and the
+    # words that were not in the evidence.
+    #
+    # Validated against a negative control on 442 sentences of real output:
+    # coverage separates an answer from its own evidence (0.682) from a
+    # different question's (0.365) at AUC 0.908, catching 78.5% of ungrounded
+    # sentences at an 11.3% false-alarm rate. See `tesserae.verify_answer`.
+    #
+    # UNSUPPORTED means REVIEW THIS, not "this is false" — a correct paraphrase
+    # in different vocabulary lands there too. Costs no tokens and no network,
+    # and can never fail the query.
+    _unsupported: Optional[List[Dict[str, Any]]] = None
+    _supported_rate: Optional[float] = None
+    try:
+        from .verify_answer import check_against_evidence
+
+        if _sources:
+            _report = check_against_evidence(body, "\n\n".join(_sources))
+            _supported_rate = _report.supported_rate
+            _unsupported = [
+                {"sentence": s.sentence, "coverage": round(s.coverage, 3),
+                 "missing": list(s.missing)[:12]}
+                for s in _report.flagged()
+            ]
+    except Exception:  # pragma: no cover - a review aid must never fail a query
+        _unsupported = None
+        _supported_rate = None
+
     envelope: Dict[str, Any] = {
         "hits": [h.to_dict() for h in hits],
         "answer": body.strip() + "\n",
         "grounding": _grounding,
+        # Sentences whose content is largely absent from the evidence, each
+        # naming the words that were missing. None when it could not be
+        # computed, which a caller must treat as "unknown", never as "clean".
+        "unsupported": _unsupported,
+        "supported_rate": _supported_rate,
         "model": "cli-oauth",
         "used_llm": True,
         "fallback_reason": None,
