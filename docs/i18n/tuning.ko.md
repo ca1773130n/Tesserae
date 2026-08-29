@@ -135,6 +135,30 @@ cross-project navigate하는 project는 eager pass를 원합니다.
 | `TESSERAE_SYNTHESIS_MODEL` | — | synthesis model override |
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Parallel synthesis workers |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | off | model skip, pipeline exercise |
+| `TESSERAE_VERIFY_BAND` | off | `ask`의 불확실한 검토 플래그를 모델로 다시 판정한다. `on`은 측정된 0.30–0.70 구간을, `lo-hi`는 그 구간을 덮어쓴다. 꺼두면 플래그는 토큰도 네트워크도 쓰지 않는다 |
+
+### `TESSERAE_VERIFY_BAND`
+
+모든 `ask` 답변은 비용이 들지 않는 문장별 검토 플래그를 함께 싣는다. 이 플래그는
+모델에게 묻는 것보다 덜 정확하다 — 검증에서 제외한 문장 755개에서 0.870 대 0.926 —
+그리고 차이의 거의 전부는 충실한 다른 말 바꾸기에 대한 오경보다. 그런 문장은 출처와
+공유하는 어휘가 거의 없다.
+
+둘은 서로 다른 문장에서 틀리므로, 무료 검사가 확신하지 못하는 곳에서만 모델에 값을
+치르면 비용의 일부로 정확도를 되찾는다. 커버리지 0.30–0.70을 넘기면 호출의 42%로
+0.932를 기록했다. 모든 문장을 묻는 것과 구별되지 않으면서(McNemar p=0.52) 지출은
+42%다.
+
+```bash
+export TESSERAE_VERIFY_BAND=on          # 측정된 0.30-0.70 구간
+export TESSERAE_VERIFY_BAND=0.40-0.60   # 더 좁게: 호출의 22%, 0.914
+```
+
+기본값은 꺼짐이다. 플래그는 토큰도 네트워크도 쓰지 않는다고 문서화되어 있고, 스스로
+켜지는 캐스케이드는 모든 호출자에게 그 약속을 깨뜨리기 때문이다. 엔벨로프는
+`adjudicated`를 보고한다. 캐스케이드가 실행되지 않았으면 `null`, 실행되었으면 개수다.
+답하지 못한 모델은 무료 판정을 그대로 남겨 둔다 — 실패한 호출이 플래그된 문장을
+깨끗하게 만들 수는 결코 없다.
 
 ---
 

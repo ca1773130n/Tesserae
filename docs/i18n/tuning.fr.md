@@ -159,6 +159,31 @@ veut la passe hâtive activée.
 | `TESSERAE_SYNTHESIS_MODEL` | — | Remplace le modèle de synthèse |
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Travailleurs de synthèse parallèles |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | désactivé | Ignorer le modèle, exécuter le pipeline |
+| `TESSERAE_VERIFY_BAND` | désactivé | Faire retrancher par le modèle les signalements incertains de `ask`. `on` prend la bande mesurée 0.30–0.70 ; `lo-hi` la remplace. Désactivé, les signalements ne coûtent ni jetons ni réseau |
+
+### `TESSERAE_VERIFY_BAND`
+
+Chaque réponse d'`ask` porte des signalements de relecture par phrase qui ne coûtent
+rien. Ils sont moins exacts que d'interroger un modèle — 0.870 contre 0.926 sur 755
+phrases tenues à l'écart — et presque tout l'écart vient de fausses alertes sur des
+paraphrases fidèles, qui partagent peu de vocabulaire avec leur source.
+
+Les deux se trompent sur des phrases différentes : payer le modèle uniquement là où la
+vérification gratuite hésite récupère donc l'exactitude pour une fraction du coût.
+Céder la couverture 0.30–0.70 a donné 0.932 sur 42% des appels : indiscernable d'une
+interrogation phrase par phrase (McNemar p=0.52), pour 42% de la dépense.
+
+```bash
+export TESSERAE_VERIFY_BAND=on          # la bande mesurée 0.30-0.70
+export TESSERAE_VERIFY_BAND=0.40-0.60   # plus étroite : 22% des appels, 0.914
+```
+
+Désactivé par défaut, car ces signalements sont documentés comme ne coûtant ni jetons
+ni réseau, et une cascade qui s'activerait d'elle-même romprait cette promesse pour
+tout appelant. L'enveloppe rapporte `adjudicated` : `null` quand la cascade n'a pas
+tourné, un décompte quand elle a tourné. Un modèle incapable de répondre laisse le
+verdict gratuit en place — un appel raté ne peut jamais rendre propre une phrase
+signalée.
 
 ---
 

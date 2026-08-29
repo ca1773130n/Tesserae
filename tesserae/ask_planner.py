@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import json
 import re
+import os
 import sys
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .citation_names import NODE_CITATION_RE, rewrite_citations
 from .research_graph import (ALLOWED_EDGE_TYPES, ALLOWED_NODE_TYPES,
@@ -1294,6 +1295,78 @@ def plan_and_answer(
         return None
 
 
+#: Prompt for the band adjudicator. It names the paraphrase case explicitly
+#: because that is the deterministic check's dominant error: 50 of its 98
+#: mistakes on the held-out set were faithful restatements that happened to
+#: share little vocabulary with the source.
+_ADJUDICATE_SYSTEM = (
+    "You check whether EVIDENCE supports a SENTENCE taken from an answer.\n"
+    'Return {"verdict":"SUPPORTED"} or {"verdict":"UNSUPPORTED"}.\n'
+    "SUPPORTED means the evidence actually contains what the sentence asserts. "
+    "A faithful restatement in different words is SUPPORTED.\n"
+    "UNSUPPORTED means the evidence does not contain it — the sentence is about "
+    "other entities, other events, or details the evidence never mentions.\n"
+    "Judge only against the evidence shown. Do not use outside knowledge."
+)
+
+
+def _verify_band() -> Optional[Tuple[float, float]]:
+    """The coverage band to spend a model on, read from ``TESSERAE_VERIFY_BAND``.
+
+    OFF by default, and deliberately so: the per-sentence check is documented as
+    costing no tokens and no network, and a cascade that switched itself on
+    would quietly break that promise for every existing caller.
+
+    ``1``/``on``/``true``/``default`` selects the measured band; ``lo-hi`` (for
+    example ``0.30-0.70``) overrides it. A value that parses as neither is
+    reported on stderr rather than ignored — a silently dropped setting looks
+    exactly like a cascade that ran and found nothing.
+    """
+    raw = os.environ.get("TESSERAE_VERIFY_BAND", "").strip().lower()
+    if raw in ("", "0", "off", "false", "no"):
+        return None
+    if raw in ("1", "on", "true", "yes", "default"):
+        from .verify_answer import UNCERTAIN_HIGH, UNCERTAIN_LOW
+
+        return (UNCERTAIN_LOW, UNCERTAIN_HIGH)
+    try:
+        lo_s, hi_s = raw.split("-", 1)
+        lo, hi = float(lo_s), float(hi_s)
+    except ValueError:
+        print(f"(TESSERAE_VERIFY_BAND={raw!r} is not 'on', 'off' or 'lo-hi' — "
+              f"band adjudication stays off)", file=sys.stderr)
+        return None
+    if not 0.0 <= lo <= hi <= 1.0:
+        print(f"(TESSERAE_VERIFY_BAND={raw!r} is not a band inside 0.0-1.0 — "
+              f"band adjudication stays off)", file=sys.stderr)
+        return None
+    return (lo, hi)
+
+
+def _model_judge(client: Any) -> Callable[[str, str], Optional[str]]:
+    """A judge for :func:`~tesserae.verify_answer.adjudicate_uncertain`.
+
+    Returns ``None`` on anything it cannot read as a verdict, which leaves the
+    deterministic answer standing rather than guessing.
+    """
+
+    def judge(sentence: str, evidence: str) -> Optional[str]:
+        from .verify_answer import SUPPORTED, UNSUPPORTED
+
+        raw = client.complete_json(
+            system=_ADJUDICATE_SYSTEM,
+            user=f"SENTENCE:\n{sentence}\n\nEVIDENCE:\n{evidence}",
+            schema_name="answer_sentence_verdict",
+        )
+        if isinstance(raw, dict):
+            verdict = str(raw.get("verdict") or "").strip().upper()
+            if verdict in (SUPPORTED, UNSUPPORTED):
+                return verdict
+        return None
+
+    return judge
+
+
 def _plan_and_answer(
     wiki: Any,
     question: str,
@@ -1452,11 +1525,27 @@ def _plan_and_answer(
     # and can never fail the query.
     _unsupported: Optional[List[Dict[str, Any]]] = None
     _supported_rate: Optional[float] = None
+    #: How many sentences a model re-decided. ``None`` means the cascade did not
+    #: run at all, which is not the same fact as it running and re-deciding
+    #: nothing — a consumer pricing calls needs to tell those apart.
+    _adjudicated: Optional[int] = None
     try:
         from .verify_answer import check_against_evidence
 
         if _sources:
-            _report = check_against_evidence(body, "\n\n".join(_sources))
+            _evidence = "\n\n".join(_sources)
+            _report = check_against_evidence(body, _evidence)
+            # Cascade, off unless asked for. The check decides the sentences it
+            # is confident about and a model re-decides only the uncertain
+            # band: measured at the judge's own accuracy on 42% of the calls.
+            _band = _verify_band()
+            if _band is not None and client is not None:
+                from .verify_answer import adjudicate_uncertain
+
+                _report = adjudicate_uncertain(
+                    _report, _evidence, _model_judge(client),
+                    low=_band[0], high=_band[1])
+                _adjudicated = sum(1 for s in _report.sentences if s.adjudicated)
             _supported_rate = _report.supported_rate
             _unsupported = [
                 {"sentence": s.sentence, "coverage": round(s.coverage, 3),
@@ -1476,6 +1565,9 @@ def _plan_and_answer(
         # computed, which a caller must treat as "unknown", never as "clean".
         "unsupported": _unsupported,
         "supported_rate": _supported_rate,
+        # Sentences a model re-decided in the uncertain band. None when the
+        # cascade did not run (the default), an int when it did.
+        "adjudicated": _adjudicated,
         "model": "cli-oauth",
         "used_llm": True,
         "fallback_reason": None,
