@@ -2259,3 +2259,59 @@ def test_auth_prose_does_not_promise_a_once_per_process_hint_for_both_clients():
         assert "CodexCLIJsonClient" in text and "per call" in text.lower(), (
             f"{label} does not record that the codex client logs one line per call"
         )
+
+
+# ------------------------------------------- OpenAI client rate limits ---
+# A 429 is a wait, not a failure. Measured 2026-08-29: 390 rate-limit replies
+# in one conversation's answering turned 46 gradeable rows into errors.
+
+def test_openai_retry_delay_prefers_the_servers_own_number():
+    from tesserae.llm_json import _openai_retry_delay
+
+    assert _openai_retry_delay({"Retry-After": "3"}, "", 0) == 3.25
+    assert abs(_openai_retry_delay(None, "Please try again in 1.898s.", 0) - 2.148) < 1e-6
+    assert abs(_openai_retry_delay(None, "try again in 500ms", 0) - 0.75) < 1e-6
+    assert _openai_retry_delay(None, "", 3) == 8.25            # 2**3 + 0.25
+    assert _openai_retry_delay({"Retry-After": "900"}, "", 0) == 30.0   # capped
+    assert _openai_retry_delay({"Retry-After": "bogus"}, "", 0) == 1.25  # never zero, never a hot loop
+
+
+def test_openai_client_retries_a_429_then_returns_the_reply(monkeypatch):
+    import io, json, urllib.error
+    from tesserae import llm_json
+
+    calls = {"n": 0}
+    body = json.dumps({"choices": [{"message": {"content": '{"answer": "teal"}'}}]}).encode()
+
+    class _Resp(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def fake_urlopen(req, timeout=0):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise urllib.error.HTTPError(req.full_url, 429, "rate", {"Retry-After": "0"},
+                                         io.BytesIO(b'{"error":{"message":"try again in 10ms"}}'))
+        return _Resp(body)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr(llm_json.time, "sleep", lambda s: None)
+    client = llm_json.OpenAIAPIJsonClient(model="gpt-4o-mini", api_key="sk-test")
+    assert client.complete_json(system="s", user="u", schema_name="t") == {"answer": "teal"}
+    assert calls["n"] == 3
+
+
+def test_openai_client_does_not_retry_a_400(monkeypatch):
+    import io, urllib.error
+    from tesserae import llm_json
+
+    calls = {"n": 0}
+    def fake_urlopen(req, timeout=0):
+        calls["n"] += 1
+        raise urllib.error.HTTPError(req.full_url, 400, "bad", {}, io.BytesIO(b'{"error":{"message":"no"}}'))
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    client = llm_json.OpenAIAPIJsonClient(model="gpt-4o-mini", api_key="sk-test")
+    # the transport gives up on a 400 at once; complete_json's own retry
+    # ladder above it is a separate, older contract and is not under test here
+    assert client._post(system="s", user="u", json_mode=True) is None
+    assert calls["n"] == 1
