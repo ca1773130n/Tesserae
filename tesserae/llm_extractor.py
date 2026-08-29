@@ -745,6 +745,13 @@ def _collapse_same_name_within_document(graph: ResearchGraph) -> ResearchGraph:
     once the graph got denser, and it declined claims whose supporting edge was
     present.
 
+    ACROSS documents the same-string case is handled by
+    ``entity_resolution.merge_exact_names`` for the research-entity types,
+    which is where 'PDB' the Benchmark in one paper and 'PDB' the Dataset in
+    another finally met (2026-08-29). This collapse stays: it runs before the
+    per-document graphs are merged, on types that pass deliberately excludes,
+    and it is what keeps one chunked paper from minting the same name twice.
+
     The winner is chosen deterministically — ranked priority, then degree, then
     id — because the compile is byte-idempotent and a merge that depended on
     dict order would break that.
