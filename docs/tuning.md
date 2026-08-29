@@ -148,7 +148,7 @@ you navigate cross-project wants the eager pass on.
 | `TESSERAE_SYNTHESIS_MODEL` | — | Overrides the synthesis model |
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Parallel synthesis workers |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | off | Skip the model, exercise the pipeline |
-| `TESSERAE_VERIFY_BAND` | off | Re-decide `ask`'s uncertain review flags with the model. `on` uses the measured 0.30–0.70 band; `lo-hi` overrides it. Off means the flags cost no tokens and no network |
+| `TESSERAE_VERIFY_BAND` | on | Re-decide `ask`'s uncertain review flags with the model, in the measured 0.30–0.70 band; `lo-hi` overrides it. `off` keeps the free flags only, which cost no tokens and no network |
 
 ### `TESSERAE_VERIFY_BAND`
 
@@ -167,11 +167,16 @@ export TESSERAE_VERIFY_BAND=on          # the measured 0.30-0.70 band
 export TESSERAE_VERIFY_BAND=0.40-0.60   # narrower: 22% of calls, 0.914
 ```
 
-Off by default, because the flags are documented as costing no tokens and no
-network and a cascade that enabled itself would break that for every caller.
-The envelope reports `adjudicated`: `null` when the cascade did not run, a count
-when it did. A model that cannot answer leaves the free verdict standing — a
-failed call can never turn a flagged sentence clean.
+On by default inside `ask`, where a model client is already in hand and tokens
+have already been spent on the answer, so the accurate flags cost little extra.
+No model-free variant of the check closes the gap on its own — stemming,
+character n-grams, rarity weighting and a local embedding were each measured
+and none beat plain coverage — which is why the default is the cascade rather
+than a cleverer free check. The library function `check_against_evidence` is
+untouched and still costs nothing. The envelope reports `adjudicated`: `null`
+when the cascade did not run, a count when it did. A model that cannot answer
+leaves the free verdict standing — a failed call can never turn a flagged
+sentence clean.
 
 ---
 

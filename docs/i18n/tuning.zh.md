@@ -135,7 +135,7 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 | `TESSERAE_SYNTHESIS_MODEL` | — | 覆盖综合模型 |
 | `TESSERAE_SYNTHESIS_WORKERS` | — | 并行综合工作者 |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | 关闭 | 跳过模型，运行管道 |
-| `TESSERAE_VERIFY_BAND` | 关闭 | 用模型重新判定 `ask` 不确定的复核标记。`on` 使用实测的 0.30–0.70 区间，`lo-hi` 覆盖它。关闭时标记不花费令牌也不走网络 |
+| `TESSERAE_VERIFY_BAND` | 开启 | 在实测的 0.30–0.70 区间内用模型重新判定 `ask` 不确定的复核标记；`lo-hi` 覆盖它。`off` 只保留不花费令牌也不走网络的免费标记 |
 
 ### `TESSERAE_VERIFY_BAND`
 
@@ -152,9 +152,12 @@ export TESSERAE_VERIFY_BAND=on          # 实测的 0.30-0.70 区间
 export TESSERAE_VERIFY_BAND=0.40-0.60   # 更窄：22% 的调用，0.914
 ```
 
-默认关闭，因为这些标记的文档承诺不花费令牌也不走网络，而一个自行开启的级联会对每一
-个调用方打破这个承诺。信封会报告 `adjudicated`：级联未运行时为 `null`，运行时为计数。
-无法作答的模型会让免费判定保持原样 —— 一次失败的调用永远不能把被标记的句子变干净。
+在 `ask` 内部默认开启：模型客户端已在手中，答案本身已经花费了令牌，所以准确标记的额
+外成本很小。没有任何免模型的检查变体能独自缩小差距 —— 词干提取、字符 n-gram、稀有度加
+权和本地嵌入都逐一测量过，没有一个胜过朴素覆盖率 —— 因此默认是级联，而不是更聪明的免
+费检查。库函数 `check_against_evidence` 保持不变，仍然不花钱。信封会报告
+`adjudicated`：级联未运行时为 `null`，运行时为计数。无法作答的模型会让免费判定保持原样
+—— 一次失败的调用永远不能把被标记的句子变干净。
 
 ---
 

@@ -153,7 +153,7 @@ das Sie cross-project navigieren, den eifrigen Pass ein.
 | `TESSERAE_SYNTHESIS_MODEL` | — | Overrides das Synthese-Modell |
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Parallele Synthese-Worker |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | aus | Skip das Modell, führe Pipeline aus |
-| `TESSERAE_VERIFY_BAND` | aus | Lässt das Modell die unsicheren Prüfmarkierungen von `ask` neu entscheiden. `on` nimmt das gemessene Band 0.30–0.70, `lo-hi` überschreibt es. Aus kosten die Markierungen weder Token noch Netzwerk |
+| `TESSERAE_VERIFY_BAND` | an | Lässt das Modell die unsicheren Prüfmarkierungen von `ask` im gemessenen Band 0.30–0.70 neu entscheiden; `lo-hi` überschreibt es. `off` behält nur die kostenlosen Markierungen, die weder Token noch Netzwerk kosten |
 
 ### `TESSERAE_VERIFY_BAND`
 
@@ -172,11 +172,16 @@ export TESSERAE_VERIFY_BAND=on          # das gemessene Band 0.30-0.70
 export TESSERAE_VERIFY_BAND=0.40-0.60   # enger: 22% der Aufrufe, 0.914
 ```
 
-Standardmäßig aus, denn die Markierungen sind als kostenlos und netzfrei dokumentiert,
-und eine Kaskade, die sich selbst einschaltet, bräche das für jeden Aufrufer. Der
-Umschlag meldet `adjudicated`: `null`, wenn die Kaskade nicht lief, sonst eine Anzahl.
-Ein Modell, das nicht antworten kann, lässt das kostenlose Urteil stehen — ein
-fehlgeschlagener Aufruf kann einen markierten Satz niemals sauber machen.
+In `ask` standardmäßig an: ein Modell-Client ist bereits zur Hand, Token sind für die
+Antwort bereits ausgegeben, also kosten die genauen Markierungen wenig obendrauf. Keine
+modellfreie Variante der Prüfung schließt die Lücke allein — Stemming, Zeichen-n-Gramme,
+Seltenheitsgewichtung und eine lokale Einbettung wurden je gemessen, und keine schlug die
+schlichte Abdeckung —, darum ist die Voreinstellung die Kaskade und nicht eine
+schlauere kostenlose Prüfung. Die Bibliotheksfunktion `check_against_evidence` bleibt
+unberührt und kostet weiterhin nichts. Der Umschlag meldet `adjudicated`: `null`, wenn
+die Kaskade nicht lief, sonst eine Anzahl. Ein Modell, das nicht antworten kann, lässt
+das kostenlose Urteil stehen — ein fehlgeschlagener Aufruf kann einen markierten Satz
+niemals sauber machen.
 
 ---
 

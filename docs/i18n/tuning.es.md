@@ -142,7 +142,7 @@ la pasada ansiosa activada.
 | `TESSERAE_SYNTHESIS_MODEL` | — | Anula el modelo de síntesis |
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Trabajadores de síntesis paralela |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | desactivado | Salta el modelo, ejecuta la tubería |
-| `TESSERAE_VERIFY_BAND` | desactivado | Vuelve a decidir con el modelo las marcas de revisión dudosas de `ask`. `on` usa la banda medida 0.30–0.70; `lo-hi` la sustituye. Desactivado, las marcas no cuestan tokens ni red |
+| `TESSERAE_VERIFY_BAND` | activado | Vuelve a decidir con el modelo las marcas de revisión dudosas de `ask` en la banda medida 0.30–0.70; `lo-hi` la sustituye. `off` deja solo las marcas gratuitas, que no cuestan tokens ni red |
 
 ### `TESSERAE_VERIFY_BAND`
 
@@ -161,11 +161,16 @@ export TESSERAE_VERIFY_BAND=on          # la banda medida 0.30-0.70
 export TESSERAE_VERIFY_BAND=0.40-0.60   # más estrecha: 22% de las llamadas, 0.914
 ```
 
-Desactivado por defecto, porque las marcas están documentadas como algo que no cuesta
-tokens ni red, y una cascada que se encendiera sola rompería eso para todo el que
-llame. El sobre informa de `adjudicated`: `null` cuando la cascada no se ejecutó, y un
-recuento cuando sí. Un modelo que no puede responder deja en pie el veredicto
-gratuito — una llamada fallida nunca puede dejar limpia una frase marcada.
+Activado por defecto dentro de `ask`, donde ya hay un cliente del modelo a mano y ya se
+han gastado tokens en la respuesta, así que las marcas exactas cuestan poco más. Ninguna
+variante de la comprobación sin modelo cierra la brecha por sí sola — se midieron la
+lematización, los n-gramas de caracteres, la ponderación por rareza y una incrustación
+local, y ninguna superó la cobertura simple —, por eso el valor por defecto es la cascada
+y no una comprobación gratuita más lista. La función de biblioteca
+`check_against_evidence` no se toca y sigue sin costar nada. El sobre informa de
+`adjudicated`: `null` cuando la cascada no se ejecutó, y un recuento cuando sí. Un modelo
+que no puede responder deja en pie el veredicto gratuito — una llamada fallida nunca puede
+dejar limpia una frase marcada.
 
 ---
 

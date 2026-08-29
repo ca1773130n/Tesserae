@@ -135,7 +135,7 @@ cross-project navigate하는 project는 eager pass를 원합니다.
 | `TESSERAE_SYNTHESIS_MODEL` | — | synthesis model override |
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Parallel synthesis workers |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | off | model skip, pipeline exercise |
-| `TESSERAE_VERIFY_BAND` | off | `ask`의 불확실한 검토 플래그를 모델로 다시 판정한다. `on`은 측정된 0.30–0.70 구간을, `lo-hi`는 그 구간을 덮어쓴다. 꺼두면 플래그는 토큰도 네트워크도 쓰지 않는다 |
+| `TESSERAE_VERIFY_BAND` | on | `ask`의 불확실한 검토 플래그를 측정된 0.30–0.70 구간에서 모델로 다시 판정한다. `lo-hi`는 그 구간을 덮어쓴다. `off`는 토큰도 네트워크도 쓰지 않는 무료 플래그만 남긴다 |
 
 ### `TESSERAE_VERIFY_BAND`
 
@@ -154,10 +154,13 @@ export TESSERAE_VERIFY_BAND=on          # 측정된 0.30-0.70 구간
 export TESSERAE_VERIFY_BAND=0.40-0.60   # 더 좁게: 호출의 22%, 0.914
 ```
 
-기본값은 꺼짐이다. 플래그는 토큰도 네트워크도 쓰지 않는다고 문서화되어 있고, 스스로
-켜지는 캐스케이드는 모든 호출자에게 그 약속을 깨뜨리기 때문이다. 엔벨로프는
-`adjudicated`를 보고한다. 캐스케이드가 실행되지 않았으면 `null`, 실행되었으면 개수다.
-답하지 못한 모델은 무료 판정을 그대로 남겨 둔다 — 실패한 호출이 플래그된 문장을
+`ask` 안에서는 기본값이 켜짐이다. 모델 클라이언트가 이미 손에 있고 답변에 토큰을 이미
+썼으므로, 정확한 플래그의 추가 비용은 작다. 모델 없는 검사 변형은 어느 것도 그 격차를
+혼자 메우지 못한다 — 어간 추출, 문자 n-gram, 희귀도 가중, 로컬 임베딩을 각각 측정했고
+어느 것도 단순 커버리지를 이기지 못했다 — 그래서 기본값은 더 영리한 무료 검사가 아니라
+캐스케이드다. 라이브러리 함수 `check_against_evidence`는 그대로이며 여전히 비용이 없다.
+엔벨로프는 `adjudicated`를 보고한다. 캐스케이드가 실행되지 않았으면 `null`, 실행되었으면
+개수다. 답하지 못한 모델은 무료 판정을 그대로 남겨 둔다 — 실패한 호출이 플래그된 문장을
 깨끗하게 만들 수는 결코 없다.
 
 ---
