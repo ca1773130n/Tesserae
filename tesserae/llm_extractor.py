@@ -750,6 +750,7 @@ def _collapse_piece_anchors(
 
         SourceDocument nodes            1,397  ->  211
         gold-document recall, top_k=10  0.550  ->  0.648
+        gold-document recall, top_k=50  0.753  ->  0.823
         same-document slots in top 10   64.7%  ->  53.2%
 
     The remaining same-document slots are spans and claims of one paper, which
