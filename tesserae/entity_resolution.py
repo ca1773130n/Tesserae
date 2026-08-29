@@ -29,6 +29,38 @@ was measured before same-name collapse landed in chunked extraction; on a graph
 carrying that fix the figure is 449 by exact name and 662 by normalised name,
 and the pre-fix number should not be read as describing current output.
 
+TWO PASSES. Names merge first when they are the SAME string (casefolded), and
+only then when embeddings say they mean the same thing. The exact pass exists
+because three earlier mechanisms all missed 'PDB' the Benchmark in one paper
+and 'PDB' the Dataset in another: ``merge_cross_type_duplicates`` merges
+same-name nodes only when every type is in its priority table (papers, claims,
+fields); the within-document collapse never sees two papers; and the
+similarity pass blocks candidates on tokens of four letters or more, so a
+three-letter name is never compared at all. Every consumer that resolves by
+name then refused the ambiguity. Measured on the same graph and claim set,
+similarity pass alone against the two passes as shipped (2026-08-29):
+
+    refused (NOT_RESOLVABLE)         182/426  ->  164/426
+    correct                          149/426  ->  162/426
+    false SUPPORTED, 426 negatives         0  ->        0
+    names owned by >1 node               361  ->       73
+    merges                               387  ->  586 exact + 128 similarity
+
+The 73 that remain each involve a type the pass excludes, by construction: a
+source anchor, a span, a claim, a code symbol, a session, a person or an
+organisation. 'mip-NeRF 360' is a Model and the Paper that introduced it, and
+making a document out of a method is worse than an ambiguity; two ``main``
+functions sharing a name is the normal case, not a duplicate.
+
+What identity cannot see is two things that share a name. A model shown every
+group the pass joins on that graph (302) called 38 of them different things —
+12.6%, an upper bound, since most of those are one concept described in two
+papers' words: 'Beam search' as an ApproachFamily and as an InferenceStrategy,
+'2-Wasserstein distance' as a MathematicalConcept and as a Metric. The
+deterministic cost of those merges was zero fabricated verdicts on 426
+negatives; the residual risk is a claim about one meaning answered by the
+other's edge, and it is bounded by that 12.6%.
+
 Mem0 credits this mechanism for a large share of its 71.4 -> 92.5 on LoCoMo:
 "compute embeddings for both source and destination entities, then search for
 existing nodes with semantic similarity above a defined threshold". The survey
@@ -53,7 +85,7 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from .research_graph import (ResearchEdge, ResearchGraph, ResearchNode,
                              _CROSS_TYPE_MERGE_PRIORITY,
-                             _init_cross_type_priority)
+                             _init_cross_type_priority, is_source_anchor)
 
 #: Cosine above which two entity names are treated as one entity. Measured, not
 #: picked — the curve on a 148-paper corpus, scoring how many of 213 asserted
@@ -83,6 +115,17 @@ ENTITY_TYPES = frozenset({
     "ProblemArea", "ResearchTopic",
 })
 
+#: Types the EXACT-name pass covers: the research-entity family. Wider than
+#: ``ENTITY_TYPES`` because a same-string name is far stronger evidence than a
+#: similar embedding, so types too risky to merge on similarity — an
+#: ``ObjectiveFunction`` against an ``Algorithm`` — are safe to merge on
+#: identity. Never anchors, spans, claims, code, sessions, people.
+EXACT_NAME_TYPES = ENTITY_TYPES | frozenset({
+    "ObjectiveFunction", "InferenceStrategy", "MethodologicalConcept",
+    "ResearchField", "MathematicalConcept", "TechnicalTerm",
+    "TrainingParadigm", "EvaluationProtocol",
+})
+
 #: A token appearing in more than this many candidate names blocks nothing, so
 #: pairing on it would cost O(n^2) for no recall. Purely a cost guard.
 _BLOCK_MAX = 60
@@ -106,9 +149,13 @@ def resolve_entities(
 ) -> Tuple[ResearchGraph, int]:
     """Collapse entity nodes whose names mean the same thing.
 
-    Returns ``(graph, merged_count)``. Returns the SAME graph object when the
-    pass is disabled or finds nothing, so a caller that does not want this pays
-    nothing for it.
+    Two passes, in this order: :func:`merge_exact_names` joins nodes whose
+    names are the same string, then the similarity pass joins names whose
+    embeddings sit above ``threshold``. Returns ``(graph, merged_count)`` with
+    the count summed over both. Returns the SAME graph object when the pass is
+    disabled or finds nothing, so a caller that does not want this pays
+    nothing for it. A threshold at or below zero disables BOTH passes — one
+    knob turns the function off.
 
     Deterministic: candidate pairs are sorted by (similarity, id, id) and the
     winner of each merge is chosen by ranked priority, then degree, then id —
@@ -119,6 +166,9 @@ def resolve_entities(
     measured to make things WORSE: a query spelling the merged-away name stopped
     resolving at all, so refusals rose from 226 to 254 even as recall-of-decided
     improved. Carrying them forward turns that into a fall to 182.
+
+    A missing or failing embedder skips only the similarity pass. The exact
+    pass needs no model, and a broken one must not take it down too.
     """
     thr = DEFAULT_SIMILARITY if threshold is None else threshold
     if thr <= 0:
@@ -126,6 +176,46 @@ def resolve_entities(
     if not _CROSS_TYPE_MERGE_PRIORITY:
         _init_cross_type_priority()
 
+    graph, n_exact = merge_exact_names(graph)
+    graph, n_similar = _merge_similar_names(graph, backend=backend, threshold=thr)
+    return graph, n_exact + n_similar
+
+
+def merge_exact_names(graph: ResearchGraph) -> Tuple[ResearchGraph, int]:
+    """Join nodes of :data:`EXACT_NAME_TYPES` whose names are the same string.
+
+    Casefolded, whitespace-stripped, nothing fuzzier — the point of this pass is
+    that identity needs no threshold. It runs across documents, which is the
+    one place no earlier pass looked (see the module docstring), and needs no
+    embedder. Same graph object back when nothing merges.
+    """
+    if not _CROSS_TYPE_MERGE_PRIORITY:
+        _init_cross_type_priority()
+    groups: Dict[str, List[ResearchNode]] = defaultdict(list)
+    for node in graph.nodes:
+        if is_source_anchor(node) or node.type.value not in EXACT_NAME_TYPES:
+            continue
+        key = node.name.strip().casefold()
+        if key:
+            groups[key].append(node)
+    if all(len(v) < 2 for v in groups.values()):
+        return graph, 0
+
+    rank = _rank_by(_degree(graph))
+    redirect: Dict[str, str] = {}
+    for key in sorted(groups):
+        nodes = sorted(groups[key], key=rank)
+        for lose in nodes[1:]:
+            redirect[lose.id] = nodes[0].id
+    return _apply_redirect(graph, redirect)
+
+
+def _merge_similar_names(
+    graph: ResearchGraph,
+    *,
+    backend,
+    threshold: float,
+) -> Tuple[ResearchGraph, int]:
     cands = [n for n in graph.nodes if n.type.value in ENTITY_TYPES and n.name.strip()]
     if len(cands) < 2:
         return graph, 0
@@ -139,7 +229,7 @@ def resolve_entities(
         vectors = [_unit(v) for v in _embed(backend, names)]
     except Exception:
         # A missing or failing embedder must not fail a compile. The graph is
-        # simply not entity-resolved, which is the behaviour before this pass.
+        # simply not similarity-resolved, which is the behaviour before this pass.
         return graph, 0
 
     blocks: Dict[str, List[int]] = defaultdict(list)
@@ -160,27 +250,20 @@ def resolve_entities(
     scored = []
     for i, j in pairs:
         sim = sum(x * y for x, y in zip(vectors[i], vectors[j]))
-        if sim >= thr:
+        if sim >= threshold:
             scored.append((sim, cands[i].id, cands[j].id))
     if not scored:
         return graph, 0
     scored.sort(key=lambda t: (-t[0], t[1], t[2]))
 
-    degree: Counter = Counter()
-    for edge in graph.edges:
-        degree[edge.source] += 1
-        degree[edge.target] += 1
     by_id = {n.id: n for n in graph.nodes}
-
+    rank = _rank_by(_degree(graph))
     parent: Dict[str, str] = {}
 
     def find(x: str) -> str:
         while parent.get(x, x) != x:
             x = parent[x]
         return x
-
-    def rank(node: ResearchNode):
-        return (-_CROSS_TYPE_MERGE_PRIORITY.get(node.type, 0), -degree[node.id], node.id)
 
     for _sim, a_id, b_id in scored:
         a, b = find(a_id), find(b_id)
@@ -194,8 +277,30 @@ def resolve_entities(
 
     redirect = {k: find(k) for k in parent}
     redirect = {k: v for k, v in redirect.items() if k != v}
+    return _apply_redirect(graph, redirect)
+
+
+def _degree(graph: ResearchGraph) -> Counter:
+    degree: Counter = Counter()
+    for edge in graph.edges:
+        degree[edge.source] += 1
+        degree[edge.target] += 1
+    return degree
+
+
+def _rank_by(degree: Counter):
+    """Winner order shared by both passes: priority, then degree, then id."""
+    def rank(node: ResearchNode):
+        return (-_CROSS_TYPE_MERGE_PRIORITY.get(node.type, 0), -degree[node.id], node.id)
+    return rank
+
+
+def _apply_redirect(graph: ResearchGraph, redirect: Dict[str, str]) -> Tuple[ResearchGraph, int]:
+    """Point every loser at its winner: names and aliases carried, edges
+    rewritten, self-loops dropped, duplicate edges collapsed."""
     if not redirect:
         return graph, 0
+    by_id = {n.id: n for n in graph.nodes}
 
     carried: Dict[str, Set[str]] = defaultdict(set)
     for loser, winner in redirect.items():

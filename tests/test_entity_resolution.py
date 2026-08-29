@@ -141,3 +141,93 @@ def test_the_compile_actually_calls_the_pass():
     src = inspect.getsource(project)
     assert "resolve_entities" in src, "entity resolution is not wired into the compile"
     assert "from .entity_resolution import resolve_entities" in src
+
+
+# ------------------------------------------------ the exact-name pass ---
+# Three passes already existed and all missed 'PDB' the Benchmark in one paper
+# and 'PDB' the Dataset in another: the cross-file merge covers only the
+# priority table, the within-document collapse never sees two papers, and the
+# similarity pass blocks on tokens of four letters or more, so a three-letter
+# name is never compared at all. These pin what the fourth one may and may not
+# join.
+
+def test_the_same_name_in_two_papers_is_one_entity_whatever_the_type():
+    nodes = [_n("Benchmark:pdb", "PDB", "Benchmark"), _n("Dataset:pdb", "PDB", "Dataset")]
+    g, merged = resolve_entities(ResearchGraph(nodes=nodes, edges=[]),
+                                 backend=_Backend(), threshold=0.9)
+    assert merged == 1 and len(g.nodes) == 1
+    # a three-letter name has no similarity block: only the exact pass can do this
+    from tesserae.entity_resolution import _tokens
+    assert _tokens("PDB") == set()
+
+
+def test_a_differently_cased_name_survives_an_exact_merge_as_an_alias():
+    nodes = [_n("Model:resnet", "ResNet", "Model"), _n("Algorithm:resnet", "resnet", "Algorithm")]
+    g, merged = resolve_entities(ResearchGraph(nodes=nodes, edges=[]),
+                                 backend=_Backend(), threshold=0.9)
+    assert merged == 1
+    survivor = g.nodes[0]
+    assert {"ResNet", "resnet"} <= {survivor.name} | {str(a) for a in survivor.aliases}
+
+
+def test_a_source_anchor_never_merges_with_an_entity_of_its_name():
+    """'mip-NeRF 360' is a Model and the Paper that introduced it. Making a
+    document out of a method is worse than an ambiguity."""
+    nodes = [_n("Model:x", "mip-NeRF 360", "Model"), _n("Paper:x", "mip-NeRF 360", "Paper")]
+    g, merged = resolve_entities(ResearchGraph(nodes=nodes, edges=[]),
+                                 backend=_Backend(), threshold=0.9)
+    assert merged == 0 and len(g.nodes) == 2
+
+
+def test_spans_claims_code_and_people_never_merge_by_name():
+    """Two `main` functions or two 'J. Smith's sharing a name is the normal
+    case there, not a duplicate."""
+    from tesserae.entity_resolution import EXACT_NAME_TYPES
+
+    for typ in ("EvidenceSpan", "Claim", "PerformanceClaim", "CodeFunction",
+                "Person", "Organization", "Session", "SourceDocument", "Paper"):
+        assert typ not in EXACT_NAME_TYPES, typ
+    nodes = [_n("EvidenceSpan:a", "same words", "EvidenceSpan"),
+             _n("EvidenceSpan:b", "same words", "EvidenceSpan"),
+             _n("CodeFunction:a", "main", "CodeFunction"),
+             _n("CodeFunction:b", "main", "CodeFunction")]
+    g, merged = resolve_entities(ResearchGraph(nodes=nodes, edges=[]),
+                                 backend=_Backend(), threshold=0.9)
+    assert merged == 0 and len(g.nodes) == 4
+
+
+def test_the_exact_pass_runs_even_when_the_embedder_is_broken():
+    """Same-name merging needs no model; a missing embedder skips only the
+    similarity pass."""
+    class Broken:
+        def embed(self, texts):
+            raise RuntimeError("no model")
+
+    nodes = [_n("Benchmark:pdb", "PDB", "Benchmark"), _n("Dataset:pdb", "PDB", "Dataset")]
+    g, merged = resolve_entities(ResearchGraph(nodes=nodes, edges=[]),
+                                 backend=Broken(), threshold=0.9)
+    assert merged == 1 and len(g.nodes) == 1
+
+
+def test_the_exact_winner_is_deterministic_under_node_order():
+    nodes = [_n("Benchmark:pdb", "PDB", "Benchmark"), _n("Dataset:pdb", "PDB", "Dataset"),
+             _n("Concept:pdb", "pdb", "Concept"), _n("Metric:m", "rmsd", "Metric")]
+    edges = [ResearchEdge(source="Dataset:pdb", type="uses_metric", target="Metric:m")]
+    a, _ = resolve_entities(ResearchGraph(nodes=nodes, edges=edges), backend=_Backend(), threshold=0.9)
+    b, _ = resolve_entities(ResearchGraph(nodes=list(reversed(nodes)), edges=edges),
+                            backend=_Backend(), threshold=0.9)
+    # survivors keep input order (the compile's order is fixed); the SET of
+    # survivors and the winner must not depend on it
+    assert sorted(n.id for n in a.nodes) == sorted(n.id for n in b.nodes)
+    # the node with an edge wins the tie on degree, and keeps its edge
+    assert any(n.id == "Dataset:pdb" for n in a.nodes)
+    assert a.edges[0].source == "Dataset:pdb"
+
+
+def test_a_zero_threshold_disables_the_exact_pass_too():
+    """One knob turns the function off; an operator who set it to zero must not
+    find half of it still running."""
+    src = ResearchGraph(nodes=[_n("Benchmark:pdb", "PDB", "Benchmark"),
+                               _n("Dataset:pdb", "PDB", "Dataset")], edges=[])
+    g, merged = resolve_entities(src, backend=_Backend(), threshold=0)
+    assert merged == 0 and g is src
