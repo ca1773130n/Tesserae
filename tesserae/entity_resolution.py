@@ -3,9 +3,31 @@ spelled the same.
 
 WHY. Node identity in this codebase is exact-name: ``ResNet-50`` and ``ResNet
 50`` are two nodes, and every consumer that resolves by name then sees an
-ambiguity or a miss. Measured on a compiled 148-paper corpus, 2,317 names were
-owned by more than one node and ``verify_claim`` refused 226 of 426 claims —
-declining claims whose supporting edge was present.
+ambiguity or a miss. Measured on a compiled 148-paper corpus, ``verify_claim``
+refused 226 of 426 claims — declining claims whose supporting edge was present.
+
+WHAT IT BUYS, measured on that same graph and claim set by running this pass
+in memory and re-deciding every claim (2026-08-29):
+
+    refused (NOT_RESOLVABLE)      226/426  ->  182/426
+    correct                       117/426  ->  149/426
+    claims the corpus asserts      26/213  ->   36/213
+
+387 merges. Of the 44 claims that stopped being refused, 31 got the right
+answer and 13 the wrong one. Crucially, the count of claims wrongly called
+SUPPORTED stayed at **zero** on both sides: resolution never manufactured
+support the corpus does not give, which is the property that makes it safe to
+run before a verdict function that is meant to be an audit.
+
+It is not the dominant problem. Even afterwards, 95 of the 213 claims the
+papers actually make are answered ABSENT, because the graph does not hold the
+edge — extraction density, not entity identity. Accuracy among ANSWERED claims
+moves only 58.5% -> 61.1%. Resolution removes a refusal; it cannot add a fact.
+
+An earlier draft of this docstring reported 2,317 colliding names here. That
+was measured before same-name collapse landed in chunked extraction; on a graph
+carrying that fix the figure is 449 by exact name and 662 by normalised name,
+and the pre-fix number should not be read as describing current output.
 
 Mem0 credits this mechanism for a large share of its 71.4 -> 92.5 on LoCoMo:
 "compute embeddings for both source and destination entities, then search for
