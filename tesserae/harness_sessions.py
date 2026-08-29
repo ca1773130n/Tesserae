@@ -710,6 +710,10 @@ _TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
     "You are summarizing a developer's activity for a time period",
     "You extract EXPLICIT decisions from a developer's agent-session excerpts",
     "You judge whether a SOURCE text supports a CLAIM",
+    # Band adjudication in `ask`: one call per answer sentence whose coverage
+    # lands in the uncertain band, so it fires on ordinary queries rather than
+    # only at compile time — exactly the shape that fills the session store.
+    "You check whether EVIDENCE supports a SENTENCE taken from an answer",
     "You route a question to the right project",
     "You are an extractor that reads agent/user conversation transcripts",
     "You are summarizing a community of related typed research-graph nodes",

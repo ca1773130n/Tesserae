@@ -148,6 +148,30 @@ you navigate cross-project wants the eager pass on.
 | `TESSERAE_SYNTHESIS_MODEL` | — | Overrides the synthesis model |
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Parallel synthesis workers |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | off | Skip the model, exercise the pipeline |
+| `TESSERAE_VERIFY_BAND` | off | Re-decide `ask`'s uncertain review flags with the model. `on` uses the measured 0.30–0.70 band; `lo-hi` overrides it. Off means the flags cost no tokens and no network |
+
+### `TESSERAE_VERIFY_BAND`
+
+Every `ask` answer carries per-sentence review flags that cost nothing. They are
+less accurate than asking a model — 0.870 against 0.926 on 755 held-out
+sentences — and almost all of the difference is false alarms on faithful
+paraphrases, which share little vocabulary with their source.
+
+The two disagree on different sentences, so paying for the model only where the
+free check is unsure recovers the accuracy at a fraction of the cost. Deferring
+coverage 0.30–0.70 scored 0.932 on 42% of the calls: indistinguishable from
+asking about every sentence (McNemar p=0.52), for 42% of the spend.
+
+```bash
+export TESSERAE_VERIFY_BAND=on          # the measured 0.30-0.70 band
+export TESSERAE_VERIFY_BAND=0.40-0.60   # narrower: 22% of calls, 0.914
+```
+
+Off by default, because the flags are documented as costing no tokens and no
+network and a cascade that enabled itself would break that for every caller.
+The envelope reports `adjudicated`: `null` when the cascade did not run, a count
+when it did. A model that cannot answer leaves the free verdict standing — a
+failed call can never turn a flagged sentence clean.
 
 ---
 

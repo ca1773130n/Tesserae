@@ -153,6 +153,30 @@ das Sie cross-project navigieren, den eifrigen Pass ein.
 | `TESSERAE_SYNTHESIS_MODEL` | — | Overrides das Synthese-Modell |
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Parallele Synthese-Worker |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | aus | Skip das Modell, führe Pipeline aus |
+| `TESSERAE_VERIFY_BAND` | aus | Lässt das Modell die unsicheren Prüfmarkierungen von `ask` neu entscheiden. `on` nimmt das gemessene Band 0.30–0.70, `lo-hi` überschreibt es. Aus kosten die Markierungen weder Token noch Netzwerk |
+
+### `TESSERAE_VERIFY_BAND`
+
+Jede `ask`-Antwort trägt Prüfmarkierungen je Satz, die nichts kosten. Sie sind
+ungenauer, als ein Modell zu fragen — 0.870 gegen 0.926 auf 755 zurückgehaltenen
+Sätzen — und fast der gesamte Unterschied sind Fehlalarme bei treuen Umschreibungen,
+die mit ihrer Quelle wenig Wortschatz teilen.
+
+Beide irren bei verschiedenen Sätzen, also holt Bezahlen des Modells nur dort, wo die
+kostenlose Prüfung unsicher ist, die Genauigkeit für einen Bruchteil zurück. Die
+Abdeckung 0.30–0.70 abzugeben ergab 0.932 bei 42% der Aufrufe: nicht unterscheidbar
+davon, nach jedem Satz zu fragen (McNemar p=0.52), für 42% der Ausgaben.
+
+```bash
+export TESSERAE_VERIFY_BAND=on          # das gemessene Band 0.30-0.70
+export TESSERAE_VERIFY_BAND=0.40-0.60   # enger: 22% der Aufrufe, 0.914
+```
+
+Standardmäßig aus, denn die Markierungen sind als kostenlos und netzfrei dokumentiert,
+und eine Kaskade, die sich selbst einschaltet, bräche das für jeden Aufrufer. Der
+Umschlag meldet `adjudicated`: `null`, wenn die Kaskade nicht lief, sonst eine Anzahl.
+Ein Modell, das nicht antworten kann, lässt das kostenlose Urteil stehen — ein
+fehlgeschlagener Aufruf kann einen markierten Satz niemals sauber machen.
 
 ---
 

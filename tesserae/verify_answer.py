@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 SUPPORTED = "SUPPORTED"
 UNSUPPORTED = "UNSUPPORTED"
@@ -70,6 +70,24 @@ VERDICTS = (SUPPORTED, UNSUPPORTED, NO_CONTENT)
 #: when the reverse is true. Both directions are on the curve above.
 DEFAULT_COVERAGE = 0.50
 
+#: The coverage band where this check is least reliable, and the only band
+#: worth paying a model to re-decide.
+#:
+#: MEASURED, not chosen. On 755 held-out sentence-evidence pairs — LoCoMo
+#: conversation, with the threshold above fitted on academic papers, so held
+#: out by domain as well as by data — the deterministic check scored 0.870 and
+#: a gpt-4o-mini judge asked about every sentence scored 0.926. Deferring only
+#: this band to that judge scored 0.932 on 42% of the calls: indistinguishable
+#: from asking it about everything (McNemar p=0.52) at 42% of the cost, and
+#: clearly better than the check alone (p=4.3e-07).
+#:
+#: Widening it buys nothing. 0.25-0.80 defers 63% and scores 0.923; 0.40-0.60
+#: defers 22% and scores 0.914. The arms fail on different sentences — 98 wrong
+#: for the check, 56 for the judge, only 14 for both — which is why splitting
+#: the work beats either one.
+UNCERTAIN_LOW = 0.30
+UNCERTAIN_HIGH = 0.70
+
 #: A sentence with fewer content words than this carries no checkable claim.
 #: "It is important." would otherwise score 0.0 and be flagged as fabricated.
 MIN_CONTENT_WORDS = 3
@@ -98,6 +116,10 @@ class SentenceVerdict:
     #: Content words the evidence does NOT contain — what the flag is about.
     missing: Tuple[str, ...] = ()
     content_words: int = 0
+    #: True when a model re-decided this sentence because its coverage fell in
+    #: the uncertain band. Kept on the record so an audit can tell a verdict
+    #: that cost nothing from one that cost a call.
+    adjudicated: bool = False
 
 
 @dataclass(frozen=True)
@@ -165,6 +187,48 @@ def check_against_evidence(
         cov = 1.0 - (len(missing) / len(uniq))
         verdict = SUPPORTED if cov >= thr else UNSUPPORTED
         out.append(SentenceVerdict(sentence, verdict, cov, missing, len(uniq)))
+    return AnswerReport(tuple(out))
+
+
+def adjudicate_uncertain(
+    report: AnswerReport,
+    evidence: str,
+    judge: Callable[[str, str], Optional[str]],
+    *,
+    low: float = UNCERTAIN_LOW,
+    high: float = UNCERTAIN_HIGH,
+) -> AnswerReport:
+    """Re-decide only the sentences whose coverage lands in the uncertain band.
+
+    ``judge(sentence, evidence)`` returns ``SUPPORTED``, ``UNSUPPORTED``, or
+    ``None`` when it cannot say. It is supplied by the caller and is the only
+    thing in this path that can touch a network — this module holds no model
+    client, so :func:`check_against_evidence` keeps its promise of costing
+    nothing and this stays testable without one.
+
+    A judge that returns ``None``, answers with something unrecognised, or
+    raises leaves the deterministic verdict standing. The cascade may improve a
+    verdict; it may never erase one, because a failed call must not be able to
+    turn a flagged sentence clean.
+
+    ``missing`` is left untouched even when the judge overrides to
+    ``SUPPORTED``: those words really are absent from the evidence, and that is
+    a measurement rather than a verdict.
+    """
+    out: List[SentenceVerdict] = []
+    for sv in report.sentences:
+        if sv.verdict == NO_CONTENT or not (low <= sv.coverage <= high):
+            out.append(sv)
+            continue
+        try:
+            got = judge(sv.sentence, evidence)
+        except Exception:  # pragma: no cover - a judge must never fail the check
+            got = None
+        if got not in (SUPPORTED, UNSUPPORTED):
+            out.append(sv)
+            continue
+        out.append(SentenceVerdict(sv.sentence, got, sv.coverage, sv.missing,
+                                   sv.content_words, True))
     return AnswerReport(tuple(out))
 
 

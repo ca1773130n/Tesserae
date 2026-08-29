@@ -95,3 +95,78 @@ def test_stopwords_do_not_carry_a_claim():
 def test_sentence_splitting_survives_an_empty_answer():
     assert split_sentences("") == []
     assert check_against_evidence("", EVIDENCE).sentences == ()
+
+
+# --------------------------------------------------------- the cascade ---
+# The band exists because the check and a model fail on DIFFERENT sentences.
+# These pin the contract that makes that safe to exploit: a judge may improve a
+# verdict, never erase one, and may never be reached for a sentence the check
+# was already confident about.
+
+def _judge_saying(verdict):
+    calls = []
+
+    def judge(sentence, evidence):
+        calls.append(sentence)
+        return verdict
+
+    return judge, calls
+
+
+def test_adjudicate_replaces_a_verdict_inside_the_band():
+    from tesserae.verify_answer import adjudicate_uncertain
+
+    r = check_against_evidence("ResNet-50 reached 76.1 accuracy on ImageNet.",
+                               "ResNet-50 was evaluated on ImageNet.")
+    assert r.sentences[0].verdict == UNSUPPORTED
+    assert 0.30 <= r.sentences[0].coverage <= 0.70, "fixture must sit in the band"
+    judge, calls = _judge_saying(SUPPORTED)
+    out = adjudicate_uncertain(r, "evidence", judge)
+    assert out.sentences[0].verdict == SUPPORTED
+    assert out.sentences[0].adjudicated is True
+    assert len(calls) == 1
+
+
+def test_adjudicate_never_pays_for_a_confident_sentence():
+    from tesserae.verify_answer import adjudicate_uncertain
+
+    r = check_against_evidence("ResNet-50 reached 76.1 top-1 accuracy on ImageNet.",
+                               EVIDENCE)
+    assert r.sentences[0].coverage > 0.70
+    judge, calls = _judge_saying(UNSUPPORTED)
+    out = adjudicate_uncertain(r, EVIDENCE, judge)
+    assert calls == [], "a confident sentence must not cost a call"
+    assert out.sentences[0].verdict == r.sentences[0].verdict
+    assert out.sentences[0].adjudicated is False
+
+
+def test_a_judge_that_cannot_answer_leaves_the_verdict_standing():
+    """A failed call must never be able to turn a flagged sentence clean."""
+    from tesserae.verify_answer import adjudicate_uncertain
+
+    r = check_against_evidence("ResNet-50 reached 76.1 accuracy on ImageNet.",
+                               "ResNet-50 was evaluated on ImageNet.")
+    for judge in (lambda s, e: None,
+                  lambda s, e: "MAYBE",
+                  lambda s, e: (_ for _ in ()).throw(RuntimeError("no network"))):
+        out = adjudicate_uncertain(r, "evidence", judge)
+        assert out.sentences[0].verdict == UNSUPPORTED
+        assert out.sentences[0].adjudicated is False
+
+
+def test_adjudicate_leaves_sentences_with_no_claim_alone():
+    from tesserae.verify_answer import adjudicate_uncertain
+
+    r = check_against_evidence("This is important.", EVIDENCE)
+    assert r.sentences[0].verdict == NO_CONTENT
+    judge, calls = _judge_saying(UNSUPPORTED)
+    assert adjudicate_uncertain(r, EVIDENCE, judge).sentences[0].verdict == NO_CONTENT
+    assert calls == []
+
+
+def test_the_band_is_the_measured_one():
+    from tesserae.verify_answer import UNCERTAIN_HIGH, UNCERTAIN_LOW
+
+    assert (UNCERTAIN_LOW, UNCERTAIN_HIGH) == (0.30, 0.70)
+    assert UNCERTAIN_LOW < DEFAULT_COVERAGE < UNCERTAIN_HIGH, \
+        "the band must straddle the threshold it exists to second-guess"

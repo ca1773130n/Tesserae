@@ -1151,3 +1151,140 @@ def test_ask_planner_computes_the_flags_from_its_own_source_blocks():
     # bound before the try that can fail on import — otherwise the second
     # consumer swallows a NameError and reports "no flags" for an unchecked query
     assert "_sources: List[str] = []" in src
+
+
+# ------------------------------------------------- band adjudication ---
+# The cascade is opt-in on purpose: `check_against_evidence` is documented as
+# costing no tokens and no network, and a cascade that switched itself on would
+# break that for every existing caller.
+
+def test_band_adjudication_is_off_unless_asked_for(monkeypatch):
+    from tesserae.ask_planner import _verify_band
+
+    monkeypatch.delenv("TESSERAE_VERIFY_BAND", raising=False)
+    assert _verify_band() is None
+    for off in ("", "0", "off", "false", "no"):
+        monkeypatch.setenv("TESSERAE_VERIFY_BAND", off)
+        assert _verify_band() is None, f"{off!r} must not enable the cascade"
+
+
+def test_band_adjudication_reads_on_and_explicit_bands(monkeypatch):
+    from tesserae.ask_planner import _verify_band
+    from tesserae.verify_answer import UNCERTAIN_HIGH, UNCERTAIN_LOW
+
+    for on in ("1", "on", "true", "yes", "default", "ON"):
+        monkeypatch.setenv("TESSERAE_VERIFY_BAND", on)
+        assert _verify_band() == (UNCERTAIN_LOW, UNCERTAIN_HIGH)
+    monkeypatch.setenv("TESSERAE_VERIFY_BAND", "0.25-0.80")
+    assert _verify_band() == (0.25, 0.80)
+
+
+def test_an_unreadable_band_is_reported_not_swallowed(monkeypatch, capsys):
+    """A silently dropped setting looks exactly like a cascade that ran and
+    found nothing, which is the failure this file has been bitten by before."""
+    from tesserae.ask_planner import _verify_band
+
+    for bad in ("garbage", "0.9-0.2", "1.5-2.0", "a-b"):
+        monkeypatch.setenv("TESSERAE_VERIFY_BAND", bad)
+        assert _verify_band() is None
+        assert bad in capsys.readouterr().err
+
+
+def test_the_judge_reads_only_a_recognised_verdict():
+    """Anything else must return None so the deterministic verdict stands."""
+    from tesserae.ask_planner import _model_judge
+
+    class Client:
+        def __init__(self, reply):
+            self.reply = reply
+
+        def complete_json(self, **_kw):
+            return self.reply
+
+    assert _model_judge(Client({"verdict": "supported"}))("s", "e") == "SUPPORTED"
+    assert _model_judge(Client({"verdict": "UNSUPPORTED"}))("s", "e") == "UNSUPPORTED"
+    for junk in (None, {}, {"verdict": "MAYBE"}, [], "SUPPORTED"):
+        assert _model_judge(Client(junk))("s", "e") is None
+
+
+def test_the_cascade_is_wired_into_ask():
+    import inspect
+
+    from tesserae import ask_planner
+
+    src = inspect.getsource(ask_planner)
+    assert "adjudicate_uncertain" in src, "the cascade is not wired into ask"
+    assert '"adjudicated": _adjudicated' in src, "the envelope must report the count"
+    # None when the cascade never ran, an int when it did — a consumer pricing
+    # calls has to tell "off" from "on and nothing was in the band".
+    assert "_adjudicated: Optional[int] = None" in src
+
+
+class VerdictClient(FakeClient):
+    """A client that answers the band adjudicator as well as the planner.
+
+    ``FakeClient`` returns the plan for every ``complete_json`` call, so the
+    judge would read no verdict from it and fall back — which is correct
+    behaviour but proves nothing about the cascade running.
+    """
+
+    def __init__(self, plan, answer, verdict="SUPPORTED"):
+        super().__init__(plan, answer)
+        self._verdict = verdict
+        self.verdict_calls = []
+
+    def complete_json(self, *, system, user, schema_name, **kw):
+        if schema_name == "answer_sentence_verdict":
+            self.verdict_calls.append(user)
+            return {"verdict": self._verdict}
+        return super().complete_json(system=system, user=user,
+                                     schema_name=schema_name, **kw)
+
+
+def test_envelope_reports_no_cascade_when_it_is_off(tmp_path, monkeypatch):
+    monkeypatch.delenv("TESSERAE_VERIFY_BAND", raising=False)
+    wiki = _make_project(tmp_path)
+    client = VerdictClient(PLAN, "Recently the extraction cache shipped [kg-step-1-recent_sessions].")
+
+    envelope = plan_and_answer(wiki, "what happened recently?", client=client)
+
+    assert envelope is not None
+    # None, not 0: "the cascade did not run" is a different fact from "it ran
+    # and re-decided nothing", and a consumer pricing calls needs both.
+    assert envelope["adjudicated"] is None
+    assert client.verdict_calls == [], "nothing may be paid for while it is off"
+
+
+def test_the_cascade_actually_re_decides_sentences_when_enabled(tmp_path, monkeypatch):
+    # Full-width band: every checkable sentence is uncertain, so the count is
+    # deterministic rather than a hostage to the fixture's vocabulary overlap.
+    monkeypatch.setenv("TESSERAE_VERIFY_BAND", "0.0-1.0")
+    wiki = _make_project(tmp_path)
+    client = VerdictClient(PLAN, "Recently the extraction cache shipped [kg-step-1-recent_sessions].")
+
+    envelope = plan_and_answer(wiki, "what happened recently?", client=client)
+
+    assert envelope is not None
+    assert isinstance(envelope["adjudicated"], int)
+    assert envelope["adjudicated"] >= 1, "the band was total; something must have been judged"
+    assert len(client.verdict_calls) == envelope["adjudicated"]
+    # The judge is asked about a sentence against the evidence, not the question.
+    assert "SENTENCE:" in client.verdict_calls[0]
+    assert "EVIDENCE:" in client.verdict_calls[0]
+    # A judge saying SUPPORTED cannot leave anything flagged.
+    assert envelope["unsupported"] == []
+    assert envelope["supported_rate"] == 1.0
+
+
+def test_a_judge_saying_unsupported_flags_through_the_envelope(tmp_path, monkeypatch):
+    monkeypatch.setenv("TESSERAE_VERIFY_BAND", "0.0-1.0")
+    wiki = _make_project(tmp_path)
+    client = VerdictClient(PLAN, "Recently the extraction cache shipped [kg-step-1-recent_sessions].",
+                           verdict="UNSUPPORTED")
+
+    envelope = plan_and_answer(wiki, "what happened recently?", client=client)
+
+    assert envelope is not None
+    assert envelope["adjudicated"] >= 1
+    assert envelope["unsupported"], "the judge's verdict must reach the envelope"
+    assert envelope["supported_rate"] == 0.0

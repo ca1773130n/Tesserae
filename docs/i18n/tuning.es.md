@@ -142,6 +142,30 @@ la pasada ansiosa activada.
 | `TESSERAE_SYNTHESIS_MODEL` | — | Anula el modelo de síntesis |
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Trabajadores de síntesis paralela |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | desactivado | Salta el modelo, ejecuta la tubería |
+| `TESSERAE_VERIFY_BAND` | desactivado | Vuelve a decidir con el modelo las marcas de revisión dudosas de `ask`. `on` usa la banda medida 0.30–0.70; `lo-hi` la sustituye. Desactivado, las marcas no cuestan tokens ni red |
+
+### `TESSERAE_VERIFY_BAND`
+
+Cada respuesta de `ask` lleva marcas de revisión por frase que no cuestan nada. Son
+menos exactas que preguntar a un modelo — 0.870 frente a 0.926 sobre 755 frases
+reservadas — y casi toda la diferencia son falsas alarmas sobre paráfrasis fieles,
+que comparten poco vocabulario con su fuente.
+
+Los dos se equivocan en frases distintas, así que pagar al modelo solo donde la
+comprobación gratuita duda recupera la exactitud por una fracción del coste. Ceder la
+cobertura 0.30–0.70 dio 0.932 en el 42% de las llamadas: indistinguible de preguntar
+por cada frase (McNemar p=0.52), por el 42% del gasto.
+
+```bash
+export TESSERAE_VERIFY_BAND=on          # la banda medida 0.30-0.70
+export TESSERAE_VERIFY_BAND=0.40-0.60   # más estrecha: 22% de las llamadas, 0.914
+```
+
+Desactivado por defecto, porque las marcas están documentadas como algo que no cuesta
+tokens ni red, y una cascada que se encendiera sola rompería eso para todo el que
+llame. El sobre informa de `adjudicated`: `null` cuando la cascada no se ejecutó, y un
+recuento cuando sí. Un modelo que no puede responder deja en pie el veredicto
+gratuito — una llamada fallida nunca puede dejar limpia una frase marcada.
 
 ---
 
