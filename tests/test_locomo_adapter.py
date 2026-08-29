@@ -704,7 +704,8 @@ def test_without_fanout_the_search_call_is_unchanged(tmp_path):
 
     assert search.top_k == [2]
     assert set(search.kwargs[0]) == {
-        "top_k", "weights", "mode", "backend", "source_root"
+        "top_k", "weights", "mode", "backend", "source_root",
+        "document_first",  # the session is the unit of recall; see hybrid_search(document_first=...)
     }
 
 

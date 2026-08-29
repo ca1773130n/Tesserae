@@ -1649,6 +1649,11 @@ class LocomoMemory:
             # the session file itself is what closes that gap, and it is
             # confined to the directory this adapter staged into.
             source_root=self.work,
+            # The unit of recall here is the session. Rank the session anchors
+            # on their text first, then fill with node hits — measured 0.878 ->
+            # 0.914 gold-session recall@10 on nine conversations, MRR ahead of
+            # BM25 over the sessions. See hybrid_search(document_first=...).
+            document_first=True,
             **extra,
         )
         scored_nodes = result.scored

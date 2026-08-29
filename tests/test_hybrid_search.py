@@ -1181,3 +1181,69 @@ def test_source_root_ignores_non_anchor_nodes(tmp_path):
     )
     result = hybrid_search(graph, "telescopes", top_k=1, mode="bm25", source_root=tmp_path)
     assert result.scored == []
+
+
+# ------------------------------------------------ document-first ---
+# For conversational memory the unit of recall is the session, and a session
+# is retrievable through its anchor, which carries the whole session file as
+# lexical text when source_root is given. These pin the opt-in two-stage
+# ranking: anchors on their text first, then node hits, deduped, bounded.
+
+def _document_first_graph(tmp_path):
+    docs = tmp_path / "docs"; docs.mkdir()
+    a = docs / "session-a.md"; a.write_text("Caroline went to the LGBTQ support group on Friday evening.")
+    b = docs / "session-b.md"; b.write_text("Melanie painted the fence and repotted the basil.")
+    nodes = [
+        ResearchNode(id="SD:a", name="Session A", type=ResearchNodeType.SOURCE_DOCUMENT, source_path=str(a)),
+        ResearchNode(id="SD:b", name="Session B", type=ResearchNodeType.SOURCE_DOCUMENT, source_path=str(b)),
+        ResearchNode(id="C:1", name="support group", type=ResearchNodeType.CONCEPT,
+                     description="a support group Caroline attends"),
+        ResearchNode(id="C:2", name="LGBTQ community", type=ResearchNodeType.CONCEPT,
+                     description="the LGBTQ community and its support group"),
+        ResearchNode(id="C:3", name="fence painting", type=ResearchNodeType.CONCEPT,
+                     description="Melanie's fence"),
+    ]
+    return ResearchGraph(nodes=nodes, edges=[]), docs
+
+
+def test_document_first_ranks_matching_anchors_before_node_hits(tmp_path):
+    graph, root = _document_first_graph(tmp_path)
+    q = "LGBTQ support group"
+    plain = hybrid_search(graph, q, top_k=5, source_root=root)
+    first = hybrid_search(graph, q, top_k=5, source_root=root, document_first=True)
+    ids_first = [s.node.id for s in first.scored]
+    assert ids_first[0] == "SD:a", ids_first
+    # the matching anchor precedes every node hit; the non-matching anchor is not forced in
+    anchor_pos = [i for i, x in enumerate(ids_first) if x.startswith("SD:")]
+    node_pos = [i for i, x in enumerate(ids_first) if x.startswith("C:")]
+    assert anchor_pos and node_pos and max(anchor_pos) < min(node_pos)
+    # node hits still follow, deduped, bounded
+    assert len(ids_first) == len(set(ids_first)) <= 5
+    assert {s.node.id for s in plain.scored} & {"C:1", "C:2"} <= set(ids_first)
+
+
+def test_document_first_is_opt_in_and_leaves_the_default_path_alone(tmp_path):
+    graph, root = _document_first_graph(tmp_path)
+    q = "LGBTQ support group"
+    a = hybrid_search(graph, q, top_k=5, source_root=root)
+    b = hybrid_search(graph, q, top_k=5, source_root=root, document_first=False)
+    assert [s.node.id for s in a.scored] == [s.node.id for s in b.scored]
+    assert [round(s.score, 9) for s in a.scored] == [round(s.score, 9) for s in b.scored]
+
+
+def test_document_first_without_anchors_or_query_degrades_to_the_default(tmp_path):
+    graph, root = _document_first_graph(tmp_path)
+    no_anchors = ResearchGraph(nodes=[n for n in graph.nodes if not n.id.startswith("SD:")], edges=[])
+    a = hybrid_search(no_anchors, "support group", top_k=5, source_root=root, document_first=True)
+    b = hybrid_search(no_anchors, "support group", top_k=5, source_root=root)
+    assert [s.node.id for s in a.scored] == [s.node.id for s in b.scored]
+    empty = hybrid_search(graph, "   ", top_k=3, source_root=root, document_first=True)
+    assert len(empty.scored) == 3 and all(s.score == 0.0 for s in empty.scored)
+
+
+def test_document_first_is_deterministic(tmp_path):
+    graph, root = _document_first_graph(tmp_path)
+    a = hybrid_search(graph, "LGBTQ support group", top_k=5, source_root=root, document_first=True)
+    b = hybrid_search(ResearchGraph(nodes=list(reversed(graph.nodes)), edges=[]),
+                      "LGBTQ support group", top_k=5, source_root=root, document_first=True)
+    assert [s.node.id for s in a.scored] == [s.node.id for s in b.scored]
