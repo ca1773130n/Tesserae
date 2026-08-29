@@ -295,36 +295,47 @@ Just return the label CORRECT or WRONG in a json format with the key as "label".
 #: the gold date and graded WRONG, and 25 had list-shaped gold at 36% mean item
 #: coverage. All 28 become CORRECT under these rules, on answers nobody changed.
 #:
+#: THE TEXT BELOW IS UPSTREAM'S, VERBATIM: ``mem0ai/memory-benchmarks``
+#: ``benchmarks/locomo/prompts.py`` (``_JUDGE_TEMPLATE``, no-evidence branch),
+#: fetched 2026-08-30. It replaced an earlier four-rule paraphrase of the same
+#: grader. Seven rules: partial credit, paraphrases, extra detail, 14-day date
+#: tolerance, semantic overlap, same referent, knowledge-not-wording; WRONG
+#: needs ZERO correct items. That harness answers with gpt-4o and judges with
+#: gpt-4o over the top 200 memories — the settings behind the 92.5 on
+#: mem0.ai/research — not the paper's gpt-4o-mini protocol (66.9). The
+#: placeholders are ours, the words are theirs.
+#:
 #: **Never report a number graded with this beside one graded with Protocol B.**
 #: The run artifact records `judge_rules`, and a report that does not print it is
 #: quoting two instruments as one.
-MEM0_2026_JUDGE_USER_PROMPT = """Your task is to label an answer to a question as 'CORRECT' or 'WRONG'. You will be given the following data:
-    (1) a question (posed by one user to another user),
-    (2) a 'gold' (ground truth) answer,
-    (3) a generated answer
-which you will score as CORRECT/WRONG.
+MEM0_2026_JUDGE_USER_PROMPT = """Label the generated answer as CORRECT or WRONG.
 
-The point of the question is to ask about something one user should know about the other user based on their prior conversations.
-The gold answer will usually be a concise and short answer that includes the referenced topic, for example:
-Question: Do you remember what I got the last time I went to Hawaii?
-Gold answer: A shell necklace
-The generated answer might be much longer, but you should be generous with your grading - as long as it touches on the same topic as the gold answer, it should be counted as CORRECT.
+## Rules
 
-Apply these rules:
-1. PARTIAL CREDIT: If the generated answer includes AT LEAST ONE correct item from the gold answer's list, mark CORRECT. Only mark WRONG if NONE of the gold answer items appear.
-2. TOPIC MATCH: As long as the generated answer touches on the same topic as the gold answer, mark CORRECT.
-3. FORMAT: Differences in format, wording, verbosity or ordering never make an answer WRONG.
-4. DATE TOLERANCE: Dates within 14 days of each other are CORRECT. Durations within 50% are CORRECT.
+1. **PARTIAL CREDIT**: If the generated answer includes AT LEAST ONE correct item from the gold answer's list, mark CORRECT. Getting 1 out of 2, 2 out of 4, etc. is always acceptable. Only mark WRONG if NONE of the gold answer items appear.
 
-Now it's time for the real question:
+2. **PARAPHRASES COUNT**: Same concept in different words is CORRECT. "Chocolate raspberry tart" = "chocolate cake with raspberries". "Shelter meal service" = "volunteering at a homeless shelter". Emotions and sentiments in the same positive/negative family count as the same concept.
+
+3. **EXTRA DETAIL IS FINE**: A longer answer that includes the gold answer's key facts plus additional information is CORRECT. Never penalize for being more detailed or specific. If the generated answer adds extra descriptive details beyond the gold answer while containing its key facts, it is CORRECT.
+
+4. **DATE TOLERANCE**: Dates within 14 days of each other are CORRECT. Durations within 50% are CORRECT (e.g., "5 months" matches "six months"; "19 days" matches "two weeks"). Relative dates ("few days before November") match specific dates in the same window.
+
+5. **SEMANTIC OVERLAP**: Judge whether the generated answer addresses the same topic and captures the core idea of the gold answer. Different wording, phrasing, or level of detail should not result in WRONG if the underlying concept matches. For EMOTIONS and FEELINGS, the same family of sentiment is CORRECT.
+
+6. **SAME REFERENT**: If the generated answer mentions or references the same named entity, character, person, or concept as the gold answer, mark CORRECT — even if the generated answer provides a different physical description or includes additional details.
+
+7. **FOCUS ON KNOWLEDGE, NOT WORDING**: The goal is to assess whether the system recalled the right fact. Minor differences in specificity, phrasing, or scope should not result in WRONG. Only mark WRONG when the generated answer demonstrates a genuinely different or missing fact.
+
+## ONLY mark WRONG if:
+- The generated answer contains ZERO correct items from the gold answer
+- The answer addresses a completely different topic
+
+## Question
 Question: {question}
 Gold answer: {gold_answer}
 Generated answer: {response}
 
-First, provide a short (one sentence) explanation of your reasoning, then finish with CORRECT or WRONG.
-Do NOT include both CORRECT and WRONG in your response, or it will break the evaluation script.
-
-Just return the label CORRECT or WRONG in a json format with the key as "label"."""
+Return JSON with "reasoning" (one sentence) and "label" (CORRECT or WRONG). Do NOT include both labels."""
 
 #: The prompt each rule set uses. `judge_rules` in the run artifact names the key.
 JUDGE_RULE_SETS = {

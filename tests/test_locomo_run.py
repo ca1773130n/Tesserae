@@ -1698,3 +1698,21 @@ def test_without_answer_always_a_refusal_is_returned_as_is(monkeypatch):
     answer = locomo_run.build_backbone("gpt-4o-mini")
     assert answer("q", ["[1] e"]) == "Not mentioned."
     assert len(calls) == 1
+
+
+def test_mem0s_own_judge_rules_are_available_and_are_theirs():
+    """The 92.5 on mem0.ai/research is graded under a judge that gives credit
+    for one item of a list, 14 days of date slack and the same referent. The
+    same answers must be gradable under those words, or no number of ours can
+    be put next to theirs on their terms."""
+    from evals.locomo.judge import JUDGE_RULE_SETS, MEM0_2026_JUDGE_USER_PROMPT
+
+    assert JUDGE_RULE_SETS["mem0-2026"] is MEM0_2026_JUDGE_USER_PROMPT
+    p = MEM0_2026_JUDGE_USER_PROMPT
+    for rule in ("PARTIAL CREDIT", "PARAPHRASES COUNT", "EXTRA DETAIL IS FINE", "DATE TOLERANCE",
+                 "SEMANTIC OVERLAP", "SAME REFERENT", "FOCUS ON KNOWLEDGE, NOT WORDING",
+                 "ZERO correct items", "within 14 days"):
+        assert rule in p, rule
+    filled = p.format(question="q?", gold_answer="teal", response="a teal car")
+    assert "Gold answer: teal" in filled and "Generated answer: a teal car" in filled
+    assert "protocol-b" in JUDGE_RULE_SETS   # ours is still the default
