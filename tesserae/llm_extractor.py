@@ -252,7 +252,7 @@ def _attach_orphan_spans(builder, key_to_node, source_kind, source_path) -> int:
     is why consumers should also resolve spans by ``source_path``.
     """
     anchor_type = source_kind_to_node_type(source_kind, source_path)
-    anchor = next((n for n in key_to_node.values() if n.type == anchor_type), None)
+    anchor = _document_anchor(key_to_node.values(), builder._edges.values(), anchor_type)
     if anchor is None:
         return 0
     linked = {
@@ -729,6 +729,34 @@ def extract_in_chunks(
     return _collapse_same_name_within_document(merge_graphs(graphs))
 
 
+def _document_anchor(nodes, edges, anchor_type: "ResearchNodeType") -> Optional[ResearchNode]:
+    """The node that stands for the document among those of the anchor type.
+
+    "The first one" was the rule, and a chunk that cites another work of the
+    same type before naming its own document made it pick the citation:
+    measured after the anchor collapse shipped, 7 of 131 papers still carried
+    an extra anchor, every one of them a cited dataset or paper the model had
+    typed ``SourceDocument`` and listed first. The document is the node the
+    model hung the document's contents on, so the most outgoing ``contains``
+    edges wins, then the most outgoing edges of any type, then the fallback
+    anchor the builder minted for the file, then order — which keeps the
+    result deterministic and leaves a single-candidate piece exactly as before.
+    """
+    cands = [n for n in nodes if n.type == anchor_type]
+    if len(cands) <= 1:
+        return cands[0] if cands else None
+    contains: Dict[str, int] = {}
+    out_deg: Dict[str, int] = {}
+    for edge in edges:
+        out_deg[edge.source] = out_deg.get(edge.source, 0) + 1
+        if edge.type == "contains":
+            contains[edge.source] = contains.get(edge.source, 0) + 1
+    order = {n.id: i for i, n in enumerate(cands)}
+    return max(cands, key=lambda n: (contains.get(n.id, 0), out_deg.get(n.id, 0),
+                                     1 if (n.metadata or {}).get("source_kind") else 0,
+                                     -order[n.id]))
+
+
 def _collapse_piece_anchors(
     graphs: List[ResearchGraph],
     source_kind: str,
@@ -736,9 +764,9 @@ def _collapse_piece_anchors(
 ) -> List[ResearchGraph]:
     """Point every piece's document anchor at the first piece's.
 
-    The anchor of a piece is found by the rule :func:`_attach_orphan_spans`
-    already uses — the first node of the anchor type — so the two agree about
-    which node the document is. The first piece's anchor wins because piece
+    The anchor of a piece is found by :func:`_document_anchor`, the same rule
+    :func:`_attach_orphan_spans` uses, so the two agree about which node the
+    document is. The first piece's anchor wins because piece
     order is fixed, which keeps the compile byte-idempotent, and because the
     first piece is the one that saw the title.
 
@@ -762,7 +790,7 @@ def _collapse_piece_anchors(
     canonical: Optional[ResearchNode] = None
     out: List[ResearchGraph] = []
     for graph in graphs:
-        anchor = next((n for n in graph.nodes if n.type == anchor_type), None)
+        anchor = _document_anchor(graph.nodes, graph.edges, anchor_type)
         if anchor is None or canonical is None or anchor.id == canonical.id:
             if anchor is not None and canonical is None:
                 canonical = anchor

@@ -976,3 +976,51 @@ def test_every_piece_anchor_is_redirected_to_the_first_pieces():
     assert len([e for e in g.edges if e.type == "references"]) == 1, "deduped, not multiplied"
     validate_research_graph(g)
 
+
+def test_a_cited_work_listed_first_is_not_mistaken_for_the_document():
+    """A chunk that cites 'S2orc' as a SourceDocument before naming its own
+    document made the first-of-type rule pick the citation: 7 of 131 papers
+    kept an extra anchor after the collapse shipped. The document is the node
+    the model hung the contents on."""
+    from tesserae.llm_extractor import extract_in_chunks, graph_from_llm_payload
+
+    calls = [0]
+
+    def piecewise(text, source_path=None, source_kind="SourceDocument", guidance=""):
+        calls[0] += 1
+        i = calls[0]
+        return graph_from_llm_payload(
+            {"nodes": [{"key": "cited", "name": "S2orc: the open research corpus",
+                        "type": "SourceDocument"},
+                       {"key": "doc", "type": "SourceDocument",
+                        "name": ["The Title", "2.2. Related work", "Further, we"][(i - 1) % 3]},
+                       {"key": "algo", "name": f"Algo{i}", "type": "Algorithm"}],
+             "edges": [{"source": "doc", "target": "algo", "type": "discusses"},
+                       {"source": "doc", "target": "cited", "type": "references"}]},
+            source_path=source_path, source_kind=source_kind)
+
+    g = extract_in_chunks(_long_text(), "/tmp/d.md", "SourceDocument", "", piecewise)
+    docs = sorted(n.name for n in g.nodes if n.type.value == "SourceDocument")
+    assert docs == ["S2orc: the open research corpus", "The Title"], docs
+    # the citation is a different document and stays one node; the pieces'
+    # own anchors all became "The Title"
+    own = next(n for n in g.nodes if n.name == "The Title")
+    assert len([e for e in g.edges if e.type == "discusses" and e.source == own.id]) == calls[0]
+
+
+def test_a_span_attaches_to_the_document_not_to_a_citation_listed_first():
+    from tesserae.llm_extractor import graph_from_llm_payload
+
+    g = graph_from_llm_payload(
+        {"nodes": [{"key": "cited", "name": "S2orc", "type": "SourceDocument"},
+                   {"key": "doc", "name": "The Title", "type": "SourceDocument"},
+                   {"key": "s1", "name": "a linked span", "type": "EvidenceSpan"},
+                   {"key": "s2", "name": "an orphan span", "type": "EvidenceSpan"}],
+         "edges": [{"source": "doc", "target": "s1", "type": "contains"}]},
+        source_path="/tmp/d.md", source_kind="SourceDocument")
+    # the builder title-cases display names, so match by casefold
+    by = {n.name.casefold(): n for n in g.nodes}
+    doc, orphan, cited = by["the title"], by["an orphan span"], by["s2orc"]
+    assert any(e.source == doc.id and e.target == orphan.id and e.type == "contains" for e in g.edges)
+    assert not any(e.source == cited.id for e in g.edges), "the citation adopted nothing"
+
