@@ -70,6 +70,12 @@ loosening look free — if you re-run this, keep the hard negatives.
 Matching either direction is a genuine no-op: no recall, no cost. It is not
 worth the code.
 
+Reading a fact the extractor wrote THROUGH a Result or PerformanceClaim node
+(``_REIFIED_PATHS``) is not loosening. Those are exact typed two-edge paths,
+enumerated by what the middle node means, and the verdict cites the path.
+Measured on the same graph: 5 more of the 213 stated relations decided, 0 of
+the 426 negatives flipped.
+
 The recall ceiling here is not this function's to raise. The graph asserts 36 of
 those 213 relations; 34% of the misses are pairs whose names share a source
 document where extraction never emitted the edge, and 40% are connected only at
@@ -150,6 +156,59 @@ _CLASS_RANK = {name: rank for rank, name in enumerate(PROVENANCE_CLASSES)}
 # a structural predicate ("Delta derived_from Beta") it asserts nothing, so it
 # may not produce a verdict there.
 _REFUTABLE_PREDICATES = frozenset({"supports_claim"})
+
+#: Facts the extractor writes down THROUGH a node. ``S reports_result R`` and
+#: ``R evaluated_on D`` is how a result gets recorded, and it asserts that S was
+#: evaluated on D as plainly as a direct edge would; a PerformanceClaim that
+#: attributes its improvement to S and reports its score on metric M asserts
+#: that S uses M. These are exact typed paths, enumerated — not a relaxation of
+#: the predicate match (see the module docstring for what that costs). Anything
+#: else at distance two is left alone: a shared paper or a shared community
+#: summary is co-occurrence, and on the 148-paper graph 44 of 43 two-hop misses
+#: were exactly that.
+#:
+#: Measured 2026-08-29 on that graph: 5 more of 213 stated relations decided,
+#: 0 of 426 negatives (213 co-absent, 213 hard) flipped to SUPPORTED.
+_REIFIER_TYPES = frozenset({"Result", "PerformanceClaim"})
+_REIFIED_PATHS: Dict[str, Tuple[Tuple[str, str], ...]] = {
+    # claimed predicate: (edge S->R or R->S, edge R->O) pairs
+    "evaluated_on": (("reports_result", "evaluated_on"), ("reports_result", "uses_dataset"),
+                     ("attributes_improvement_to", "evaluated_on"),
+                     ("attributes_improvement_to", "uses_dataset")),
+    "uses_metric": (("reports_result", "uses_metric"), ("reports_result", "achieves_score"),
+                    ("attributes_improvement_to", "uses_metric"),
+                    ("attributes_improvement_to", "achieves_score")),
+    "uses_dataset": (("reports_result", "uses_dataset"),
+                     ("attributes_improvement_to", "uses_dataset")),
+}
+#: The first leg of a reified path points from S to the reifier for
+#: ``reports_result`` and from the reifier to S for ``attributes_improvement_to``.
+_REIFIER_POINTS_AT_SUBJECT = frozenset({"attributes_improvement_to"})
+
+
+def _reified(graph: ResearchGraph, s_id: str, predicate: str, o_id: str):
+    """``(first_leg, reifier_node, second_leg_edge)`` when the graph asserts
+    the triple through a Result or PerformanceClaim, else ``None``.
+
+    Deterministic: candidates are walked in edge order, and the first match
+    wins. Same bytes in, same path out."""
+    patterns = _REIFIED_PATHS.get(predicate)
+    if not patterns:
+        return None
+    by_id = {n.id: n for n in graph.nodes}
+    for leg1, leg2 in patterns:
+        if leg1 in _REIFIER_POINTS_AT_SUBJECT:
+            mids = [e.source for e in graph.edges if e.type == leg1 and e.target == s_id]
+        else:
+            mids = [e.target for e in graph.edges if e.type == leg1 and e.source == s_id]
+        for mid in mids:
+            node = by_id.get(mid)
+            if node is None or node.type.value not in _REIFIER_TYPES:
+                continue
+            for edge in graph.edges:
+                if edge.source == mid and edge.type == leg2 and edge.target == o_id:
+                    return leg1, node, edge
+    return None
 
 # Stamped by ``agent_write._graph_from_record`` on every node AND every edge it
 # mints. The EDGE stamp is the load-bearing one: cross-type dedup
@@ -705,6 +764,21 @@ def verify_claim(
         )
     # ABSENT means "this graph does not assert this triple", full stop. It is
     # not a refutation and must never be read as one.
+    reified = _reified(graph, s_id, predicate, o_id)
+    if reified is not None:
+        leg1, reifier, second = reified
+        r_chain = _Chain(graph, second, project_root=project_root, reground=reground)
+        advisory = dict(advisory)
+        advisory["reified_via"] = {
+            "node_id": reifier.id,
+            "node_type": reifier.type.value,
+            "path": [leg1, second.type],
+        }
+        if r_chain.document_backed:
+            return _payload("SUPPORTED", "reified_edge_evidenced_by_document_span",
+                            triple, r_chain, advisory, s_id)
+        return _payload("PRESENT_UNEVIDENCED", "reified_" + r_chain.weakness(),
+                        triple, r_chain, advisory, s_id)
     return _payload("ABSENT", "triple_absent", triple, None, advisory, s_id)
 
 

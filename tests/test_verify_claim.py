@@ -884,3 +884,71 @@ def test_cli_verb_sees_the_same_graph_as_the_mcp_tool(tmp_path, monkeypatch, cap
          "predicate": "supports_claim", "object": "Beta", "reground": True},
     )
     assert from_cli == from_mcp
+
+
+# ------------------------------------------------- reified facts ---
+# `S reports_result R, R evaluated_on D` is how the extractor writes down that
+# S was evaluated on D. These pin that the verifier reads exactly those typed
+# paths and nothing else at distance two.
+
+def _reified_graph(with_span=True, middle=ResearchNodeType.RESULT, second_leg="evaluated_on"):
+    nodes = [
+        node("M:m", "Alpha-Net", ResearchNodeType.MODEL),
+        node("R:r", "Alpha-Net on Beta", middle),
+        node("D:d", "Beta", ResearchNodeType.DATASET),
+    ]
+    edges = [
+        edge("M:m", "reports_result", "R:r", "Alpha-Net reports a result"),
+        edge("R:r", second_leg, "D:d", SENTENCE),
+    ]
+    if with_span:
+        nodes.append(node("E:s1", "span-1", ResearchNodeType.EVIDENCE_SPAN,
+                          description=SENTENCE, path="docs/alpha.md"))
+        edges.append(edge("R:r", "evidenced_by", "E:s1", SENTENCE))
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_a_fact_written_through_a_result_node_is_read():
+    out = verify_claim(_reified_graph(), subject="M:m", predicate="evaluated_on", obj="D:d")
+    assert out["verdict"] == "SUPPORTED"
+    assert out["reason"] == "reified_edge_evidenced_by_document_span"
+    assert out["advisory"]["reified_via"] == {
+        "node_id": "R:r", "node_type": "Result", "path": ["reports_result", "evaluated_on"]}
+    assert out["citation"] is not None
+
+
+def test_a_reified_fact_without_a_span_is_present_unevidenced():
+    out = verify_claim(_reified_graph(with_span=False), subject="M:m", predicate="evaluated_on", obj="D:d")
+    assert out["verdict"] == "PRESENT_UNEVIDENCED"
+    assert out["reason"].startswith("reified_")
+    assert out["advisory"]["reified_via"]["node_id"] == "R:r"
+
+
+def test_a_shared_paper_is_not_a_reified_fact():
+    """Co-occurrence in one document is the two-hop shape that must stay
+    ABSENT — 44 of 43 two-hop misses on the 148-paper graph were that."""
+    out = verify_claim(_reified_graph(middle=ResearchNodeType.PAPER),
+                       subject="M:m", predicate="evaluated_on", obj="D:d")
+    assert out["verdict"] == "ABSENT" and "reified_via" not in out["advisory"]
+
+
+def test_a_reifier_asserting_a_different_relation_does_not_count():
+    out = verify_claim(_reified_graph(second_leg="compares_against"),
+                       subject="M:m", predicate="evaluated_on", obj="D:d")
+    assert out["verdict"] == "ABSENT"
+
+
+def test_a_direct_edge_still_decides_before_any_path():
+    g = _reified_graph()
+    g = ResearchGraph(nodes=g.nodes, edges=g.edges + [edge("M:m", "evaluated_on", "D:d", SENTENCE)])
+    out = verify_claim(g, subject="M:m", predicate="evaluated_on", obj="D:d")
+    assert not out["reason"].startswith("reified_")
+    assert "reified_via" not in out["advisory"]
+
+
+def test_reified_verdicts_are_deterministic_under_edge_order():
+    g = _reified_graph()
+    a = verify_claim(g, subject="M:m", predicate="evaluated_on", obj="D:d")
+    b = verify_claim(ResearchGraph(nodes=list(reversed(g.nodes)), edges=list(reversed(g.edges))),
+                     subject="M:m", predicate="evaluated_on", obj="D:d")
+    assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
