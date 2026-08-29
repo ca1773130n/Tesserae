@@ -717,7 +717,11 @@ def _stub_extract(seen):
         seen.append(len(text))
         i = len(seen)
         return graph_from_llm_payload(
-            {"nodes": [{"name": "Doc", "type": "SourceDocument"},
+            # A different anchor name per piece, as a model produces: it names the
+            # document after the piece it was shown. A stub naming every anchor
+            # "Doc" gave them one id and hid 9.4 anchors per paper for a release.
+            {"nodes": [{"name": ["The Title", "2.2. Related work", "Further, we"][(i - 1) % 3],
+                        "type": "SourceDocument"},
                        {"name": f"Algo{i}", "type": "Algorithm"}],
              "edges": []},
             source_path=source_path, source_kind=source_kind,
@@ -937,3 +941,38 @@ def test_distinct_names_are_left_alone():
     nodes = [_n("Model:a", "ResNet", "Model"), _n("Model:b", "DenseNet", "Model")]
     g = _collapse_same_name_within_document(ResearchGraph(nodes=nodes, edges=[]))
     assert len(g.nodes) == 2
+
+
+def test_every_piece_anchor_is_redirected_to_the_first_pieces():
+    """The first piece's anchor wins (it saw the title); every edge a later
+    piece hung on its own anchor lands on that node; nothing dangles; a cited
+    Paper in a piece is not the document and is left alone."""
+    from tesserae.llm_extractor import extract_in_chunks, graph_from_llm_payload
+    from tesserae.llm_extractor import validate_research_graph
+
+    calls = [0]
+
+    def piecewise(text, source_path=None, source_kind="SourceDocument", guidance=""):
+        calls[0] += 1
+        i = calls[0]
+        return graph_from_llm_payload(
+            {"nodes": [{"key": "doc", "type": "SourceDocument",
+                        "name": ["The Title", "2.2. Related work", "Further, we"][(i - 1) % 3]},
+                       {"key": "cited", "name": "Amodei et al. 2016", "type": "Paper"},
+                       {"key": "algo", "name": f"Algo{i}", "type": "Algorithm"}],
+             "edges": [{"source": "doc", "target": "algo", "type": "discusses"},
+                       {"source": "doc", "target": "cited", "type": "references"}]},
+            source_path=source_path, source_kind=source_kind)
+
+    g = extract_in_chunks(_long_text(), "/tmp/d.md", "SourceDocument", "", piecewise)
+    assert calls[0] > 1
+    docs = [n for n in g.nodes if n.type.value == "SourceDocument"]
+    assert [d.name for d in docs] == ["The Title"]
+    ids = {n.id for n in g.nodes}
+    assert all(e.source in ids and e.target in ids for e in g.edges), "a dangling edge"
+    discusses = [e for e in g.edges if e.type == "discusses"]
+    assert len(discusses) == calls[0] and {e.source for e in discusses} == {docs[0].id}
+    assert len([n for n in g.nodes if n.type.value == "Paper"]) == 1
+    assert len([e for e in g.edges if e.type == "references"]) == 1, "deduped, not multiplied"
+    validate_research_graph(g)
+

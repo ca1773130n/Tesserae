@@ -694,10 +694,15 @@ def extract_in_chunks(
     same prompt, same cache key, same bytes.
 
     Every piece is extracted with the SAME ``source_path`` and ``source_kind``,
-    so each yields its own anchor node for the document and the merge collapses
-    them by name. That is the same machinery ``merge_graphs`` already runs
-    across files; a document split into pieces is only a smaller instance of
-    the problem it was written for.
+    and each names its own anchor node for the document. Those anchors do NOT
+    collapse on their own: the model names the anchor after the piece it was
+    shown — the title in chunk 1, "2.2. Related work" in chunk 4, the first
+    sentence it saw in chunk 7 — and node ids derive from type and name, so
+    ``merge_graphs`` keeps every one. Measured on a 148-paper compile: 9.4
+    ``SourceDocument`` anchors per paper, each carrying its own ``contains``
+    edges, against exactly 1.0 for the same papers extracted in one call.
+    :func:`_collapse_piece_anchors` redirects every piece's anchor to the
+    first piece's before the merge.
     """
     pieces = split_for_extraction(text)
     if len(pieces) == 1:
@@ -720,7 +725,65 @@ def extract_in_chunks(
         raise GraphJSONValidationError(
             f"every chunk of {source_path or 'document'} failed to validate"
         )
+    graphs = _collapse_piece_anchors(graphs, source_kind, source_path)
     return _collapse_same_name_within_document(merge_graphs(graphs))
+
+
+def _collapse_piece_anchors(
+    graphs: List[ResearchGraph],
+    source_kind: str,
+    source_path: Optional[str],
+) -> List[ResearchGraph]:
+    """Point every piece's document anchor at the first piece's.
+
+    The anchor of a piece is found by the rule :func:`_attach_orphan_spans`
+    already uses — the first node of the anchor type — so the two agree about
+    which node the document is. The first piece's anchor wins because piece
+    order is fixed, which keeps the compile byte-idempotent, and because the
+    first piece is the one that saw the title.
+
+    The cost of not doing this was not cosmetic. The hybrid retriever gives an
+    anchor its whole source file as lexical text, so a paper indexed under ten
+    anchors was ten candidates competing for the same ``top_k``, and every
+    consumer counting documents counted ten. Simulated on the 148-paper graph
+    by applying this rule after the fact (2026-08-29):
+
+        SourceDocument nodes            1,397  ->  211
+        gold-document recall, top_k=10  0.550  ->  0.648
+        same-document slots in top 10   64.7%  ->  53.2%
+
+    The remaining same-document slots are spans and claims of one paper, which
+    is what a ranked list of a paper's contents should look like.
+    """
+    from .research_graph import ResearchEdge
+
+    anchor_type = source_kind_to_node_type(source_kind, source_path)
+    canonical: Optional[ResearchNode] = None
+    out: List[ResearchGraph] = []
+    for graph in graphs:
+        anchor = next((n for n in graph.nodes if n.type == anchor_type), None)
+        if anchor is None or canonical is None or anchor.id == canonical.id:
+            if anchor is not None and canonical is None:
+                canonical = anchor
+            out.append(graph)
+            continue
+        nodes = [canonical if n.id == anchor.id else n for n in graph.nodes]
+        seen = set()
+        edges: List[ResearchEdge] = []
+        for edge in graph.edges:
+            src = canonical.id if edge.source == anchor.id else edge.source
+            dst = canonical.id if edge.target == anchor.id else edge.target
+            if src == dst:
+                continue
+            key = (src, edge.type, dst)
+            if key in seen:
+                continue
+            seen.add(key)
+            edges.append(edge if (src, dst) == (edge.source, edge.target) else
+                         ResearchEdge(source=src, target=dst, type=edge.type,
+                                      evidence=edge.evidence, metadata=edge.metadata))
+        out.append(ResearchGraph(nodes=nodes, edges=edges))
+    return out
 
 
 def _collapse_same_name_within_document(graph: ResearchGraph) -> ResearchGraph:
