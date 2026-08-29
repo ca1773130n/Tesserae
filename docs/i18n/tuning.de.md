@@ -311,6 +311,24 @@ tesserae compile --changed-only --retry-fallbacks
 
 Versucht nur die markierten Dokumente erneut; saubere bleiben übersprungen.
 
+### Ein Graph, der vor den Nachbearbeitungsdurchläufen kompiliert wurde
+
+Zwei Korrekturen ändern, wie ein kompilierter Graph aussieht, ohne zu ändern, was das
+Modell extrahiert hat: ein Anker je Dokument statt einer je Chunk (ein chunkweise
+kompilierter Aufsatz trug 9.4), und ein Knoten je Entitätsname statt einer je Schreibweise
+und Typ. Beide laufen innerhalb von `compile`, sodass ein bereits auf der Platte liegender
+Graph keines von beidem hat, bis er neu kompiliert wird. `graph-repair` wendet dieselben
+Regeln auf die Graph-Bytes an — kein Modell, kein Netzwerk, Sekunden — und ein reparierter
+Graph stimmt mit einem neu kompilierten überein.
+
+```sh
+tesserae graph-repair --dry-run     # berichtet, was sich ändern würde, und schreibt nichts
+tesserae graph-repair               # schreibt .tesserae/graph.json an Ort und Stelle neu
+```
+
+Site und Vault sind Projektionen und werden hier nicht neu gebaut; führen Sie danach
+`export site` aus, wenn Sie eine bereitstellen.
+
 ## Inspizieren der Hierarchie
 
 ```sh

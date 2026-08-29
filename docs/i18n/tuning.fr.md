@@ -319,6 +319,24 @@ tesserae compile --changed-only --retry-fallbacks
 
 Re-tente seulement les documents marqués ; les propres restent sautés.
 
+### Un graphe compilé avant les passes de post-extraction
+
+Deux correctifs changent l'aspect d'un graphe compilé sans changer ce que le modèle a
+extrait : une ancre par document au lieu d'une par morceau (un article compilé par
+morceaux en portait 9.4), et un nœud par nom d'entité au lieu d'un par graphie et par
+type. Les deux s'exécutent dans `compile`, si bien qu'un graphe déjà sur disque n'a ni
+l'un ni l'autre tant qu'il n'est pas recompilé. `graph-repair` applique les mêmes règles
+aux octets du graphe — sans modèle, sans réseau, en quelques secondes — et un graphe
+réparé concorde avec un graphe recompilé.
+
+```sh
+tesserae graph-repair --dry-run     # rapporte ce qui changerait, n'écrit rien
+tesserae graph-repair               # réécrit .tesserae/graph.json sur place
+```
+
+Le site et le coffre sont des projections et ne sont pas reconstruits ici ; lancez
+`export site` ensuite si vous en servez un.
+
 ## Inspection de la hiérarchie
 
 ```sh

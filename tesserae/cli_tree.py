@@ -26,6 +26,7 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("query", "raw retrieval: BM25/semantic + explicit backends"),
         ("graph-map", "Budgeted Descent navigation (the graph_map tool as a CLI verb; JSON out)"),
         ("verify-claim", "Does the graph license this triple? Deterministic verdict, JSON out"),
+        ("graph-repair", "Apply the post-extraction passes to the graph on disk: one anchor per document, one node per entity. No model, seconds"),
         ("charter-route", "Place one task in the chartered domain tree (best-effort; names nothing when it cannot)"),
         ("schema-drift", "Propose ResearchNodeType sub-types from clustered nodes (proposals only; promotion is a human edit)"),
         ("lint", "Graph lint report (--fix-trivial, --severity, --json)"),

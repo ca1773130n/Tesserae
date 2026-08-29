@@ -300,6 +300,24 @@ tesserae compile --changed-only --retry-fallbacks
 
 Re-attempts only the marked documents; clean ones stay skipped.
 
+### A graph compiled before the post-extraction passes
+
+Two fixes change what a compiled graph looks like without changing what the
+model extracted: one anchor per document instead of one per chunk (a
+chunk-compiled paper carried 9.4), and one node per entity name instead of one
+per spelling and type. Both run inside `compile`, so a graph already on disk
+has neither until it is recompiled. `graph-repair` applies the same rules to
+the graph bytes — no model, no network, seconds — and a repaired graph agrees
+with a recompiled one.
+
+```sh
+tesserae graph-repair --dry-run     # report what would change, write nothing
+tesserae graph-repair               # rewrite .tesserae/graph.json in place
+```
+
+The site and vault are projections and are not rebuilt; run `export site`
+afterwards if you serve one.
+
 ## Inspecting the hierarchy
 
 ```sh
