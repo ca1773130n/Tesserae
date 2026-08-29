@@ -49,6 +49,33 @@ confidence: an edge with no evidence is ``PRESENT_UNEVIDENCED``, not
 nothing found is ``ABSENT``, not refuted; endpoints that do not resolve exactly
 are ``NOT_RESOLVABLE``, not guessed.
 
+DO NOT LOOSEN THE PREDICATE MATCH. It looks like free recall and it is not.
+Measured 2026-08-29 on the 148-paper graph against 213 relations the papers
+actually state, plus two negative sets — the 213 co-absent pairs, and 213 HARD
+negatives built from the graph itself by taking a real edge ``A --uses--> B``
+and asking about a predicate that pair does not have:
+
+    policy                recall   false SUPPORTED   specificity
+    exact (ships)          0.169        0 / 426         1.000
+    either direction       0.169        0 / 426         1.000
+    any predicate          0.272      175 / 426         0.392
+
+Ten points of recall for 175 fabricated verdicts. Of the claims this refuses
+that the papers do state, 26% are pairs the graph connects with a different
+label, which is what makes loosening tempting; the hard negatives show what the
+same permissiveness does everywhere else. The co-absent negatives alone score
+0 false positives under EVERY policy, so a test built only from them makes
+loosening look free — if you re-run this, keep the hard negatives.
+
+Matching either direction is a genuine no-op: no recall, no cost. It is not
+worth the code.
+
+The recall ceiling here is not this function's to raise. The graph asserts 36 of
+those 213 relations; 34% of the misses are pairs whose names share a source
+document where extraction never emitted the edge, and 40% are connected only at
+distance two, where asserting the relation would be inference rather than
+verification. Harness: ``~/.blackhole/Tesserae/2026-08-29/loosen_cost.py``.
+
 A SUPPORTED verdict is not automatically an informative one. When the deciding
 edge is itself the ``evidenced_by`` edge, the span it cites is that edge's own
 endpoint, so the citation confirms the edge by construction — true, and
