@@ -1610,3 +1610,31 @@ def test_the_prompt_cuts_by_what_is_asked_not_by_how_much_evidence(
     assert "does not contain the answer" not in prompt, (
         "an extraction-only abstention rule refuses every inference question"
     )
+
+
+def test_the_protocol_backbone_goes_to_the_openai_api_when_a_key_is_present(monkeypatch):
+    """The judge already does; a Codex CLI refuses gpt-4o-mini outright."""
+    from evals.locomo.run import backbone_client
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    assert backbone_client("gpt-4o-mini").name == "openai-api"
+
+
+def test_a_codex_model_keeps_the_provider_chain(monkeypatch):
+    from evals.locomo import run as locomo_run
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    seen = []
+    monkeypatch.setattr("tesserae.llm_json.build_default_json_client",
+                        lambda model=None, **kw: seen.append(model) or "chain")
+    assert locomo_run.backbone_client("gpt-5.6-luna") == "chain" and seen == ["gpt-5.6-luna"]
+
+
+def test_without_a_key_the_openai_model_falls_back_to_the_chain(monkeypatch):
+    from evals.locomo import run as locomo_run
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr("tesserae.llm_json.build_default_json_client",
+                        lambda model=None, **kw: "chain")
+    assert locomo_run.backbone_client("gpt-4o-mini") == "chain"
+

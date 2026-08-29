@@ -1100,6 +1100,39 @@ _TRANSPORT_RETRIES = 2
 _TRANSPORT_BACKOFF = 2.0  # seconds; doubled per attempt
 
 
+
+#: Retried status codes and the bound on retries for the OpenAI API client.
+#: 429 is the rate limit; 500/502/503 are the API's own transient failures.
+_OPENAI_RETRY_CODES = frozenset({429, 500, 502, 503})
+_OPENAI_RETRIES = 6
+_OPENAI_RETRY_CAP_S = 30.0
+
+
+def _openai_retry_delay(headers, detail: str, attempt: int) -> float:
+    """How long the API asked us to wait, else a capped exponential backoff.
+
+    Prefers ``Retry-After`` (seconds), then the "try again in 1.898s" phrase
+    the rate limiter puts in the body, then ``2 ** attempt`` — always capped,
+    never zero, so a misparsed header cannot become a hot loop.
+    """
+    import re as _re
+
+    wait = None
+    try:
+        raw = headers.get("Retry-After") if headers is not None else None
+        if raw:
+            wait = float(raw)
+    except (TypeError, ValueError):
+        wait = None
+    if wait is None:
+        m = _re.search(r"try again in ([0-9.]+)\s*(ms|s)", detail or "")
+        if m:
+            wait = float(m.group(1)) / (1000.0 if m.group(2) == "ms" else 1.0)
+    if wait is None:
+        wait = float(2 ** attempt)
+    return max(0.25, min(_OPENAI_RETRY_CAP_S, wait + 0.25))
+
+
 class OpenAIAPIJsonClient:
     """The OpenAI HTTP API, for models the Codex CLI cannot serve.
 
@@ -1161,26 +1194,38 @@ class OpenAIAPIJsonClient:
             },
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
-                payload = _json.load(resp)
-        except urllib.error.HTTPError as exc:
-            # The body carries the reason ("model not found", "insufficient
-            # quota"); the status alone does not, and a judge that fails for a
-            # billing reason must not read as a judge that failed to parse.
-            detail = ""
+        # A 429 is not a failure, it is a wait. The API says how long — a
+        # Retry-After header, or "try again in 1.9s" in the body — and a
+        # benchmark run that treats it as an error scores the question zero:
+        # measured 2026-08-29, 390 rate-limit replies in one conversation's
+        # answering turned 46 gradeable rows into errors and a 90% arm into
+        # 68%. Retried with the server's own delay, capped, a bounded number
+        # of times; anything else 4xx is still returned at once.
+        payload = None
+        for attempt in range(_OPENAI_RETRIES + 1):
             try:
-                detail = exc.read().decode("utf-8", "replace")[:400]
-            except Exception:  # pragma: no cover - best effort
-                pass
-            print(f"[openai-api] HTTP {exc.code} for {self.model}: {detail}",
-                  file=sys.stderr)
-            _note_failure("openai-api")
-            return None
-        except Exception as exc:  # pragma: no cover - network shapes vary
-            print(f"[openai-api] {type(exc).__name__} for {self.model}: {exc}",
-                  file=sys.stderr)
-            _note_failure("openai-api")
+                with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                    payload = _json.load(resp)
+                break
+            except urllib.error.HTTPError as exc:
+                detail = ""
+                try:
+                    detail = exc.read().decode("utf-8", "replace")[:400]
+                except Exception:  # pragma: no cover - best effort
+                    pass
+                if exc.code in _OPENAI_RETRY_CODES and attempt < _OPENAI_RETRIES:
+                    time.sleep(_openai_retry_delay(exc.headers, detail, attempt))
+                    continue
+                print(f"[openai-api] HTTP {exc.code} for {self.model}: {detail}",
+                      file=sys.stderr)
+                _note_failure("openai-api")
+                return None
+            except Exception as exc:  # pragma: no cover - network shapes vary
+                print(f"[openai-api] {type(exc).__name__} for {self.model}: {exc}",
+                      file=sys.stderr)
+                _note_failure("openai-api")
+                return None
+        if payload is None:
             return None
         try:
             return str(payload["choices"][0]["message"]["content"])

@@ -739,6 +739,28 @@ def extract_answer(payload: Any, raw: Optional[str], *,
     return text, "bare-prose"
 
 
+#: Model-name prefixes served by the OpenAI API. The published protocol fixes
+#: gpt-4o-mini, and the configured provider on this machine is the Codex CLI,
+#: which refuses that name ("not supported when using Codex with a ChatGPT
+#: account"). The judge already talks to the API directly for exactly this
+#: reason (``--judge llm:gpt-4o-mini``); the backbone now does the same, and
+#: only for these names — a Codex model keeps going through the provider chain.
+_OPENAI_API_MODELS = ("gpt-4o", "gpt-4.1", "gpt-4-", "gpt-3.5", "o1", "o3", "o4")
+
+
+def backbone_client(model: str):
+    """The client that answers on ``model``: the OpenAI API for its own models
+    when a key is present, otherwise the configured provider chain."""
+    from tesserae.llm_json import OpenAIAPIJsonClient, build_default_json_client
+
+    if any(model.startswith(prefix) for prefix in _OPENAI_API_MODELS):
+        direct = OpenAIAPIJsonClient(model=model)
+        available = direct.available          # a property on this client
+        if available() if callable(available) else available:
+            return direct
+    return build_default_json_client(model=model)
+
+
 def build_backbone(model: str, *,
                    modal_gate: bool = False,
                    deliberate: bool = False
@@ -761,9 +783,7 @@ def build_backbone(model: str, *,
     gradeable rows scoring zero on ``Error: the backbone returned an empty
     answer``. The flag only decides whether the prose rung is available at all.
     """
-    from tesserae.llm_json import build_default_json_client
-
-    client = build_default_json_client(model=model)
+    client = backbone_client(model)
     if client is None:
         raise Skip(
             f"no LLM client available for the {model} backbone",
