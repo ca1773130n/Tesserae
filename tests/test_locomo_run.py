@@ -1638,3 +1638,63 @@ def test_without_a_key_the_openai_model_falls_back_to_the_chain(monkeypatch):
                         lambda model=None, **kw: "chain")
     assert locomo_run.backbone_client("gpt-4o-mini") == "chain"
 
+
+
+def test_answer_always_carries_no_abstention_option_at_all():
+    """Abstention Inflation: the presence of a decline option raises declining
+    whatever it is worded as. On conv-30, 6 of 8 refusals per replicate had the
+    gold session in the evidence."""
+    from evals.locomo.run import system_for
+
+    for deliberate in (False, True):
+        prompt = system_for("When did Gina get her tattoo?", modal_gate=False,
+                            deliberate=deliberate, answer_always=True).lower()
+        for token in ("not mentioned", "refuse", "decline", "insufficient", "cannot answer"):
+            assert token not in prompt, token
+        assert "commit to one answer" in prompt
+    # and the gate is bypassed: a dispositional question gets the same rule
+    a = system_for("Would Melanie be considered a member of the LGBTQ community?",
+                   modal_gate=True, answer_always=True)
+    b = system_for("When did Gina get her tattoo?", modal_gate=True, answer_always=True)
+    assert a == b
+
+
+def test_answer_always_is_off_by_default_and_the_shipped_prompt_still_declines():
+    from evals.locomo.run import system_for, _SYSTEM_PROMPT
+
+    assert system_for("q", modal_gate=False) == _SYSTEM_PROMPT
+    assert "Not mentioned." in _SYSTEM_PROMPT
+
+
+def test_answer_always_retries_once_when_the_model_still_declines(monkeypatch):
+    from evals.locomo import run as locomo_run
+
+    calls = []
+
+    class Stub:
+        name = "stub"
+        def complete_json(self, *, system, user, schema_name):
+            calls.append(user)
+            return {"answer": "Not mentioned."} if len(calls) == 1 else {"answer": "teal"}
+
+    monkeypatch.setattr(locomo_run, "backbone_client", lambda model: Stub())
+    answer = locomo_run.build_backbone("gpt-4o-mini", answer_always=True)
+    assert answer("What colour was the car?", ["[1] The car was teal."]) == "teal"
+    assert len(calls) == 2 and "single best answer" in calls[1]
+
+
+def test_without_answer_always_a_refusal_is_returned_as_is(monkeypatch):
+    from evals.locomo import run as locomo_run
+
+    calls = []
+
+    class Stub:
+        name = "stub"
+        def complete_json(self, *, system, user, schema_name):
+            calls.append(user)
+            return {"answer": "Not mentioned."}
+
+    monkeypatch.setattr(locomo_run, "backbone_client", lambda model: Stub())
+    answer = locomo_run.build_backbone("gpt-4o-mini")
+    assert answer("q", ["[1] e"]) == "Not mentioned."
+    assert len(calls) == 1

@@ -483,3 +483,24 @@ def test_group_key_none_uses_source_path():
     implicit = fanout_search(graph, "what did melanie say about pottery", top_k=3,
                              backend=backend, source_cap=1)
     assert [s.node.id for s in explicit.scored] == [s.node.id for s in implicit.scored]
+
+
+def test_fanout_search_accepts_and_forwards_document_first(tmp_path):
+    """The LoCoMo arm passes document_first=True to whichever search it runs;
+    with --fanout that was fanout_search, which did not know the kwarg and
+    crashed the retrieval canary (2026-08-29)."""
+    from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
+    from tesserae.retrieval.fanout import fanout_search
+
+    docs = tmp_path / "docs"; docs.mkdir()
+    a = docs / "a.md"; a.write_text("Caroline went to the LGBTQ support group on Friday.")
+    nodes = [
+        ResearchNode(id="SD:a", name="Session A", type=ResearchNodeType.SOURCE_DOCUMENT, source_path=str(a)),
+        ResearchNode(id="C:1", name="support group", type=ResearchNodeType.CONCEPT, description="a support group"),
+        ResearchNode(id="C:2", name="LGBTQ community", type=ResearchNodeType.CONCEPT, description="the LGBTQ community"),
+    ]
+    g = ResearchGraph(nodes=nodes, edges=[])
+    out = fanout_search(g, "LGBTQ support group", top_k=3, source_root=docs, document_first=True)
+    assert out.scored and out.scored[0].node.id == "SD:a"
+    plain = fanout_search(g, "LGBTQ support group", top_k=3, source_root=docs)
+    assert [s.node.id for s in plain.scored] == [s.node.id for s in fanout_search(g, "LGBTQ support group", top_k=3, source_root=docs, document_first=False).scored]
