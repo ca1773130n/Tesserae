@@ -299,6 +299,24 @@ tesserae compile --changed-only --retry-fallbacks
 
 Reintenta solo los documentos marcados; los limpios permanecen saltados.
 
+### Un grafo compilado antes de las pasadas posteriores a la extracción
+
+Dos correcciones cambian el aspecto de un grafo compilado sin cambiar lo que el modelo
+extrajo: un ancla por documento en vez de una por fragmento (un artículo compilado por
+fragmentos llevaba 9.4), y un nodo por nombre de entidad en vez de uno por grafía y tipo.
+Ambas se ejecutan dentro de `compile`, así que un grafo que ya está en disco no tiene
+ninguna hasta que se recompila. `graph-repair` aplica las mismas reglas a los bytes del
+grafo — sin modelo, sin red, en segundos — y un grafo reparado coincide con uno
+recompilado.
+
+```sh
+tesserae graph-repair --dry-run     # informa de lo que cambiaría, no escribe nada
+tesserae graph-repair               # reescribe .tesserae/graph.json en su sitio
+```
+
+El sitio y la bóveda son proyecciones y no se reconstruyen aquí; ejecuta `export site`
+después si sirves uno.
+
 ## Inspeccionando la jerarquía
 
 ```sh

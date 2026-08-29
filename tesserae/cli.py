@@ -6820,6 +6820,57 @@ def _build_verify_claim_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _build_graph_repair_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae graph-repair",
+        description=(
+            "Apply the post-extraction passes to the graph already on disk: one "
+            "anchor per document instead of one per chunk, and one node per entity "
+            "name instead of one per spelling and type. No model, no network, "
+            "seconds — the same rules compile applies, so a repaired graph and a "
+            "recompiled graph agree. Rewrites .tesserae/graph.json in place; the "
+            "site and vault are projections and are not rebuilt here (run "
+            "`export site` afterwards if you serve one)."
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to the current working directory")
+    parser.add_argument("--dry-run", action="store_true", help="Report what would change and write nothing")
+    parser.add_argument("--json", action="store_true", help="Print the report as JSON")
+    return parser
+
+
+def _route_graph_repair(rest: List[str]) -> int:
+    args = _build_graph_repair_parser().parse_args(rest)
+    return _resolve_handler("_handle_graph_repair")(args)
+
+
+def _handle_graph_repair(args: argparse.Namespace) -> int:
+    import json as _json
+
+    from .graph_repair import repair_graph
+    from .project import _publish_atomically
+    from .research_graph import graph_from_payload
+
+    wiki = ProjectWiki.load(args.project)
+    if not wiki.paths.graph.exists():
+        print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
+        return 2
+    graph = graph_from_payload(_json.loads(wiki.paths.graph.read_text(encoding="utf-8")))
+    repaired, report = repair_graph(graph)
+    changed = report["anchors_collapsed"] + report["entities_merged"] > 0
+    if changed and not args.dry_run:
+        # the compile's own writer, byte for byte: indent=2 and a trailing newline
+        _publish_atomically(wiki.paths.graph, repaired.to_json(indent=2) + "\n")
+    report["written"] = bool(changed and not args.dry_run)
+    if args.json:
+        print(_json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(f"anchors collapsed: {report['anchors_collapsed']}   entities merged: {report['entities_merged']}")
+        print(f"nodes {report['nodes_before']:,} -> {report['nodes_after']:,}   edges {report['edges_before']:,} -> {report['edges_after']:,}")
+        print("written: " + ("yes" if report["written"] else ("no (dry run)" if args.dry_run else "no (nothing to change)")))
+    return 0
+
+
 def _route_verify_claim(rest: List[str]) -> int:
     args = _build_verify_claim_parser().parse_args(rest)
     return _resolve_handler("_handle_verify_claim")(args)
@@ -7129,6 +7180,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "charter-route": _route_charter_route,
     # verify_claim MCP tool exposed as a CLI verb for non-MCP callers
     "verify-claim": _route_verify_claim,
+    "graph-repair": _route_graph_repair,
     # layered agent KG (Phase 2): per-agent L1 distillation
     "distill": _route_distill,
 }
