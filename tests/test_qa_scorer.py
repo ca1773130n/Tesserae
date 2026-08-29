@@ -1218,3 +1218,27 @@ def test_stripping_leaves_ordinary_punctuation_and_hyphenation_alone():
     # provenance. Conservative on purpose — the cost of leaving one is a token,
     # the cost of eating content is a silently inflated score.
     assert normalize_answer("alpha [x] beta") == "alpha x beta"
+
+
+# ------------------------------------------ a list answer is an answer ---
+
+def test_a_list_literal_answer_is_joined_not_erased():
+    from evals.qa.scorer import is_refusal, normalize_answer, strip_citations
+
+    a = "['networking events', 'dance competition', 'business fair']"
+    assert strip_citations(a) == "networking events, dance competition, business fair"
+    assert normalize_answer(a) == "networking events dance competition business fair"
+    assert not is_refusal(a)
+    assert normalize_answer('["teal"]') == "teal"
+    assert normalize_answer("('x', 'y')") == "x y"      # 'a' alone would be an article
+
+
+def test_citations_are_still_stripped_and_a_refusing_list_still_refuses():
+    from evals.qa.scorer import is_refusal, normalize_answer, strip_citations
+
+    assert strip_citations("teal [kg-step-1-recent_sessions]").strip() == "teal"
+    assert normalize_answer("teal [12] and [source: a.md]") == "teal and"   # the pattern needs 2+ chars
+    assert is_refusal("['Not mentioned']")
+    assert is_refusal("")
+    # not a literal: bracketed prose is still a citation-shaped span
+    assert normalize_answer("[not a list at all]") == ""

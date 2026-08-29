@@ -247,6 +247,7 @@ def fanout_search(
     bm25_index: Optional[Bm25Index] = None,
     source_root: Optional[Path] = None,
     profile: bool = False,
+    document_first: bool = False,
     overfetch: int = DEFAULT_OVERFETCH,
     source_cap: Optional[int] = None,
     ubiquity_df_ratio: float = DEFAULT_UBIQUITY_DF_RATIO,
@@ -302,6 +303,7 @@ def fanout_search(
             graph, query, top_k=top_k, weights=weights, mode=mode, backend=backend,
             candidate_filter=nodes, vector_cache=vector_cache,
             bm25_index=bm25_index, source_root=source_root, profile=profile,
+            document_first=document_first,
         )
 
     # Materialised here for the DF table ONLY, and through this exact call so
@@ -328,6 +330,7 @@ def fanout_search(
             graph, query, top_k=top_k, weights=weights, mode=mode, backend=backend,
             candidate_filter=nodes, vector_cache=vector_cache,
             bm25_index=bm25_index, source_root=source_root, profile=profile,
+            document_first=document_first,
         )
 
     fetch = max(1, int(top_k) * max(1, int(overfetch)))
@@ -336,6 +339,7 @@ def fanout_search(
             graph, subquery, top_k=fetch, weights=weights, mode=mode,
             backend=backend, candidate_filter=nodes, vector_cache=vector_cache,
             bm25_index=bm25_index, source_root=source_root, profile=profile,
+            document_first=document_first,
         )
         for subquery in subqueries
     ]

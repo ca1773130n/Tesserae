@@ -46,6 +46,7 @@ bytes out.
 
 from __future__ import annotations
 
+from evals.qa.scorer import is_refusal
 import argparse
 import json
 import os
@@ -243,6 +244,25 @@ _BOTH_BRANCHES_RULE = (
 #: assembled from the two constants above rather than duplicated, so the head
 #: the Modal Gate shares with it cannot drift away from it in a later edit.
 _SYSTEM_PROMPT = _ANSWER_FORMAT_RULES + _BOTH_BRANCHES_RULE
+
+#: ``--answer-always``: the same head, no abstention string at all. Measured on
+#: conv-30 (2026-08-29, protocol judge x3): 8 of 81 scorable questions were
+#: refused per replicate, and for 6 of those the gold session WAS in the
+#: evidence handed to the model — the decline was policy, not retrieval. The
+#: mechanism follows :data:`_DISPOSITIONAL_RULE`'s reading of Abstention
+#: Inflation (arXiv:2507.16199v6): the presence of a decline option raises
+#: declining whatever it is worded as, so this rule contains no "Not
+#: mentioned.", no "refuse", no "decline", no "insufficient". It applies to
+#: every category, adversarial included, and is therefore NOT the published
+#: protocol for category 5 — that column is reported apart and must be read
+#: with this flag in mind.
+_ANSWER_ALWAYS_RULE = (
+    "Always commit to one answer. Prefer what the evidence states outright; "
+    "when it does not state the answer, give the most plausible answer the "
+    "evidence points to, resolved to a name, a date, a number, yes/no, or a "
+    "short phrase. A hedged verdict such as \"Likely no\" is an answer. Never "
+    "reply with a statement about the evidence instead of an answer."
+)
 
 
 # --------------------------------------------------------------------------
@@ -500,7 +520,8 @@ _DISPOSITIONAL_SYSTEM_V2 = _ANSWER_FORMAT_RULES_V2 + _DISPOSITIONAL_RULE
 _EVENT_SYSTEM_V2 = _ANSWER_FORMAT_RULES_V2 + _EVENT_RULE
 
 
-def system_for(question: str, *, modal_gate: bool, deliberate: bool = False) -> str:
+def system_for(question: str, *, modal_gate: bool, deliberate: bool = False,
+               answer_always: bool = False) -> str:
     """The system prompt ``question`` is answered under.
 
     ``modal_gate=False`` with ``deliberate=False`` returns :data:`_SYSTEM_PROMPT`
@@ -531,6 +552,10 @@ def system_for(question: str, *, modal_gate: bool, deliberate: bool = False) -> 
     conv-26 is an unusually favourable slice and must not be sold as
     representative.
     """
+    if answer_always:
+        # bypasses the gate on purpose: a router that could still hand a
+        # question an abstention rule would not be "always"
+        return (_ANSWER_FORMAT_RULES_V2 if deliberate else _ANSWER_FORMAT_RULES) + _ANSWER_ALWAYS_RULE
     if not modal_gate:
         return _SYSTEM_PROMPT_V2 if deliberate else _SYSTEM_PROMPT
     if dispositional_question(question):
@@ -763,7 +788,8 @@ def backbone_client(model: str):
 
 def build_backbone(model: str, *,
                    modal_gate: bool = False,
-                   deliberate: bool = False
+                   deliberate: bool = False,
+                   answer_always: bool = False,
                    ) -> Callable[[str, Sequence[str]], str]:
     """An ``(question, evidence) -> short answer`` callable on ``model``.
 
@@ -798,7 +824,8 @@ def build_backbone(model: str, *,
                                for i, text in enumerate(evidence, start=1))
         payload = client.complete_json(
             system=system_for(question, modal_gate=modal_gate,
-                              deliberate=deliberate),
+                              deliberate=deliberate,
+                              answer_always=answer_always),
             user=f"Evidence:\n{numbered}\n\nQuestion: {question}",
             schema_name="locomo_answer",
         )
@@ -807,8 +834,28 @@ def build_backbone(model: str, *,
         text, shape = extract_answer(payload, last_raw_reply(),
                                      deliberate=deliberate)
         _note_answer_shape(shape)
+        if answer_always and is_refusal(text):
+            # The prompt carries no abstention option and the model declined
+            # anyway — measured at ~1-2 of 81 scorable questions per replicate
+            # on conv-30 once the list-answer false flags were fixed. One more
+            # call, same evidence, asked for a committed best guess; the
+            # second reply stands whatever it is.
+            payload = client.complete_json(
+                system=system_for(question, modal_gate=modal_gate,
+                                  deliberate=deliberate,
+                                  answer_always=answer_always),
+                user=(f"Evidence:\n{numbered}\n\nQuestion: {question}\n\n"
+                      "Your previous reply described the evidence instead of "
+                      "answering. Reply with your single best answer to the "
+                      "question, drawn from the evidence above — a name, a "
+                      "date, a number, yes/no, or a short phrase."),
+                schema_name="locomo_answer",
+            )
+            retried, shape = extract_answer(payload, last_raw_reply(),
+                                            deliberate=deliberate)
+            _note_answer_shape(shape)
+            return retried if retried else text
         return text
-
     return answer
 
 
@@ -999,6 +1046,7 @@ def answer_conversation(
     arm: str = "tesserae",
     evidence_content: str = "source",
     modal_gate: bool = False,
+    answer_always: bool = False,
     progress: bool = True,
 ) -> List[Dict[str, Any]]:
     """Answer every question from evidence :func:`search_conversation` already got.
@@ -1068,7 +1116,7 @@ def answer_conversation(
             # is off, which is not the same claim as "event": one says the
             # question was never routed, the other says it was and landed there.
             "branch": (("dispositional" if dispositional_question(question.question)
-                        else "event") if modal_gate else ""),
+                        else "event") if modal_gate else ("answer-always" if answer_always else "")),
             "n_evidence": len(items),
             # What the backbone actually read, in characters. An identical
             # generative config has swung 0.043 token F1 between two runs in
@@ -1803,6 +1851,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "shipped prompt, byte for byte. Free — it changes "
                              "no evidence and costs ~400 characters LESS than "
                              "the prompt it replaces")
+    parser.add_argument("--answer-always", action="store_true",
+                        help="answer every question, adversarial ones included: "
+                             "the system prompt carries no abstention option at "
+                             "all. Off by default: category 5 is then NOT scored "
+                             "on the published protocol")
     parser.add_argument("--deliberate", action="store_true",
                         help="answer under the two-key contract: a free-form "
                              "\"reasoning\" key the judge never sees, and an "
@@ -2199,7 +2252,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ) if spends else None
         answer_fn = (build_backbone(args.backbone,
                                   modal_gate=args.modal_gate,
-                                  deliberate=args.deliberate)
+                                  deliberate=args.deliberate,
+                                  answer_always=args.answer_always)
                      if answering else None)
 
         # THE CANARY. Before any question is answered, and before the judge
@@ -2268,7 +2322,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                     conversation, evidence, errors, answer_fn,
                                     replicate=replicate,
                                     evidence_content=args.answer_evidence,
-                                    modal_gate=args.modal_gate)
+                                    modal_gate=args.modal_gate,
+                                    answer_always=args.answer_always)
                     else:
                         # One arm per CONVERSATION: an index carried across
                         # conversations would rank a question against a corpus

@@ -145,10 +145,41 @@ _PUNCT_TABLE = {ord(c): " " for c in string.punctuation if c != "'"}
 _CITATION_RE = re.compile(r"\[[^\]]{2,}\]")
 
 
+def _list_literal_items(text: str) -> Optional[List[str]]:
+    """The items when ``text`` is one Python/JSON list literal, else ``None``.
+
+    A backbone asked for "the events" answers ``['networking events', 'dance
+    competition']`` — one bracketed span from end to end, which the citation
+    stripper erased to nothing. Nothing normalises to ``""``, ``""`` is a
+    refusal, and a correct answer was filed as a decline: 6 of 22 flagged rows
+    on one conversation (2026-08-29), every one judged CORRECT by the model
+    grader that saw the raw text. A list literal is an answer, not a citation.
+    """
+    import ast
+
+    stripped = text.strip()
+    if len(stripped) < 2 or stripped[0] not in "[(" or stripped[-1] not in "])":
+        return None
+    try:
+        value = ast.literal_eval(stripped)
+    except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
+        return None
+    if isinstance(value, (list, tuple)) and value and all(isinstance(v, str) for v in value):
+        return [v for v in value]
+    return None
+
+
 def strip_citations(text: Optional[str]) -> str:
-    """``text`` without bracketed provenance citations."""
+    """``text`` without bracketed provenance citations.
+
+    A whole-answer list literal is joined, not stripped — see
+    :func:`_list_literal_items`.
+    """
     if not text:
         return ""
+    items = _list_literal_items(str(text))
+    if items is not None:
+        return ", ".join(items)
     return _CITATION_RE.sub(" ", str(text))
 
 
