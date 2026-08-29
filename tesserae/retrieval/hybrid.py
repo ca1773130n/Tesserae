@@ -38,6 +38,7 @@ Design notes:
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import math
 import re
@@ -1122,6 +1123,7 @@ def hybrid_search(
     bm25_index: Optional[Bm25Index] = None,
     source_root: Optional[Path] = None,
     profile: bool = False,
+    document_first: bool = False,
 ) -> HybridSearchResult:
     """Fuse BM25, lexical and embedding lanes over a ``ResearchGraph``.
 
@@ -1192,6 +1194,47 @@ def hybrid_search(
         computed. It cannot change the answer — every number is derived from
         the score and rank tables the fusion already produced.
     """
+    if document_first and query.strip():
+        # Two stages. The unit of recall for conversational memory is the
+        # session, and a session is retrievable through its anchor node, which
+        # carries the whole session file as lexical text when ``source_root``
+        # is given. Ranking those anchors on their text with BM25 alone — no
+        # embedding lane, a whole-session vector against a short query is
+        # noise (0.896 -> 0.914 recall@10 without it); no prefix-expanding
+        # lexical lane either, it costs 0.004 recall and 0.032 MRR on documents
+        # — and only then filling the remaining slots with node hits is what
+        # closes the gap to a plain BM25 over the sessions. Measured on LoCoMo,
+        # nine conversations, gold-session recall@10 / MRR: node ranking
+        # 0.878 / 0.711, this 0.918 / 0.774, BM25 over the session documents
+        # 0.923 / 0.766. The default path is untouched: on the
+        # 148-paper corpus the same two-stage ranking scored WORSE (0.652 ->
+        # 0.595 recall@10), because there the claim and span nodes are the
+        # signal and whole-paper text drowns them — and dropping the embedding
+        # lane there costs even more (0.652 -> 0.528). Opt in per caller.
+        anchors = [
+            n for n in (candidate_filter if candidate_filter is not None else graph.nodes)
+            if n.type in _SOURCE_ANCHOR_TYPES and n.source_path
+        ]
+        first = hybrid_search(
+            graph, query, top_k=top_k,
+            weights={"bm25": 1.0, "lexical": 0.0, "embedding": 0.0},
+            mode="hybrid", backend=backend, candidate_filter=anchors,
+            vector_cache=vector_cache, bm25_index=None, source_root=source_root,
+        ) if anchors else None
+        rest = hybrid_search(
+            graph, query, top_k=top_k, weights=weights, mode=mode, backend=backend,
+            candidate_filter=candidate_filter, vector_cache=vector_cache,
+            bm25_index=bm25_index, source_root=source_root, profile=profile,
+        )
+        if first is None:
+            return rest
+        seen = {s.node.id for s in first.scored}
+        merged = list(first.scored) + [s for s in rest.scored if s.node.id not in seen]
+        return dataclasses.replace(
+            rest, scored=merged[: max(1, int(top_k))],
+            total_matches=max(rest.total_matches, first.total_matches),
+        )
+
     _t_call = time.perf_counter() if profile else 0.0
     nodes = list(candidate_filter) if candidate_filter is not None else list(graph.nodes)
     # Build the reported weights dict by merging the override on top of the
