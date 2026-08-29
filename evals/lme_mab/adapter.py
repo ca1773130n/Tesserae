@@ -872,6 +872,10 @@ class MabMemory:
             # to the work directory, which is where this harness staged the
             # sessions and the only tree its source_paths may name.
             source_root=self.work,
+            # The unit of recall is the session here as on LoCoMo: rank the
+            # session anchors on their text first, then node hits. See
+            # hybrid_search(document_first=...) for the measurement.
+            document_first=True,
         )
         hits = [
             MabHit(
