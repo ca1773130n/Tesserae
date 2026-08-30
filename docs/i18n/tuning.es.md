@@ -184,9 +184,11 @@ corpus pequeño no cuesta nada medible. En uno grande es el cuello de botella: e
 148 artículos, el recall por documentos distintos fue 0.754 @10 / 0.914 @50 con
 el modelo incluido y 0.791 / 0.962 con `BAAI/bge-base-en-v1.5` en la misma
 fusión — el carril denso por sí solo pasó de 0.473 a 0.680 @10. Un almacén
-vectorial plano sobre los mismos fragmentos con un codificador entrenado
-puntúa 0.784 / 0.942, así que el codificador entrenado es lo que pone al grafo
-por delante de él y no por detrás.
+vectorial plano sobre los mismos fragmentos puntúa 0.784 / 0.942 con
+nomic-embed-text y 0.775 / 0.944 con este mismo bge-base; la ventaja del grafo
+sobre él queda dentro del ruido en 57 preguntas (prueba de signos pareada
+p=1.0 a 10, 0.51 a 50). El codificador entrenado es lo que pone al grafo a la
+par de él y no por detrás.
 
 ```bash
 uv pip install sentence-transformers          # torch, ~2 GB with the model

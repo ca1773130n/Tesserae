@@ -196,8 +196,10 @@ der Engpass: auf 148 Papieren lag der Recall über verschiedene Dokumente bei
 0.754 @10 / 0.914 @50 mit dem mitgelieferten Modell und bei 0.791 / 0.962 mit
 `BAAI/bge-base-en-v1.5` in derselben Fusion — die dichte Spur allein stieg von
 0.473 auf 0.680 @10. Ein schlichter Vektorspeicher über denselben Abschnitten
-mit einem trainierten Encoder erreicht 0.784 / 0.942; der trainierte Encoder
-ist also das, was den Graphen vor ihn setzt statt hinter ihn.
+erreicht 0.784 / 0.942 mit nomic-embed-text und 0.775 / 0.944 mit demselben
+bge-base; der Vorsprung des Graphen liegt auf 57 Fragen im Rauschen (gepaarter
+Vorzeichentest p=1.0 bei 10, 0.51 bei 50). Der trainierte Encoder ist das, was
+den Graphen mit ihm gleichzieht statt hinter ihn.
 
 ```bash
 uv pip install sentence-transformers          # torch, ~2 GB with the model

@@ -201,9 +201,10 @@ il ne coûte rien de mesurable. Sur un grand, c'est le goulot : sur 148
 articles, le rappel par documents distincts était de 0.754 @10 / 0.914 @50 avec
 le modèle livré et de 0.791 / 0.962 avec `BAAI/bge-base-en-v1.5` dans la même
 fusion — la voie dense seule est passée de 0.473 à 0.680 @10. Un simple magasin
-vectoriel sur les mêmes fragments avec un encodeur entraîné obtient 0.784 /
-0.942 ; c'est donc l'encodeur entraîné qui met le graphe devant lui plutôt que
-derrière.
+vectoriel sur les mêmes fragments obtient 0.784 / 0.942 avec nomic-embed-text
+et 0.775 / 0.944 avec ce même bge-base ; l'avance du graphe sur lui reste dans
+le bruit sur 57 questions (test des signes apparié p=1.0 à 10, 0.51 à 50).
+C'est l'encodeur entraîné qui met le graphe à son niveau plutôt que derrière.
 
 ```bash
 uv pip install sentence-transformers          # torch, ~2 GB with the model
