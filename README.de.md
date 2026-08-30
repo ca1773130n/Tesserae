@@ -324,7 +324,9 @@ Agent liest, und übergibt ihre Prosa, keine Destillation — und die Prüfzeile
 die man prüfen kann, ohne ihnen zu vertrauen. Die +28.9% wurden durch Durchprobieren von k auf
 demselben Benchmark gefunden, der sie bewertet (k=5 gibt noch +12%), und sie hängen am
 Richter: erneut ausgeführt mit einem lokalen qwen2.5:7b als Antwortgeber und Richter liegen
-dieselben Arme +7% auseinander, innerhalb des Rauschens (57 Fragen, eine Wiederholung).
+dieselben Arme +7% auseinander, innerhalb des Rauschens (57 Fragen, eine Wiederholung), und
+auf einem zweiten, kleineren Korpus — der eigenen Dokumentation dieses Projekts, 24 von Hand
+geschriebene Fragen — verlieren sie gegen BM25 um 17–26%.
 
 Tesserae entscheidet sich für **Kompilieren aus Quellen statt Live-Bearbeitung**.
 Wenn Sie Notizen in einer Oberfläche bearbeiten wollen, nehmen Sie Logseq oder

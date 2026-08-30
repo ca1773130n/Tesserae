@@ -322,7 +322,9 @@ et lui remet leur prose, pas une distillation — et les lignes de vérification
 que l'on peut vérifier sans avoir à leur faire confiance. Le +28.9% a été trouvé en balayant k
 sur le banc même qui le note (k=5 donne encore +12%), et il dépend du juge : relancé
 avec un qwen2.5:7b local comme répondeur et juge, les mêmes bras ressortent à +7%
-d'écart, dans le bruit (57 questions, un réplicat).
+d'écart, dans le bruit (57 questions, un réplicat), et sur un second corpus plus petit —
+la propre documentation de ce projet, 24 questions écrites à la main — ils perdent face
+à BM25 de 17 à 26 %.
 
 Tesserae choisit la **compilation depuis les sources plutôt que l'édition en
 direct**. Si vous voulez éditer des notes dans une interface, prenez Logseq ou

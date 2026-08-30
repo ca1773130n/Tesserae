@@ -305,7 +305,9 @@ an agent reads and hands over their prose, not a distillation — and the
 verification rows are answers you can check without trusting them. The +28.9%
 was found by sweeping k on the benchmark it is scored on (k=5 still gives +12%),
 and it is judge-sensitive: re-run with a local qwen2.5:7b as answerer and judge,
-the same arms come out +7% apart, inside noise (57 questions, one replicate).
+the same arms come out +7% apart, inside noise (57 questions, one replicate), and
+on a second, smaller corpus — this project's own docs, 24 hand-written questions —
+they lose to BM25 by 17–26%.
 
 Tesserae chooses **compile-from-source over live editing**. If you want to edit
 notes in a UI, use Logseq or Obsidian. If you want a build tool *and a live
