@@ -300,6 +300,24 @@ dans la vue graphe.
 
 </details>
 
+### Mesuré, pas affirmé
+
+Chaque chiffre ci-dessous vient d'un banc de ce dépôt, sur des données présentes sur disque, et
+dit contre quoi il a été mesuré. Daté du 2026-08-30.
+
+| quoi | Tesserae | la comparaison |
+|---|---|---|
+| rappel des documents sur un corpus de 148 articles, recall@10 | **0.652** | passages BM25 0.550 |
+| verdicts de vérification fabriqués, 426 négatifs | **0** | — (aucun concurrent ne livre de vérificateur) |
+| signalements de relecture par phrase sur chaque réponse | gratuit ; cascade **0.935** contre un modèle sur chaque phrase 0.928, pour 40 % des appels | — |
+| appels d'API au moment de la requête | **0** — BM25 local et plongements statiques | Mem0 : un appel de plongement par recherche |
+| LoCoMo, rappel des sessions d'or recall@10, 9 conversations | **0.930** | BM25 0.923 |
+| LoCoMo, réponses, le juge de Mem0 lui-même, une conversation | 90.5 | Mem0 92.5 sur dix — parité, dans le bruit d'une conversation |
+
+La dernière ligne est le mot honnête pour les bancs de mémoire conversationnelle : parité. Les
+lignes au-dessus sont là où la conception diffère — un graphe qui trouve les bons documents dans
+un grand corpus, et des réponses que l'on peut vérifier sans avoir à leur faire confiance.
+
 Tesserae choisit la **compilation depuis les sources plutôt que l'édition en
 direct**. Si vous voulez éditer des notes dans une interface, prenez Logseq ou
 Obsidian. Si vous voulez un outil de build *et un moteur vivant* qui entretient
