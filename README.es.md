@@ -320,7 +320,9 @@ le entrega su prosa, no una destilación — y las filas de verificación son re
 puedes comprobar sin fiarte de ellas. El +28.9% se encontró barriendo k en el mismo banco
 con el que se puntúa (k=5 sigue dando +12%), y es sensible al juez: repetido con un
 qwen2.5:7b local como respondedor y juez, los mismos brazos quedan a +7%, dentro del
-ruido (57 preguntas, una réplica).
+ruido (57 preguntas, una réplica), y en un segundo corpus más pequeño — la propia
+documentación de este proyecto, 24 preguntas escritas a mano — pierden frente a BM25
+por un 17–26%.
 
 Tesserae elige **compilar desde las fuentes en lugar de editar en vivo**. Si
 quieres editar notas en una interfaz, usa Logseq u Obsidian. Si quieres una
