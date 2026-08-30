@@ -1041,3 +1041,15 @@ def test_the_judge_control_cannot_be_met_without_a_judge_running():
     }
     blockers = protocol_blockers(unjudged)
     assert any("judge_calls" in b for b in blockers)
+
+
+def test_the_retriever_does_not_see_the_benchmarks_date_stamp_and_instruction():
+    """The stamp and the boilerplate are the same words on every query; they
+    match every session equally and dilute the words that discriminate.
+    Measured on group 0: Tesserae 0.891 -> 0.916, BM25 0.911 -> 0.944."""
+    from evals.lme_mab.run import retrieval_query
+
+    q = "Current Date: 2023/05/27 (Sat) 22:54,\n\n Now Answer the Question: How many hours do I work in a typical week?"
+    assert retrieval_query(q) == "How many hours do I work in a typical week?"
+    assert retrieval_query("What is my dog's name?") == "What is my dog's name?"
+    assert retrieval_query("Now Answer the Question:   ") == "Now Answer the Question:"   # never empty
