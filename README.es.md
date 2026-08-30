@@ -305,16 +305,20 @@ en disco, y dice contra qué se midió. Fecha: 2026-08-30.
 
 | qué | Tesserae | la comparación |
 |---|---|---|
-| recall de documentos en un corpus de 148 artículos, recall@10 | **0.652** | pasajes BM25 0.550 |
+| responder preguntas comparativas sobre 148 artículos completos, cobertura de puntos obligatorios, 57 preguntas × 8 réplicas | **0.373** — el grafo elige 3 documentos y el paquete lleva su prosa original | pasajes BM25 con el mismo presupuesto, backbone y juez: 0.290 — **+28.9%**, 8/8 réplicas, p=0.0078 |
+| recall de documentos en el mismo corpus, documentos distintos @10 / @50 | 0.791 / 0.962 con un codificador entrenado (`TESSERAE_EMBEDDING_PREFER=st`); 0.754 / 0.914 tal como se distribuye | almacén de fragmentos en bruto de Mem0 OSS, mismo codificador: 0.775 / 0.944 — paridad |
 | veredictos de verificación fabricados, 426 negativos | **0** | — (ningún competidor entrega un verificador) |
 | marcas de revisión por frase en cada respuesta | gratis; cascada **0.935** frente a un modelo en cada frase 0.928, con el 40% de las llamadas | — |
 | llamadas a API en tiempo de consulta | **0** — BM25 local e incrustaciones estáticas | Mem0: una llamada de incrustación por búsqueda |
 | LoCoMo, recall@10 de sesiones de oro, 9 conversaciones | **0.930** | BM25 0.923 |
 | LoCoMo, respuestas, el juez propio de Mem0, una conversación | 90.5 | Mem0 92.5 sobre diez — paridad, dentro del ruido de una conversación |
 
-La última fila es la palabra honesta para los bancos de memoria conversacional: paridad. Las
-filas de arriba son donde el diseño difiere — un grafo que encuentra los documentos correctos
-en un corpus grande, y respuestas que puedes comprobar sin fiarte de ellas.
+Las dos últimas filas son la palabra honesta para la recuperación, conversacional o no:
+paridad. Dale a un almacén vectorial el mismo codificador y encuentra los mismos documentos.
+La primera fila es donde el diseño difiere — el grafo elige qué documentos lee un agente y
+le entrega su prosa, no una destilación — y las filas de verificación son respuestas que
+puedes comprobar sin fiarte de ellas. El +28.9% se encontró barriendo k en el mismo banco
+con el que se puntúa; k=5, el ajuste conservador, sigue dando +12%.
 
 Tesserae elige **compilar desde las fuentes en lugar de editar en vivo**. Si
 quieres editar notas en una interfaz, usa Logseq u Obsidian. Si quieres una
