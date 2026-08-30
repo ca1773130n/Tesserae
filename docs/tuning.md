@@ -149,6 +149,8 @@ you navigate cross-project wants the eager pass on.
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Parallel synthesis workers |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | off | Skip the model, exercise the pipeline |
 | `TESSERAE_VERIFY_BAND` | on | Re-decide `ask`'s uncertain review flags with the model, in the measured 0.30–0.70 band; `lo-hi` overrides it. `off` keeps the free flags only, which cost no tokens and no network |
+| `TESSERAE_EMBEDDING_PREFER` | auto | Dense lane encoder: `model2vec` (shipped, static, no torch), `st` (a trained sentence-transformers model), `openai`, `hash`. Unset, the ladder picks the first one installed |
+| `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | The sentence-transformers model `st` loads; any Hugging Face name |
 
 ### `TESSERAE_VERIFY_BAND`
 
@@ -177,6 +179,33 @@ untouched and still costs nothing. The envelope reports `adjudicated`: `null`
 when the cascade did not run, a count when it did. A model that cannot answer
 leaves the free verdict standing — a failed call can never turn a flagged
 sentence clean.
+
+### `TESSERAE_EMBEDDING_PREFER`
+
+The dense lane of `hybrid_search` embeds with whatever `active_embedding_backend`
+finds first: the shipped `model2vec` static model (8 MB, no torch, offline),
+then sentence-transformers, then a hash stub. The static model is what keeps
+`pip install tesserae` small, and on a small corpus it costs nothing you can
+measure. On a large one it is the bottleneck: on 148 papers, distinct-document
+recall was 0.754 @10 / 0.914 @50 with the shipped model and 0.791 / 0.962
+with `BAAI/bge-base-en-v1.5` in the same fusion — the dense lane alone went
+from 0.473 to 0.680 @10. A plain vector store over the same chunks with a
+trained encoder scores 0.784 / 0.942, so the trained encoder is what puts the
+graph ahead of it rather than behind.
+
+```bash
+uv pip install sentence-transformers          # torch, ~2 GB with the model
+export TESSERAE_EMBEDDING_PREFER=st
+export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face name
+```
+
+`auto` still picks the static model first, so an install that never sets the
+variable behaves exactly as before. The preference is read once, when the
+backend is first resolved; a value that names no backend is reported and
+ignored rather than silently falling through to the hash stub. A trained
+encoder re-embeds every node on every query unless the vectors are cached —
+`compile_context` and the MCP server already pass the project's `VectorCache`,
+which is keyed on the backend, so switching models never serves stale vectors.
 
 ---
 

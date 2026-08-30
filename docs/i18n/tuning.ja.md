@@ -153,6 +153,8 @@ export TESSERAE_LLM_CACHE=0   # 常に再度質問
 | `TESSERAE_SYNTHESIS_WORKERS` | — | 並行合成ワーカー |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | オフ | モデルをスキップ、パイプラインを実行 |
 | `TESSERAE_VERIFY_BAND` | オン | `ask` の不確かなレビュー印を、実測の 0.30–0.70 帯でモデルに判定し直させる。`lo-hi` はその帯を上書きする。`off` はトークンもネットワークも使わない無料の印だけを残す |
+| `TESSERAE_EMBEDDING_PREFER` | auto | 密ベクトルレーンのエンコーダ: `model2vec`(同梱、静的、torch 不要)、`st`(学習済み sentence-transformers モデル)、`openai`、`hash`。未設定なら、インストール済みのものを順に最初の一つ選ぶ |
+| `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | `st` が読み込む sentence-transformers モデル。Hugging Face の任意の名前 |
 
 ### `TESSERAE_VERIFY_BAND`
 
@@ -177,6 +179,34 @@ export TESSERAE_VERIFY_BAND=0.40-0.60   # より狭く: 呼び出しの 22%、0.
 かからない。エンベロープは `adjudicated` を報告する。カスケードが動かなかったときは
 `null`、動いたときは件数だ。答えられなかったモデルは無料の判定をそのまま残す — 失敗した
 呼び出しが、印の付いた文をきれいにすることは決してない。
+
+### `TESSERAE_EMBEDDING_PREFER`
+
+`hybrid_search` の密ベクトルレーンは、`active_embedding_backend` が最初に見つけた
+もので埋め込む: 同梱の `model2vec` 静的モデル(8 MB、torch 不要、オフライン)、
+次に sentence-transformers、次にハッシュのスタブ。静的モデルのおかげで
+`pip install tesserae` は小さく保たれ、小さなコーパスでは測定できるほどの
+コストはない。大きなコーパスではこれがボトルネックになる: 論文 148 本で、
+文書単位の再現率は同梱モデルで 0.754 @10 / 0.914 @50、同じ融合に
+`BAAI/bge-base-en-v1.5` を入れると 0.791 / 0.962 だった — 密ベクトルレーン単体では
+0.473 から 0.680 @10 に上がった。同じチャンクに学習済みエンコーダを載せた
+素のベクトルストアは 0.784 / 0.942 なので、グラフをそれより前に出すのは
+学習済みエンコーダである。
+
+```bash
+uv pip install sentence-transformers          # torch, ~2 GB with the model
+export TESSERAE_EMBEDDING_PREFER=st
+export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face name
+```
+
+`auto` は今も静的モデルを最初に選ぶので、この変数を一度も設定していない
+インストールは以前とまったく同じに振る舞う。設定値はバックエンドが最初に
+解決されるときに一度だけ読まれる。どのバックエンドも指さない値は、黙って
+ハッシュのスタブに落ちるのではなく、報告されたうえで無視される。学習済み
+エンコーダはベクトルをキャッシュしない限り、クエリのたびに全ノードを
+埋め込み直す — `compile_context` と MCP サーバーはすでにプロジェクトの
+`VectorCache` を渡しており、これはバックエンドをキーにしているので、モデルを
+切り替えても古いベクトルが返されることはない。
 
 ---
 

@@ -835,6 +835,10 @@ class MabMemory:
         # falling back would vary the embedder and the architecture at once and
         # still print a number.
         self._backend = active_embedding_backend(self._embedding_prefer)
+        # A trained encoder re-embeds every node on every query unless the
+        # vectors are cached; the static model is cheap enough not to notice.
+        from tesserae.retrieval.vector_cache import VectorCache
+        self._vector_cache = VectorCache(self.work / "vectors.sqlite")
         return self._backend
 
     def _resolve_search(self) -> Callable[..., Any]:
@@ -875,6 +879,7 @@ class MabMemory:
             # The unit of recall is the session here as on LoCoMo: rank the
             # session anchors on their text first, then node hits. See
             # hybrid_search(document_first=...) for the measurement.
+            vector_cache=getattr(self, "_vector_cache", None),
             document_first=True,
         )
         hits = [

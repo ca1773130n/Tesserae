@@ -1267,6 +1267,10 @@ class LocomoMemory:
         from tesserae.retrieval.hybrid import active_embedding_backend
 
         self._backend = active_embedding_backend(self._embedding_prefer)
+        # A trained encoder re-embeds every node on every query unless the
+        # vectors are cached; the static model is cheap enough not to notice.
+        from tesserae.retrieval.vector_cache import VectorCache
+        self._vector_cache = VectorCache(self.work / "vectors.sqlite")
         return self._backend
 
     def _resolve_search(self) -> Callable[..., Any]:
@@ -1653,6 +1657,7 @@ class LocomoMemory:
             # on their text first, then fill with node hits — measured 0.878 ->
             # 0.914 gold-session recall@10 on nine conversations, MRR ahead of
             # BM25 over the sessions. See hybrid_search(document_first=...).
+            vector_cache=getattr(self, "_vector_cache", None),
             document_first=True,
             **extra,
         )
