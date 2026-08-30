@@ -313,8 +313,8 @@ en disco, y dice contra qué se midió. Fecha: 2026-08-30.
 | LoCoMo, recall@10 de sesiones de oro, 9 conversaciones | **0.930** | BM25 0.923 |
 | LoCoMo, respuestas, el juez propio de Mem0, una conversación | 90.5 | Mem0 92.5 sobre diez — paridad, dentro del ruido de una conversación |
 
-Las dos últimas filas son la palabra honesta para la recuperación, conversacional o no:
-paridad. Dale a un almacén vectorial el mismo codificador y encuentra los mismos documentos.
+Las filas de recuperación — el recall de documentos y las dos filas de LoCoMo — son la
+palabra honesta, conversacional o no: paridad. Dale a un almacén vectorial el mismo codificador y encuentra los mismos documentos.
 La primera fila es donde el diseño difiere — el grafo elige qué documentos lee un agente y
 le entrega su prosa, no una destilación — y las filas de verificación son respuestas que
 puedes comprobar sin fiarte de ellas. El +28.9% se encontró barriendo k en el mismo banco

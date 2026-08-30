@@ -298,8 +298,8 @@ on disk, and says what it was measured against. Dated 2026-08-30.
 | LoCoMo gold-session recall@10, 9 conversations | **0.930** | BM25 0.923 |
 | LoCoMo answers, Mem0's own judge, one conversation | 90.5 | Mem0 92.5 over ten — parity, inside one conversation's noise |
 
-The last two rows are the honest word for retrieval, conversational or not:
-parity. Give a vector store the same encoder and it finds the same documents.
+The retrieval rows — document recall and both LoCoMo rows — are the honest
+word, conversational or not: parity. Give a vector store the same encoder and it finds the same documents.
 The first row is where the design differs — the graph chooses which documents
 an agent reads and hands over their prose, not a distillation — and the
 verification rows are answers you can check without trusting them. The +28.9%

@@ -315,8 +315,8 @@ dit contre quoi il a été mesuré. Daté du 2026-08-30.
 | LoCoMo, rappel des sessions d'or recall@10, 9 conversations | **0.930** | BM25 0.923 |
 | LoCoMo, réponses, le juge de Mem0 lui-même, une conversation | 90.5 | Mem0 92.5 sur dix — parité, dans le bruit d'une conversation |
 
-Les deux dernières lignes sont le mot honnête pour la recherche, conversationnelle ou non :
-parité. Donnez le même encodeur à un magasin vectoriel et il trouve les mêmes documents. La
+Les lignes de recherche — le rappel des documents et les deux lignes LoCoMo — sont le mot
+honnête, conversationnelle ou non : parité. Donnez le même encodeur à un magasin vectoriel et il trouve les mêmes documents. La
 première ligne est là où la conception diffère — le graphe choisit quels documents un agent lit
 et lui remet leur prose, pas une distillation — et les lignes de vérification sont des réponses
 que l'on peut vérifier sans avoir à leur faire confiance. Le +28.9% a été trouvé en balayant k

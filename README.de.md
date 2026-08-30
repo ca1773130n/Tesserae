@@ -317,8 +317,8 @@ liegen, und sagt, wogegen sie gemessen wurde. Stand 2026-08-30.
 | LoCoMo, Recall der Goldsitzungen recall@10, 9 Gespräche | **0.930** | BM25 0.923 |
 | LoCoMo, Antworten, Mem0s eigener Richter, ein Gespräch | 90.5 | Mem0 92.5 über zehn — Gleichstand, innerhalb des Rauschens eines Gesprächs |
 
-Die letzten zwei Zeilen sind das ehrliche Wort für Retrieval, ob Gespräch oder nicht:
-Gleichstand. Gib einem Vektorspeicher denselben Encoder, und er findet dieselben Dokumente.
+Die Retrieval-Zeilen — Dokument-Recall und beide LoCoMo-Zeilen — sind das ehrliche Wort,
+ob Gespräch oder nicht: Gleichstand. Gib einem Vektorspeicher denselben Encoder, und er findet dieselben Dokumente.
 Die erste Zeile ist, wo sich das Design unterscheidet — der Graph wählt, welche Dokumente ein
 Agent liest, und übergibt ihre Prosa, keine Destillation — und die Prüfzeilen sind Antworten,
 die man prüfen kann, ohne ihnen zu vertrauen. Die +28.9% wurden durch Durchprobieren von k auf
