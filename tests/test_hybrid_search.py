@@ -1247,3 +1247,46 @@ def test_document_first_is_deterministic(tmp_path):
     b = hybrid_search(ResearchGraph(nodes=list(reversed(graph.nodes)), edges=[]),
                       "LGBTQ support group", top_k=5, source_root=root, document_first=True)
     assert [s.node.id for s in a.scored] == [s.node.id for s in b.scored]
+
+
+def test_document_first_fills_the_document_budget_with_unmatched_anchors(tmp_path):
+    """A question whose words overlap one session must still come back with
+    k distinct documents — a BM25 baseline always does, and on LongMemEval
+    the shortfall alone cost 20 of 60 questions their budget."""
+    docs = tmp_path / "docs"; docs.mkdir()
+    texts = {"a": "Caroline went to the LGBTQ support group on Friday.",
+             "b": "Melanie painted the fence and repotted the basil.",
+             "c": "Nate replaced the bicycle chain before the race."}
+    for k, t in texts.items():
+        (docs / f"{k}.md").write_text(t)
+    nodes = [ResearchNode(id=f"SD:{k}", name=f"Session {k}", type=ResearchNodeType.SOURCE_DOCUMENT,
+                          source_path=str(docs / f"{k}.md")) for k in texts] + [
+        ResearchNode(id="C:1", name="support group", type=ResearchNodeType.CONCEPT, description="the LGBTQ support group"),
+        ResearchNode(id="C:2", name="LGBTQ community", type=ResearchNodeType.CONCEPT, description="LGBTQ support group members"),
+    ]
+    g = ResearchGraph(nodes=nodes, edges=[])
+    out = hybrid_search(g, "LGBTQ support group", top_k=3, source_root=docs, document_first=True)
+    ids = [s.node.id for s in out.scored]
+    assert ids[0] == "SD:a"
+    assert len({s.node.source_path for s in out.scored if s.node.source_path}) == 3, ids
+    assert all(x.startswith("SD:") for x in ids), "three slots, three documents, no repeats"
+    again = hybrid_search(g, "LGBTQ support group", top_k=3, source_root=docs, document_first=True)
+    assert [s.node.id for s in again.scored] == ids
+
+
+def test_document_first_lists_one_anchor_per_document(tmp_path):
+    """Two anchors for one file — a SourceDocument and a Paper, or a chunked
+    compile's leftovers — must not spend two of k slots on the same session."""
+    docs = tmp_path / "docs"; docs.mkdir()
+    a = docs / "a.md"; a.write_text("Caroline went to the LGBTQ support group on Friday.")
+    b = docs / "b.md"; b.write_text("Melanie also went to the LGBTQ support group that week.")
+    nodes = [
+        ResearchNode(id="SD:a", name="Session A", type=ResearchNodeType.SOURCE_DOCUMENT, source_path=str(a)),
+        ResearchNode(id="P:a", name="Session A paper", type=ResearchNodeType.PAPER, source_path=str(a)),
+        ResearchNode(id="SD:b", name="Session B", type=ResearchNodeType.SOURCE_DOCUMENT, source_path=str(b)),
+        ResearchNode(id="P:b", name="Session B paper", type=ResearchNodeType.PAPER, source_path=str(b)),
+    ]
+    out = hybrid_search(ResearchGraph(nodes=nodes, edges=[]), "LGBTQ support group", top_k=2,
+                        source_root=docs, document_first=True)
+    paths = [s.node.source_path for s in out.scored]
+    assert len(paths) == 2 and len(set(paths)) == 2, paths
