@@ -1215,12 +1215,29 @@ def hybrid_search(
             n for n in (candidate_filter if candidate_filter is not None else graph.nodes)
             if n.type in _SOURCE_ANCHOR_TYPES and n.source_path
         ]
+        # Overfetch, then one anchor per document. A document can own more
+        # than one anchor node — a SourceDocument and a Paper for the same
+        # file, or the leftovers of a chunked compile — and ten anchors for
+        # four documents is a budget spent on repeats: on LongMemEval group 0
+        # the top ten held four distinct sessions on a third of the questions.
         first = hybrid_search(
-            graph, query, top_k=top_k,
+            graph, query, top_k=max(1, int(top_k)) * 4,
             weights={"bm25": 1.0, "lexical": 0.0, "embedding": 0.0},
             mode="hybrid", backend=backend, candidate_filter=anchors,
             vector_cache=vector_cache, bm25_index=None, source_root=source_root,
         ) if anchors else None
+        if first is not None:
+            one_per_doc: List[ScoredNode] = []
+            docs_taken: set = set()
+            for scored in first.scored:
+                doc = str(scored.node.source_path or "")
+                if doc in docs_taken:
+                    continue
+                docs_taken.add(doc)
+                one_per_doc.append(scored)
+                if len(one_per_doc) >= max(1, int(top_k)):
+                    break
+            first = dataclasses.replace(first, scored=one_per_doc)
         rest = hybrid_search(
             graph, query, top_k=top_k, weights=weights, mode=mode, backend=backend,
             candidate_filter=candidate_filter, vector_cache=vector_cache,
@@ -1228,10 +1245,43 @@ def hybrid_search(
         )
         if first is None:
             return rest
-        seen = {s.node.id for s in first.scored}
-        merged = list(first.scored) + [s for s in rest.scored if s.node.id not in seen]
+        budget = max(1, int(top_k))
+        merged: List[ScoredNode] = list(first.scored)
+        seen = {s.node.id for s in merged}
+        docs = {str(s.node.source_path or "") for s in merged}
+        # Fill the document budget before spending slots on node hits. A
+        # question whose words overlap few sessions matches few anchors, and
+        # the node hits that follow repeat sessions already listed — on
+        # LongMemEval 20 of 60 questions came back with fewer than k distinct
+        # documents, a handicap no BM25 baseline has because it always returns
+        # k documents. The unmatched anchors are appended by embedding
+        # similarity, then in graph order, so the caller always gets k distinct
+        # documents when the corpus has them. Deterministic either way.
+        if len(docs) < budget:
+            remaining = [a for a in anchors if str(a.source_path or "") not in docs]
+            if remaining:
+                order: List[ResearchNode] = []
+                if backend is not None:
+                    tail = hybrid_search(
+                        graph, query, top_k=len(remaining),
+                        weights={"bm25": 0.0, "lexical": 0.0, "embedding": 1.0},
+                        mode="hybrid", backend=backend, candidate_filter=remaining,
+                        vector_cache=vector_cache, bm25_index=None, source_root=None,
+                    )
+                    order = [s.node for s in tail.scored]
+                ranked_ids = {n.id for n in order}
+                order += [a for a in remaining if a.id not in ranked_ids]
+                for node in order:
+                    if len(docs) >= budget:
+                        break
+                    doc = str(node.source_path or "")
+                    if doc in docs or node.id in seen:
+                        continue
+                    merged.append(ScoredNode(node=node, score=0.0, per_lane={}, ranks={}))
+                    seen.add(node.id); docs.add(doc)
+        merged += [s for s in rest.scored if s.node.id not in seen]
         return dataclasses.replace(
-            rest, scored=merged[: max(1, int(top_k))],
+            rest, scored=merged[:budget],
             total_matches=max(rest.total_matches, first.total_matches),
         )
 

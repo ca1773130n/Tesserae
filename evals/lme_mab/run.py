@@ -1018,6 +1018,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retrieval-only", action="store_true",
                         help="score recall@K and MRR of the gold session and skip "
                              "answering entirely — no backbone, no judge")
+    parser.add_argument("--fanout", action="store_true",
+                        help="run the lanes a second time with corpus-ubiquitous "
+                             "terms stripped and merge the rankings (free, local, "
+                             "deterministic). Off by default: not the shipped "
+                             "retrieval path")
     parser.add_argument("--reuse-compile", action="store_true",
                         help="measure against the graph ALREADY compiled in "
                              "--work instead of compiling again. Verifies the "
@@ -1173,7 +1178,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if spends and not args.stage_only and not _confirm(estimate, args.yes):
             return 0
 
-        memory = MabMemory(embedding_prefer=args.embedding_prefer) if spends else None
+        search_fn = None
+        if args.fanout:
+            # Same lever as the LoCoMo arm (#246): the lanes run a second time
+            # with corpus-ubiquitous terms stripped and the rankings merge.
+            # fanout_search takes every parameter hybrid_search takes, so the
+            # arm's call site is untouched.
+            from tesserae.retrieval.fanout import fanout_search
+            search_fn = fanout_search
+        memory = (MabMemory(embedding_prefer=args.embedding_prefer, search_fn=search_fn)
+                  if spends else None)
         ingests: List[IngestResult] = []
         rows: List[Dict[str, Any]] = []
         arm_rows: Dict[str, List[Dict[str, Any]]] = {name: [] for name in arms}
