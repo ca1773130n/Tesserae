@@ -143,6 +143,8 @@ la pasada ansiosa activada.
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Trabajadores de síntesis paralela |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | desactivado | Salta el modelo, ejecuta la tubería |
 | `TESSERAE_VERIFY_BAND` | activado | Vuelve a decidir con el modelo las marcas de revisión dudosas de `ask` en la banda medida 0.30–0.70; `lo-hi` la sustituye. `off` deja solo las marcas gratuitas, que no cuestan tokens ni red |
+| `TESSERAE_EMBEDDING_PREFER` | auto | Codificador del carril denso: `model2vec` (incluido, estático, sin torch), `st` (un modelo sentence-transformers entrenado), `openai`, `hash`. Sin definir, la escalera elige el primero instalado |
+| `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | El modelo sentence-transformers que carga `st`; cualquier nombre de Hugging Face |
 
 ### `TESSERAE_VERIFY_BAND`
 
@@ -171,6 +173,35 @@ y no una comprobación gratuita más lista. La función de biblioteca
 `adjudicated`: `null` cuando la cascada no se ejecutó, y un recuento cuando sí. Un modelo
 que no puede responder deja en pie el veredicto gratuito — una llamada fallida nunca puede
 dejar limpia una frase marcada.
+
+### `TESSERAE_EMBEDDING_PREFER`
+
+El carril denso de `hybrid_search` incrusta con lo primero que encuentra
+`active_embedding_backend`: el modelo estático `model2vec` incluido (8 MB, sin
+torch, sin conexión), luego sentence-transformers, luego un sustituto por hash.
+El modelo estático es lo que mantiene pequeño `pip install tesserae`, y en un
+corpus pequeño no cuesta nada medible. En uno grande es el cuello de botella: en
+148 artículos, el recall por documentos distintos fue 0.754 @10 / 0.914 @50 con
+el modelo incluido y 0.791 / 0.962 con `BAAI/bge-base-en-v1.5` en la misma
+fusión — el carril denso por sí solo pasó de 0.473 a 0.680 @10. Un almacén
+vectorial plano sobre los mismos fragmentos con un codificador entrenado
+puntúa 0.784 / 0.942, así que el codificador entrenado es lo que pone al grafo
+por delante de él y no por detrás.
+
+```bash
+uv pip install sentence-transformers          # torch, ~2 GB with the model
+export TESSERAE_EMBEDDING_PREFER=st
+export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face name
+```
+
+`auto` sigue eligiendo primero el modelo estático, así que una instalación que
+nunca define la variable se comporta exactamente como antes. La preferencia se
+lee una sola vez, cuando el backend se resuelve por primera vez; un valor que no
+nombra ningún backend se informa y se ignora en lugar de caer en silencio al
+sustituto por hash. Un codificador entrenado vuelve a incrustar cada nodo en
+cada consulta a menos que los vectores estén en caché — `compile_context` y el
+servidor MCP ya pasan el `VectorCache` del proyecto, cuya clave es el backend,
+así que cambiar de modelo nunca sirve vectores obsoletos.
 
 ---
 

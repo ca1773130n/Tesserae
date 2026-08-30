@@ -136,6 +136,8 @@ cross-project navigate하는 project는 eager pass를 원합니다.
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Parallel synthesis workers |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | off | model skip, pipeline exercise |
 | `TESSERAE_VERIFY_BAND` | on | `ask`의 불확실한 검토 플래그를 측정된 0.30–0.70 구간에서 모델로 다시 판정한다. `lo-hi`는 그 구간을 덮어쓴다. `off`는 토큰도 네트워크도 쓰지 않는 무료 플래그만 남긴다 |
+| `TESSERAE_EMBEDDING_PREFER` | auto | 밀집 레인 인코더: `model2vec`(기본 탑재, 정적, torch 불필요), `st`(학습된 sentence-transformers 모델), `openai`, `hash`. 설정하지 않으면 설치된 것 중 첫 번째를 고른다 |
+| `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | `st`가 로드하는 sentence-transformers 모델; Hugging Face 이름 아무거나 |
 
 ### `TESSERAE_VERIFY_BAND`
 
@@ -162,6 +164,33 @@ export TESSERAE_VERIFY_BAND=0.40-0.60   # 더 좁게: 호출의 22%, 0.914
 엔벨로프는 `adjudicated`를 보고한다. 캐스케이드가 실행되지 않았으면 `null`, 실행되었으면
 개수다. 답하지 못한 모델은 무료 판정을 그대로 남겨 둔다 — 실패한 호출이 플래그된 문장을
 깨끗하게 만들 수는 결코 없다.
+
+### `TESSERAE_EMBEDDING_PREFER`
+
+`hybrid_search`의 밀집 레인은 `active_embedding_backend`가 먼저 찾는 것으로
+임베딩한다: 기본 탑재된 `model2vec` 정적 모델(8 MB, torch 불필요, 오프라인),
+그다음 sentence-transformers, 그다음 해시 스텁. 정적 모델 덕분에
+`pip install tesserae`가 작게 유지되고, 작은 코퍼스에서는 측정 가능한 비용이
+없다. 큰 코퍼스에서는 이것이 병목이다: 논문 148편에서 서로 다른 문서
+기준 재현율이 기본 모델로는 0.754 @10 / 0.914 @50, 같은 융합에
+`BAAI/bge-base-en-v1.5`를 넣으면 0.791 / 0.962였다 — 밀집 레인 단독으로는
+0.473에서 0.680 @10으로 올랐다. 같은 청크에 학습된 인코더를 얹은 단순 벡터
+저장소는 0.784 / 0.942이므로, 그래프를 그것보다 앞서게 하는 것은 학습된
+인코더다.
+
+```bash
+uv pip install sentence-transformers          # torch, ~2 GB with the model
+export TESSERAE_EMBEDDING_PREFER=st
+export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face name
+```
+
+`auto`는 여전히 정적 모델을 먼저 고르므로, 이 변수를 설정한 적 없는 설치는
+이전과 똑같이 동작한다. 선호값은 백엔드가 처음 결정될 때 한 번만 읽는다;
+어떤 백엔드도 가리키지 않는 값은 해시 스텁으로 조용히 흘러가지 않고 보고된
+뒤 무시된다. 학습된 인코더는 벡터를 캐시하지 않으면 질의마다 모든 노드를
+다시 임베딩한다 — `compile_context`와 MCP 서버는 이미 프로젝트의
+`VectorCache`를 넘기고, 이 캐시는 백엔드를 키로 쓰므로 모델을 바꿔도 낡은
+벡터가 제공되는 일은 없다.
 
 ---
 

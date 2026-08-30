@@ -136,6 +136,8 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 | `TESSERAE_SYNTHESIS_WORKERS` | — | 并行综合工作者 |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | 关闭 | 跳过模型，运行管道 |
 | `TESSERAE_VERIFY_BAND` | 开启 | 在实测的 0.30–0.70 区间内用模型重新判定 `ask` 不确定的复核标记；`lo-hi` 覆盖它。`off` 只保留不花费令牌也不走网络的免费标记 |
+| `TESSERAE_EMBEDDING_PREFER` | auto | 稠密通道编码器：`model2vec`（随包附带，静态，无需 torch）、`st`（经过训练的 sentence-transformers 模型）、`openai`、`hash`。未设置时按顺序选用第一个已安装的 |
+| `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | `st` 加载的 sentence-transformers 模型；任意 Hugging Face 名称 |
 
 ### `TESSERAE_VERIFY_BAND`
 
@@ -158,6 +160,29 @@ export TESSERAE_VERIFY_BAND=0.40-0.60   # 更窄：22% 的调用，0.914
 费检查。库函数 `check_against_evidence` 保持不变，仍然不花钱。信封会报告
 `adjudicated`：级联未运行时为 `null`，运行时为计数。无法作答的模型会让免费判定保持原样
 —— 一次失败的调用永远不能把被标记的句子变干净。
+
+### `TESSERAE_EMBEDDING_PREFER`
+
+`hybrid_search` 的稠密通道用 `active_embedding_backend` 最先找到的编码器做嵌入：
+随包附带的 `model2vec` 静态模型（8 MB，无需 torch，离线），然后是
+sentence-transformers，然后是哈希桩。静态模型让 `pip install tesserae`
+保持小巧，在小语料上它的代价小到测不出来。在大语料上它就是瓶颈：在 148
+篇论文上，按不同文档计的召回率，随包模型为 0.754 @10 / 0.914 @50，同一融合换成
+`BAAI/bge-base-en-v1.5` 则为 0.791 / 0.962 —— 单独看稠密通道，从 0.473 升到
+0.680 @10。对同样的分块用训练过的编码器建一个普通向量库，得分是 0.784 /
+0.942，所以让图领先而不是落后于它的，正是训练过的编码器。
+
+```bash
+uv pip install sentence-transformers          # torch, ~2 GB with the model
+export TESSERAE_EMBEDDING_PREFER=st
+export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face name
+```
+
+`auto` 仍然优先选静态模型，因此从未设置该变量的安装行为与以前完全一致。
+偏好只在首次解析后端时读取一次；指不到任何后端的值会被报告并忽略，而不是
+悄悄落到哈希桩。训练过的编码器如果不缓存向量，每次查询都会重新嵌入全部节点 ——
+`compile_context` 和 MCP 服务器已经传入项目的 `VectorCache`，它以后端为键，
+所以切换模型绝不会提供过期向量。
 
 ---
 

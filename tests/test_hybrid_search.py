@@ -1290,3 +1290,65 @@ def test_document_first_lists_one_anchor_per_document(tmp_path):
                         source_root=docs, document_first=True)
     paths = [s.node.source_path for s in out.scored]
     assert len(paths) == 2 and len(set(paths)) == 2, paths
+
+
+# ---------------------------------------------- embedder selection ---
+
+def test_the_environment_can_pick_the_embedding_backend(monkeypatch):
+    """Measured 2026-08-30 on 148 papers: a trained encoder in the dense lane
+    lifts distinct-document recall 0.754 -> 0.791 @10 and 0.914 -> 0.962 @50.
+    The auto path stays torch-free; an operator opts in once, in the env."""
+    from tesserae.retrieval import hybrid as h
+
+    calls = []
+
+    class FakeM2V:
+        name = "model2vec:fake"
+        def __init__(self): calls.append("m2v")
+
+    class FakeST:
+        name = "sentence-transformers:fake"
+        def __init__(self, model_name=None): calls.append(("st", model_name))
+
+    monkeypatch.setattr(h, "Model2VecBackend", FakeM2V)
+    monkeypatch.setattr(h, "SentenceTransformersBackend", FakeST)
+    monkeypatch.setattr(h, "_BACKEND_CACHE", {})
+    monkeypatch.setenv("TESSERAE_EMBEDDING_PREFER", "st")
+    assert h.active_embedding_backend("auto").name == "sentence-transformers:fake"
+    monkeypatch.setattr(h, "_BACKEND_CACHE", {})
+    monkeypatch.setenv("TESSERAE_EMBEDDING_PREFER", "model2vec")
+    assert h.active_embedding_backend("auto").name == "model2vec:fake"
+    # an explicit caller preference is not overridden by the environment
+    monkeypatch.setattr(h, "_BACKEND_CACHE", {})
+    monkeypatch.setenv("TESSERAE_EMBEDDING_PREFER", "st")
+    assert h.active_embedding_backend("model2vec").name == "model2vec:fake"
+
+
+def test_an_unknown_embedding_preference_is_reported_not_swallowed(monkeypatch):
+    import warnings
+    from tesserae.retrieval import hybrid as h
+
+    class FakeM2V:
+        name = "model2vec:fake"
+    monkeypatch.setattr(h, "Model2VecBackend", FakeM2V)
+    monkeypatch.setattr(h, "_BACKEND_CACHE", {})
+    monkeypatch.setenv("TESSERAE_EMBEDDING_PREFER", "bogus")
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        assert h.active_embedding_backend("auto").name == "model2vec:fake"
+    assert any("TESSERAE_EMBEDDING_PREFER" in str(x.message) for x in w)
+
+
+def test_the_trained_encoder_default_is_the_measured_one_and_env_overrides_it(monkeypatch):
+    import types
+    from tesserae.retrieval import hybrid as h
+
+    seen = []
+    fake = types.SimpleNamespace(SentenceTransformer=lambda name: seen.append(name) or types.SimpleNamespace(
+        get_embedding_dimension=lambda: 3, encode=lambda texts, normalize_embeddings=True: [[0.0, 0.0, 1.0]] * len(texts)))
+    monkeypatch.setitem(__import__("sys").modules, "sentence_transformers", fake)
+    monkeypatch.delenv("TESSERAE_ST_MODEL", raising=False)
+    h.SentenceTransformersBackend()
+    monkeypatch.setenv("TESSERAE_ST_MODEL", "BAAI/bge-small-en-v1.5")
+    h.SentenceTransformersBackend()
+    assert seen == ["BAAI/bge-base-en-v1.5", "BAAI/bge-small-en-v1.5"]
