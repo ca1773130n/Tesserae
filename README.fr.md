@@ -307,16 +307,20 @@ dit contre quoi il a été mesuré. Daté du 2026-08-30.
 
 | quoi | Tesserae | la comparaison |
 |---|---|---|
-| rappel des documents sur un corpus de 148 articles, recall@10 | **0.652** | passages BM25 0.550 |
+| répondre à des questions comparatives sur 148 articles complets, couverture des points requis, 57 questions × 8 réplicats | **0.373** — le graphe choisit 3 documents, le paquet porte leur prose d'origine | passages BM25 à budget, backbone et juge identiques : 0.290 — **+28.9%**, 8/8 réplicats, p=0.0078 |
+| rappel des documents sur le même corpus, documents distincts @10 / @50 | 0.791 / 0.962 avec un encodeur entraîné (`TESSERAE_EMBEDDING_PREFER=st`) ; 0.754 / 0.914 tel que livré | magasin de fragments bruts de Mem0 OSS, même encodeur : 0.775 / 0.944 — parité |
 | verdicts de vérification fabriqués, 426 négatifs | **0** | — (aucun concurrent ne livre de vérificateur) |
 | signalements de relecture par phrase sur chaque réponse | gratuit ; cascade **0.935** contre un modèle sur chaque phrase 0.928, pour 40 % des appels | — |
 | appels d'API au moment de la requête | **0** — BM25 local et plongements statiques | Mem0 : un appel de plongement par recherche |
 | LoCoMo, rappel des sessions d'or recall@10, 9 conversations | **0.930** | BM25 0.923 |
 | LoCoMo, réponses, le juge de Mem0 lui-même, une conversation | 90.5 | Mem0 92.5 sur dix — parité, dans le bruit d'une conversation |
 
-La dernière ligne est le mot honnête pour les bancs de mémoire conversationnelle : parité. Les
-lignes au-dessus sont là où la conception diffère — un graphe qui trouve les bons documents dans
-un grand corpus, et des réponses que l'on peut vérifier sans avoir à leur faire confiance.
+Les lignes de recherche — le rappel des documents et les deux lignes LoCoMo — sont le mot
+honnête, conversationnelle ou non : parité. Donnez le même encodeur à un magasin vectoriel et il trouve les mêmes documents. La
+première ligne est là où la conception diffère — le graphe choisit quels documents un agent lit
+et lui remet leur prose, pas une distillation — et les lignes de vérification sont des réponses
+que l'on peut vérifier sans avoir à leur faire confiance. Le +28.9% a été trouvé en balayant k
+sur le banc même qui le note ; k=5, le réglage prudent, donne encore +12%.
 
 Tesserae choisit la **compilation depuis les sources plutôt que l'édition en
 direct**. Si vous voulez éditer des notes dans une interface, prenez Logseq ou

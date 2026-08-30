@@ -290,16 +290,21 @@ on disk, and says what it was measured against. Dated 2026-08-30.
 
 | what | Tesserae | the comparison |
 |---|---|---|
-| document recall on a 148-paper corpus, recall@10 | **0.652** | BM25 passages 0.550 |
+| answering comparative questions over 148 full papers, required-point coverage, 57 questions × 8 replicates | **0.373** — the graph picks 3 documents, the bundle carries their source prose | BM25 passages at the same budget, backbone and judge: 0.290 — **+28.9%**, 8/8 replicates, p=0.0078 |
+| document recall on the same corpus, distinct documents @10 / @50 | 0.791 / 0.962 with a trained encoder (`TESSERAE_EMBEDDING_PREFER=st`); 0.754 / 0.914 as shipped | Mem0 OSS raw-chunk store, same encoder: 0.775 / 0.944 — parity |
 | fabricated verification verdicts, 426 negatives | **0** | — (no competitor ships a verifier) |
 | per-sentence review flags on every answer | free; cascade **0.935** vs a model on every sentence 0.928, at 40% of the calls | — |
 | API calls at query time | **0** — local BM25 and static embeddings | Mem0: one embedding call per search |
 | LoCoMo gold-session recall@10, 9 conversations | **0.930** | BM25 0.923 |
 | LoCoMo answers, Mem0's own judge, one conversation | 90.5 | Mem0 92.5 over ten — parity, inside one conversation's noise |
 
-The last row is the honest word for conversational-memory benchmarks: parity.
-The rows above it are where the design differs — a graph that finds the right
-documents in a large corpus, and answers you can check without trusting them.
+The retrieval rows — document recall and both LoCoMo rows — are the honest
+word, conversational or not: parity. Give a vector store the same encoder and it finds the same documents.
+The first row is where the design differs — the graph chooses which documents
+an agent reads and hands over their prose, not a distillation — and the
+verification rows are answers you can check without trusting them. The +28.9%
+was found by sweeping k on the benchmark it is scored on; k=5, the conservative
+setting, still gives +12%.
 
 Tesserae chooses **compile-from-source over live editing**. If you want to edit
 notes in a UI, use Logseq or Obsidian. If you want a build tool *and a live
