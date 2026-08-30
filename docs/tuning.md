@@ -189,9 +189,11 @@ then sentence-transformers, then a hash stub. The static model is what keeps
 measure. On a large one it is the bottleneck: on 148 papers, distinct-document
 recall was 0.754 @10 / 0.914 @50 with the shipped model and 0.791 / 0.962
 with `BAAI/bge-base-en-v1.5` in the same fusion — the dense lane alone went
-from 0.473 to 0.680 @10. A plain vector store over the same chunks with a
-trained encoder scores 0.784 / 0.942, so the trained encoder is what puts the
-graph ahead of it rather than behind.
+from 0.473 to 0.680 @10. A plain vector store over the same chunks scores
+0.784 / 0.942 with nomic-embed-text and 0.775 / 0.944 with this same bge-base;
+the graph's edge over it is within noise on 57 questions (paired sign test
+p=1.0 at 10, 0.51 at 50). The trained encoder is what puts the graph level
+with it rather than behind.
 
 ```bash
 uv pip install sentence-transformers          # torch, ~2 GB with the model
