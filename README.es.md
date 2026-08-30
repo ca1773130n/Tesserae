@@ -305,7 +305,7 @@ en disco, y dice contra qué se midió. Fecha: 2026-08-30.
 
 | qué | Tesserae | la comparación |
 |---|---|---|
-| responder preguntas comparativas sobre 148 artículos completos, cobertura de puntos obligatorios, 57 preguntas × 8 réplicas | **0.373** — el grafo elige 3 documentos y el paquete lleva su prosa original | pasajes BM25 con el mismo presupuesto, backbone y juez: 0.290 — **+28.9%**, 8/8 réplicas, p=0.0078 |
+| responder preguntas comparativas sobre 148 artículos completos, cobertura de puntos obligatorios, 57 preguntas × 8 réplicas | **0.373** — el grafo elige 3 documentos y el paquete lleva su prosa original | pasajes BM25 con el mismo presupuesto, backbone y juez: 0.290 — **+28.9%**, 8/8 réplicas, p=0.0078; un juez local de 7B ve +7%, no significativo |
 | recall de documentos en el mismo corpus, documentos distintos @10 / @50 | 0.791 / 0.962 con un codificador entrenado (`TESSERAE_EMBEDDING_PREFER=st`); 0.754 / 0.914 tal como se distribuye | almacén de fragmentos en bruto de Mem0 OSS, mismo codificador: 0.775 / 0.944 — paridad |
 | veredictos de verificación fabricados, 426 negativos | **0** | — (ningún competidor entrega un verificador) |
 | marcas de revisión por frase en cada respuesta | gratis; cascada **0.935** frente a un modelo en cada frase 0.928, con el 40% de las llamadas | — |
@@ -318,7 +318,9 @@ palabra honesta, conversacional o no: paridad. Dale a un almacén vectorial el m
 La primera fila es donde el diseño difiere — el grafo elige qué documentos lee un agente y
 le entrega su prosa, no una destilación — y las filas de verificación son respuestas que
 puedes comprobar sin fiarte de ellas. El +28.9% se encontró barriendo k en el mismo banco
-con el que se puntúa; k=5, el ajuste conservador, sigue dando +12%.
+con el que se puntúa (k=5 sigue dando +12%), y es sensible al juez: repetido con un
+qwen2.5:7b local como respondedor y juez, los mismos brazos quedan a +7%, dentro del
+ruido (57 preguntas, una réplica).
 
 Tesserae elige **compilar desde las fuentes en lugar de editar en vivo**. Si
 quieres editar notas en una interfaz, usa Logseq u Obsidian. Si quieres una

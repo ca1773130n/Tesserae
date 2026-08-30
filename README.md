@@ -290,7 +290,7 @@ on disk, and says what it was measured against. Dated 2026-08-30.
 
 | what | Tesserae | the comparison |
 |---|---|---|
-| answering comparative questions over 148 full papers, required-point coverage, 57 questions × 8 replicates | **0.373** — the graph picks 3 documents, the bundle carries their source prose | BM25 passages at the same budget, backbone and judge: 0.290 — **+28.9%**, 8/8 replicates, p=0.0078 |
+| answering comparative questions over 148 full papers, required-point coverage, 57 questions × 8 replicates | **0.373** — the graph picks 3 documents, the bundle carries their source prose | BM25 passages at the same budget, backbone and judge: 0.290 — **+28.9%**, 8/8 replicates, p=0.0078; a local 7B judge sees +7%, not significant |
 | document recall on the same corpus, distinct documents @10 / @50 | 0.791 / 0.962 with a trained encoder (`TESSERAE_EMBEDDING_PREFER=st`); 0.754 / 0.914 as shipped | Mem0 OSS raw-chunk store, same encoder: 0.775 / 0.944 — parity |
 | fabricated verification verdicts, 426 negatives | **0** | — (no competitor ships a verifier) |
 | per-sentence review flags on every answer | free; cascade **0.935** vs a model on every sentence 0.928, at 40% of the calls | — |
@@ -303,8 +303,9 @@ word, conversational or not: parity. Give a vector store the same encoder and it
 The first row is where the design differs — the graph chooses which documents
 an agent reads and hands over their prose, not a distillation — and the
 verification rows are answers you can check without trusting them. The +28.9%
-was found by sweeping k on the benchmark it is scored on; k=5, the conservative
-setting, still gives +12%.
+was found by sweeping k on the benchmark it is scored on (k=5 still gives +12%),
+and it is judge-sensitive: re-run with a local qwen2.5:7b as answerer and judge,
+the same arms come out +7% apart, inside noise (57 questions, one replicate).
 
 Tesserae chooses **compile-from-source over live editing**. If you want to edit
 notes in a UI, use Logseq or Obsidian. If you want a build tool *and a live

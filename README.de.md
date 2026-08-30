@@ -309,7 +309,7 @@ liegen, und sagt, wogegen sie gemessen wurde. Stand 2026-08-30.
 
 | was | Tesserae | der Vergleich |
 |---|---|---|
-| Vergleichsfragen über 148 vollständige Aufsätze beantworten, Abdeckung der Pflichtpunkte, 57 Fragen × 8 Wiederholungen | **0.373** — der Graph wählt 3 Dokumente, das Bündel trägt ihre Originalprosa | BM25-Passagen bei gleichem Budget, Backbone und Richter: 0.290 — **+28.9%**, 8/8 Wiederholungen, p=0.0078 |
+| Vergleichsfragen über 148 vollständige Aufsätze beantworten, Abdeckung der Pflichtpunkte, 57 Fragen × 8 Wiederholungen | **0.373** — der Graph wählt 3 Dokumente, das Bündel trägt ihre Originalprosa | BM25-Passagen bei gleichem Budget, Backbone und Richter: 0.290 — **+28.9%**, 8/8 Wiederholungen, p=0.0078; ein lokaler 7B-Richter sieht +7%, nicht signifikant |
 | Dokument-Recall auf demselben Korpus, verschiedene Dokumente @10 / @50 | 0.791 / 0.962 mit einem trainierten Encoder (`TESSERAE_EMBEDDING_PREFER=st`); 0.754 / 0.914 wie ausgeliefert | Mem0-OSS-Rohabschnittsspeicher, gleicher Encoder: 0.775 / 0.944 — Gleichstand |
 | erfundene Prüfurteile, 426 Negative | **0** | — (kein Wettbewerber liefert einen Verifizierer) |
 | Prüfmarkierungen je Satz auf jeder Antwort | kostenlos; Kaskade **0.935** gegen ein Modell auf jedem Satz 0.928, bei 40 % der Aufrufe | — |
@@ -322,7 +322,9 @@ ob Gespräch oder nicht: Gleichstand. Gib einem Vektorspeicher denselben Encoder
 Die erste Zeile ist, wo sich das Design unterscheidet — der Graph wählt, welche Dokumente ein
 Agent liest, und übergibt ihre Prosa, keine Destillation — und die Prüfzeilen sind Antworten,
 die man prüfen kann, ohne ihnen zu vertrauen. Die +28.9% wurden durch Durchprobieren von k auf
-demselben Benchmark gefunden, der sie bewertet; k=5, die vorsichtige Einstellung, gibt noch +12%.
+demselben Benchmark gefunden, der sie bewertet (k=5 gibt noch +12%), und sie hängen am
+Richter: erneut ausgeführt mit einem lokalen qwen2.5:7b als Antwortgeber und Richter liegen
+dieselben Arme +7% auseinander, innerhalb des Rauschens (57 Fragen, eine Wiederholung).
 
 Tesserae entscheidet sich für **Kompilieren aus Quellen statt Live-Bearbeitung**.
 Wenn Sie Notizen in einer Oberfläche bearbeiten wollen, nehmen Sie Logseq oder
