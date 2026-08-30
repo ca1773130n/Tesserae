@@ -298,6 +298,24 @@ vista de grafo.
 
 </details>
 
+### Medido, no afirmado
+
+Cada cifra de abajo sale de un banco de pruebas de este repositorio, sobre datos que están
+en disco, y dice contra qué se midió. Fecha: 2026-08-30.
+
+| qué | Tesserae | la comparación |
+|---|---|---|
+| recall de documentos en un corpus de 148 artículos, recall@10 | **0.652** | pasajes BM25 0.550 |
+| veredictos de verificación fabricados, 426 negativos | **0** | — (ningún competidor entrega un verificador) |
+| marcas de revisión por frase en cada respuesta | gratis; cascada **0.935** frente a un modelo en cada frase 0.928, con el 40% de las llamadas | — |
+| llamadas a API en tiempo de consulta | **0** — BM25 local e incrustaciones estáticas | Mem0: una llamada de incrustación por búsqueda |
+| LoCoMo, recall@10 de sesiones de oro, 9 conversaciones | **0.930** | BM25 0.923 |
+| LoCoMo, respuestas, el juez propio de Mem0, una conversación | 90.5 | Mem0 92.5 sobre diez — paridad, dentro del ruido de una conversación |
+
+La última fila es la palabra honesta para los bancos de memoria conversacional: paridad. Las
+filas de arriba son donde el diseño difiere — un grafo que encuentra los documentos correctos
+en un corpus grande, y respuestas que puedes comprobar sin fiarte de ellas.
+
 Tesserae elige **compilar desde las fuentes en lugar de editar en vivo**. Si
 quieres editar notas en una interfaz, usa Logseq u Obsidian. Si quieres una
 herramienta de compilación *y un motor vivo* que mantenga un grafo de
