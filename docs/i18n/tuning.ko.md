@@ -7,8 +7,9 @@
 Tesserae가 환경에서 읽는 모든 설정, 기본값, 그리고 실제로 변경해야 하는 시점을 설명합니다.
 여기의 모든 것이 필수는 아닙니다. 기본값은 일반 `tesserae compile` 명령이 올바르게 작동하도록 선택되었습니다.
 
-프로젝트 및 전역 설정(`.tesserae/config.json`, `~/.tesserae/config.json`)은
-LLM 백엔드 설정에 우선권을 가집니다. 아래의 환경 변수는 설정된 실행에서 둘 다 override합니다.
+LLM 백엔드 설정은 `.tesserae/config.json` 및 `~/.tesserae/config.json`에도 있으며,
+아래의 환경 변수는 둘 다 설정된 실행에서 override하고, [LLM backend](#llm-backend)에서
+전체 순서를 명시합니다.
 
 ---
 
@@ -90,14 +91,115 @@ export TESSERAE_LLM_CACHE=0   # 항상 re-ask
 
 ## LLM 백엔드
 
-| 변수 | 기본값 | 노트 |
-|---|---|---|
-| `TESSERAE_LLM_PROVIDER` | `claude` | `codex`, `claude`, `anthropic`, `custom` |
-| `TESSERAE_LLM_MODEL` | provider-specific | provider로 scoped하여 claude-shaped model이 절대 codex path에 landing하지 않음 |
-| `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | Structured extraction은 interactive work에 설정할 수 있는 `xhigh`를 필요로 하지 않습니다 — `xhigh`는 multi-document compile을 여러 배 느리게 만듭니다 |
-| `TESSERAE_CLAUDE_CONFIG_DIRS` | — | `os.pathsep`으로 구분된 Claude 설정 디렉터리 목록(로테이션 순서) — 반복된 `--claude-config-dir`의 환경 변수 통로입니다. *설정된* 목록만 권위를 가집니다. 주변 환경의 `CLAUDE_CONFIG_DIR`는 의도적으로 권위가 없는데, 거기에 고정하면 다중 계정 로테이션이 한 계정으로 붕괴하기 때문입니다 |
+어떤 백엔드가 답변하고, 어떤 와이어를 통해, 어떤 자격증을 사용할지. 아래의 모든 키는
+같은 방식으로만, 그리고 오직 이 방식으로만 resolve합니다:
 
-`tesserae config status`는 resolved backend를 print하고 liveness를 위해 ping합니다.
+**`TESSERAE_*` env var → project `.tesserae/config.json` → `~/.tesserae/config.json` → 내장 기본값.**
+
+| Config 키 | 환경 변수 | 기본값 | 노트 |
+|---|---|---|---|
+| `llm_provider` | `TESSERAE_LLM_PROVIDER` | `claude` | `claude`, `codex`, `anthropic`, `openai`, `custom` 중 하나. 다른 것은 이름으로 거부됩니다 — typo는 전에는 조용히 `claude`로 처리되어 선택한 모델 없는 anthropic에 대해 실행되고 선택하지 않은 모델에 대한 오류를 보고했습니다 |
+| `llm_api_style` | `TESSERAE_LLM_API_STYLE` | `llm_provider`가 `openai`일 때 `openai`, 아니면 `anthropic` | 와이어 프로토콜로, 백엔드와는 다른 질문입니다. `anthropic`은 Anthropic SDK를 통해 `{base_url}/v1/messages`에 post합니다; `openai`는 `{base_url}/chat/completions`에 post합니다 |
+| `llm_model` | `TESSERAE_LLM_MODEL` | `sonnet` (claude CLI), `gpt-5.6-luna` (codex CLI), `claude-sonnet-4-6` (anthropic 와이어), `gpt-4o-mini` (openai 와이어) | 두 CLI 백엔드에서 provider로 scoped하여 claude-shaped model이 절대 codex path에 landing하지 않음. 설정된 엔드포인트 provider는 provider와 model이 다른 config layer에서 설정되었을 때도 model을 유지합니다 |
+| `llm_base_url` | `TESSERAE_LLM_BASE_URL`, 그리고 `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` (anthropic 와이어), `https://api.openai.com/v1` (openai 와이어) | 엔드포인트로, 각 와이어가 append하는 것으로 잘라집니다 — [custom endpoints](#custom-endpoints) 참조 |
+| `llm_api_key` | `TESSERAE_LLM_API_KEY`, 그리고 `ANTHROPIC_API_KEY` | — | `api-key` 자격증: anthropic 와이어에서 `X-Api-Key`, openai 와이어에서 `Authorization: Bearer` |
+| `llm_auth_token` | `TESSERAE_LLM_AUTH_TOKEN`, 그리고 `ANTHROPIC_AUTH_TOKEN` | — | bearer 자격증으로 둘 다 와이어에서 `Authorization: Bearer`. **이것 또는** `llm_api_key` 설정하세요: anthropic 와이어에서 token은 SDK에 `auth_token=`로 전달되고 api key는 설정되지 않으므로 둘은 절대 충돌하지 않습니다 |
+| `llm_allow_fallback` | `TESSERAE_LLM_ALLOW_FALLBACK` | off | 설정된 엔드포인트 provider가 실패할 때 다른 백엔드로 넘어갈 수 있게 합니다 — [an endpoint provider is a contract](#an-endpoint-provider-is-a-contract) 참조. env var의 공백이 아닌 값이 켭니다 |
+| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | CLI의 자체 기본값 | 로테이션 순서로 Claude 설정 디렉터리로, env var에서는 `os.pathsep`으로 구분 — 반복된 `--claude-config-dir`의 환경 변수 통로. *설정된* 목록만 권위를 가집니다. 주변 환경의 `CLAUDE_CONFIG_DIR`는 의도적으로 권위가 없는데, 거기에 고정하면 다중 계정 로테이션이 한 계정으로 붕괴하기 때문입니다 |
+| `llm_codex_homes` | `TESSERAE_CODEX_HOMES` | CLI의 자체 기본값 | Codex homes로 같은 모양, 같은 논리입니다. 예전의 단수 `llm_codex_home`은 여전히 작동하고 `one-home` 목록을 의미합니다 |
+| `llm_codex_reasoning_effort` | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | Structured extraction은 interactive work에 설정할 수 있는 `xhigh`를 필요로 하지 않습니다 — `xhigh`는 multi-document compile을 여러 배 느리게 만듭니다 |
+
+`ANTHROPIC_*` 이름은 여전히 작동하며 Tesserae 소유의 이름 하나 아래에 있습니다: 이들은
+주변 환경입니다 — 모든 Claude Code 세션이 이들을 내보냅니다 — 그래서 Tesserae에서
+구체적으로 설정한 값을 초과하지 않아야 하지만 config 파일 둘 다를 초과합니다.
+
+`tesserae config llm`은 머신 전역 파일을 작성합니다; 한 프로젝트에 대해서는 같은 `llm_*`
+키를 `.tesserae/config.json`에 놓으세요. 파일에 작성된 자격증은 **평문**으로 저장되므로
+그 둘에 대해 `TESSERAE_LLM_API_KEY` / `TESSERAE_LLM_AUTH_TOKEN`를 선호하세요.
+
+### 커스텀 엔드포인트
+
+`llm_provider`는 어떤 백엔드인지 말합니다; `llm_api_style`은 어떤 HTTP 방언을 말합니다.
+그들을 분리하는 것이 non-Anthropic 엔드포인트를 전혀 도달 가능하게 만듭니다: `custom`은
+Anthropic 와이어를 암시하곤 해서, OpenAI 호환 서버는 설정할 곳이 없었습니다. 미설정
+상태로 두면, `llm_api_style`은 여전히 `custom`에 대해 `anthropic`으로 resolve합니다 —
+이것이 존재하기 전에 설정된 엔드포인트는 정확히 그렇게 동작을 유지합니다.
+
+**OpenAI 호환 엔드포인트** — vLLM, LiteLLM, OpenRouter, Together, Ollama, LM Studio:
+
+```bash
+export TESSERAE_LLM_PROVIDER=custom
+export TESSERAE_LLM_API_STYLE=openai
+export TESSERAE_LLM_BASE_URL=http://localhost:8000/v1
+export TESSERAE_LLM_MODEL=qwen2.5-coder-32b-instruct
+export TESSERAE_LLM_AUTH_TOKEN=sk-...   # 또는 TESSERAE_LLM_API_KEY — 여기서 same header
+tesserae config status
+```
+
+요청은 `POST {base_url}/chat/completions`입니다. 이 와이어는 stdlib `urllib`이므로
+extra install이 필요 없고, keyless local server는 자격증이 전혀 필요 없습니다 —
+둘 다 미설정 상태로 두어도 여전히 build합니다.
+
+**Anthropic 호환 엔드포인트** — Messages API를 말하는 gateway:
+
+```bash
+export TESSERAE_LLM_PROVIDER=custom
+export TESSERAE_LLM_API_STYLE=anthropic
+export TESSERAE_LLM_BASE_URL=https://gateway.internal.example   # no /v1
+export TESSERAE_LLM_MODEL=claude-sonnet-4-6
+export TESSERAE_LLM_API_KEY=...         # X-Api-Key; bearer gateway의 경우 TESSERAE_LLM_AUTH_TOKEN
+tesserae config status
+```
+
+요청은 Anthropic SDK를 통해 `POST {base_url}/v1/messages`입니다. 이 와이어와
+`llm_provider: custom`을 둘 다 이것을 필요로 합니다:
+
+```bash
+pip install "tesserae[synthesis-llm]"
+```
+
+**`/v1`은 장식이 아닙니다.** SDK는 `/v1/messages` 자체를 append하므로,
+모든 gateway README가 보여주는 `https://host/v1`은 `/v1/v1/messages`를 만들었습니다 — 404로
+선택하지 않은 모델에 대한 오류를 읽었습니다. 하나의 trailing `/v1`은 이제 anthropic 와이어에서
+제거되고 openai 와이어에서는 보장됩니다. 오직 하나의 trailing segment만이 절대
+건드려지고 그것이 잘라지는 것은 그것이 선행하는 것입니다 — proxy가 정말
+`/anthropic/v1`을 제공하면 `/v1`도 사라집니다 — 그래서 rewrite는 INFO로 log됩니다.
+침묵하지 않고, 그리고 log line은 실제로 사용되는 URL이 있는 곳입니다.
+
+### 엔드포인트 provider는 약정입니다
+
+`anthropic`, `openai` 그리고 `custom`은 당신이 선택한 엔드포인트를 가져갑니다 — URL, model
+이름, 자격증. 하나가 설정되면 그것만 build되고, 실패는 provider, 와이어, base URL,
+model을 명명하고 어떤 종류의 자격증이 resolved되었는지를 명명하는 `LLMProviderConfigError`를 raise합니다.
+
+전에는 선호도였습니다: build할 수 없는 custom 엔드포인트는 Claude CLI로 넘어갔으며,
+그것은 `--model sonnet`으로 당신의 자신의 base URL에 대해 spawn되었고 configure하지
+않은 unsupported model에 대한 오류를 보고했으며 실제 원인을 명명하는 것이 없었습니다. 그
+chaining을 되찾으려면 `llm_allow_fallback: true`를 설정하세요.
+
+두 OAuth CLI provider는 여전히 chain합니다 — 서로에게, 그리고 그들 뒤의 API client에게.
+`claude`와 `codex`는 base URL을 취하지 않고 그들의 model은 per provider로 scoped합니다,
+그래서 어느 것도 선택하지 않은 backend에 당신이 선택한 엔드포인트를 가져갈 수 없습니다.
+그것이 약정이 존재하는 유일한 것을 방지하는 것입니다.
+
+### Seeing what is actually in effect
+
+```bash
+tesserae config status                 # resolved backend + a live probe
+tesserae config status --project .     # as this project's config.json sees it
+tesserae config status --no-ping       # skip the probe, spend nothing
+```
+
+Provider, 와이어, model, base URL, 그리고 resolved credential의 *종류*를 print합니다 —
+`api_key`, `auth_token` 또는 none, 절대 secret은 not — 각각 그것을 won layer로 tagged,
+그 다음 그것에 대답한 client의 class와 identity. 그 client는 real run이 사용하는 같은 settings
+dict에서 build되고, probe는 절대 cached되지 않으므로 passing line은 backend가 지금 방금
+대답했다는 뜻입니다. 과거의 어떤 시점이 아니라.
+
+호출이 fail할 때, 실패는 flattened가 아니라 classified됩니다: `401`과 `403`은 auth로,
+`404` — 그리고 model을 naming하는 `400` — endpoint로 reported되며, 각각 그것을 produce한
+endpoint를 명명합니다. 그 전에, misconfigured URL은 LLM을 설치하지 않은 것과 구별할 수
+없었습니다.
 
 ---
 

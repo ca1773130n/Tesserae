@@ -53,9 +53,12 @@ def test_build_plan_records_llm_fields(tmp_path: Path) -> None:
 
 
 def test_build_plan_rejects_unknown_llm_provider(tmp_path: Path) -> None:
+    # "openai" used to stand in for an unknown provider here. It is a real one
+    # now — the only way to reach an OpenAI-compatible endpoint — so this needs
+    # a value that is still genuinely not a provider.
     report = detect(tmp_path)
     with pytest.raises(PlanValidationError):
-        build_plan(report, overrides={"llm_provider": "openai"})
+        build_plan(report, overrides={"llm_provider": "openrouter"})
 
 
 def test_build_plan_applies_overrides(tmp_path: Path) -> None:

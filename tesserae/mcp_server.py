@@ -4633,9 +4633,10 @@ class LLMWikiMCPServer:
             return None
         if not hasattr(self, "_lazy_summary_client"):
             try:
-                from .llm_json import build_default_json_client
+                from .llm_json import build_default_json_client, project_llm_settings
 
-                self._lazy_summary_client = build_default_json_client()
+                self._lazy_summary_client = build_default_json_client(
+                    settings=project_llm_settings(getattr(self, "project_root", None)))
             except Exception:  # noqa: BLE001
                 self._lazy_summary_client = None
         return self._lazy_summary_client

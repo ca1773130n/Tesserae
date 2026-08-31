@@ -55,6 +55,11 @@ class SetupPlan(BaseModel):
     llm_model: Optional[str] = None
     llm_base_url: Optional[str] = None
     llm_api_key: Optional[str] = None
+    #: The bearer credential and the wire protocol. Without these the plan could
+    #: carry a custom endpoint's URL and model but not how to authenticate to it
+    #: or which protocol to speak — so `setup` accepted both flags and dropped them.
+    llm_auth_token: Optional[str] = None
+    llm_api_style: Optional[str] = None
 
     install_agent_pointer: bool = True
 
@@ -205,6 +210,8 @@ def build_plan(
         claude_config_dir = None
     llm_base_url = overrides.pop("llm_base_url", None)
     llm_api_key = overrides.pop("llm_api_key", None)
+    llm_auth_token = overrides.pop("llm_auth_token", None)
+    llm_api_style = overrides.pop("llm_api_style", None)
     install_agent_pointer = bool(overrides.pop("install_agent_pointer", True))
 
     warnings = list(detection.recommended.warnings)
@@ -282,6 +289,8 @@ def build_plan(
             llm_model=llm_model,
             llm_base_url=llm_base_url,
             llm_api_key=llm_api_key,
+            llm_auth_token=llm_auth_token,
+            llm_api_style=llm_api_style,
             install_agent_pointer=install_agent_pointer,
             external_tools=external_tools,
             memory_backends=memory_backends,

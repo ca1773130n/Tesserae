@@ -22,7 +22,7 @@ LLM_CLI_NAMES: tuple[str, ...] = (
     "gh",
 )
 
-LlmProvider = Literal["claude", "codex", "anthropic", "custom"]
+LlmProvider = Literal["claude", "codex", "anthropic", "openai", "custom"]
 
 API_KEYS: tuple[str, ...] = (
     "ANTHROPIC_API_KEY",

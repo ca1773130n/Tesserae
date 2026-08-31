@@ -7,8 +7,8 @@
 Tesserae 从环境读取的每个旋钮、其默认值及实际何时更改它。
 这里的任何内容都不是必需的：默认值的选择使得普通的 `tesserae compile` 能够正确运行。
 
-项目和全局配置（`.tesserae/config.json`、`~/.tesserae/config.json`）
-对 LLM 后端设置优先；下面的环境变量在设置的运行中优先于两者。
+LLM 后端设置也位于 `.tesserae/config.json` 和
+`~/.tesserae/config.json` 中；下面的环境变量优先于两者运行，而 [LLM 后端](#llm-后端) 详述了完整顺序一次。
 
 ---
 
@@ -90,14 +90,104 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 
 ## LLM 后端
 
-| 变量 | 默认值 | 备注 |
-|---|---|---|
-| `TESSERAE_LLM_PROVIDER` | `claude` | `codex`、`claude`、`anthropic`、`custom` |
-| `TESSERAE_LLM_MODEL` | 特定于提供商 | 由提供商作用域，使得 claude 形状的模型永远不会落在 codex 路径上 |
-| `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | 结构化提取不需要您可能为交互工作设置的 `xhigh`——`xhigh` 使多文档编译慢数倍 |
-| `TESSERAE_CLAUDE_CONFIG_DIRS` | — | 以 `os.pathsep` 分隔的 Claude 配置目录（按轮换顺序）——即重复 `--claude-config-dir` 的环境变量通道。只有*显式配置*的列表才具有权威性；环境中的 `CLAUDE_CONFIG_DIR` 刻意不具权威性，因为固定到它会让多账号轮换塌缩为单账号 |
+哪个后端回答、通过哪条线路、用哪个凭证。下面的每个键都按同样的方式且仅按这一方式解析：
 
-`tesserae config status` 打印解析后的后端并对其进行活性检测。
+**`TESSERAE_*` 环境变量 → 项目 `.tesserae/config.json` → `~/.tesserae/config.json` → 内置默认值。**
+
+| 配置键 | 环境变量 | 默认值 | 备注 |
+|---|---|---|---|
+| `llm_provider` | `TESSERAE_LLM_PROVIDER` | `claude` | `claude`、`codex`、`anthropic`、`openai`、`custom` 之一。其他任何东西都会按名称被拒绝——一个拼写错误过去会被无声地视为 `claude`，所以说 `openrouter` 的配置会针对 Anthropic 运行并报告一个你从未选择的模型的错误 |
+| `llm_api_style` | `TESSERAE_LLM_API_STYLE` | `llm_provider` 为 `openai` 时为 `openai`，否则为 `anthropic` | 线路协议，这是与后端不同的问题。`anthropic` 通过 Anthropic SDK 发布到 `{base_url}/v1/messages`；`openai` 发布到 `{base_url}/chat/completions` |
+| `llm_model` | `TESSERAE_LLM_MODEL` | `sonnet`（claude CLI）、`gpt-5.6-luna`（codex CLI）、`claude-sonnet-4-6`（anthropic 线路）、`gpt-4o-mini`（openai 线路） | 在两个 CLI 后端上按提供商作用域，所以 claude 形状的模型永远不会落在 codex 路径上。配置的端点提供商即使在提供商和模型在不同配置层中设置时也会保留其模型 |
+| `llm_base_url` | `TESSERAE_LLM_BASE_URL`，然后 `ANTHROPIC_BASE_URL` | `https://api.anthropic.com`（anthropic 线路）、`https://api.openai.com/v1`（openai 线路） | 端点，被修剪为每条线路追加的内容——参见 [自定义端点](#自定义端点) |
+| `llm_api_key` | `TESSERAE_LLM_API_KEY`，然后 `ANTHROPIC_API_KEY` | — | API 密钥凭证：anthropic 线路上的 `X-Api-Key`，openai 线路上的 `Authorization: Bearer` |
+| `llm_auth_token` | `TESSERAE_LLM_AUTH_TOKEN`，然后 `ANTHROPIC_AUTH_TOKEN` | — | Bearer 凭证，两条线路上都是 `Authorization: Bearer`。设置这个**或** `llm_api_key`：在 anthropic 线路上令牌被传递给 SDK 作为 `auth_token=` 而不设置 api 密钥，所以两者永不冲突 |
+| `llm_allow_fallback` | `TESSERAE_LLM_ALLOW_FALLBACK` | 关闭 | 允许配置的端点提供商转向另一个后端而不是失败——参见 [端点提供商是一份契约](#端点提供商是一份契约)。环境变量的任何非空值都会打开它 |
+| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | CLI 自身的默认值 | Claude 配置目录（按轮换顺序），在环境变量中以 `os.pathsep` 分隔——即重复 `--claude-config-dir` 的环境变量通道。只有*显式配置*的列表才具有权威性；环境中的 `CLAUDE_CONFIG_DIR` 刻意不具权威性，因为固定到它会让多账号轮换塌缩为单账号 |
+| `llm_codex_homes` | `TESSERAE_CODEX_HOMES` | CLI 自身的默认值 | Codex homes，形状和推理同上。较旧的单数 `llm_codex_home` 仍然有效，意思是一个单一 home 的列表 |
+| `llm_codex_reasoning_effort` | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | 结构化提取不需要你可能为交互工作设置的 `xhigh`——`xhigh` 使多文档编译多倍变慢 |
+
+`ANTHROPIC_*` 名称仍然有效，在 Tesserae 自有名称下面一级：
+它们是环境的——任何 Claude Code 会话都会导出它们——所以它们不能胜过为 Tesserae 特别设置的值，但它们仍然胜过两个配置文件。
+
+`tesserae config llm` 写入机器级文件；对于单个项目，在其 `.tesserae/config.json` 中放入相同的
+`llm_*` 键。写入任一文件的凭证以**明文**存储，所以那两个请优先使用 `TESSERAE_LLM_API_KEY` /
+`TESSERAE_LLM_AUTH_TOKEN`。
+
+### 自定义端点
+
+`llm_provider` 说明哪个后端；`llm_api_style` 说明使用哪种 HTTP 方言。
+将两者分开是使非 Anthropic 端点可达的原因：`custom` 过去意味着 Anthropic 线路，
+所以 OpenAI 兼容的服务器无处可配置。如果保持未设置，对于 `custom`，`llm_api_style`
+仍然解析为 `anthropic`——在此之前配置的端点保持完全相同的行为。
+
+**一个 OpenAI 兼容端点**——vLLM、LiteLLM、OpenRouter、Together、Ollama、
+LM Studio：
+
+```bash
+export TESSERAE_LLM_PROVIDER=custom
+export TESSERAE_LLM_API_STYLE=openai
+export TESSERAE_LLM_BASE_URL=http://localhost:8000/v1
+export TESSERAE_LLM_MODEL=qwen2.5-coder-32b-instruct
+export TESSERAE_LLM_AUTH_TOKEN=sk-...   # 或 TESSERAE_LLM_API_KEY——此处线路相同
+tesserae config status
+```
+
+请求是 `POST {base_url}/chat/completions`。此线路是标准库 `urllib`，
+所以它不需要额外安装，无密钥本地服务器根本不需要凭证——两个都保持未设置它仍然构建。
+
+**一个 Anthropic 兼容端点**——一个网关说 Messages API：
+
+```bash
+export TESSERAE_LLM_PROVIDER=custom
+export TESSERAE_LLM_API_STYLE=anthropic
+export TESSERAE_LLM_BASE_URL=https://gateway.internal.example   # no /v1
+export TESSERAE_LLM_MODEL=claude-sonnet-4-6
+export TESSERAE_LLM_API_KEY=...         # X-Api-Key；TESSERAE_LLM_AUTH_TOKEN 用于 bearer 网关
+tesserae config status
+```
+
+请求通过 Anthropic SDK 到 `POST {base_url}/v1/messages`，它在此线路上的
+`llm_provider: custom` 和 `llm_provider: anthropic` 都需要：
+
+```bash
+pip install "tesserae[synthesis-llm]"
+```
+
+**`/v1` 不是装饰。** SDK 自身追加 `/v1/messages`，所以每个网关自述中显示的
+`https://host/v1` 产生 `/v1/v1/messages`——一个 404，读起来像是一个你从未选择的模型的错误。
+现在在 anthropic 线路上自动去掉一个尾随 `/v1`，在 openai 线路上确保。仅那个尾随段
+被触及，无论前面是什么——一个真正服务 `/anthropic/v1` 的代理也会失去那个 `/v1`——所以
+改写在 INFO 处记录而不是无声完成，日志行就是你找到实际使用的 URL 的地方。
+
+### 端点提供商是一份契约
+
+`anthropic`、`openai` 和 `custom` 携带一个你选择的端点——一个 URL、一个模型名称、一个凭证。
+当其中一个被配置时它单独被构建，失败会向上抬起 `LLMProviderConfigError` 命名提供商、线路、基础
+URL、模型和哪种凭证类型被解析。
+
+它过去是一个偏好：无法构建的自定义端点会转向 Claude CLI，它随后以 `--model sonnet`
+针对你自己的基础 URL 生成并报告一个你从未配置的不支持模型，没有任何东西命名真实原因。
+设置 `llm_allow_fallback: true` 来重新获得该链接。
+
+两个 OAuth CLI 提供商仍然链接——彼此之间，和它们后面的 API 客户端。`claude` 和 `codex`
+不接受基础 URL，它们的模型按提供商作用域，所以两者都不能携带一个你选择的端点到一个你没有
+命名的后端，这是契约存在的唯一目的。
+
+### 查看实际生效的内容
+
+```bash
+tesserae config status                 # 解析的后端 + 一个活性探针
+tesserae config status --project .     # 因为此项目的 config.json 看到它
+tesserae config status --no-ping       # 跳过探针，花费零
+```
+
+它打印提供商、线路、模型、基础 URL 和解析的凭证的*种类*——`api_key`、`auth_token` 或无，
+永不秘密——各自标记赢得它的层，然后是回答的客户端的类和身份。该客户端是从实际运行使用的相同设置字典构建的，
+探针永不缓存，所以一条通过的线意味着后端现在刚刚回答而不是在过去的某一点。
+
+当调用确实失败时，失败会被分类而不是展平：`401` 和 `403` 被报告为认证，`404`——和一个命名
+模型的 `400`——作为端点，各自命名产生它的端点。在此之前，一个错误配置的 URL 与根本没有 LLM 装置区分不开。
 
 ---
 

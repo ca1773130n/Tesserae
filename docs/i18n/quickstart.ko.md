@@ -90,16 +90,18 @@ tesserae init --yes
 
 | Config 키 | 플래그 | 설명 |
 |---|---|---|
-| `llm_provider` | `--llm-provider {claude,codex,anthropic,custom}` | LLM 클라이언트의 백엔드: `claude`/`codex`는 OAuth로 로그인된 CLI 사용; `anthropic`은 API 직접 사용; `custom`은 claude 호환 엔드포인트 대상. |
+| `llm_provider` | `--llm-provider {claude,codex,anthropic,openai,custom}` | LLM 클라이언트의 백엔드: `claude`/`codex`는 OAuth로 로그인된 CLI 사용; `anthropic`과 `openai`는 그 API를 직접 사용; `custom`은 당신이 명명하는 엔드포인트를 대상으로 합니다. |
 | `llm_model` | `--llm-model` | synthesis/insights LLM 클라이언트용 모델. |
-| `llm_base_url` | `--llm-base-url` | `anthropic`/`custom`용 엔드포인트 기본 URL. |
-| `llm_api_key` | `--llm-api-key` | `anthropic`/`custom`용 API 키. |
+| `llm_base_url` | `--llm-base-url` | `anthropic`/`openai`/`custom`용 엔드포인트 기본 URL. |
+| `llm_api_key` | `--llm-api-key` | `anthropic`/`openai`/`custom`용 API 키. |
 
 > **평문 경고.** `llm_api_key`는 `.tesserae/config.json`에 **평문**으로
-> 저장됩니다. 대신 환경 변수를 선호하세요: `ANTHROPIC_API_KEY`(키),
-> `ANTHROPIC_BASE_URL`(엔드포인트), `TESSERAE_LLM_MODEL`(모델). 해석 순서는
-> env → 프로젝트 config → 머신 전역 config(`~/.tesserae/config.json`,
-> `tesserae setup`이 기록) → 내장 기본값입니다.
+> 저장됩니다. 대신 환경 변수를 선호하세요:
+> `TESSERAE_LLM_API_KEY` (키), `TESSERAE_LLM_BASE_URL` (엔드포인트), 그리고
+> `TESSERAE_LLM_MODEL` (모델). 해석 순서는 env → 프로젝트 config →
+> 머신 전역 config(`~/.tesserae/config.json`, `tesserae setup`이 기록)
+> → 내장 기본값입니다. 예전의 `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL`은 여전히
+> 작동하며 Tesserae 소유의 이름 하나 아래입니다.
 
 기존 프로젝트에서 `init`을 재실행하면 **병합**됩니다 — 설정된 `sources`와
 `memory_backends`는 뭉개지지 않고 보존됩니다.
@@ -108,10 +110,32 @@ tesserae init --yes
 
 ```bash
 tesserae init --yes --llm-provider codex
+
+# OpenAI 호환 엔드포인트 (vLLM, LiteLLM, OpenRouter, Ollama, LM Studio).
+# 와이어 프로토콜은 provider와 분리된 설정이고, init은 그것을 persist하지 않습니다 —
+# 환경에서 설정하거나, `tesserae config llm`으로.
 tesserae init --yes --llm-provider custom \
-  --llm-base-url https://llm.internal.example/v1 \
-  --llm-model my-model            # key via ANTHROPIC_API_KEY
+  --llm-base-url http://localhost:8000/v1 \
+  --llm-model qwen2.5-coder-32b-instruct
+export TESSERAE_LLM_API_STYLE=openai      # POST {base_url}/chat/completions
+export TESSERAE_LLM_AUTH_TOKEN=sk-...     # keyless local server를 위해 completely omit
+
+# Anthropic 호환 gateway. NO /v1: SDK가 자체로 /v1/messages를 append하고,
+# /v1로 끝나는 base URL은 double이 되는 것을 막기 위해 제거됩니다.
+tesserae init --yes --llm-provider custom \
+  --llm-base-url https://gateway.internal.example \
+  --llm-model claude-sonnet-4-6           # key via TESSERAE_LLM_API_KEY
 ```
+
+그 다음 compile에 시간을 소비하기 전에 실제로 resolve된 것을 확인하세요 —
+와이어, model, URL, 자격증 종류, 그리고 각각이 온 layer —:
+
+```bash
+tesserae config status --project .
+```
+
+[Tuning → LLM backend](tuning.md#llm-backend)는 전체 참조입니다: 모든 `llm_*`
+키, 둘 다의 `custom-endpoint` 예시, 그리고 설정된 엔드포인트가 build될 수 없을 때 하는 것.
 
 > **마법사 건너뛰기.** `tesserae init --bare`는 소스 감지나 백엔드 탐침 없이
 > 최소한의 `.tesserae/config.json`을 기록합니다 — 첫 compile 전에 config를

@@ -89,17 +89,18 @@ tesserae init --yes
 
 | Config キー | フラグ | 内容 |
 |---|---|---|
-| `llm_provider` | `--llm-provider {claude,codex,anthropic,custom}` | LLM クライアントのバックエンド: `claude`/`codex` は OAuth でログイン済みの CLI を使用。`anthropic` は API を直接使用。`custom` は任意の claude 互換エンドポイントを対象とする。 |
+| `llm_provider` | `--llm-provider {claude,codex,anthropic,openai,custom}` | LLM クライアントのバックエンド: `claude`/`codex` は OAuth でログイン済みの CLI を使用。`anthropic` と `openai` はそれらの API を直接使用。`custom` はあなたが指定するエンドポイントを対象とします。 |
 | `llm_model` | `--llm-model` | synthesis/insights LLM クライアントのモデル。 |
-| `llm_base_url` | `--llm-base-url` | `anthropic`/`custom` 用のエンドポイントベース URL。 |
-| `llm_api_key` | `--llm-api-key` | `anthropic`/`custom` 用の API キー。 |
+| `llm_base_url` | `--llm-base-url` | `anthropic`/`openai`/`custom` 用のエンドポイントベース URL。 |
+| `llm_api_key` | `--llm-api-key` | `anthropic`/`openai`/`custom` 用の API キー。 |
 
 > **平文の警告。** `llm_api_key` は `.tesserae/config.json` に**平文**で
 > 保存されます。代わりに環境変数を優先してください:
-> `ANTHROPIC_API_KEY`（キー）、`ANTHROPIC_BASE_URL`（エンドポイント）、
+> `TESSERAE_LLM_API_KEY`（キー）、`TESSERAE_LLM_BASE_URL`（エンドポイント）、
 > `TESSERAE_LLM_MODEL`（モデル）。解決順序は env → プロジェクト config →
 > マシン全体の config（`~/.tesserae/config.json`、`tesserae setup` が書き込む）
-> → 組み込みデフォルトです。
+> → 組み込みデフォルトです。古い `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` はまだ
+> 機能します。Tesserae 所有の名前の 1 段下です。
 
 既存のプロジェクトで `init` を再実行すると**マージ**されます — 設定済みの `sources`
 と `memory_backends` は保持され、上書きされません。
@@ -108,10 +109,32 @@ tesserae init --yes
 
 ```bash
 tesserae init --yes --llm-provider codex
+
+# OpenAI 互換エンドポイント（vLLM、LiteLLM、OpenRouter、Ollama、LM Studio）。
+# ワイヤはプロバイダーとは別の設定であり、init は
+# それを永続化しません — 環境で設定するか、`tesserae config llm` で設定してください。
 tesserae init --yes --llm-provider custom \
-  --llm-base-url https://llm.internal.example/v1 \
-  --llm-model my-model            # key via ANTHROPIC_API_KEY
+  --llm-base-url http://localhost:8000/v1 \
+  --llm-model qwen2.5-coder-32b-instruct
+export TESSERAE_LLM_API_STYLE=openai      # POST {base_url}/chat/completions
+export TESSERAE_LLM_AUTH_TOKEN=sk-...     # keyless local server の場合は完全に省略してください
+
+# Anthropic 互換ゲートウェイ。/v1 は入りません。SDK は /v1/messages 自体を追加し、
+# /v1 で終わるベース URL は倍増を防ぐため前にトリムバックされます。
+tesserae init --yes --llm-provider custom \
+  --llm-base-url https://gateway.internal.example \
+  --llm-model claude-sonnet-4-6           # key via TESSERAE_LLM_API_KEY
 ```
+
+その後、コンパイルに費用をかける前に、実際に解決されたもの — ワイヤ、モデル、URL、認証情報の種類、各情報が来たレイヤ — を確認してください。
+
+```bash
+tesserae config status --project .
+```
+
+[チューニング → LLM バックエンド](tuning.md#llm-バックエンド)は完全な参照です。すべての
+`llm_*` キー、両方のカスタムエンドポイントレシピ、および設定されたエンドポイントが
+構築できない場合の動作です。
 
 > **ウィザードをスキップする。** `tesserae init --bare` は、ソース検出やバックエンドの
 > プローブを行わずに最小限の `.tesserae/config.json` を書き込みます — 最初のコンパイルの前に

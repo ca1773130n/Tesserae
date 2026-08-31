@@ -443,6 +443,68 @@ def _configured_default_model(for_providers: Sequence[str]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
+#: The providers a user may name. Anything else is a typo, and a typo used to be
+#: silently treated as "claude" — so a config saying ``openrouter`` ran against
+#: Anthropic and reported a model error about a model the user never chose.
+_VALID_PROVIDERS = ("claude", "codex", "anthropic", "openai", "custom")
+
+#: The HTTP dialect, which is NOT the same question as which backend. Anthropic
+#: speaks ``POST {base}/v1/messages``; OpenAI-compatible servers (vLLM, LiteLLM,
+#: OpenRouter, Together, Ollama, LM Studio) speak ``POST {base}/chat/completions``.
+#: Conflating the two is why ``provider=custom`` could only ever reach an
+#: Anthropic-shaped endpoint.
+_VALID_API_STYLES = ("anthropic", "openai")
+
+#: Providers that carry a USER-SPECIFIED endpoint: a base URL, a model name and a
+#: credential the user chose. Falling through from one of these to another
+#: provider is what produced the reported bug — the user's model name reached a
+#: backend they never configured, which rejected it. Falling back between the two
+#: OAuth CLIs (claude <-> codex) carries no such identity and stays allowed: they
+#: take no base_url, and their model is scoped per provider.
+_ENDPOINT_PROVIDERS = ("anthropic", "openai", "custom")
+
+
+class LLMProviderConfigError(RuntimeError):
+    """The configured LLM provider cannot be built as asked.
+
+    Raised instead of quietly falling through to a different provider. The
+    message names provider, style, base_url, model and credential kind, because
+    the failure this replaces was a model error from a backend the user never
+    configured.
+    """
+
+
+def _normalize_base_url(raw: Optional[str], style: str) -> Optional[str]:
+    """Trim a base URL to what each SDK actually wants appended.
+
+    The Anthropic SDK appends ``/v1/messages`` itself, so the OpenAI-convention
+    ``https://gw/v1`` that every gateway's README shows becomes
+    ``https://gw/v1/v1/messages`` — a 404 that reads like a wrong model. Strip a
+    single trailing ``/v1`` there. The OpenAI wire is the mirror image: this
+    code appends ``/chat/completions``, so exactly one ``/v1`` must be present.
+
+    Only ONE trailing segment is touched, and the rewrite is logged, because a
+    proxy legitimately serving ``/anthropic/v1`` must not be silently rerouted.
+    """
+    if not raw:
+        return raw
+    url = raw.strip().rstrip("/")
+    if not url:
+        return None
+    if style == "anthropic":
+        if url.endswith("/v1"):
+            trimmed = url[: -len("/v1")]
+            logger.info("base_url %s ends in /v1 and the Anthropic SDK appends "
+                        "/v1/messages itself; using %s", url, trimmed)
+            return trimmed
+        return url
+    # openai wire: this client appends /chat/completions, so /v1 must be there
+    if not url.endswith("/v1"):
+        logger.info("base_url %s has no /v1; using %s/v1 for the OpenAI wire", url, url)
+        return url + "/v1"
+    return url
+
+
 class AnthropicLLMJsonClient:
     """LLMJsonClient backed by ``anthropic.Anthropic``."""
 
@@ -453,6 +515,7 @@ class AnthropicLLMJsonClient:
         timeout: float = 30.0,
         max_tokens: int = 4096,
         base_url: Optional[str] = None,
+        auth_token: Optional[str] = None,
     ) -> None:
         # Hardcoded literal is a last-resort fallback behind the configured
         # llm_model (env TESSERAE_LLM_MODEL → global config).
@@ -461,7 +524,9 @@ class AnthropicLLMJsonClient:
             or _configured_default_model(("anthropic", "custom"))
             or "claude-sonnet-4-6"
         )
-        self.base_url = base_url
+        self.base_url = _normalize_base_url(base_url, "anthropic")
+        self.auth_token = auth_token
+        self.api_key = api_key
         self.timeout = timeout
         self.max_tokens = int(max_tokens)
         self._client: Any = None
@@ -480,11 +545,19 @@ class AnthropicLLMJsonClient:
                 "anthropic SDK not installed; install tesserae[synthesis-llm]"
             ) from exc
 
-        client_kwargs: dict = {"api_key": api_key, "timeout": timeout}
-        if base_url:
+        # A bearer token and an api key are DIFFERENT headers, and which one a
+        # gateway wants is not guessable — so it is configured, not inferred.
+        # Passing ``api_key=`` also suppresses the SDK's own ANTHROPIC_AUTH_TOKEN
+        # resolution, so the two are mutually exclusive here rather than both set.
+        client_kwargs: dict = {"timeout": timeout}
+        if auth_token:
+            client_kwargs["auth_token"] = auth_token
+        else:
+            client_kwargs["api_key"] = api_key
+        if self.base_url:
             # Only pass when set so the SDK's own default/env resolution
             # (ANTHROPIC_BASE_URL) still applies otherwise.
-            client_kwargs["base_url"] = base_url
+            client_kwargs["base_url"] = self.base_url
         self._client = anthropic.Anthropic(**client_kwargs)
         try:
             self._rate_limit_cls = anthropic.RateLimitError
@@ -492,6 +565,19 @@ class AnthropicLLMJsonClient:
         except AttributeError:  # pragma: no cover
             self._rate_limit_cls = None
             self._status_cls = None
+
+
+    @property
+    def identity(self) -> str:
+        """What this client actually talks to — for error messages.
+
+        Every custom-endpoint failure used to be reported without naming the
+        provider, the URL or the model, which is what made a fallback provider's
+        model error look like the user's own misconfiguration.
+        """
+        cred = "auth_token" if self.auth_token else ("api_key" if self.api_key else "none")
+        return (f"style=anthropic base_url={self.base_url or 'https://api.anthropic.com'} "
+                f"model={self.model} auth={cred}")
 
     def complete_json(
         self,
@@ -560,12 +646,24 @@ class AnthropicLLMJsonClient:
                     time.sleep(delay)
                     attempt += 1
                     continue
+                # 401/403 is a credential, 404 is the wrong URL or wire, and
+                # a 400 naming the model is the wrong model. Reporting all
+                # three as "unavailable" made a misconfigured endpoint look
+                # exactly like having no LLM configured at all — and the
+                # message never said which endpoint or model was tried.
+                _code = getattr(exc, "status_code", None)
+                _detail = str(exc)
+                if _code in (401, 403):
+                    _kind = "auth"
+                elif _code == 404 or (_code == 400 and "model" in _detail.lower()):
+                    _kind = "endpoint"
+                else:
+                    _kind = "unavailable"
                 logger.warning(
-                    "AnthropicLLMJsonClient.complete_json failed (schema=%s): %s",
-                    schema_name,
-                    exc,
+                    "AnthropicLLMJsonClient.complete_json failed (%s, schema=%s) [%s]: %s",
+                    _kind, schema_name, self.identity, exc,
                 )
-                _note_failure("unavailable")  # the API never answered
+                _note_failure(_kind)
                 return None
 
         text = _extract_text(response)
@@ -1155,22 +1253,40 @@ class OpenAIAPIJsonClient:
 
     name = "openai-api"
 
+    #: Where the OpenAI wire lives when nobody says otherwise.
+    DEFAULT_BASE_URL = "https://api.openai.com/v1"
+
     def __init__(self, model: str, *, api_key: Optional[str] = None,
-                 timeout: float = 120.0) -> None:
+                 timeout: float = 120.0, base_url: Optional[str] = None,
+                 auth_token: Optional[str] = None) -> None:
         self.model = model
-        self._key = api_key or os.environ.get("OPENAI_API_KEY") or ""
+        # An explicit credential beats the ambient one; OPENAI_API_KEY is only a
+        # fallback for the default host, not for a user's own gateway, where an
+        # unrelated key would be leaked to a third party.
+        self._token = auth_token or ""
+        self._key = api_key or ""
+        self.base_url = _normalize_base_url(base_url, "openai") or self.DEFAULT_BASE_URL
+        if not self._key and not self._token and self.base_url == self.DEFAULT_BASE_URL:
+            self._key = os.environ.get("OPENAI_API_KEY") or ""
         self._timeout = timeout
 
     @property
     def available(self) -> bool:
-        return bool(self._key)
+        # A local endpoint (Ollama, LM Studio, a keyless vLLM) needs no
+        # credential at all, so requiring one made every such server unusable.
+        return bool(self._key or self._token or self.base_url != self.DEFAULT_BASE_URL)
+
+    @property
+    def identity(self) -> str:
+        cred = "auth_token" if self._token else ("api_key" if self._key else "none")
+        return f"style=openai base_url={self.base_url} model={self.model} auth={cred}"
 
     def _post(self, *, system: str, user: str, json_mode: bool) -> Optional[str]:
         import json as _json
         import urllib.error
         import urllib.request
 
-        if not self._key:
+        if not self.available:
             return None
         body = {
             "model": self.model,
@@ -1185,13 +1301,17 @@ class OpenAIAPIJsonClient:
         }
         if json_mode:
             body["response_format"] = {"type": "json_object"}
+        headers = {"Content-Type": "application/json"}
+        # Both credential kinds ride the same header on this wire — there is only
+        # one scheme here, so nothing is being guessed. A keyless local server
+        # gets no Authorization header rather than an empty bearer.
+        _cred = self._token or self._key
+        if _cred:
+            headers["Authorization"] = f"Bearer {_cred}"
         req = urllib.request.Request(
-            "https://api.openai.com/v1/chat/completions",
+            f"{self.base_url}/chat/completions",
             data=_json.dumps(body).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self._key}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             method="POST",
         )
         # A 429 is not a failure, it is a wait. The API says how long — a
@@ -1216,9 +1336,19 @@ class OpenAIAPIJsonClient:
                 if exc.code in _OPENAI_RETRY_CODES and attempt < _OPENAI_RETRIES:
                     time.sleep(_openai_retry_delay(exc.headers, detail, attempt))
                     continue
-                print(f"[openai-api] HTTP {exc.code} for {self.model}: {detail}",
+                # 401/403 is a credential, 404 is the wrong URL, and a 400
+                # naming the model is the wrong model. Reporting all three as
+                # one "unavailable" is what made a misconfigured endpoint
+                # indistinguishable from having no LLM at all.
+                if exc.code in (401, 403):
+                    kind = "auth"
+                elif exc.code == 404 or (exc.code == 400 and "model" in detail.lower()):
+                    kind = "endpoint"
+                else:
+                    kind = "openai-api"
+                print(f"[openai-api] HTTP {exc.code} ({kind}) {self.identity}: {detail}",
                       file=sys.stderr)
-                _note_failure("openai-api")
+                _note_failure(kind)
                 return None
             except Exception as exc:  # pragma: no cover - network shapes vary
                 print(f"[openai-api] {type(exc).__name__} for {self.model}: {exc}",
@@ -1835,8 +1965,10 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     # value returned from this function is passed down as an explicit pin, so
     # honouring the env var here would collapse rotation to one account. Left
     # None, CodexCLIJsonClient ranks CODEX_HOME first and keeps the rest.
+    _env_codex = os.environ.get("TESSERAE_CODEX_HOMES") or ""
     codex_homes = (
-        _as_dirs(cfg.get("llm_codex_homes"))
+        _as_dirs([d for d in _env_codex.split(os.pathsep) if d])
+        or _as_dirs(cfg.get("llm_codex_homes"))
         or _as_dirs(cfg.get("llm_codex_home"))
         or _as_dirs(global_cfg.get("llm_codex_homes"))
         or _as_dirs(global_cfg.get("llm_codex_home"))
@@ -1857,24 +1989,71 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     # Custom claude-compatible endpoint knobs (also used to override the
     # model/base_url/key on the anthropic provider). Same precedence:
     # env → project config → global config → None.
-    model = (
-        os.environ.get("TESSERAE_LLM_MODEL")
-        or cfg.get("llm_model")
-        or global_cfg.get("llm_model")
-        or None
-    )
-    base_url = (
-        os.environ.get("ANTHROPIC_BASE_URL")
-        or cfg.get("llm_base_url")
-        or global_cfg.get("llm_base_url")
-        or None
-    )
-    api_key = (
-        os.environ.get("ANTHROPIC_API_KEY")
-        or cfg.get("llm_api_key")
-        or global_cfg.get("llm_api_key")
-        or None
-    )
+    # One precedence order for every endpoint knob, and a record of which layer
+    # won it. ``config status`` used to GUESS the source and credited env vars
+    # the resolver deliberately ignores; a resolver that knows the answer should
+    # just say it.
+    sources: dict = {}
+
+    def _pick(key: str, *envs: str, default=None):
+        """Tesserae env → project config → global config → default."""
+        for env in envs:
+            val = os.environ.get(env)
+            if val:
+                sources[key] = f"env {env}"
+                return val
+        if cfg.get(f"llm_{key}"):
+            sources[key] = "project .tesserae/config.json"
+            return cfg.get(f"llm_{key}")
+        if global_cfg.get(f"llm_{key}"):
+            sources[key] = "~/.tesserae/config.json"
+            return global_cfg.get(f"llm_{key}")
+        sources[key] = "default"
+        return default
+
+    # ANTHROPIC_* stay in the chain one rung below the Tesserae-owned names:
+    # they are ambient (any Claude session exports them) and must not outrank a
+    # value the user set for Tesserae specifically.
+    model = _pick("model", "TESSERAE_LLM_MODEL")
+    base_url = _pick("base_url", "TESSERAE_LLM_BASE_URL", "ANTHROPIC_BASE_URL")
+    api_key = _pick("api_key", "TESSERAE_LLM_API_KEY", "ANTHROPIC_API_KEY")
+    # The bearer credential, which had no channel at all: the Anthropic SDK sends
+    # ``api_key`` as X-Api-Key, so a gateway wanting Authorization: Bearer was
+    # unreachable no matter what the user configured.
+    auth_token = _pick("auth_token", "TESSERAE_LLM_AUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN")
+
+    # The WIRE, which is a different question from the backend. Left unset for
+    # ``custom`` it stays ``anthropic`` — that is what custom has always meant
+    # here, and inferring it from the URL would repeat the original mistake of
+    # guessing the protocol.
+    api_style = _pick("api_style", "TESSERAE_LLM_API_STYLE")
+    if api_style:
+        api_style = str(api_style).strip().lower()
+        if api_style not in _VALID_API_STYLES:
+            raise LLMProviderConfigError(
+                f"llm_api_style={api_style!r} is not one of {list(_VALID_API_STYLES)}")
+    else:
+        api_style = "openai" if (provider or "").strip().lower() == "openai" else "anthropic"
+        sources["api_style"] = f"default for provider={provider or 'claude'}"
+
+    # Parsed, not merely present: an env var read with bool() is ON for "0" and
+    # "false", which is the opposite of what anyone setting those means.
+    _fb_env = os.environ.get("TESSERAE_LLM_ALLOW_FALLBACK")
+    if _fb_env is not None and _fb_env.strip():
+        allow_fallback = _fb_env.strip().lower() not in ("0", "false", "no", "off")
+    else:
+        _fb_cfg = cfg.get("llm_allow_fallback", global_cfg.get("llm_allow_fallback"))
+        allow_fallback = bool(_fb_cfg) if not isinstance(_fb_cfg, str) else \
+            _fb_cfg.strip().lower() not in ("", "0", "false", "no", "off")
+
+    if provider is not None:
+        _p = str(provider).strip().lower()
+        if _p and _p not in _VALID_PROVIDERS:
+            # Silently becoming "claude" is how a typo turned into a model error
+            # about a backend the user never named.
+            raise LLMProviderConfigError(
+                f"llm_provider={provider!r} is not one of {list(_VALID_PROVIDERS)}")
+        provider = _p or None
 
     return {
         "provider": provider,
@@ -1885,10 +2064,40 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
         "model": model,
         "base_url": base_url,
         "api_key": api_key,
+        "auth_token": auth_token,
+        "api_style": api_style,
+        "allow_fallback": allow_fallback,
+        "sources": sources,
     }
 
 
 _KEEP_TIMEOUT = object()  # sentinel: "use each client's own default timeout"
+
+
+def project_llm_settings(project_root: Optional[Any] = None) -> dict:
+    """Resolve LLM settings against a PROJECT root, not just env + global.
+
+    ``resolve_llm_client_settings()`` with no argument sees only the environment
+    and ``~/.tesserae/config.json``. Every caller that had a project in hand but
+    called it bare therefore ignored that project's own ``llm_provider`` /
+    ``llm_base_url`` / ``llm_model`` — so a custom endpoint configured for one
+    project was honoured by ``compile`` and silently skipped by ``ask``, lint,
+    the MCP summaries and the daemon, which answered from a different backend.
+
+    Degrades rather than raises: an unreadable or absent project config just
+    means the env + global answer, which is what those callers used to get.
+    """
+    cfg: dict = {}
+    if project_root:
+        try:
+            path = Path(project_root) / ".tesserae" / "config.json"
+            if path.is_file():
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(payload, dict):
+                    cfg = payload
+        except Exception:  # noqa: BLE001 — a corrupt project config must not crash a read path
+            logger.warning("ignoring unreadable project config under %s", project_root)
+    return resolve_llm_client_settings(cfg)
 
 
 def build_default_json_client(
@@ -1956,6 +2165,9 @@ def build_default_json_client(
     resolved_provider = (
         provider or settings["provider"] or "claude"
     ).strip().lower()
+    if resolved_provider not in _VALID_PROVIDERS:
+        raise LLMProviderConfigError(
+            f"llm_provider={resolved_provider!r} is not one of {list(_VALID_PROVIDERS)}")
 
     # Provider-scope the configured model exactly as ``_configured_default_model``
     # does inside each client: a claude-shaped ``llm_model`` must not land on the
@@ -1963,10 +2175,20 @@ def build_default_json_client(
     # ``model=`` argument always wins and is never scoped.
     _cfg_model = settings.get("model")
     _cfg_model_provider = (settings.get("provider") or "claude").strip().lower()
+    # A deliberately chosen ENDPOINT provider owns the configured model, whichever
+    # config layer each came from. Scoping the model against the other layer's
+    # provider string is what dropped it and sent the hardcoded
+    # "claude-sonnet-4-6" to custom endpoints — the unsupported-model error.
+    # The CLI providers keep the scoping: a claude-shaped model must still never
+    # land on the Codex CLI when the availability chain falls through.
+    _explicit = bool(provider or settings.get("provider"))
+    _endpoint_contract = _explicit and resolved_provider in _ENDPOINT_PROVIDERS
 
     def _model_for(providers: Sequence[str]) -> Optional[str]:
         if model:
             return model
+        if _endpoint_contract:
+            return _cfg_model or None
         return _cfg_model if _cfg_model and _cfg_model_provider in providers else None
     # Explicit list > legacy scalar > configured list. Left None, the client
     # ranks CODEX_HOME first and keeps the other discovered homes behind it.
@@ -1975,6 +2197,8 @@ def build_default_json_client(
     )
     resolved_base_url = base_url or settings["base_url"]
     resolved_api_key = api_key or settings["api_key"]
+    resolved_auth_token = settings.get("auth_token")
+    resolved_style = (settings.get("api_style") or "anthropic").strip().lower()
 
     # timeout=None (from the doc extractor) means "no cutoff — run to completion";
     # the sentinel leaves each client on its own default (180s CLI / 30s API).
@@ -2013,11 +2237,14 @@ def build_default_json_client(
         # install without `tesserae[synthesis-llm]`) — that's a silent
         # no-op rather than a crash because the structural-only path
         # remains useful with zero LLM access.
-        if resolved_api_key:
+        if resolved_style == "openai":
+            return _openai_wire()
+        if resolved_api_key or resolved_auth_token:
             try:
                 return AnthropicLLMJsonClient(
                     model=_model_for(("anthropic", "custom")),
                     api_key=resolved_api_key,
+                    auth_token=resolved_auth_token,
                     base_url=resolved_base_url,
                     **_tkw,
                 )
@@ -2025,32 +2252,71 @@ def build_default_json_client(
                 return None
         return None
 
+    def _openai_wire() -> Optional[LLMJsonClient]:
+        # Any OpenAI-compatible server: vLLM, LiteLLM, OpenRouter, Together,
+        # Ollama, LM Studio. Previously unreachable — the only OpenAI-protocol
+        # client hardcoded api.openai.com and no builder ever constructed it.
+        client = OpenAIAPIJsonClient(
+            _model_for(("openai", "custom")) or "gpt-4o-mini",
+            api_key=resolved_api_key,
+            auth_token=resolved_auth_token,
+            base_url=resolved_base_url,
+            **({} if timeout is _KEEP_TIMEOUT else {"timeout": timeout}),
+        )
+        return client if client.available else None
+
     def _custom() -> Optional[LLMJsonClient]:
-        # Explicit custom endpoint: build unconditionally (some local
-        # claude-compatible endpoints are keyless), resolved knobs applied.
+        # Explicit custom endpoint: build unconditionally (some local endpoints
+        # are keyless), resolved knobs applied. The WIRE decides the class —
+        # that is the whole point of api_style.
+        if resolved_style == "openai":
+            return _openai_wire()
         try:
             return AnthropicLLMJsonClient(
                 model=_model_for(("anthropic", "custom")),
                 api_key=resolved_api_key,
+                auth_token=resolved_auth_token,
                 base_url=resolved_base_url,
                 **_tkw,
             )
-        except RuntimeError:
-            return None
+        except RuntimeError as exc:
+            raise LLMProviderConfigError(
+                f"provider=custom style=anthropic base_url={resolved_base_url} "
+                f"model={_model_for(('anthropic', 'custom'))}: {exc}") from exc
 
-    if resolved_provider == "codex":
-        chain = (_codex, _claude, _api_key)
-    elif resolved_provider == "anthropic":
-        # Honour an explicit anthropic choice: the SDK first, not the Claude CLI.
-        chain = (_api_key, _claude, _codex)
-    elif resolved_provider == "custom":
-        chain = (_custom, _claude, _codex)
-    else:
-        chain = (_claude, _api_key, _codex)
+    _primary = {"codex": _codex, "anthropic": _api_key, "openai": _openai_wire,
+                "custom": _custom, "claude": _claude}
+    _fallbacks = {"codex": (_claude, _api_key), "anthropic": (_claude, _codex),
+                  "openai": (_claude, _codex), "custom": (_claude, _codex),
+                  "claude": (_api_key, _codex)}
+
+    # An explicitly configured provider is a CONTRACT, not a preference. It used
+    # to be a preference: a custom endpoint that could not be built fell through
+    # to the Claude CLI, which was spawned with `--model sonnet` against the
+    # user's own base URL and reported an unsupported model they never
+    # configured, with nothing naming the real cause. Now the chosen provider is
+    # built alone and a failure says which provider, wire, URL and model were
+    # used. ``llm_allow_fallback: true`` restores the old chaining.
+    chain = (_primary[resolved_provider],)
+    if not _endpoint_contract or settings.get("allow_fallback"):
+        chain = chain + _fallbacks[resolved_provider]
+
     for builder in chain:
         client = builder()
         if client is not None:
             return client
+    if _endpoint_contract:
+        raise LLMProviderConfigError(
+            f"provider={resolved_provider} style={resolved_style} "
+            f"base_url={resolved_base_url or '(default)'} "
+            f"model={_model_for((resolved_provider,)) or '(default)'} "
+            f"auth={'auth_token' if resolved_auth_token else ('api_key' if resolved_api_key else 'none')}"
+            ": could not be built. Check the credential and, for a custom endpoint, "
+            "that llm_base_url and llm_api_style match the server"
+            + ("; the anthropic wire needs `pip install 'tesserae[synthesis-llm]'`"
+               if resolved_style == "anthropic" else "")
+            + ". "
+            "Set llm_allow_fallback=true to fall back to another provider instead.")
     return None
 
 
@@ -2112,6 +2378,7 @@ def build_rotating_client(
     codex_homes: Optional[List[str]] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
+    settings: Optional[dict] = None,
 ) -> Optional[Any]:
     """Build a client that rotates across EVERY available account/provider.
 
@@ -2126,9 +2393,12 @@ def build_rotating_client(
     if _CLIENT_FACTORY is not None:
         return AnthropicLLMJsonClient(model="claude-sonnet-4-6")
 
-    # Callers here (ask/query/summary) don't thread a project config, so
-    # resolve env → global config directly; explicit args still win.
-    settings = resolve_llm_client_settings()
+    # ``settings=`` is how a PROJECT config reaches this path. Without it the
+    # resolution saw only env + the global file, so `tesserae ask`, query,
+    # activity summaries and the daemon could not see a project-level custom
+    # provider at all — they answered from whatever backend happened to be
+    # installed while the user believed their own endpoint served the request.
+    settings = settings if settings is not None else resolve_llm_client_settings()
     resolved_provider = (
         provider or settings["provider"] or "claude"
     ).strip().lower()
@@ -2139,6 +2409,12 @@ def build_rotating_client(
     )
     resolved_base_url = base_url or settings["base_url"]
     resolved_api_key = api_key or settings["api_key"]
+    resolved_auth_token = settings.get("auth_token")
+    resolved_style = (settings.get("api_style") or "anthropic").strip().lower()
+    # The configured model, which this builder never passed to the SDK client —
+    # so a project-level llm_model silently became the hardcoded
+    # "claude-sonnet-4-6" on every `tesserae ask`.
+    resolved_model = settings.get("model")
 
     # Same gate as build_default_json_client: route the CLI at the custom
     # endpoint only when a base_url is in play, so a stray ANTHROPIC_API_KEY
@@ -2164,20 +2440,39 @@ def build_rotating_client(
         else None
     )
     api_client = None
-    if resolved_api_key or resolved_provider == "custom":
+    if resolved_style == "openai" and resolved_provider in ("custom", "openai"):
+        _oa = OpenAIAPIJsonClient(
+            resolved_model or "gpt-4o-mini",
+            api_key=resolved_api_key,
+            auth_token=resolved_auth_token,
+            base_url=resolved_base_url,
+        )
+        api_client = _oa if _oa.available else None
+    elif resolved_api_key or resolved_auth_token or resolved_provider == "custom":
         try:
             api_client = AnthropicLLMJsonClient(
-                api_key=resolved_api_key, base_url=resolved_base_url
+                model=resolved_model,
+                api_key=resolved_api_key,
+                auth_token=resolved_auth_token,
+                base_url=resolved_base_url,
             )
         except RuntimeError:
             api_client = None
 
     if resolved_provider == "codex":
         ordered = [codex_client, claude_client, api_client]
-    elif resolved_provider in ("anthropic", "custom"):
+    elif resolved_provider in ("anthropic", "custom", "openai"):
         ordered = [api_client, claude_client, codex_client]
     else:
         ordered = [claude_client, api_client, codex_client]
+    # Composing every backend means a custom endpoint that returns None at RUN
+    # time falls through to the Claude CLI mid-answer, so the user's gateway is
+    # bypassed silently and the answer comes from somewhere they did not choose.
+    # An explicitly chosen provider is not composed with the others.
+    if ((provider or settings.get("provider"))
+            and resolved_provider in _ENDPOINT_PROVIDERS
+            and not settings.get("allow_fallback")):
+        ordered = ordered[:1]
     available = [c for c in ordered if c is not None]
     if not available:
         return None

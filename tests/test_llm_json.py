@@ -1580,11 +1580,21 @@ def test_codex_cli_available_with_binary_and_credentialed_home(monkeypatch, tmp_
 
 
 def _isolate_factory(monkeypatch):
-    """Common env isolation for build_default_json_client tests."""
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("TESSERAE_LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
-    monkeypatch.delenv("CODEX_HOME", raising=False)
+    """Common env isolation for build_default_json_client tests.
+
+    ``_apply_llm_cli_env`` writes os.environ DIRECTLY (not through monkeypatch),
+    so a CLI test that ran earlier in the same process leaves its flags behind.
+    Every channel the resolver reads has to be cleared here, or a value from
+    another test file wins over this test's own config.
+    """
+    for var in (
+        "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+        "CLAUDE_CONFIG_DIR", "CODEX_HOME",
+        "TESSERAE_LLM_PROVIDER", "TESSERAE_LLM_MODEL", "TESSERAE_LLM_BASE_URL",
+        "TESSERAE_LLM_API_KEY", "TESSERAE_LLM_AUTH_TOKEN", "TESSERAE_LLM_API_STYLE",
+        "TESSERAE_LLM_ALLOW_FALLBACK", "TESSERAE_CLAUDE_CONFIG_DIRS", "TESSERAE_CODEX_HOMES",
+    ):
+        monkeypatch.delenv(var, raising=False)
 
 
 def test_build_default_provider_codex_prefers_codex(monkeypatch):

@@ -1386,9 +1386,13 @@ def _plan_and_answer(
     provenance: bool = False,
 ) -> Optional[Dict[str, Any]]:
     if client is None:
-        from .llm_json import build_rotating_client
+        from .llm_json import build_rotating_client, project_llm_settings
 
-        client = build_rotating_client()
+        # `ask` resolved against env + the global config only, so a project that
+        # configured its own endpoint was answered by whatever other backend
+        # happened to be installed — the user believed their gateway served it.
+        client = build_rotating_client(
+            settings=project_llm_settings(getattr(wiki, "project_root", None)))
     if client is None:
         return None
 

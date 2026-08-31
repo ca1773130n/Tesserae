@@ -89,17 +89,18 @@ tesserae init --yes
 
 | Ключ конфига | Флаг | Что это |
 |---|---|---|
-| `llm_provider` | `--llm-provider {claude,codex,anthropic,custom}` | Бэкенд LLM-клиента: `claude`/`codex` используют залогиненный CLI через OAuth; `anthropic` — API напрямую; `custom` нацеливается на любой claude-совместимый эндпоинт. |
+| `llm_provider` | `--llm-provider {claude,codex,anthropic,openai,custom}` | Бэкенд LLM-клиента: `claude`/`codex` используют залогиненный CLI через OAuth; `anthropic` и `openai` используют эти API напрямую; `custom` нацеливается на эндпоинт, который вы указали. |
 | `llm_model` | `--llm-model` | Модель для LLM-клиента синтеза/инсайтов. |
-| `llm_base_url` | `--llm-base-url` | Базовый URL эндпоинта для `anthropic`/`custom`. |
-| `llm_api_key` | `--llm-api-key` | API-ключ для `anthropic`/`custom`. |
+| `llm_base_url` | `--llm-base-url` | Базовый URL эндпоинта для `anthropic`/`openai`/`custom`. |
+| `llm_api_key` | `--llm-api-key` | API-ключ для `anthropic`/`openai`/`custom`. |
 
 > **Предупреждение о хранении в открытом виде.** `llm_api_key` хранится
 > **открытым текстом** в `.tesserae/config.json`. Предпочитайте переменные
-> окружения: `ANTHROPIC_API_KEY` (ключ), `ANTHROPIC_BASE_URL` (эндпоинт) и
+> окружения: `TESSERAE_LLM_API_KEY` (ключ), `TESSERAE_LLM_BASE_URL` (эндпоинт) и
 > `TESSERAE_LLM_MODEL` (модель). Порядок разрешения: env → конфиг проекта →
 > машинный конфиг (`~/.tesserae/config.json`, записываемый `tesserae setup`)
-> → встроенный дефолт.
+> → встроенный дефолт. Старые имена `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` по-прежнему
+> работают, на один рунг ниже имён, принадлежащих Tesserae.
 
 Повторный запуск `init` на существующем проекте **мёржит** — ваши настроенные
 `sources` и `memory_backends` сохраняются, а не затираются.
@@ -108,10 +109,34 @@ tesserae init --yes
 
 ```bash
 tesserae init --yes --llm-provider codex
+
+# OpenAI-совместимый эндпоинт (vLLM, LiteLLM, OpenRouter, Ollama, LM Studio).
+# Провод — это отдельная настройка от провайдера, и init её не персистит
+# — установите в окружении или через `tesserae config llm`.
 tesserae init --yes --llm-provider custom \
-  --llm-base-url https://llm.internal.example/v1 \
-  --llm-model my-model            # key via ANTHROPIC_API_KEY
+  --llm-base-url http://localhost:8000/v1 \
+  --llm-model qwen2.5-coder-32b-instruct
+export TESSERAE_LLM_API_STYLE=openai      # POST {base_url}/chat/completions
+export TESSERAE_LLM_AUTH_TOKEN=sk-...     # полностью опустите для локального сервера без ключа
+
+# Anthropic-совместимый шлюз. БЕЗ /v1: SDK дописывает /v1/messages сам,
+# и базовый URL заканчивающийся на /v1 обрезается, чтобы избежать удвоения.
+tesserae init --yes --llm-provider custom \
+  --llm-base-url https://gateway.internal.example \
+  --llm-model claude-sonnet-4-6           # ключ через TESSERAE_LLM_API_KEY
 ```
+
+Затем подтвердите что действительно разрешилось — провод, модель, URL,
+вид учётной данной и слой откуда каждое пришло — перед тем как потратить
+компиляцию на это:
+
+```bash
+tesserae config status --project .
+```
+
+[Tuning → LLM backend](tuning.md#llm-бэкэнд) — полный справочник: все ключи
+`llm_*`, обе схемы пользовательских эндпоинтов и что делает настроенный
+эндпоинт когда не может быть построен.
 
 > **Пропуск визарда.** `tesserae init --bare` пишет минимальный `.tesserae/config.json`
 > без обнаружения источников и проверки бэкендов — удобно, когда вы хотите

@@ -116,6 +116,10 @@ def _build_config_payload(plan: SetupPlan) -> dict[str, Any]:
         payload["llm_base_url"] = plan.llm_base_url
     if plan.llm_api_key:
         payload["llm_api_key"] = plan.llm_api_key
+    if getattr(plan, "llm_auth_token", None):
+        payload["llm_auth_token"] = plan.llm_auth_token
+    if getattr(plan, "llm_api_style", None):
+        payload["llm_api_style"] = plan.llm_api_style
     return payload
 
 

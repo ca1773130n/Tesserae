@@ -1146,7 +1146,7 @@ def _add_llm_client_args(parser: argparse.ArgumentParser, persisted: bool = Fals
     suffix = " (persisted into config.json)" if persisted else " (this run only; overrides config.json)"
     parser.add_argument(
         "--llm-provider",
-        choices=["claude", "codex", "anthropic", "custom"],
+        choices=["claude", "codex", "anthropic", "openai", "custom"],
         default=None,
         help="Backend for the LLM client (claude/codex CLI over OAuth, anthropic API key, or a custom claude-compatible endpoint)" + suffix,
     )
@@ -1311,10 +1311,22 @@ def _apply_llm_cli_env(args: argparse.Namespace) -> None:
         os.environ["CODEX_HOME"] = args.codex_home
     if getattr(args, "llm_model", None):
         os.environ["TESSERAE_LLM_MODEL"] = args.llm_model
+    # Tesserae-owned names, which outrank the ambient ANTHROPIC_* pair in the
+    # resolver — a flag must beat a config file, and ANTHROPIC_BASE_URL sits
+    # BELOW project config there, so exporting only that made --llm-base-url
+    # lose to a config value it was meant to override.
     if getattr(args, "llm_base_url", None):
+        os.environ["TESSERAE_LLM_BASE_URL"] = args.llm_base_url
         os.environ["ANTHROPIC_BASE_URL"] = args.llm_base_url
     if getattr(args, "llm_api_key", None):
+        os.environ["TESSERAE_LLM_API_KEY"] = args.llm_api_key
         os.environ["ANTHROPIC_API_KEY"] = args.llm_api_key
+    if getattr(args, "llm_auth_token", None):
+        os.environ["TESSERAE_LLM_AUTH_TOKEN"] = args.llm_auth_token
+    if getattr(args, "llm_api_style", None):
+        os.environ["TESSERAE_LLM_API_STYLE"] = args.llm_api_style
+    if getattr(args, "codex_home", None):
+        os.environ["TESSERAE_CODEX_HOMES"] = args.codex_home
 
 
 def _handle_llm_defaults(args: argparse.Namespace) -> int:
@@ -1332,8 +1344,10 @@ def _handle_llm_defaults(args: argparse.Namespace) -> int:
             "llm_codex_reasoning_effort": existing.get("llm_codex_reasoning_effort"),
             "llm_model": existing.get("llm_model"),
             "llm_base_url": existing.get("llm_base_url"),
-            # NEVER echo the key itself — show only whether one is stored.
+            "llm_api_style": existing.get("llm_api_style"),
+            # NEVER echo a credential itself — show only whether one is stored.
             "llm_api_key": "set" if existing.get("llm_api_key") else "unset",
+            "llm_auth_token": "set" if existing.get("llm_auth_token") else "unset",
         }
         print(f"Machine-wide LLM defaults ({path}):")
         print(_json.dumps(effective, ensure_ascii=False, indent=2))
@@ -1342,11 +1356,14 @@ def _handle_llm_defaults(args: argparse.Namespace) -> int:
     llm_model = getattr(args, "llm_model", None)
     llm_base_url = getattr(args, "llm_base_url", None)
     llm_api_key = getattr(args, "llm_api_key", None)
+    llm_auth_token = getattr(args, "llm_auth_token", None)
+    llm_api_style = getattr(args, "llm_api_style", None)
     if not (args.llm_provider or args.claude_config_dir or args.codex_home or reasoning
-            or llm_model or llm_base_url or llm_api_key):
+            or llm_model or llm_base_url or llm_api_key or llm_auth_token or llm_api_style):
         print(
             "Nothing to set — pass --llm-provider/--claude-config-dir/--codex-home/"
-            "--reasoning-effort/--llm-model/--llm-base-url/--llm-api-key, "
+            "--reasoning-effort/--llm-model/--llm-base-url/--llm-api-key/"
+            "--llm-auth-token/--llm-api-style, "
             "or run `tesserae config show` to view the current defaults.",
             file=sys.stderr,
         )
@@ -1360,26 +1377,31 @@ def _handle_llm_defaults(args: argparse.Namespace) -> int:
         model=llm_model,
         base_url=llm_base_url,
         api_key=llm_api_key,
+        auth_token=llm_auth_token,
+        api_style=llm_api_style,
     )
     _write_global_config(path, merged)
-    if llm_api_key:
+    if llm_api_key or llm_auth_token:
         print(
-            f"warning: llm_api_key is stored in plaintext in {path}; "
-            "prefer the ANTHROPIC_API_KEY environment variable",
+            f"warning: the credential is stored in plaintext in {path}; "
+            "prefer the TESSERAE_LLM_API_KEY / TESSERAE_LLM_AUTH_TOKEN "
+            "environment variables",
             file=sys.stderr,
         )
     print(f"Saved machine-wide LLM defaults to {path}:")
     for key in ("llm_provider", "llm_claude_config_dirs", "llm_codex_home",
-                "llm_codex_reasoning_effort", "llm_model", "llm_base_url", "llm_api_key"):
+                "llm_codex_reasoning_effort", "llm_model", "llm_base_url",
+                "llm_api_style", "llm_api_key", "llm_auth_token"):
         if key in merged:
-            value = "(set)" if key == "llm_api_key" else merged[key]
+            value = "(set)" if key in ("llm_api_key", "llm_auth_token") else merged[key]
             print(f"  {key}: {value}")
     return 0
 
 
 def _merge_global_llm_config(existing: dict, *, llm_provider=None, claude_config_dirs=None,
                              codex_home=None, reasoning_effort=None, model=None,
-                             base_url=None, api_key=None) -> dict:
+                             base_url=None, api_key=None, auth_token=None,
+                             api_style=None) -> dict:
     """Merge-preserving update of the machine-wide config: only passed keys change."""
     merged = dict(existing)
     if llm_provider:
@@ -1396,6 +1418,10 @@ def _merge_global_llm_config(existing: dict, *, llm_provider=None, claude_config
         merged["llm_base_url"] = base_url
     if api_key:
         merged["llm_api_key"] = api_key
+    if auth_token:
+        merged["llm_auth_token"] = auth_token
+    if api_style:
+        merged["llm_api_style"] = api_style
     return merged
 
 
@@ -1425,6 +1451,11 @@ def _handle_init(args: argparse.Namespace) -> int:
         "llm_model": getattr(args, "llm_model", None),
         "llm_base_url": getattr(args, "llm_base_url", None),
         "llm_api_key": getattr(args, "llm_api_key", None),
+        # The wire and the bearer credential are as load-bearing as the URL:
+        # accepting --llm-api-style and then not persisting it left the project
+        # on the anthropic wire while the user believed they had chosen openai.
+        "llm_api_style": getattr(args, "llm_api_style", None),
+        "llm_auth_token": getattr(args, "llm_auth_token", None),
     }
     endpoint_keys = {k: v for k, v in endpoint_keys.items() if v}
     if endpoint_keys:
@@ -3593,8 +3624,10 @@ def _build_init_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bare", action="store_true", help="Skip the wizard; write a minimal workspace (the old `project init`)")
     _add_llm_client_args(parser, persisted=True)
     parser.add_argument("--llm-model", default=None, help="Model for the synthesis/insights LLM client (persisted into config.json as llm_model)")
-    parser.add_argument("--llm-base-url", default=None, help="Claude-compatible endpoint base URL for --llm-provider anthropic/custom (persisted as llm_base_url)")
+    parser.add_argument("--llm-base-url", default=None, help="Endpoint base URL (see --llm-api-style) for --llm-provider anthropic/custom (persisted as llm_base_url)")
     parser.add_argument("--llm-api-key", default=None, help="API key for --llm-provider anthropic/custom (persisted in PLAINTEXT config.json as llm_api_key; prefer ANTHROPIC_API_KEY)")
+    parser.add_argument("--llm-api-style", choices=["anthropic", "openai"], default=None, help="Wire protocol for the endpoint: anthropic (POST {base}/v1/messages) or openai (POST {base}/chat/completions, i.e. vLLM/LiteLLM/OpenRouter/Ollama/LM Studio) (llm_api_style)")
+    parser.add_argument("--llm-auth-token", default=None, help="Bearer credential for the endpoint, sent as Authorization: Bearer. Use instead of --llm-api-key when the gateway wants a bearer token (stored in PLAINTEXT)")
     return parser
 
 
@@ -4436,7 +4469,8 @@ def _handle_config_status(args: argparse.Namespace) -> int:
         _load_global_llm_config,
         build_default_json_client,
         resolve_llm_client_settings,
-    )
+        LLMProviderConfigError,
+)
 
     project_cfg: dict = {}
     proj = getattr(args, "project", None)
@@ -4450,14 +4484,15 @@ def _handle_config_status(args: argparse.Namespace) -> int:
     global_cfg = _load_global_llm_config()
     settings = resolve_llm_client_settings(project_cfg)
 
-    def _source(key: str, env_name: str) -> str:
-        if _os.environ.get(env_name):
-            return f"env {env_name}"
-        if project_cfg.get(key) is not None:
-            return "project .tesserae/config.json"
-        if global_cfg.get(key) is not None:
-            return "~/.tesserae/config.json"
-        return "default"
+    # The resolver now records which layer actually won each key, so ask it
+    # instead of re-deriving the answer. The old local guess credited env vars
+    # the resolver deliberately ignores (CLAUDE_CONFIG_DIR) and ones it consults
+    # last (CODEX_HOME), so this panel could name a source that had no influence
+    # on the run it was describing.
+    _sources = settings.get("sources") or {}
+
+    def _source(key: str, env_name: str = "") -> str:
+        return _sources.get(key.removeprefix("llm_"), "default")
 
     provider = settings["provider"]
     print("Tesserae LLM backend (resolved" + (f" for {proj}" if proj else "") + "):")
@@ -4467,19 +4502,29 @@ def _handle_config_status(args: argparse.Namespace) -> int:
         print(f"  codex_home : {home}   [{_source('llm_codex_home', 'CODEX_HOME')}]")
         effort = settings.get("codex_reasoning_effort") or "medium"
         print(f"  effort     : {effort}   [{_source('llm_codex_reasoning_effort', 'TESSERAE_CODEX_REASONING_EFFORT')}]")
-    elif provider in ("anthropic", "custom"):
-        # API-key providers: no CLI dirs — show the endpoint knobs instead.
+    elif provider in ("anthropic", "custom", "openai"):
+        # Endpoint providers: no CLI dirs — show the endpoint knobs instead.
+        # api_style is the wire, and printing it is the point: the same
+        # base_url means two different requests, and picking the wrong one is
+        # the single most common way a custom endpoint fails.
+        style = settings.get("api_style") or "anthropic"
+        print(f"  api_style  : {style}   [{_source('llm_api_style')}]")
         model = settings.get("model") or "<provider default>"
-        print(f"  model      : {model}   [{_source('llm_model', 'TESSERAE_LLM_MODEL')}]")
+        print(f"  model      : {model}   [{_source('llm_model')}]")
         base_url = settings.get("base_url") or "<api default>"
-        print(f"  base_url   : {base_url}   [{_source('llm_base_url', 'ANTHROPIC_BASE_URL')}]")
-        # NEVER print the key itself — only whether one is resolved.
-        key_state = "set" if settings.get("api_key") else "unset"
-        print(f"  api_key    : {key_state}   [{_source('llm_api_key', 'ANTHROPIC_API_KEY')}]")
+        print(f"  base_url   : {base_url}   [{_source('llm_base_url')}]")
+        # NEVER print the credential itself — only which kind is resolved, which
+        # is what distinguishes an X-Api-Key gateway from a bearer one.
+        if settings.get("auth_token"):
+            print(f"  credential : auth_token (Authorization: Bearer)   [{_source('llm_auth_token')}]")
+        elif settings.get("api_key"):
+            print(f"  credential : api_key   [{_source('llm_api_key')}]")
+        else:
+            print("  credential : none (keyless endpoint)")
     else:
         dirs = settings["claude_config_dirs"] or ["<CLI default>"]
         print(f"  claude_dirs: {dirs}   [{_source('llm_claude_config_dirs', 'CLAUDE_CONFIG_DIR')}]")
-    if provider not in ("anthropic", "custom") and settings.get("model"):
+    if provider not in ("anthropic", "custom", "openai") and settings.get("model"):
         print(f"  model      : {settings['model']}   [{_source('llm_model', 'TESSERAE_LLM_MODEL')}]")
 
     # Optional dependency status — the rest of what `tesserae setup` manages,
@@ -4494,21 +4539,30 @@ def _handle_config_status(args: argparse.Namespace) -> int:
     if not getattr(args, "ping", True):
         return 0
 
-    client = build_default_json_client(
-        provider=provider,
-        # .get, not []: callers and test doubles supply their own settings dicts,
-        # and a missing key means "not configured" — the correct input here,
-        # since None lets the client rank CODEX_HOME first and keep the other
-        # discovered homes behind it.
-        codex_homes=settings.get("codex_homes"),
-        claude_config_dirs=settings["claude_config_dirs"],
-        model=settings.get("model"),
-        base_url=settings.get("base_url"),
-        api_key=settings.get("api_key"),
-    )
+    # Pass the WHOLE resolved dict, exactly as the compile and ask paths do.
+    # Rebuilding from a hand-picked subset is how this probe could construct a
+    # different client than the run it was meant to diagnose — and report a
+    # healthy backend for a configuration that fails in production.
+    try:
+        client = build_default_json_client(
+            provider=provider,
+            # .get, not []: callers and test doubles supply their own settings
+            # dicts, and a missing key means "not configured" — the correct
+            # input here, since None lets the client rank CODEX_HOME first and
+            # keep the other discovered homes behind it.
+            codex_homes=settings.get("codex_homes"),
+            claude_config_dirs=settings["claude_config_dirs"],
+            settings=settings,
+        )
+    except LLMProviderConfigError as exc:
+        # A diagnostic must report a misconfiguration, not die of it.
+        print(f"  liveness   : ✗ {exc}")
+        return 1
     if client is None:
         print("  liveness   : ✗ no client could be built (CLI missing / not configured)")
         return 1
+    print(f"  client     : {type(client).__name__}"
+          + (f"  ({client.identity})" if hasattr(client, "identity") else ""))
     try:
         resp = client.complete_json(
             # Deliberately self-identifying. This probe spawns a real CLI call,
@@ -4571,13 +4625,15 @@ def _build_config_parser() -> argparse.ArgumentParser:
             "  tesserae config llm --llm-provider claude --claude-config-dir ~/.claude-personal2\n"
         ),
     )
-    p_llm.add_argument("--llm-provider", choices=["claude", "codex", "anthropic", "custom"], default=None, help="Default backend for the synthesis/insights LLM client on this machine")
+    p_llm.add_argument("--llm-provider", choices=["claude", "codex", "anthropic", "openai", "custom"], default=None, help="Default backend for the synthesis/insights LLM client on this machine")
     p_llm.add_argument("--claude-config-dir", action="append", default=[], help="Default Claude CLI config directory; repeat for fallback accounts")
     p_llm.add_argument("--codex-home", default=None, help="Default Codex CLI home (e.g. ~/.codex-personal1)")
     p_llm.add_argument("--reasoning-effort", choices=["low", "medium", "high", "xhigh"], default=None, help="Default codex reasoning effort for Tesserae's own LLM calls")
     p_llm.add_argument("--llm-model", default=None, help="Default model for the synthesis LLM client (llm_model)")
-    p_llm.add_argument("--llm-base-url", default=None, help="Claude-compatible endpoint base URL for anthropic/custom (llm_base_url)")
+    p_llm.add_argument("--llm-base-url", default=None, help="Endpoint base URL (see --llm-api-style) for anthropic/custom (llm_base_url)")
     p_llm.add_argument("--llm-api-key", default=None, help="API key for anthropic/custom (stored in PLAINTEXT ~/.tesserae/config.json; prefer ANTHROPIC_API_KEY)")
+    p_llm.add_argument("--llm-api-style", choices=["anthropic", "openai"], default=None, help="Wire protocol for the endpoint: anthropic (POST {base}/v1/messages) or openai (POST {base}/chat/completions, i.e. vLLM/LiteLLM/OpenRouter/Ollama/LM Studio) (llm_api_style)")
+    p_llm.add_argument("--llm-auth-token", default=None, help="Bearer credential for the endpoint, sent as Authorization: Bearer. Use instead of --llm-api-key when the gateway wants a bearer token (stored in PLAINTEXT)")
     p_llm.set_defaults(_handler="_handle_config_llm")
 
     p_deps = sub.add_parser(
@@ -4858,8 +4914,11 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
     llm_model = getattr(args, "llm_model", None)
     llm_base_url = getattr(args, "llm_base_url", None)
     llm_api_key = getattr(args, "llm_api_key", None)
+    llm_auth_token = getattr(args, "llm_auth_token", None)
+    llm_api_style = getattr(args, "llm_api_style", None)
     wrote_llm = bool(args.llm_provider or args.claude_config_dir or args.codex_home
-                     or args.reasoning_effort or llm_model or llm_base_url or llm_api_key)
+                     or args.reasoning_effort or llm_model or llm_base_url or llm_api_key
+                     or llm_auth_token or llm_api_style)
     if wrote_llm:
         merged = _merge_global_llm_config(
             _lj._load_global_llm_config(),
@@ -4870,6 +4929,8 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
             model=llm_model,
             base_url=llm_base_url,
             api_key=llm_api_key,
+            auth_token=llm_auth_token,
+            api_style=llm_api_style,
         )
         wrote = ["LLM defaults"]
         _write_global_config(_lj.GLOBAL_CONFIG_PATH, merged)
@@ -4913,13 +4974,15 @@ def _build_setup_parser() -> argparse.ArgumentParser:
             "  tesserae setup --llm-provider codex --reasoning-effort medium --install all\n"
         ),
     )
-    parser.add_argument("--llm-provider", choices=["claude", "codex", "anthropic", "custom"], default=None, help="Machine-wide default LLM backend")
+    parser.add_argument("--llm-provider", choices=["claude", "codex", "anthropic", "openai", "custom"], default=None, help="Machine-wide default LLM backend")
     parser.add_argument("--claude-config-dir", action="append", default=[], help="Default Claude CLI config dir; repeat for fallbacks")
     parser.add_argument("--codex-home", default=None, help="Default Codex CLI home")
     parser.add_argument("--reasoning-effort", choices=["low", "medium", "high", "xhigh"], default=None, help="Default codex reasoning effort")
     parser.add_argument("--llm-model", default=None, help="Machine-wide default model for the synthesis LLM client (llm_model)")
-    parser.add_argument("--llm-base-url", default=None, help="Claude-compatible endpoint base URL for anthropic/custom (llm_base_url)")
+    parser.add_argument("--llm-base-url", default=None, help="Endpoint base URL (see --llm-api-style) for anthropic/custom (llm_base_url)")
     parser.add_argument("--llm-api-key", default=None, help="API key for anthropic/custom (stored in PLAINTEXT ~/.tesserae/config.json; prefer ANTHROPIC_API_KEY)")
+    parser.add_argument("--llm-api-style", choices=["anthropic", "openai"], default=None, help="Wire protocol for the endpoint: anthropic (POST {base}/v1/messages) or openai (POST {base}/chat/completions, i.e. vLLM/LiteLLM/OpenRouter/Ollama/LM Studio) (llm_api_style)")
+    parser.add_argument("--llm-auth-token", default=None, help="Bearer credential for the endpoint, sent as Authorization: Bearer. Use instead of --llm-api-key when the gateway wants a bearer token (stored in PLAINTEXT)")
     parser.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, raganything, or 'all'); repeat")
     parser.add_argument("--install-all", action="store_true", help="Install every known optional dependency")
     # Removed backend (0.19): the cognee cognify pass no longer exists.
@@ -6104,7 +6167,7 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum distinct sources required to create a Trend node")
     parser.add_argument("--extractor", choices=["llm", "selective-llm", "deterministic", "claude-cli", "selective-claude"], default="llm",
                         help="Extraction backend. 'llm' (default) builds the concept/claim layer via the configured provider (codex/claude/api); 'selective-llm' routes only --llm-include globs through the LLM; 'deterministic' is structural-only.")
-    parser.add_argument("--llm-provider", choices=["claude", "codex", "anthropic", "custom"], default=None, help="Override the LLM provider (default: llm_provider in config).")
+    parser.add_argument("--llm-provider", choices=["claude", "codex", "anthropic", "openai", "custom"], default=None, help="Override the LLM provider (default: llm_provider in config).")
     parser.add_argument("--llm-model", default=None, help="Model for the LLM extractor (default: the provider's default).")
     parser.add_argument("--llm-include", action="append", default=None, help="Glob selecting files for --extractor selective-llm; repeat for several.")
     parser.add_argument("--llm-limit", type=int, default=None, help="Max files sent to the LLM under --extractor selective-llm.")
@@ -6268,6 +6331,11 @@ def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
         claude_config_dirs=(getattr(args, "claude_config_dir", None) or settings.get("claude_config_dirs")),
         codex_homes=settings.get("codex_homes"),
         codex_reasoning_effort=settings.get("codex_reasoning_effort") or "medium",
+        # The endpoint half of the same settings dict was computed one line above
+        # and dropped, so a project-configured custom provider never reached the
+        # primary compile path: base_url, api_key/auth_token, api_style and the
+        # model were all discarded and the run used the default backend instead.
+        settings=settings,
         timeout=_extract_timeout(),  # per-attempt cutoff, default 1800s (TESSERAE_EXTRACT_TIMEOUT=0 = run to completion)
     )
     if client is None:
