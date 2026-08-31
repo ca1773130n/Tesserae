@@ -269,7 +269,7 @@ def test_init_keeps_llm_flags(tmp_path):
     assert cfg["llm_provider"] == "codex"
 
 
-def test_init_has_exactly_eleven_flags():
+def test_init_has_exactly_thirteen_flags():
     import tesserae.cli as cli
 
     parser = cli._build_init_parser()
@@ -278,16 +278,19 @@ def test_init_has_exactly_eleven_flags():
     assert dests == sorted([
         "project", "name", "source", "yes", "bare",
         "llm_provider", "claude_config_dir", "codex_home",
-        # custom claude-compatible endpoint knobs (persisted as llm_* keys)
+        # custom endpoint knobs (persisted as llm_* keys). api_style is the WIRE
+        # (anthropic /v1/messages vs openai /chat/completions) and auth_token is
+        # the bearer credential — init used to accept both and persist neither.
         "llm_model", "llm_base_url", "llm_api_key",
+        "llm_api_style", "llm_auth_token",
     ]), dests
 
 
 def test_init_provider_choices_are_consistent_everywhere():
-    """Every surface with --llm-provider offers the same 4 providers."""
+    """Every surface with --llm-provider offers the same 5 providers."""
     import tesserae.cli as cli
 
-    expected = {"claude", "codex", "anthropic", "custom"}
+    expected = {"claude", "codex", "anthropic", "openai", "custom"}
     for build in (cli._build_init_parser, cli._build_compile_parser,
                   cli._build_setup_parser, cli._build_extract_parser):
         parser = build()
