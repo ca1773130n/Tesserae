@@ -200,11 +200,20 @@ def build_plan(
     codex_model = _pick("codex_model", "llm_model",
                         detection.recommended.codex_model)
     codex_home = _pick("codex_home", "llm_codex_home", None)
-    claude_model = _pick("claude_model", "llm_claude_model", None)
+    # llm_claude_model is written by NOTHING — every writer uses llm_model
+    # (cli.py, setup/apply.py, project.py). Reading only the dead name meant
+    # setup silently saw no configured model. Fall back to the live key, and
+    # read it directly rather than through _pick, which pops from overrides.
+    claude_model = _pick("claude_model", "llm_claude_model",
+                         global_llm.get("llm_model"))
     # A claude config dir is only meaningful when claude is the provider.
     # Writing one under a codex provider is the pin that surprised an operator
     # into spending the wrong subscription.
-    claude_config_dir = _pick("claude_config_dir", "llm_claude_config_dir",
+    # Same defect: every writer uses the PLURAL llm_claude_config_dirs, so the
+    # singular key read here found nothing. Take the first of the real list.
+    _dirs = global_llm.get("llm_claude_config_dirs")
+    _dirs_first = _dirs[0] if isinstance(_dirs, list) and _dirs else None
+    claude_config_dir = _dirs_first or _pick("claude_config_dir", "llm_claude_config_dir",
                               detection.recommended.claude_config_dir)
     if llm_provider and llm_provider != "claude":
         claude_config_dir = None

@@ -1917,6 +1917,18 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     cfg = cfg or {}
     global_cfg = _load_global_llm_config()
 
+    # Recorded like every other key: reporting the provider's source as
+    # "default" when it came from a project config is exactly the kind of
+    # mislabel `config status` exists to stop.
+    _provider_sources = {}
+    if os.environ.get("TESSERAE_LLM_PROVIDER"):
+        _provider_sources["provider"] = "env TESSERAE_LLM_PROVIDER"
+    elif cfg.get("llm_provider"):
+        _provider_sources["provider"] = "project .tesserae/config.json"
+    elif global_cfg.get("llm_provider"):
+        _provider_sources["provider"] = "~/.tesserae/config.json"
+    else:
+        _provider_sources["provider"] = "default"
     provider = (
         os.environ.get("TESSERAE_LLM_PROVIDER")
         or cfg.get("llm_provider")
@@ -1993,7 +2005,7 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     # won it. ``config status`` used to GUESS the source and credited env vars
     # the resolver deliberately ignores; a resolver that knows the answer should
     # just say it.
-    sources: dict = {}
+    sources: dict = dict(_provider_sources)
 
     def _pick(key: str, *envs: str, default=None):
         """Tesserae env → project config → global config → default."""

@@ -4591,10 +4591,22 @@ def _handle_config_status(args: argparse.Namespace) -> int:
     if resp:
         print("  liveness   : ✓ OK (backend responded)")
         return 0
-    print(
-        "  liveness   : ✗ FAILED — no response (rate-limited / auth / unsupported "
-        "model). Session extraction will produce zero findings until this is fixed."
-    )
+    # The client classified WHY it failed — 401/403 as auth, 404 or a
+    # model-not-found 400 as endpoint — and naming three possibilities when the
+    # code already knows which one it was is the vagueness this panel exists to
+    # remove. The verdict is thread-local and set by the call just above.
+    from .llm_json import last_failure_kind
+
+    _why = {
+        "auth": "the credential was rejected (401/403) — check llm_api_key / llm_auth_token "
+                "and whether this endpoint wants a bearer token or an api key",
+        "endpoint": "the endpoint rejected the request (404 / unknown model) — check "
+                    "llm_base_url, llm_api_style, and that this model exists on that server",
+        "unavailable": "the backend never answered (transport, rate limit, or capacity)",
+        "unparseable": "the backend answered, but not with JSON",
+    }.get(last_failure_kind() or "", "no response (rate limit, auth, or unsupported model)")
+    print(f"  liveness   : ✗ FAILED — {_why}.")
+    print("               Session extraction will produce zero findings until this is fixed.")
     return 1
 
 
