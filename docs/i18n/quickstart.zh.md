@@ -85,12 +85,16 @@ tesserae init --yes
 
 | 配置键 | 标志 | 含义 |
 |---|---|---|
-| `llm_provider` | `--llm-provider {claude,codex,anthropic,custom}` | LLM 客户端的后端：`claude`/`codex` 通过 OAuth 使用已登录的 CLI；`anthropic` 直接使用 API；`custom` 指向任意 claude 兼容端点。 |
+| `llm_provider` | `--llm-provider {claude,codex,anthropic,openai,custom}` | LLM 客户端的后端：`claude`/`codex` 通过 OAuth 使用已登录的 CLI；`anthropic` 和 `openai` 直接使用那些 API；`custom` 指向你命名的一个端点。 |
 | `llm_model` | `--llm-model` | 合成/洞见 LLM 客户端使用的模型。 |
-| `llm_base_url` | `--llm-base-url` | `anthropic`/`custom` 的端点基础 URL。 |
-| `llm_api_key` | `--llm-api-key` | `anthropic`/`custom` 的 API key。 |
+| `llm_base_url` | `--llm-base-url` | `anthropic`/`openai`/`custom` 的端点基础 URL。 |
+| `llm_api_key` | `--llm-api-key` | `anthropic`/`openai`/`custom` 的 API key。 |
 
-> **明文警告。** `llm_api_key` 以**明文**存储在 `.tesserae/config.json` 中。请优先使用环境变量：`ANTHROPIC_API_KEY`（密钥）、`ANTHROPIC_BASE_URL`（端点）和 `TESSERAE_LLM_MODEL`（模型）。解析顺序为 env → 项目配置 → 机器级配置（`~/.tesserae/config.json`，由 `tesserae setup` 写入）→ 内置默认值。
+> **明文警告。** `llm_api_key` 以**明文**存储在 `.tesserae/config.json` 中。请优先使用环境变量：
+> `TESSERAE_LLM_API_KEY`（密钥）、`TESSERAE_LLM_BASE_URL`（端点）和 `TESSERAE_LLM_MODEL`（模型）。解析顺序为 env → 项目配置 →
+> 机器级配置（`~/.tesserae/config.json`，由 `tesserae setup` 写入）
+> → 内置默认值。较旧的 `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` 仍然
+> 有效，在 Tesserae 自有名称下面一级。
 
 在已有项目上重新运行 `init` 会**合并**——你已配置的 `sources` 和 `memory_backends` 会被保留，而不是被覆盖。
 
@@ -98,10 +102,30 @@ tesserae init --yes
 
 ```bash
 tesserae init --yes --llm-provider codex
+
+# 一个 OpenAI 兼容端点（vLLM、LiteLLM、OpenRouter、Ollama、LM Studio）。
+# 线路是一个与提供商分开的设置，init 不持久化它——在环境中或用 `tesserae config llm` 设置它。
 tesserae init --yes --llm-provider custom \
-  --llm-base-url https://llm.internal.example/v1 \
-  --llm-model my-model            # key via ANTHROPIC_API_KEY
+  --llm-base-url http://localhost:8000/v1 \
+  --llm-model qwen2.5-coder-32b-instruct
+export TESSERAE_LLM_API_STYLE=openai      # POST {base_url}/chat/completions
+export TESSERAE_LLM_AUTH_TOKEN=sk-...     # 无密钥本地服务器则完全省略
+
+# 一个 Anthropic 兼容网关。无 /v1：SDK 自身追加 /v1/messages，
+# 而以 /v1 结尾的基础 URL 被削减回来以防止它加倍。
+tesserae init --yes --llm-provider custom \
+  --llm-base-url https://gateway.internal.example \
+  --llm-model claude-sonnet-4-6           # key via TESSERAE_LLM_API_KEY
 ```
+
+然后在花一次编译之前确认实际解析的内容——线路、模型、URL、凭证种类及其来源层：
+
+```bash
+tesserae config status --project .
+```
+
+[调优 → LLM 后端](tuning.md#llm-后端) 是完整参考：每个
+`llm_*` 键、两个自定义端点方案及配置的端点在无法构建时做什么。
 
 > **跳过向导。** `tesserae init --bare` 写入一个最小化的 `.tesserae/config.json`，不做来源检测或后端探测——当你想在首次编译前手工编辑配置时很方便。
 

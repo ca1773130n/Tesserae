@@ -154,3 +154,28 @@ def _isolate_global_registry(tmp_path_factory, monkeypatch):
         tmp_path_factory.mktemp("llm-global") / "config.json",
         raising=True,
     )
+
+
+#: Every channel ``resolve_llm_client_settings`` reads. ``_apply_llm_cli_env``
+#: writes these into ``os.environ`` DIRECTLY — not through monkeypatch — so a
+#: test that exercises a CLI handler leaves its flags set for every test that
+#: runs after it, in the same process. That produced order-dependent failures
+#: where a codex home from one file won over another file's project config.
+_LLM_ENV_CHANNELS = (
+    "TESSERAE_LLM_PROVIDER", "TESSERAE_LLM_MODEL", "TESSERAE_LLM_BASE_URL",
+    "TESSERAE_LLM_API_KEY", "TESSERAE_LLM_AUTH_TOKEN", "TESSERAE_LLM_API_STYLE",
+    "TESSERAE_LLM_ALLOW_FALLBACK", "TESSERAE_CLAUDE_CONFIG_DIRS", "TESSERAE_CODEX_HOMES",
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_llm_env_channels(monkeypatch):
+    """Each test starts with no inherited Tesserae LLM env overrides.
+
+    A test that wants one still sets it; this only removes what LEAKED from an
+    earlier test. The ambient ANTHROPIC_*/CLAUDE_CONFIG_DIR/CODEX_HOME vars are
+    deliberately left alone — several tests assert on the real environment's
+    behaviour, and those were never the leak.
+    """
+    for var in _LLM_ENV_CHANNELS:
+        monkeypatch.delenv(var, raising=False)

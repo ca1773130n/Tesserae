@@ -8,9 +8,9 @@ Cada control que Tesserae lee del entorno, su valor por defecto y cuándo
 realmente querrías cambiarlo. Nada aquí es obligatorio: los valores por defecto
 se eligieron para que un simple `tesserae compile` funcione correctamente.
 
-La configuración del proyecto y global (`.tesserae/config.json`, `~/.tesserae/config.json`)
-tienen prioridad sobre la configuración del servidor LLM; las variables de entorno
-abajo anulan ambas para la ejecución donde estén establecidas.
+La configuración del servidor LLM también vive en `.tesserae/config.json` y
+`~/.tesserae/config.json`; las variables de entorno abajo anulan ambas para la ejecución donde estén
+establecidas, y [LLM backend](#llm-backend) expone el orden completo una sola vez.
 
 ---
 
@@ -94,16 +94,121 @@ llamada. Déjalo sin establecer a menos que estés alcanzando límites de contex
 
 ---
 
-## Servidor LLM
+## LLM backend
 
-| Variable | Por defecto | Notas |
-|---|---|---|
-| `TESSERAE_LLM_PROVIDER` | `claude` | `codex`, `claude`, `anthropic`, `custom` |
-| `TESSERAE_LLM_MODEL` | específico del proveedor | Limitado por proveedor para que un modelo tipo claude nunca llegue a la ruta codex |
-| `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | La extracción estructurada no necesita el `xhigh` que puedas establecer para trabajo interactivo — `xhigh` hace que una compilación multiDocumento sea muchas veces más lenta |
-| `TESSERAE_CLAUDE_CONFIG_DIRS` | — | Directorios de configuración de Claude separados por `os.pathsep`, en orden de rotación: el canal de entorno para un `--claude-config-dir` repetido. Solo una lista *configurada* es autoritativa; el `CLAUDE_CONFIG_DIR` del entorno deliberadamente no lo es, porque fijarse a él colapsa la rotación multicuenta a una sola cuenta |
+Cuál backend responde, sobre qué protocolo y con qué credencial. Cada clave abajo
+se resuelve de la misma forma, y solo de esta forma:
 
-`tesserae config status` imprime el servidor resuelto y lo verifica para vivacidad.
+**Variable de entorno `TESSERAE_*` → `.tesserae/config.json` del proyecto → `~/.tesserae/config.json` → valor por defecto integrado.**
+
+| Clave de config | Variable de entorno | Por defecto | Notas |
+|---|---|---|---|
+| `llm_provider` | `TESSERAE_LLM_PROVIDER` | `claude` | Uno de `claude`, `codex`, `anthropic`, `openai`, `custom`. Lo contrario se rechaza por nombre — un error tipográfico solía tratarse silenciosamente como `claude`, así que una config diciendo `openrouter` se ejecutaba contra Anthropic e informaba de un error sobre un modelo que nunca elegiste |
+| `llm_api_style` | `TESSERAE_LLM_API_STYLE` | `openai` cuando `llm_provider` es `openai`, `anthropic` en otro caso | El protocolo HTTP, que es una pregunta diferente del backend. `anthropic` publica a `{base_url}/v1/messages` a través del SDK de Anthropic; `openai` publica a `{base_url}/chat/completions` |
+| `llm_model` | `TESSERAE_LLM_MODEL` | `sonnet` (CLI claudia), `gpt-5.6-luna` (CLI codex), `claude-sonnet-4-6` (protocolo anthropic), `gpt-4o-mini` (protocolo openai) | Limitado por proveedor en los dos backends CLI, así que un modelo tipo claude nunca llega a la ruta codex. Un proveedor de endpoint configurado mantiene su modelo incluso cuando proveedor y modelo se establecieron en capas de config diferentes |
+| `llm_base_url` | `TESSERAE_LLM_BASE_URL`, luego `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` (protocolo anthropic), `https://api.openai.com/v1` (protocolo openai) | El endpoint, recortado a lo que cada protocolo añade — ver [endpoints personalizados](#endpoints-personalizados) |
+| `llm_api_key` | `TESSERAE_LLM_API_KEY`, luego `ANTHROPIC_API_KEY` | — | La credencial de api-key: `X-Api-Key` en el protocolo anthropic, `Authorization: Bearer` en el protocolo openai |
+| `llm_auth_token` | `TESSERAE_LLM_AUTH_TOKEN`, luego `ANTHROPIC_AUTH_TOKEN` | — | La credencial portadora, `Authorization: Bearer` en ambos protocolos. Establece **esto** o `llm_api_key`: en el protocolo anthropic el token se entrega al SDK como `auth_token=` y no se establece clave de api, así que los dos nunca chocan |
+| `llm_allow_fallback` | `TESSERAE_LLM_ALLOW_FALLBACK` | desactivado | Permite que un proveedor de endpoint configurado pase a otro backend en lugar de fallar — ver [un proveedor de endpoint es un contrato](#un-proveedor-de-endpoint-es-un-contrato). Cualquier valor no vacío de la variable de entorno lo activa |
+| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | el predeterminado propio de la CLI | Directorios de configuración de Claude en orden de rotación, separados por `os.pathsep` en la variable de entorno — el canal de entorno para un `--claude-config-dir` repetido. Solo una lista *configurada* es autoritativa; el `CLAUDE_CONFIG_DIR` del entorno deliberadamente no lo es, porque fijarse a él colapsa la rotación multicuenta a una sola cuenta |
+| `llm_codex_homes` | `TESSERAE_CODEX_HOMES` | el predeterminado propio de la CLI | Codex homes, la misma forma y el mismo razonamiento que arriba. El antiguo singular `llm_codex_home` sigue funcionando y significa una lista de un home |
+| `llm_codex_reasoning_effort` | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | La extracción estructurada no necesita el `xhigh` que puedas establecer para trabajo interactivo — `xhigh` hace que una compilación multiDocumento sea muchas veces más lenta |
+
+Los nombres `ANTHROPIC_*` aún funcionan, un escalón por debajo de los específicos de Tesserae: son
+ambientes — cualquier sesión de Claude Code los exporta — así que no deben superar a un
+valor que estableciste para Tesserae específicamente, pero aún superan a ambos archivos de config.
+
+`tesserae config llm` escribe el archivo a nivel de máquina; para un proyecto, pon las mismas
+claves `llm_*` en su `.tesserae/config.json`. Una credencial escrita en cualquier archivo
+se almacena en **texto plano**, así que prefiere `TESSERAE_LLM_API_KEY` /
+`TESSERAE_LLM_AUTH_TOKEN` para esas dos.
+
+### Endpoints personalizados
+
+`llm_provider` dice cuál backend; `llm_api_style` dice cuál dialecto HTTP hablar con él. Mantenerlos
+separados es lo que hace que un endpoint que no sea de Anthropic sea alcanzable en absoluto:
+`custom` solía implicar el protocolo Anthropic, así que un servidor compatible con OpenAI no tenía lugar para ser
+configurado. Sin establecer, `llm_api_style` aún se resuelve a `anthropic` para `custom` — un endpoint configurado antes de que esto existiera mantiene comportándose exactamente como lo hacía.
+
+**Un endpoint compatible con OpenAI** — vLLM, LiteLLM, OpenRouter, Together, Ollama,
+LM Studio:
+
+```bash
+export TESSERAE_LLM_PROVIDER=custom
+export TESSERAE_LLM_API_STYLE=openai
+export TESSERAE_LLM_BASE_URL=http://localhost:8000/v1
+export TESSERAE_LLM_MODEL=qwen2.5-coder-32b-instruct
+export TESSERAE_LLM_AUTH_TOKEN=sk-...   # o TESSERAE_LLM_API_KEY — aquí el mismo encabezado
+tesserae config status
+```
+
+La solicitud es `POST {base_url}/chat/completions`. Este protocolo es `urllib` de biblioteca estándar,
+así que no necesita instalación extra, y un servidor local sin clave no necesita ninguna credencial
+en absoluto — dejarlas sin establecer y aún así se construye.
+
+**Un endpoint compatible con Anthropic** — un gateway que habla la API de Mensajes:
+
+```bash
+export TESSERAE_LLM_PROVIDER=custom
+export TESSERAE_LLM_API_STYLE=anthropic
+export TESSERAE_LLM_BASE_URL=https://gateway.internal.example   # sin /v1
+export TESSERAE_LLM_MODEL=claude-sonnet-4-6
+export TESSERAE_LLM_API_KEY=...         # X-Api-Key; TESSERAE_LLM_AUTH_TOKEN para un gateway portador
+tesserae config status
+```
+
+La solicitud es `POST {base_url}/v1/messages` a través del SDK de Anthropic, que
+`llm_provider: custom` en este protocolo y `llm_provider: anthropic` ambos necesitan:
+
+```bash
+pip install "tesserae[synthesis-llm]"
+```
+
+**El `/v1` no es decoración.** El SDK añade `/v1/messages` por sí mismo, así que el
+`https://host/v1` que todo README de gateway muestra produjo `/v1/v1/messages` — un
+404 que parecía un modelo equivocado. Ahora se elimina un `/v1` final en el protocolo
+anthropic y se asegura en el protocolo openai. Solo ese único segmento final se toca
+nunca, y se recorta sea lo que sea que lo preceda — un proxy genuinamente sirviendo
+`/anthropic/v1` pierde ese `/v1` también — así que la reescritura se registra en INFO en lugar de
+hacerse silenciosamente, y la línea de registro es donde encuentras la URL realmente usada.
+
+### Un proveedor de endpoint es un contrato
+
+`anthropic`, `openai` y `custom` llevan un endpoint que tú elegiste — una URL, un nombre de
+modelo, una credencial. Cuando uno de ellos está configurado se construye solo, y un
+fallo plantea `LLMProviderConfigError` nombrando el proveedor, el protocolo, la URL base,
+el modelo y qué tipo de credencial se resolvió.
+
+Solía ser una preferencia en su lugar: un endpoint personalizado que no podía construirse
+pasaba al CLI de Claude, que luego se spawnaba con `--model sonnet`
+contra tu propia URL base e informaba de un modelo no soportado que nunca
+configuraste, sin nada nombrando la causa real. Establece `llm_allow_fallback: true`
+para recuperar esa cadena.
+
+Los dos proveedores CLI de OAuth aún encadenan — el uno al otro, y al cliente API
+detrás de ellos. `claude` y `codex` no toman URL base y sus modelos están
+limitados por proveedor, así que ninguno puede llevar un endpoint que elegiste a un backend
+que no nombraste, que es lo único para lo cual existe el contrato.
+
+### Ver qué está realmente en vigencia
+
+```bash
+tesserae config status                 # backend resuelto + una prueba en vivo
+tesserae config status --project .     # como su config.json del proyecto lo ve
+tesserae config status --no-ping       # sáltate la prueba, no gastes nada
+```
+
+Imprime el proveedor, el protocolo, el modelo, la URL base, y el *tipo* de
+credencial que se resolvió — `api_key`, `auth_token` o ninguno, nunca el secreto —
+cada uno etiquetado con la capa que lo ganó, luego la clase e identidad del cliente
+que respondió. Ese cliente se construye desde el mismo diccionario de configuración que
+usa una ejecución real, y la prueba nunca se almacena en caché, así que una línea que pasa significa que el backend
+respondió hace poco en lugar de en algún punto del pasado.
+
+Cuando una llamada falla, el fallo se clasifica en lugar de aplanarse: `401` y
+`403` se informan como auth, `404` — y un `400` que nombra el modelo — como el
+endpoint, cada uno nombrando el endpoint que lo produjo. Antes de eso, una URL mal configurada
+era indistinguible de no tener ningún LLM instalado en absoluto.
 
 ---
 

@@ -936,9 +936,9 @@ def _summary_llm_client(root: str) -> object:
     discovered from the machine's global CLI accounts exactly as the ask path does,
     so it is not consulted today.
     """
-    from tesserae.llm_json import build_rotating_client
+    from tesserae.llm_json import build_rotating_client, project_llm_settings
 
-    client = build_rotating_client()
+    client = build_rotating_client(settings=project_llm_settings(root))
     if client is None:
         raise RuntimeError("no LLM backend available for narrative synthesis")
     return client

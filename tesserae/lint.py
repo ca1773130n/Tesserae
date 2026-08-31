@@ -2015,9 +2015,10 @@ class WikiLinter:
         client = llm_client
         if client is None:
             # Lazy import keeps the default lint path stdlib-only.
-            from .llm_json import build_default_json_client
+            from .llm_json import build_default_json_client, project_llm_settings
 
-            client = build_default_json_client()
+            client = build_default_json_client(
+                settings=project_llm_settings(self.project_root))
         if client is None:
             yield LintFinding(
                 severity="info",

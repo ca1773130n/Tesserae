@@ -28,7 +28,16 @@ def _isolate_env(monkeypatch):
     # this leaks across tests exactly as CLAUDE_CONFIG_DIR above already did.
     monkeypatch.delenv("TESSERAE_CLAUDE_CONFIG_DIRS", raising=False)
     monkeypatch.delenv("CODEX_HOME", raising=False)
+    # Same leak, same reason: _apply_llm_cli_env now also writes the
+    # Tesserae-owned channels, which outrank config and would otherwise carry
+    # one test's --codex-home/--llm-base-url into every test after it.
+    monkeypatch.delenv("TESSERAE_CODEX_HOMES", raising=False)
+    monkeypatch.delenv("TESSERAE_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("TESSERAE_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("TESSERAE_LLM_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("TESSERAE_LLM_API_STYLE", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
 
 
 def test_project_init_persists_llm_keys(tmp_path: Path):
@@ -647,3 +656,219 @@ def test_repeated_claude_config_dir_flag_keeps_every_account(monkeypatch, tmp_pa
 
     settings = lj.resolve_llm_client_settings({})
     assert settings["claude_config_dirs"] == ["/a/.claude-1", "/b/.claude-2"]
+
+
+# ------------------------------------------------ custom endpoints, both wires ---
+#
+# The defect these cover, reported 2026-08-31: a user set a base URL, a model and
+# an API key for a custom provider and Tesserae reported a wrong/unsupported
+# model. Three separate causes, each with a test below.
+
+
+def test_custom_openai_style_reaches_an_openai_compatible_endpoint(monkeypatch):
+    """vLLM / LiteLLM / OpenRouter / Ollama / LM Studio all speak this wire.
+
+    Before: provider=custom always built the Anthropic client, which POSTs
+    /v1/messages — every OpenAI-compatible server 404s, and the 404 was reported
+    as "unavailable", indistinguishable from having no LLM at all.
+    """
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+    settings = lj.resolve_llm_client_settings({
+        "llm_provider": "custom",
+        "llm_api_style": "openai",
+        "llm_base_url": "http://localhost:8000/v1",
+        "llm_model": "qwen3-coder",
+        "llm_auth_token": "sk-local",
+    })
+    client = lj.build_default_json_client(settings=settings)
+    assert isinstance(client, lj.OpenAIAPIJsonClient)
+    assert client.model == "qwen3-coder"          # not "claude-sonnet-4-6"
+    assert client.base_url == "http://localhost:8000/v1"
+    assert client.available
+
+
+def test_the_configured_model_is_not_dropped_when_provider_comes_from_elsewhere(monkeypatch):
+    """The literal reported symptom: "it says wrong model".
+
+    The model used to be scoped against the config layer's provider string, so
+    an explicit provider (CLI flag / env) plus a configured model meant the model
+    was discarded and the hardcoded claude-sonnet-4-6 was sent to the user's
+    endpoint, which rejected a model they never chose.
+    """
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+    settings = lj.resolve_llm_client_settings({
+        "llm_model": "deepseek-chat",
+        "llm_base_url": "https://gw.example/v1",
+        "llm_api_key": "sk-x",
+    })
+    client = lj.build_default_json_client(provider="custom", settings=settings)
+    assert client.model == "deepseek-chat"
+
+
+def test_an_anthropic_base_url_is_not_doubled(monkeypatch):
+    """The SDK appends /v1/messages, so the documented .../v1 became /v1/v1."""
+    import tesserae.llm_json as lj
+
+    assert lj._normalize_base_url("https://gw.example/v1", "anthropic") == "https://gw.example"
+    assert lj._normalize_base_url("https://gw.example", "anthropic") == "https://gw.example"
+    # the openai wire is the mirror image: this code appends /chat/completions
+    assert lj._normalize_base_url("https://gw.example", "openai") == "https://gw.example/v1"
+    assert lj._normalize_base_url("https://gw.example/v1/", "openai") == "https://gw.example/v1"
+
+
+def test_a_bearer_gateway_is_reachable(monkeypatch):
+    """A gateway wanting Authorization: Bearer had no channel at all: the one
+    credential field was sent as X-Api-Key by the SDK."""
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    settings = lj.resolve_llm_client_settings({"llm_auth_token": "tok", "llm_provider": "custom"})
+    assert settings["auth_token"] == "tok"
+    client = lj.OpenAIAPIJsonClient("m", auth_token="tok", base_url="http://h/v1")
+    assert client.available and "auth_token" in client.identity
+
+
+def test_a_keyless_local_endpoint_is_usable(monkeypatch):
+    """Ollama and LM Studio take no credential; requiring one made them unusable."""
+    import tesserae.llm_json as lj
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert lj.OpenAIAPIJsonClient("llama3", base_url="http://localhost:11434/v1").available
+    # ...but the default host still requires one, so no unauthenticated call is
+    # ever sent to api.openai.com.
+    assert not lj.OpenAIAPIJsonClient("gpt-4o-mini").available
+
+
+def test_an_endpoint_provider_never_degrades_into_another_backend(monkeypatch):
+    """The silent fall-through that produced the confusing error.
+
+    A custom endpoint that cannot be built used to fall to the Claude CLI, which
+    was spawned with --model sonnet against the user's own base URL. Now it
+    raises, naming provider, wire, URL and model.
+    """
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "OpenAIAPIJsonClient",
+                        lambda *a, **k: type("Dead", (), {"available": False})())
+    settings = lj.resolve_llm_client_settings({
+        "llm_provider": "custom", "llm_api_style": "openai",
+        "llm_base_url": "https://gw.example/v1", "llm_model": "qwen3-coder",
+    })
+    with pytest.raises(lj.LLMProviderConfigError) as err:
+        lj.build_default_json_client(settings=settings)
+    for expected in ("custom", "openai", "gw.example", "qwen3-coder"):
+        assert expected in str(err.value)
+
+    # ...unless the operator asks for the old chaining back.
+    settings["allow_fallback"] = True
+    assert isinstance(lj.build_default_json_client(settings=settings), lj.ClaudeCLIJsonClient)
+
+
+def test_a_misspelled_provider_is_reported_not_silently_claude(monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    with pytest.raises(lj.LLMProviderConfigError) as err:
+        lj.resolve_llm_client_settings({"llm_provider": "openrouter"})
+    assert "openrouter" in str(err.value) and "custom" in str(err.value)
+
+
+def test_the_resolver_records_which_layer_won_each_key(tmp_path: Path, monkeypatch):
+    """`config status` used to GUESS the source and credited env vars the
+    resolver deliberately ignores."""
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    _write_global_cfg(tmp_path, monkeypatch, {"llm_model": "from-global", "llm_base_url": "https://global"})
+    settings = lj.resolve_llm_client_settings({"llm_base_url": "https://project"})
+    assert settings["base_url"] == "https://project"
+    assert settings["sources"]["base_url"] == "project .tesserae/config.json"
+    assert settings["model"] == "from-global"
+    assert settings["sources"]["model"] == "~/.tesserae/config.json"
+    monkeypatch.setenv("TESSERAE_LLM_MODEL", "from-env")
+    assert lj.resolve_llm_client_settings({})["sources"]["model"] == "env TESSERAE_LLM_MODEL"
+
+
+def test_the_ask_path_can_see_a_project_custom_provider(monkeypatch):
+    """build_rotating_client had no settings= at all, so `tesserae ask`, query,
+    summaries and the daemon could not see a project-level endpoint."""
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+    settings = lj.resolve_llm_client_settings({
+        "llm_provider": "custom", "llm_api_style": "openai",
+        "llm_base_url": "http://localhost:8000/v1", "llm_model": "qwen3-coder",
+        "llm_auth_token": "sk-local",
+    })
+    client = lj.build_rotating_client(settings=settings)
+    assert isinstance(client, lj.OpenAIAPIJsonClient)
+    assert client.model == "qwen3-coder"
+
+
+def test_setup_persists_the_wire_and_the_bearer_token():
+    """Both parsers accepted --llm-api-style / --llm-auth-token and wrote neither,
+    so a project stayed on the anthropic wire while the user believed otherwise.
+
+    Exercises the payload builder directly with a stand-in plan: constructing a
+    real SetupPlan needs a full DetectionReport, which this has nothing to say about.
+    """
+    from types import SimpleNamespace
+
+    from tesserae.setup.apply import _build_config_payload
+
+    plan = SimpleNamespace(
+        name="wire-test", source_kind="Repository", sources=[],
+        claude_config_dir=None, codex_home=None,
+        external_tools=[], memory_backends=[],
+        llm_provider="custom", llm_model="qwen3-coder",
+        llm_base_url="http://localhost:8000/v1",
+        llm_api_key=None, llm_auth_token="sk-local", llm_api_style="openai",
+    )
+    payload = _build_config_payload(plan)
+    assert payload["llm_api_style"] == "openai"
+    assert payload["llm_auth_token"] == "sk-local"
+    assert payload["llm_base_url"] == "http://localhost:8000/v1"
+    assert payload["llm_model"] == "qwen3-coder"
+
+def test_allow_fallback_is_parsed_not_merely_present(monkeypatch):
+    """An env flag read with bool() is ON for "0" and "false"."""
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setenv("TESSERAE_LLM_ALLOW_FALLBACK", "0")
+    assert lj.resolve_llm_client_settings({})["allow_fallback"] is False
+    monkeypatch.setenv("TESSERAE_LLM_ALLOW_FALLBACK", "false")
+    assert lj.resolve_llm_client_settings({})["allow_fallback"] is False
+    monkeypatch.setenv("TESSERAE_LLM_ALLOW_FALLBACK", "1")
+    assert lj.resolve_llm_client_settings({})["allow_fallback"] is True
+
+
+def test_the_openai_wire_does_not_demand_the_anthropic_sdk(monkeypatch):
+    """provider=custom + api_style=openai uses stdlib urllib, so the install
+    hint must not tell the user to install an SDK they do not need."""
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: False)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: False)
+    monkeypatch.setattr(lj, "OpenAIAPIJsonClient",
+                        lambda *a, **k: type("Dead", (), {"available": False})())
+    settings = lj.resolve_llm_client_settings({
+        "llm_provider": "custom", "llm_api_style": "openai",
+        "llm_base_url": "http://h/v1", "llm_model": "m"})
+    with pytest.raises(lj.LLMProviderConfigError) as err:
+        lj.build_default_json_client(settings=settings)
+    assert "synthesis-llm" not in str(err.value)

@@ -750,9 +750,13 @@ class WikiQuery:
         usable (caller then reports search-only); returns a search-only
         ``QueryResult`` when the model answered but without citations.
         """
-        from .llm_json import build_rotating_client
+        from .llm_json import build_rotating_client, project_llm_settings
 
-        client = build_rotating_client()
+        # Resolve against THIS project, not just env + the global config: a
+        # project-level custom endpoint used to be visible to compile and
+        # invisible here, so `query --llm` answered from a different backend.
+        client = build_rotating_client(
+            settings=project_llm_settings(getattr(self, "project_root", None)))
         if client is None:
             return None
 

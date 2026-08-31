@@ -90,17 +90,18 @@ The wizard's provider pick (or the equivalent flags) persists these config keys:
 
 | Config key | Flag | What it is |
 |---|---|---|
-| `llm_provider` | `--llm-provider {claude,codex,anthropic,custom}` | Backend for the LLM client: `claude`/`codex` use the logged-in CLI over OAuth; `anthropic` uses the API directly; `custom` targets any claude-compatible endpoint. |
+| `llm_provider` | `--llm-provider {claude,codex,anthropic,openai,custom}` | Backend for the LLM client: `claude`/`codex` use the logged-in CLI over OAuth; `anthropic` and `openai` use those APIs directly; `custom` targets an endpoint you name. |
 | `llm_model` | `--llm-model` | Model for the synthesis/insights LLM client. |
-| `llm_base_url` | `--llm-base-url` | Endpoint base URL for `anthropic`/`custom`. |
-| `llm_api_key` | `--llm-api-key` | API key for `anthropic`/`custom`. |
+| `llm_base_url` | `--llm-base-url` | Endpoint base URL for `anthropic`/`openai`/`custom`. |
+| `llm_api_key` | `--llm-api-key` | API key for `anthropic`/`openai`/`custom`. |
 
 > **Plaintext warning.** `llm_api_key` is stored in **plaintext** in
 > `.tesserae/config.json`. Prefer the environment variables instead:
-> `ANTHROPIC_API_KEY` (key), `ANTHROPIC_BASE_URL` (endpoint), and
+> `TESSERAE_LLM_API_KEY` (key), `TESSERAE_LLM_BASE_URL` (endpoint), and
 > `TESSERAE_LLM_MODEL` (model). Resolution order is env → project config →
 > machine-wide config (`~/.tesserae/config.json`, written by `tesserae setup`)
-> → built-in default.
+> → built-in default. The older `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` still
+> work, one rung below the Tesserae-owned names.
 
 Re-running `init` on an existing project **merges** — your configured `sources`
 and `memory_backends` are preserved, not clobbered.
@@ -109,10 +110,33 @@ Example non-interactive provider setups:
 
 ```bash
 tesserae init --yes --llm-provider codex
+
+# An OpenAI-compatible endpoint (vLLM, LiteLLM, OpenRouter, Ollama, LM Studio).
+# The wire is a separate setting from the provider, and init does not persist
+# it — set it in the environment, or with `tesserae config llm`.
 tesserae init --yes --llm-provider custom \
-  --llm-base-url https://llm.internal.example/v1 \
-  --llm-model my-model            # key via ANTHROPIC_API_KEY
+  --llm-base-url http://localhost:8000/v1 \
+  --llm-model qwen2.5-coder-32b-instruct
+export TESSERAE_LLM_API_STYLE=openai      # POST {base_url}/chat/completions
+export TESSERAE_LLM_AUTH_TOKEN=sk-...     # omit entirely for a keyless local server
+
+# An Anthropic-compatible gateway. NO /v1: the SDK appends /v1/messages itself,
+# and a base URL ending in /v1 is trimmed back to keep it from doubling.
+tesserae init --yes --llm-provider custom \
+  --llm-base-url https://gateway.internal.example \
+  --llm-model claude-sonnet-4-6           # key via TESSERAE_LLM_API_KEY
 ```
+
+Then confirm what actually resolved — wire, model, URL, credential kind, and the
+layer each came from — before spending a compile on it:
+
+```bash
+tesserae config status --project .
+```
+
+[Tuning → LLM backend](tuning.md#llm-backend) is the full reference: every
+`llm_*` key, both custom-endpoint recipes, and what a configured endpoint does
+when it cannot be built.
 
 > **Skip the wizard.** `tesserae init --bare` writes a minimal `.tesserae/config.json`
 > without source detection or backend probing — handy when you want to hand-edit

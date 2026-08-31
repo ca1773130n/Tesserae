@@ -112,7 +112,10 @@ def test_status_anthropic_branch_masks_api_key(monkeypatch, capsys):
     assert "provider   : anthropic" in out
     assert "model      : claude-opus-4-6" in out
     assert "base_url   : https://llm.example/v1" in out
-    assert "api_key    : set" in out
+    # The credential LINE now names which KIND is in play — an X-Api-Key
+    # gateway and a bearer one need different config, and the old "set"
+    # could not tell them apart.
+    assert "credential : api_key" in out
     assert "sk-status-secret" not in out
     # the CLI-dir lines belong to the claude/codex branches only
     assert "claude_dirs" not in out and "codex_home" not in out
@@ -128,7 +131,7 @@ def test_status_custom_branch_reports_unset_key(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert "provider   : custom" in out
-    assert "api_key    : unset" in out
+    assert "credential : none (keyless endpoint)" in out
 
 
 def test_status_parser_defaults_project_to_cwd():

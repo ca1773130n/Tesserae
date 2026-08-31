@@ -1514,9 +1514,10 @@ class Daemon:
             if not is_enabled_via_env():
                 return None
             if not hasattr(self, "_default_summary_client"):
-                from ..llm_json import build_default_json_client
+                from ..llm_json import build_default_json_client, project_llm_settings
 
-                self._default_summary_client = build_default_json_client()
+                self._default_summary_client = build_default_json_client(
+                    settings=project_llm_settings(self.project_root))
             return self._default_summary_client
         except Exception as exc:  # noqa: BLE001 - no client -> honest no-op
             logger.debug("no LLM client for summarize: %s", exc)
