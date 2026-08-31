@@ -647,7 +647,22 @@ class WikiQuery:
                     fallback_reason="anthropic SDK not installed",
                 )
             try:
-                client = anthropic.Anthropic(api_key=key, timeout=30.0)
+                # This path builds its OWN SDK client and used to pass only the
+                # key — no base_url — so `query --llm` against a configured
+                # custom endpoint silently talked to api.anthropic.com with the
+                # hardcoded default model, while every other path honoured the
+                # project's endpoint. Resolve the same settings everyone else does.
+                from .llm_json import project_llm_settings
+
+                _st = project_llm_settings(getattr(self, "project_root", None))
+                _kw: dict = {"timeout": 30.0}
+                if _st.get("base_url"):
+                    _kw["base_url"] = _st["base_url"]
+                if _st.get("auth_token"):
+                    _kw["auth_token"] = _st["auth_token"]
+                else:
+                    _kw["api_key"] = key
+                client = anthropic.Anthropic(**_kw)
                 self._client = client
                 self._client_api_key = key
             except Exception as exc:  # noqa: BLE001 — we want a safety net
@@ -676,6 +691,15 @@ class WikiQuery:
                     messages.append({"role": role, "content": content})
         messages.append({"role": "user", "content": user_message})
 
+        # A configured llm_model beats this method's hardcoded default. Sending
+        # "claude-sonnet-4-6" to someone's own gateway is the exact
+        # unsupported-model error this release set out to remove.
+        try:
+            from .llm_json import project_llm_settings as _pls
+
+            model = _pls(getattr(self, "project_root", None)).get("model") or model
+        except Exception:  # noqa: BLE001 — a diagnostic must never break the answer
+            pass
         try:
             response = client.messages.create(
                 model=model,

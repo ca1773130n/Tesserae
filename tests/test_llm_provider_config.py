@@ -15,6 +15,7 @@ synthesis/insights JSON client ("use codex instead of claude code"):
 
 from __future__ import annotations
 
+import builtins
 import json
 from pathlib import Path
 
@@ -872,3 +873,111 @@ def test_the_openai_wire_does_not_demand_the_anthropic_sdk(monkeypatch):
     with pytest.raises(lj.LLMProviderConfigError) as err:
         lj.build_default_json_client(settings=settings)
     assert "synthesis-llm" not in str(err.value)
+
+
+# The three tests above that exercise a custom endpoint call
+# ``pytest.importorskip("anthropic")``, so on a base ``pip install tesserae``
+# — the exact install where the custom provider was broken — they do not run.
+# The OpenAI wire needs no SDK at all (stdlib urllib), so these cover the same
+# ground with nothing to skip on.
+
+
+def test_custom_endpoint_works_without_the_anthropic_sdk(monkeypatch):
+    """The whole point of the openai wire: no optional dependency."""
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+    # Prove the SDK is genuinely not needed by making the import fail.
+    real_import = builtins.__import__
+
+    def _no_anthropic(name, *a, **kw):
+        if name == "anthropic":
+            raise ImportError("anthropic is not installed")
+        return real_import(name, *a, **kw)
+
+    monkeypatch.setattr(builtins, "__import__", _no_anthropic)
+    settings = lj.resolve_llm_client_settings({
+        "llm_provider": "custom", "llm_api_style": "openai",
+        "llm_base_url": "http://localhost:8000/v1", "llm_model": "qwen3-coder",
+        "llm_auth_token": "sk-local",
+    })
+    client = lj.build_default_json_client(settings=settings)
+    assert isinstance(client, lj.OpenAIAPIJsonClient)
+    assert client.model == "qwen3-coder"
+
+
+def test_the_ask_path_reaches_a_custom_endpoint_without_the_sdk(monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: False)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: False)
+    settings = lj.resolve_llm_client_settings({
+        "llm_provider": "custom", "llm_api_style": "openai",
+        "llm_base_url": "http://localhost:8000/v1", "llm_model": "qwen3-coder",
+    })
+    client = lj.build_rotating_client(settings=settings)
+    assert isinstance(client, lj.OpenAIAPIJsonClient)
+
+
+def test_the_providers_own_source_layer_is_reported(tmp_path: Path, monkeypatch):
+    """`config status` printed "default" for a provider set in a project config."""
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    _write_global_cfg(tmp_path, monkeypatch, {})
+    assert lj.resolve_llm_client_settings(
+        {"llm_provider": "custom"})["sources"]["provider"] == "project .tesserae/config.json"
+    _write_global_cfg(tmp_path, monkeypatch, {"llm_provider": "codex"})
+    assert lj.resolve_llm_client_settings({})["sources"]["provider"] == "~/.tesserae/config.json"
+    monkeypatch.setenv("TESSERAE_LLM_PROVIDER", "claude")
+    assert lj.resolve_llm_client_settings({})["sources"]["provider"] == "env TESSERAE_LLM_PROVIDER"
+
+
+def test_query_llm_path_honours_a_project_endpoint(tmp_path: Path, monkeypatch):
+    """query.py built its OWN SDK client with only a key — no base_url — and
+    sent the method's hardcoded default model, so `query --llm` talked to
+    api.anthropic.com while every other path used the project's endpoint."""
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    proj = tmp_path / "proj"
+    (proj / ".tesserae").mkdir(parents=True)
+    (proj / ".tesserae" / "config.json").write_text(json.dumps({
+        "llm_provider": "custom", "llm_base_url": "https://gw.example",
+        "llm_model": "my-model", "llm_auth_token": "tok",
+    }), encoding="utf-8")
+
+    settings = lj.project_llm_settings(proj)
+    assert settings["base_url"] == "https://gw.example"
+    assert settings["model"] == "my-model"
+    assert settings["auth_token"] == "tok"
+    # ...and an absent project root degrades to env + global rather than raising
+    assert lj.project_llm_settings(None)["base_url"] is None
+    assert lj.project_llm_settings(tmp_path / "nope")["model"] is None
+
+
+def test_prose_synthesis_honours_a_project_endpoint(tmp_path: Path, monkeypatch):
+    """The third SDK path with the same defect: LlmSynthesizer built a client
+    with the key alone — no base_url — so `TESSERAE_SYNTHESIS_LLM=1` against a
+    configured custom endpoint still called api.anthropic.com."""
+    pytest.importorskip("anthropic")
+    from tesserae.llm_synthesis import LlmSynthesizer
+
+    s = LlmSynthesizer(model="my-model", base_url="https://gw.example",
+                       auth_token="tok", timeout=1.0)
+    assert s.model == "my-model"
+    assert str(s._client.base_url).rstrip("/") == "https://gw.example"
+    # the bearer credential is set, and api_key was NOT also passed
+    assert s._client.auth_token == "tok"
+    assert s._client.api_key is None
+
+
+def test_synthesis_derives_its_project_root_from_the_wiki_store(tmp_path: Path):
+    """SynthesisProjector carries a wiki store, not a project root; resolving
+    the endpoint off a missing attribute would silently see env + global only."""
+    from tesserae.site.raw_view import derive_project_root
+
+    assert derive_project_root(tmp_path / "proj" / ".tesserae" / "wiki") == tmp_path / "proj"

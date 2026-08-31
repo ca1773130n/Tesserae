@@ -418,6 +418,8 @@ class LlmSynthesizer:
         dry_run: bool = False,
         *,
         max_tokens: int = 1200,
+        base_url: Optional[str] = None,
+        auth_token: Optional[str] = None,
     ) -> None:
         self.model = model
         self.timeout = timeout
@@ -443,7 +445,17 @@ class LlmSynthesizer:
                 "anthropic SDK not installed; install tesserae[synthesis-llm]"
             ) from exc
 
-        self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+        # This built a client with the key alone — no base_url — so with a
+        # custom endpoint configured, synthesis still called api.anthropic.com
+        # with whatever model it was handed. Same defect the JSON clients had.
+        _kw: dict = {"timeout": timeout}
+        if base_url:
+            _kw["base_url"] = base_url
+        if auth_token:
+            _kw["auth_token"] = auth_token
+        else:
+            _kw["api_key"] = api_key
+        self._client = anthropic.Anthropic(**_kw)
         try:
             self._rate_limit_cls = anthropic.RateLimitError
             self._status_cls = anthropic.APIStatusError

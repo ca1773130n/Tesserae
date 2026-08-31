@@ -310,12 +310,27 @@ class SynthesisProjector:
                 self._llm_state = state
                 return state
 
-        model = os.environ.get("TESSERAE_SYNTHESIS_MODEL", "").strip() or DEFAULT_LLM_MODEL
+        # TESSERAE_SYNTHESIS_MODEL is the synthesis-specific override; below it
+        # sits the project's configured llm_model, and only then the literal.
+        # Sending that literal to someone's own gateway is the unsupported-model
+        # error this release exists to remove.
+        from .llm_json import project_llm_settings
+
+        # This class carries a wiki store, not a project root, and the module
+        # already knows how to get from one to the other — the same convention
+        # ProjectPaths uses. getattr(self, "project_root") would silently be
+        # None here and quietly fall back to env + the global config.
+        _root = derive_project_root(getattr(getattr(self, "wiki_store", None), "root", None))
+        _st = project_llm_settings(_root)
+        model = (os.environ.get("TESSERAE_SYNTHESIS_MODEL", "").strip()
+                 or _st.get("model") or DEFAULT_LLM_MODEL)
         try:
             synthesizer = llm_synthesis.LlmSynthesizer(
                 model=model,
                 api_key=api_key or None,
                 dry_run=dry_run,
+                base_url=_st.get("base_url"),
+                auth_token=_st.get("auth_token"),
             )
         except Exception as exc:  # noqa: BLE001 — never block compile on construct
             print(
