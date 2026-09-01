@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Protocol
+from urllib.parse import urlsplit
 
 from .llm_json import cache_tally
 from .research_graph import ResearchGraph, link_paper_repo_pairs, prefer_research_node
@@ -23,10 +24,34 @@ from .research_graph import ResearchGraph, link_paper_repo_pairs, prefer_researc
 #: old strictly-sequential behaviour.
 _DEFAULT_EXTRACT_CONCURRENCY = 4
 
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
 
-def _extract_concurrency() -> int:
+
+def _is_loopback(base_url: Optional[str]) -> bool:
+    if not base_url:
+        return False
+    try:
+        host = urlsplit(base_url).hostname or ""
+    except ValueError:
+        return False
+    return host in _LOOPBACK_HOSTS or host.startswith("127.")
+
+
+def _extract_concurrency(base_url: Optional[str] = None) -> int:
     raw = (os.environ.get("TESSERAE_EXTRACT_CONCURRENCY") or "").strip()
     if not raw:
+        # The rate-limit-shaped default is wrong for a model server on this
+        # machine: Ollama, llama.cpp and LM Studio serve ONE request at a time,
+        # so 4 workers queue three requests behind every call, and a queued
+        # request the server drops blocks its worker for the whole
+        # TESSERAE_EXTRACT_TIMEOUT — which looked exactly like a memory problem
+        # for hours. A loopback proxy that fans out to a cloud API can take
+        # more; say so and let the explicit knob win.
+        if _is_loopback(base_url):
+            print(f"note: extracting one document at a time — {base_url} is a local "
+                  "endpoint, and local model servers usually serve one request at a "
+                  "time. Set TESSERAE_EXTRACT_CONCURRENCY to override.", file=sys.stderr)
+            return 1
         return _DEFAULT_EXTRACT_CONCURRENCY
     try:
         return max(1, int(raw))
@@ -120,7 +145,9 @@ class BatchIngestRunner:
                 break
             todo.append((file_path, key, digest))
 
-        workers = _extract_concurrency()
+        # The extractor knows where its requests go; the right pool size is a
+        # property of that endpoint (see ``_extract_concurrency``).
+        workers = _extract_concurrency(getattr(self.extractor, "llm_base_url", None))
         results: List[Optional[tuple[ResearchGraph, str, Dict[str, object], bool]]] = [None] * len(todo)
         lock = threading.Lock()
 

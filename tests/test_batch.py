@@ -275,3 +275,52 @@ def test_extract_concurrency_env_parsing(monkeypatch, capsys):
     monkeypatch.setenv("TESSERAE_EXTRACT_CONCURRENCY", "lots")
     assert _extract_concurrency() == _DEFAULT_EXTRACT_CONCURRENCY
     assert "not an integer" in capsys.readouterr().err
+
+
+def test_extract_concurrency_defaults_to_one_on_loopback_endpoint(monkeypatch, capsys):
+    """A local model server (Ollama, llama.cpp, LM Studio) serves one request
+    at a time, so the rate-limit-shaped default of 4 queues three requests
+    behind every call — and a dropped queued request blocks its worker for the
+    whole TESSERAE_EXTRACT_TIMEOUT. Unset, the knob follows the endpoint."""
+    from tesserae.batch import _DEFAULT_EXTRACT_CONCURRENCY, _extract_concurrency
+
+    monkeypatch.delenv("TESSERAE_EXTRACT_CONCURRENCY", raising=False)
+    for url in ("http://localhost:11434", "http://127.0.0.1:8000/v1", "http://[::1]:8080"):
+        assert _extract_concurrency(url) == 1, url
+    err = capsys.readouterr().err
+    assert "TESSERAE_EXTRACT_CONCURRENCY" in err       # says how to override
+    assert "http://localhost:11434" in err             # names the endpoint it saw
+    # Remote endpoints and no endpoint at all keep the default.
+    assert _extract_concurrency("https://api.example.com/v1") == _DEFAULT_EXTRACT_CONCURRENCY
+    assert _extract_concurrency(None) == _DEFAULT_EXTRACT_CONCURRENCY
+    assert capsys.readouterr().err == ""
+    # An explicit setting always wins, loopback or not.
+    monkeypatch.setenv("TESSERAE_EXTRACT_CONCURRENCY", "3")
+    assert _extract_concurrency("http://localhost:11434") == 3
+
+
+def test_batch_runner_sizes_workers_from_the_extractor_endpoint(tmp_path, monkeypatch, capsys):
+    """The runner asks the extractor where its requests go; the selective
+    router answers for its LLM half; a deterministic extractor has no answer."""
+    from types import SimpleNamespace
+
+    from tesserae.llm_extractor import LLMResearchExtractor
+    from tesserae.research_graph import ResearchGraphExtractor
+    from tesserae.selective_extractor import SelectiveClaudeResearchExtractor
+
+    monkeypatch.delenv("TESSERAE_EXTRACT_CONCURRENCY", raising=False)
+    llm = LLMResearchExtractor(SimpleNamespace(base_url="http://localhost:11434"))
+    assert llm.llm_base_url == "http://localhost:11434"
+    router = SelectiveClaudeResearchExtractor(
+        deterministic=ResearchGraphExtractor(), claude=llm, include_patterns=["*"]
+    )
+    assert router.llm_base_url == "http://localhost:11434"
+    assert getattr(ResearchGraphExtractor(), "llm_base_url", None) is None
+
+    doc = tmp_path / "doc.md"
+    doc.write_text("# Doc\nGaussian Splatting", encoding="utf-8")
+    # The router's LLM half is a stub, so route the document deterministically
+    # (no pattern matches) — what matters is that ``run`` consulted the endpoint.
+    router.include_patterns = ["nothing-matches"]
+    BatchIngestRunner(extractor=router, manifest_path=tmp_path / "m.json").run([doc])
+    assert "http://localhost:11434" in capsys.readouterr().err

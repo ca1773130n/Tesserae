@@ -36,6 +36,9 @@ class SelectiveClaudeResearchExtractor:
         self.include_patterns = list(include_patterns)
         self.claude_limit = claude_limit
         self.claude_calls = 0
+        #: The LLM half's endpoint, so the batch runner can size its worker
+        #: pool to it — the deterministic half makes no requests.
+        self.llm_base_url: Optional[str] = getattr(claude, "llm_base_url", None)
         #: Guards the claude_limit check-and-claim. Concurrent extraction made
         #: the old read-then-increment lose the cap entirely: every worker read
         #: ``claude_calls`` before any of them wrote it, so a limit of 1 issued

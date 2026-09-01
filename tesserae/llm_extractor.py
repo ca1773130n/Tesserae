@@ -449,6 +449,13 @@ class LLMResearchExtractor:
         self.client = client
         self.guidance = guidance
 
+    @property
+    def llm_base_url(self) -> Optional[str]:
+        """Where this extractor's requests go, if the client has an endpoint at
+        all (the codex CLI has none). The batch runner sizes its worker pool to
+        it: a loopback model server has one request slot."""
+        return getattr(self.client, "base_url", None)
+
     def extract_file(self, path: "str | Path", source_kind: str = "SourceDocument", guidance: Optional[str] = None) -> ResearchGraph:
         file_path = Path(path)
         return self.extract_text(

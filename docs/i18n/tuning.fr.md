@@ -71,7 +71,7 @@ ne doit pas désactiver silencieusement un clapet de sécurité.
 
 ### `TESSERAE_EXTRACT_CONCURRENCY`
 
-**Par défaut `4`.** Documents extraits en parallèle. Chacun est un processus
+**Par défaut `4`, ou `1` quand l'endpoint LLM est sur cette machine.** Documents extraits en parallèle. Chacun est un processus
 enfant CLI bloquant prenant environ une minute, donc une boucle séquentielle
 fait du temps réel la somme littérale de chaque aller-retour du modèle —
 mesurée à ~2 h 40 m pour 161 documents.
@@ -79,6 +79,15 @@ mesurée à ~2 h 40 m pour 161 documents.
 Le plafond est la limite de débit du compte de votre fournisseur, pas votre
 machine, c'est pourquoi la valeur par défaut est modeste. Définissez `1` pour
 un comportement strictement séquentiel.
+
+Un serveur de modèles local est l'exception. Ollama, llama.cpp et LM Studio servent une requête à
+la fois, donc quatre workers mettent trois requêtes en file derrière chaque appel, et une requête en
+file que le serveur abandonne bloque son worker pendant tout le `TESSERAE_EXTRACT_TIMEOUT` — ce qui
+ressemble exactement à un problème de mémoire. Quand le `llm_base_url` résolu pointe vers
+`localhost`, `127.0.0.1` ou `::1` et que cette variable n'est pas définie, l'extraction traite un
+document à la fois et le dit sur stderr. Un proxy loopback qui relaie vers une API cloud (LiteLLM,
+vLLM avec batching) en supporte davantage : définissez la variable explicitement et elle l'emporte
+toujours.
 
 La concurrence ne change jamais le résultat : la liste de travail est fixée en
 ordre de chemin et les résultats sont collectés par index, donc une exécution

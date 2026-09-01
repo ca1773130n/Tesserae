@@ -69,13 +69,22 @@ nicht stillschweigend deaktivieren.
 
 ### `TESSERAE_EXTRACT_CONCURRENCY`
 
-**Standard `4`.** Dokumente, die parallel extrahiert werden. Jedes ist ein
+**Standard `4`, oder `1`, wenn der LLM-Endpunkt auf dieser Maschine liegt.** Dokumente, die parallel extrahiert werden. Jedes ist ein
 blockierender CLI-Kindprozess, der etwa eine Minute dauert, daher macht eine
 sequenzielle Schleife die Wanduhr zur buchstäblichen Summe jedes Modell-Roundtrips
 — gemessen mit ~2 h 40 m für 161 Dokumente.
 
 Die Obergrenze ist die Rate-Limit-Grenze Ihres Provider-Kontos, nicht Ihrer Maschine,
 daher ist der Standard bescheiden. Setzen Sie `1` für streng sequenzielles Verhalten.
+
+Ein lokaler Modellserver ist die Ausnahme. Ollama, llama.cpp und LM Studio bedienen eine Anfrage
+nach der anderen, daher stellen vier Worker hinter jedem Aufruf drei Anfragen in die Warteschlange,
+und eine wartende Anfrage, die der Server verwirft, blockiert ihren Worker für das gesamte
+`TESSERAE_EXTRACT_TIMEOUT` — was genau wie ein Speicherproblem aussieht. Wenn die aufgelöste
+`llm_base_url` auf `localhost`, `127.0.0.1` oder `::1` zeigt und diese Variable nicht gesetzt ist,
+extrahiert der Lauf ein Dokument nach dem anderen und sagt das auf stderr. Ein Loopback-Proxy, der
+an eine Cloud-API weiterleitet (LiteLLM, vLLM mit Batching), verträgt mehr: Setzen Sie die Variable
+explizit, dann gewinnt sie immer.
 
 Concurrency ändert nie die Ausgabe: Die Arbeitsliste ist in Pfadreihenfolge
 behoben und Ergebnisse werden nach Index gesammelt, daher ist eine parallele
