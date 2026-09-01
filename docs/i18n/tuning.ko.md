@@ -55,12 +55,20 @@ export TESSERAE_EXTRACT_TIMEOUT=0      # cutoff 없음 — 완료될 때까지 �
 
 ### `TESSERAE_EXTRACT_CONCURRENCY`
 
-**기본값 `4`.** 병렬로 추출된 문서. 각각은 대략 1분이 걸리는 blocking CLI
+**기본값 `4`, 또는 LLM 엔드포인트가 이 컴퓨터에 있으면 `1`.** 병렬로 추출된 문서. 각각은 대략 1분이 걸리는 blocking CLI
 subprocess이므로, sequential loop는 wall-clock을 모든 model round-trip의 합계로 만듭니다 —
 161개 문서에서 ~2 h 40 m로 측정됨.
 
 상한선은 컴퓨터가 아니라 provider 계정의 rate limit입니다. 이것이 기본값이
 modest인 이유입니다. strictly sequential 동작을 위해 `1`로 설정합니다.
+
+로컬 model server는 예외입니다. Ollama, llama.cpp, LM Studio는 한 번에 하나의 요청만 처리하므로,
+worker 네 개는 모든 호출 뒤에 요청 세 개를 큐에 세우고, 서버가 버린 큐 속 요청은 그 worker를
+`TESSERAE_EXTRACT_TIMEOUT` 전체 동안 막습니다 — 메모리 문제와 똑같아 보입니다. 해석된
+`llm_base_url`이 `localhost`, `127.0.0.1` 또는 `::1`을 가리키고 이 변수가 설정되지 않았으면,
+추출은 문서를 한 번에 하나씩 실행하고 stderr에 그렇게 알립니다. 클라우드 API로 전달하는
+루프백 프록시(LiteLLM, 배칭을 쓰는 vLLM)는 더 받을 수 있습니다: 변수를 명시적으로
+설정하면 항상 그 값이 이깁니다.
 
 Concurrency는 출력을 절대 변경하지 않습니다: work-list는 경로 순서로 고정되고
 결과는 인덱스별로 수집되므로, parallel 실행은 sequential 실행과 byte-identical합니다.

@@ -66,12 +66,22 @@ and keeps the default. A typo must not silently disarm a safety valve.
 
 ### `TESSERAE_EXTRACT_CONCURRENCY`
 
-**Default `4`.** Documents extracted in parallel. Each one is a blocking CLI
-subprocess taking roughly a minute, so a sequential loop makes wall-clock the
-literal sum of every model round-trip — measured at ~2 h 40 m for 161 documents.
+**Default `4`, or `1` when the LLM endpoint is on this machine.** Documents
+extracted in parallel. Each one is a blocking CLI subprocess taking roughly a
+minute, so a sequential loop makes wall-clock the literal sum of every model
+round-trip — measured at ~2 h 40 m for 161 documents.
 
 The ceiling is your provider account's rate limit, not your machine, which is why
 the default is modest. Set `1` for strictly sequential behaviour.
+
+A local model server is the exception. Ollama, llama.cpp and LM Studio serve one
+request at a time, so four workers queue three requests behind every call, and a
+queued request the server drops blocks its worker for the whole
+`TESSERAE_EXTRACT_TIMEOUT` — which looks exactly like a memory problem. When the
+resolved `llm_base_url` points at `localhost`, `127.0.0.1` or `::1` and this
+variable is unset, extraction runs one document at a time and says so on stderr.
+A loopback proxy that forwards to a cloud API (LiteLLM, vLLM with batching) can
+take more: set the variable explicitly and it always wins.
 
 Concurrency never changes output: the work-list is fixed in path order and
 results are collected by index, so a parallel run is byte-identical to a
