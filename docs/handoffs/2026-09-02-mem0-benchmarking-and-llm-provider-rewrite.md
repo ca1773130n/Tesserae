@@ -351,3 +351,162 @@ Agent memory notes to read before starting: `benchmark-standings`,
 `verifier-does-not-catch-misattribution`, `recent-papers-reasoning-benchmark`,
 `best-configuration-frozen`, `no-spend-way-better-2026-08-30`,
 `graph-wins-only-at-scale`, `check-the-benchmark-before-optimising`.
+
+---
+
+## 10. Continuation, later on 2026-09-02 — §7.1 shipped, §8.1 measured
+
+### 10.1 §7.1 is done
+
+PR #262 (`da223b32`, unreleased as of writing). `TESSERAE_EXTRACT_CONCURRENCY`
+unset now follows the endpoint: a loopback `llm_base_url` (`localhost`,
+`127.0.0.1`, `::1`, `127.x`) means one worker, with a stderr note naming the
+endpoint and the override. The batch runner asks the extractor where its
+requests go (`LLMResearchExtractor.llm_base_url`, delegated through the
+selective router); a deterministic extractor has no endpoint and keeps 4. An
+explicit value always wins. `docs/tuning.md` and its seven mirrors carry it.
+
+### 10.2 The lexically-disjoint second hop, measured without a compile
+
+The 11-paper graph cannot host §8.1: ~36 cross-paper edges over 18 pairs,
+mostly hubs (`RAG`, `query`, `Exact Match`). Two compiled graphs on disk can —
+`2026-08-27/fullpapers-chunked` (148 papers, ~1,600 non-hub cross-document
+edges, bge node vectors already cached in `2026-08-29/vectors.sqlite`) and
+`2026-08-24/dsc-graph` (1,414 documents, ~1,500). Neither needed a compile, a
+judge, or an LLM: the benchmark is retrieval-only, which is the level at which
+the §8.1 hypothesis actually lives.
+
+Harness: `~/.blackhole/Tesserae/2026-09-02/bridge/bridge_bench.py` (+
+`posthoc.py`). Item construction, all mechanical, ground truth from raw text
+(trap #5):
+
+- take a cross-document edge `a -rel-> b` whose `edge_provenance` says it was
+  extracted from document A, where b's own node lives in another document;
+- QUERY = A's text around the edge's evidence span, every mention of b's name
+  and aliases masked — "the metric it reports", without the name;
+- GOLD = the document(s) other than A that mention b's name most in raw text
+  (≥3 mentions, within half of the max, up to 3) — the ones that elaborate b;
+- KEPT only if BM25 over documents AND a bge-base chunk store (what Mem0's raw
+  store reduces to) both miss every gold document at 10. 120 of 400 items
+  survive on the 148-paper corpus; the other 280 are "easy".
+
+Arms, budget-matched at 10 documents: `bm25`, `dense`, `dense_2hop` (top-1
+dense document's centroid as a second query — the honest non-graph second
+hop), `tess_hybrid` (shipped fused 1/1/1 over nodes, bge in the dense lane,
+dedupe to documents), `tess_graph1hop` (+ documents of each of the top-20 seed
+nodes' typed 1-hop neighbours, hubs >50 and summaries excluded, weight 0.5),
+`tess_shuffle` (same expansion with random nodes — the control
+`graph-expansion-is-a-measured-null` demands).
+
+**148 papers, kept stratum, n=120, hit@10.** Chance for 10 random documents is
+0.15.
+
+| arm | hit@10 |
+| --- | --- |
+| bm25 / dense | 0.000 (by construction) |
+| dense_2hop | 0.125 |
+| tess_hybrid | 0.125 |
+| tess_graph1hop (pre-registered) | 0.167 — vs dense_2hop W13/L8 p=0.38; vs shuffle W7/L2 p=0.18 |
+| tess_shuffle | 0.125 |
+
+**Every shipped shape is at chance.** The decomposition says why, and it is
+not "the edges add nothing":
+
+- the expansion REACHES the bridge node in 53/120 kept items (0/120 for
+  similarity, by construction);
+- graph.json carries ONE `source_path` per node — the document that first
+  mentioned it — and that document is gold in only 16 of those 53;
+- `sqlite.db`'s `node_provenance` holds every document a node was seen in, and
+  the gold is in that set for 34/53;
+- even then, the neighbour's document is out-ranked by the 200 seed documents
+  at weight 0.5: reached-and-provenance-is-gold converts to a hit 3 times in 16.
+
+Post-hoc arms recomputed from the stored seeds (`posthoc.py`, no retrieval
+re-run), **exploratory on this corpus**:
+
+| arm | hit@10 | vs dense_2hop | vs shuffle |
+| --- | --- | --- | --- |
+| g1_prov (multi-document provenance, w=0.5) | 0.192 | W13/L5 p=0.10 | W10/L2 p=0.04 |
+| **g1_prov_w1 (multi-document provenance, w=1.0)** | **0.225** | **W17/L5 p=0.017** | **W14/L2 p=0.004** |
+| g1_split (5 base + 5 expansion) | 0.183 | W16/L9 p=0.23 | W15/L8 p=0.21 |
+| chance (10 random docs) | 0.150 | W17/L14 p=0.72 | — |
+
+Easy stratum (n=120): BM25 over documents 0.900, dense 0.833, dense_2hop 0.833,
+tess_hybrid 0.742, tess_graph1hop 0.800 (beats hybrid p=0.04 and shuffle
+p=0.02), g1_prov_w1 0.833. On easy items the graph shapes are still behind
+plain document BM25 — consistent with §4.1.
+
+**The 1,414-document confirmation run does not confirm it.** Same script, same
+pre-registered arms, `2026-08-24/dsc-graph` (documents are abstract-length,
+median 1.2k chars; 219 of 400 items kept; chance at 10 is 0.023):
+
+| arm | hit@10, kept n=219 | vs dense_2hop |
+| --- | --- | --- |
+| **dense_2hop** | **0.151** | — |
+| tess_hybrid | 0.078 | — |
+| tess_graph1hop (pre-registered) | 0.105 | W15/L25 p=0.15 |
+| tess_shuffle | 0.091 | — |
+| g1_prov (post-hoc) | 0.091 | W15/L28 p=0.07 |
+| g1_prov_w1 (the 148-paper winner) | 0.096 | W17/L29 p=0.10 |
+| g1_split | 0.114 | W20/L28 p=0.31 |
+| chance | 0.023 | — |
+
+Every graph arm loses to a dense second hop at scale, in the same direction,
+and the arm that won on 148 papers is the clearest loser. Easy stratum
+(n=181): BM25 0.812, dense_2hop 0.746, tess_hybrid 0.713, tess_graph1hop 0.707.
+
+**What this establishes.** The §8.1 hypothesis was framed as decisive either
+way, and it is — with one refinement:
+
+- The edges DO reach the second-hop entity that similarity cannot: the bridge
+  node is among the top-20 seeds' neighbours in 44% of kept items on 148
+  papers and **80%** on 1,414 documents, against 0% for similarity by
+  construction. The edge is not the null.
+- The graph→document step throws it away. graph.json keeps one `source_path`
+  per node (the first document that mentioned it) — gold in 30% / 22% of
+  reached items. sqlite `node_provenance` keeps every document — gold in 64% /
+  55% — but a node like `Model:BERT` was seen in ~30 documents and nothing in
+  the store says which of them elaborates it, so ranking the provenance set
+  converts a reached node into a hit only 10–15% of the time on either corpus.
+- A dense second hop (re-query with the top document's centroid) gets the
+  neighbourhood for free from embedding space and wins at scale.
+
+So: **do not build a graph-expansion retrieval arm on this store.** The node
+reach is real but unusable until the node→document projection carries
+per-document mention density — and once it does, the fair comparison is against
+an entity-mention inverted index, not against Mem0. The ceiling if that
+density existed is bounded by "gold in provenance set" (97/219 = 0.44), and
+that number is circular here because gold IS the max-mention document.
+
+Caveats on the items themselves: bridges are dominated by Metric / Model /
+Task / ResearchField nodes with df ≈ 30 (SSIM, RoBERTa, BERT, Transfer
+Learning); "the document that mentions BERT most" is a weak stand-in for "the
+document a question about BERT needs". A tighter item filter (df ≤ 5%,
+Algorithm/Dataset/Benchmark bridges only) would give more meaningful items and
+fewer of them — on 148 papers the df ≤ 8 subset (n=47) shows the same picture
+(graph1hop 0.106 = dense_2hop 0.106).
+
+### 10.3 Product gap the benchmark points at
+
+`graph.json` records one `source_path` per node — the first document that
+mentioned it — and retrieval reads graph.json. `sqlite.db` already records
+every document (`node_provenance`) but no mention count. Two consequences,
+both measured above: `hybrid_search` cannot hand an expansion the documents
+where an entity is elaborated even when an edge reaches the entity, and even
+the full provenance set cannot be ranked. If node→documents is ever projected
+for retrieval, it has to carry mention density per (node, document) from the
+extraction pass; nothing downstream can reconstruct it. Until then, expansion
+arms are not worth another benchmark.
+
+### 10.4 Operational notes from this continuation
+
+- Background Bash tasks were killed by the harness ~15–20 min in, twice, with
+  nothing written. macOS has no `setsid`. Long jobs now launch via
+  `subprocess.Popen(..., start_new_session=True)` with a pidfile, checkpoint
+  every stage, and are watched with a bounded monitor loop. Memory note
+  `long-jobs-need-own-session`.
+- The agentmemory MCP (localhost:3111) was down all session; notes went to
+  the harness's file memory instead (`bridge-retrieval-benchmark`,
+  `compiled-benchmark-graphs-on-disk`, `long-jobs-need-own-session`).
+- Nothing was compiled, nothing was paid for, no process outside this session
+  was signalled.
