@@ -209,7 +209,7 @@ La confianza por recurrencia es numérica en la salida: la proyección temporal 
 | Módulo | Responsabilidad |
 |---|---|
 | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | Protocolo `GraphStore`: `upsert_node`/`upsert_edge`, `get_node`, `iterate_nodes`, `query_subgraph`, `find_canonical`, y la superficie de delete de la Fase 4 — `delete_node` y `delete_nodes_by_source` (elimina los nodos cuyo conjunto de procedencia queda vacío tras retirar las rutas fuente dadas, así los conceptos multi-archivo sobreviven). |
-| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`: backing store standalone; posee las tablas sidecar `node_provenance` y `node_memory`. |
+| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`: backing store standalone; posee las tablas sidecar `node_provenance`, `node_mentions` y `node_memory`. |
 | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | Resuelve una URL de store (`sqlite:///…`, `hypepaper-postgres://…`) al `GraphStore` correcto, permitiendo al servidor MCP apuntar a cualquier backing store en runtime. |
 
 ### Adaptadores externos (sin cambios en esta ronda)
@@ -231,8 +231,10 @@ La confianza por recurrencia es numérica en la salida: la proyección temporal 
   graph.json                  validated ResearchGraph (incl. Synthesis nodes)
   manifest.json               per-source content hashes (input dedup)
   sqlite.db                   SQLite graph store; also owns the node_provenance
-                              (first-seen, Phase 4) and node_memory (decay /
-                              confidence / superseded, Phase 5) sidecar tables
+                              (first-seen, Phase 4), node_mentions (per-document
+                              mention counts, ranks a node's own documents) and
+                              node_memory (decay / confidence / superseded,
+                              Phase 5) sidecar tables
   temporal_facts.jsonl        Graphiti-style temporal projection (numeric recurrence confidence)
   graphiti_episodes.jsonl     dependency-free Graphiti episode export
   report.md                   graph quality / summary

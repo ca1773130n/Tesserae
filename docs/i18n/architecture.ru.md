@@ -209,7 +209,7 @@ query / seeds
 | Модуль | Ответственность |
 |---|---|
 | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | Протокол `GraphStore`: `upsert_node`/`upsert_edge`, `get_node`, `iterate_nodes`, `query_subgraph`, `find_canonical` и поверхность удаления фазы 4 — `delete_node` и `delete_nodes_by_source` (удаляет узлы, чей набор provenance опустел после удаления заданных путей источников, поэтому межфайловые концепты выживают). |
-| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`: автономное хранилище; владеет sidecar-таблицами `node_provenance` и `node_memory`. |
+| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`: автономное хранилище; владеет sidecar-таблицами `node_provenance`, `node_mentions` и `node_memory`. |
 | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | Разрешает store-URL (`sqlite:///…`, `hypepaper-postgres://…`) в нужный `GraphStore`, позволяя MCP-серверу указывать на любое хранилище в рантайме. |
 
 ### Внешние адаптеры (в этом раунде без изменений)
@@ -231,8 +231,10 @@ query / seeds
   graph.json                  validated ResearchGraph (incl. Synthesis nodes)
   manifest.json               per-source content hashes (input dedup)
   sqlite.db                   SQLite graph store; also owns the node_provenance
-                              (first-seen, Phase 4) and node_memory (decay /
-                              confidence / superseded, Phase 5) sidecar tables
+                              (first-seen, Phase 4), node_mentions (per-document
+                              mention counts, ranks a node's own documents) and
+                              node_memory (decay / confidence / superseded,
+                              Phase 5) sidecar tables
   temporal_facts.jsonl        Graphiti-style temporal projection (numeric recurrence confidence)
   graphiti_episodes.jsonl     dependency-free Graphiti episode export
   report.md                   graph quality / summary

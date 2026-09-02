@@ -205,7 +205,7 @@ Phase 5 激活了持久的自我改进。每个节点的可变状态存放在 `n
 | 模块 | 职责 |
 |---|---|
 | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `GraphStore` 协议：`upsert_node`/`upsert_edge`、`get_node`、`iterate_nodes`、`query_subgraph`、`find_canonical`，以及 Phase 4 的删除表面——`delete_node` 和 `delete_nodes_by_source`（删除在移除给定源路径后 provenance 集合变空的节点，因此跨文件的概念得以幸存）。 |
-| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`：独立的后备存储；拥有 `node_provenance` 和 `node_memory` 边车表。 |
+| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`：独立的后备存储；拥有 `node_provenance`、`node_mentions` 和 `node_memory` 边车表。 |
 | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | 把存储 URL（`sqlite:///…`、`hypepaper-postgres://…`）解析为对应的 `GraphStore`，让 MCP 服务器可以在运行时指向任意后备存储。 |
 
 ### 外部适配器（本轮未变）
@@ -227,8 +227,10 @@ Phase 5 激活了持久的自我改进。每个节点的可变状态存放在 `n
   graph.json                  validated ResearchGraph (incl. Synthesis nodes)
   manifest.json               per-source content hashes (input dedup)
   sqlite.db                   SQLite graph store; also owns the node_provenance
-                              (first-seen, Phase 4) and node_memory (decay /
-                              confidence / superseded, Phase 5) sidecar tables
+                              (first-seen, Phase 4), node_mentions (per-document
+                              mention counts, ranks a node's own documents) and
+                              node_memory (decay / confidence / superseded,
+                              Phase 5) sidecar tables
   temporal_facts.jsonl        Graphiti-style temporal projection (numeric recurrence confidence)
   graphiti_episodes.jsonl     dependency-free Graphiti episode export
   report.md                   graph quality / summary

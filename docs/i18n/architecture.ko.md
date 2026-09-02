@@ -207,7 +207,7 @@ Phase 5가 영속적 자기 개선을 활성화했습니다. 가변적인 노드
 | 모듈 | 책임 |
 |---|---|
 | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `GraphStore` 프로토콜: `upsert_node`/`upsert_edge`, `get_node`, `iterate_nodes`, `query_subgraph`, `find_canonical`, 그리고 Phase 4 삭제 표면 — `delete_node`와 `delete_nodes_by_source`(주어진 소스 경로 제거 후 출처 집합이 비게 되는 노드를 삭제하므로, 여러 파일에 걸친 개념은 생존). |
-| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`: 독립 백킹 스토어; `node_provenance`와 `node_memory` 사이드카 테이블을 소유. |
+| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`: 독립 백킹 스토어; `node_provenance`, `node_mentions`, `node_memory` 사이드카 테이블을 소유. |
 | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | 저장소 URL(`sqlite:///…`, `hypepaper-postgres://…`)을 알맞은 `GraphStore`로 해석하여, MCP 서버가 런타임에 어떤 백킹 스토어든 가리킬 수 있게 함. |
 
 ### 외부 어댑터 (이번 라운드에서 변경 없음)
@@ -229,8 +229,10 @@ Phase 5가 영속적 자기 개선을 활성화했습니다. 가변적인 노드
   graph.json                  validated ResearchGraph (incl. Synthesis nodes)
   manifest.json               per-source content hashes (input dedup)
   sqlite.db                   SQLite graph store; also owns the node_provenance
-                              (first-seen, Phase 4) and node_memory (decay /
-                              confidence / superseded, Phase 5) sidecar tables
+                              (first-seen, Phase 4), node_mentions (per-document
+                              mention counts, ranks a node's own documents) and
+                              node_memory (decay / confidence / superseded,
+                              Phase 5) sidecar tables
   temporal_facts.jsonl        Graphiti-style temporal projection (numeric recurrence confidence)
   graphiti_episodes.jsonl     dependency-free Graphiti episode export
   report.md                   graph quality / summary
