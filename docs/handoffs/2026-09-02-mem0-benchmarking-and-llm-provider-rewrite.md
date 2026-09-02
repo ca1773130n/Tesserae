@@ -498,7 +498,63 @@ for retrieval, it has to carry mention density per (node, document) from the
 extraction pass; nothing downstream can reconstruct it. Until then, expansion
 arms are not worth another benchmark.
 
-### 10.4 Operational notes from this continuation
+### 10.4 §8.3 measured — standing is a no-op, and mention density is not
+
+Shipped first, because §10.3 named it: **PR #265 (`b19e2159`)** adds a
+`node_mentions` sidecar, a compile-time pass counting each node's name and
+aliases word-bounded in each of its provenance documents, and
+`SqliteGraphStore.node_documents`, which returns a node's documents
+most-mentioning first. Reader is driven by `node_provenance` and LEFT-joins the
+counts, so the sidecars cannot drift. Measured: 31.5s for 43,151 pairs over 148
+full papers, 5.2s for 27,669 pairs over 1,552 abstracts.
+
+Then the §8.3 test, at `~/.blackhole/Tesserae/2026-09-02/attribution/`. No LLM
+at all: the 100 false-premise questions were already answered by both systems on
+2026-08-31, so only the CHECKER changes between arms.
+
+- `text_only` — the misattribution checker: which record owns the figure. A
+  chunk store can do this. The control.
+- `graph_stand` — plus STANDING: the figure's document must be one the subject
+  node is actually ABOUT, by mention density. Not circular: the questions were
+  built from `evaluated_on` edges (§4.6), and mention density had no part in it.
+
+**Standing changed nothing, on either arm.** Zero false premises caught that
+co-location missed, zero lost, zero new over-refusals, on all 46 asserted
+answers. The reason is mechanical and worth recording:
+
+| of the 30 asserted answers whose figure was located in the evidence | |
+| --- | --- |
+| cited document is in the subject's top-3 by mention density | 28/30 |
+| cited document IS the single most-mentioning document | 28/30 |
+| cited document is the question's `source_doc` (raw-text truth) | 28/30 |
+
+Co-location and standing agree everywhere, so this question set **cannot
+discriminate them**. The failure mode standing exists to catch — a figure lifted
+from a related-work row in a paper that merely cites the subject — does not
+occur here, because `pack_figure` packs the record holding the benchmark and a
+number, and that record is in the subject's own paper. This is a null result
+about the TEST, not a refutation of the idea; a set built from related-work rows
+would be needed, and nothing says one is worth building.
+
+**The finding worth keeping is the third row of that table.** Mention density
+picks the ground-truth owning document for a system **28 of 30 times (93%)**,
+against a label that came from raw text and never from the graph. That is an
+independent validation of the PR #265 ranking, arriving from a benchmark aimed
+at something else.
+
+Also confirmed, both arms: the general checker refuses **8 of 8** false premises.
+It is good, and it is Mem0's too.
+
+**Caveat, stated rather than buried.** The over-refusal control in
+`summary.json` (tesserae 0.900, mem0 0.050) is **not interpretable** and must
+not be quoted. It counts flags on TRUE-premise questions, but a true premise can
+still get a hallucinated answer, and flagging that is correct. Separating the
+two needs a gold figure per question, which `questions_premise.jsonl` does not
+carry. The asymmetry is real but it measures the packers, not the checkers: 9 of
+Tesserae's 18 asserted answers quote a figure absent from their own evidence.
+That is trap #2 in this document, committed again while testing for it.
+
+### 10.5 Operational notes from this continuation
 
 - Background Bash tasks were killed by the harness ~15–20 min in, twice, with
   nothing written. macOS has no `setsid`. Long jobs now launch via
