@@ -554,7 +554,57 @@ carry. The asymmetry is real but it measures the packers, not the checkers: 9 of
 Tesserae's 18 asserted answers quote a figure absent from their own evidence.
 That is trap #2 in this document, committed again while testing for it.
 
-### 10.5 Operational notes from this continuation
+### 10.5 The first result that replicates — mention density beats the shipped answer
+
+Run 2026-09-03, `~/.blackhole/Tesserae/2026-09-03/authority/`. The 28/30 in
+§10.4 was a side result on a small sample, so this measures the claim head-on
+against the behaviour the product actually ships.
+
+**Question.** A node has several provenance documents. Which one is it ABOUT?
+
+**Ground truth: the paper title.** A document whose title names the entity is
+authoritative for it. Titles are raw text, had no part in building the graph,
+and — this is the load-bearing detail — **the title line is removed from every
+body the counts are taken over**, so a title match cannot feed the signal being
+scored against it. Items are kept only where the entity is in ≥2 provenance
+documents (something to choose between) and exactly one title names it (an
+unambiguous answer).
+
+**Arms**, each picking one document: `first_seen` (what `graph.json` stores
+today — the incumbent), `mentions` (PR #265), `longest` (a length prior,
+because long papers mention everything more), `random` (the floor).
+
+| arm | 148 papers, n=25 | 1,552 abstracts, n=71 |
+| --- | --- | --- |
+| **mentions** | **0.920** | **0.845** |
+| first_seen (shipped) | 0.520 | 0.549 |
+| longest | 0.480 | 0.324 |
+| random | 0.400 | 0.493 |
+
+Paired against the incumbent: **W12/L2/T11, p=0.013** on the first corpus and
+**W26/L5/T40, p=0.000192** on the second. The length prior is at or below
+random on both, so this is not "long documents win".
+
+**This is the first result in the whole programme that replicates on a second
+corpus.** Everything else either measured parity or reversed at scale (§4, §10.2,
+§10.4). The direction is also the useful one: the shipped `source_path` is right
+about half the time, which is roughly a coin flip between two candidates, and
+counting fixes most of the gap.
+
+The residual misses are informative rather than noise: `BM25` picked a dense-
+retrieval paper over the probabilistic-relevance-framework paper on counts of
+2 vs 2, and `Retrieval-augmented generation` split 4/3/3. Generic method names
+that every paper says a few times are where density has nothing to work with —
+the same shape as the `df ≈ 30` bridges in §10.2.
+
+**What follows.** `node_documents` should be the answer to "which document is
+this entity about" anywhere the product needs one: citation, `verify_claim`
+sources, agent-facing context. What it should NOT be reused for is retrieval
+expansion (§10.2). Note the sample ceiling honestly: 25 and 71 items, because
+the title-match filter is strict — most nodes have a single provenance document
+and nothing to choose between.
+
+### 10.6 Operational notes from this continuation
 
 - Background Bash tasks were killed by the harness ~15–20 min in, twice, with
   nothing written. macOS has no `setsid`. Long jobs now launch via
