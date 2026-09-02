@@ -266,6 +266,11 @@ def test_a_non_claude_judge_still_takes_the_default_chain(monkeypatch):
     import tesserae.llm_json as llm_json
 
     _no_fallthrough(monkeypatch)
+    # The OpenAI-family branch takes the HTTP client whenever a key is in the
+    # environment and only falls through to the default chain without one. A
+    # developer shell that exports OPENAI_API_KEY therefore never reached the
+    # assertion below — this test is about the fallthrough, so pin its premise.
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     seen: Dict[str, Any] = {}
 
     def _default(**kwargs: Any) -> Any:
