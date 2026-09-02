@@ -28,6 +28,7 @@ SQLite nodes are global.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import struct
 from pathlib import Path
@@ -35,6 +36,8 @@ from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tupl
 from uuid import UUID
 
 from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
+
+_LOG = logging.getLogger(__name__)
 
 # Bound-parameter chunk for the node_vectors ``in (...)`` lookup. Older SQLite
 # builds cap a statement at 999 variables; two are already spent on the backend
@@ -433,6 +436,63 @@ class SqliteGraphStore:
                 params,
             )
             con.commit()
+
+    def record_mentions_many(self, rows: Iterable[Tuple[str, str, int]]) -> None:
+        """Bulk upsert mention counts ``(node_id, source_path, mentions)``.
+
+        Overwrites the count on conflict: unlike provenance there is no
+        first-seen to preserve, the number is a pure function of the current
+        file and a stale one is simply wrong.
+        """
+        params = [(node_id, source_path, int(mentions))
+                  for node_id, source_path, mentions in rows]
+        if not params:
+            return
+        with self._connect() as con:
+            con.executemany(
+                """
+                insert into node_mentions (node_id, source_path, mentions)
+                values (?, ?, ?)
+                on conflict(node_id, source_path) do update set
+                    mentions = excluded.mentions
+                """,
+                params,
+            )
+            con.commit()
+
+    def node_documents(
+        self, node_id: str, *, limit: Optional[int] = None
+    ) -> List[Tuple[str, int]]:
+        """This node's documents, most-mentioning first: ``[(source_path, n)]``.
+
+        Driven by ``node_provenance`` and LEFT-joined to the counts, which is
+        what keeps the two sidecars from drifting in either direction: a
+        document whose mention row was never written still appears (with 0)
+        rather than vanishing from the ranking, and a mention row whose
+        provenance pair a recompile removed can never surface. Ties break on
+        the path so the order is total and the read is deterministic.
+
+        Synthetic sources (``__synthesis__``, ``__session__``, ...) are
+        excluded: they name a producer, not a document a reader can open.
+        """
+        try:
+            with self._connect() as con:
+                rows = con.execute(
+                    """
+                    select p.source_path, coalesce(m.mentions, 0) as n
+                    from node_provenance p
+                    left join node_mentions m
+                        on m.node_id = p.node_id and m.source_path = p.source_path
+                    where p.node_id = ? and p.source_path not like '\\_\\_%' escape '\\'
+                    order by n desc, p.source_path asc
+                    """,
+                    (node_id,),
+                ).fetchall()
+        except sqlite3.Error:
+            _LOG.warning("node_documents: unreadable sidecar for %s", node_id)
+            return []
+        out = [(str(path), int(n)) for path, n in rows]
+        return out[:limit] if limit is not None else out
 
     def record_edge_provenance_many(self, rows: Iterable[Tuple[str, str, str, str, str]]) -> None:
         """Bulk upsert edge provenance rows ``(source, type, target, source_path, timestamp)``.
@@ -1428,6 +1488,30 @@ class SqliteGraphStore:
         )
         con.execute(
             "create index if not exists idx_provenance_source on node_provenance(source_path)"
+        )
+        # How OFTEN a node's name occurs in each of its provenance documents.
+        # ``node_provenance`` answers "which documents mention this entity" and
+        # nothing more, so a node seen in thirty papers offers thirty
+        # indistinguishable documents — measured 2026-09-02: the elaborating
+        # document is in that set ~60% of the time, and ranking the set finds it
+        # ~10% of the time. The count is the missing ordering, and it can only
+        # be taken while the corpus text is in hand (see
+        # ``project.compute_mention_density``); nothing downstream can
+        # reconstruct it from the graph.
+        #
+        # A SEPARATE table rather than a column on node_provenance: this one is
+        # purely derived, so an existing sqlite.db gains it without a migration
+        # and the provenance sidecar's byte-stability and reconcile semantics
+        # are untouched.
+        con.execute(
+            """
+            create table if not exists node_mentions (
+                node_id     text not null,
+                source_path text not null,
+                mentions    integer not null,
+                primary key (node_id, source_path)
+            )
+            """
         )
         # Edge provenance sidecar (Codex B1). An edge between two surviving
         # nodes whose ASSERTING file changed must be tombstoned when no

@@ -208,7 +208,7 @@ Recurrence confidence is numeric in the output: the temporal projection stamps e
 | Module | Responsibility |
 |---|---|
 | [`tesserae/ports/graph_store.py`](../tesserae/ports/graph_store.py) | `GraphStore` protocol: `upsert_node`/`upsert_edge`, `get_node`, `iterate_nodes`, `query_subgraph`, `find_canonical`, and the Phase-4 delete surface — `delete_node` and `delete_nodes_by_source` (deletes nodes whose provenance set becomes empty after removing the given source paths, so cross-file concepts survive). |
-| [`tesserae/graph_stores/sqlite.py`](../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`: standalone backing store; owns the `node_provenance` and `node_memory` sidecar tables. |
+| [`tesserae/graph_stores/sqlite.py`](../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`: standalone backing store; owns the `node_provenance`, `node_mentions` and `node_memory` sidecar tables. |
 | [`tesserae/graph_stores/url_resolver.py`](../tesserae/graph_stores/url_resolver.py) | Resolves a store URL (`sqlite:///…`, `hypepaper-postgres://…`) to the right `GraphStore`, letting the MCP server point at any backing store at runtime. |
 
 ### External adapters (unchanged this round)
@@ -230,8 +230,10 @@ Recurrence confidence is numeric in the output: the temporal projection stamps e
   graph.json                  validated ResearchGraph (incl. Synthesis nodes)
   manifest.json               per-source content hashes (input dedup)
   sqlite.db                   SQLite graph store; also owns the node_provenance
-                              (first-seen, Phase 4) and node_memory (decay /
-                              confidence / superseded, Phase 5) sidecar tables
+                              (first-seen, Phase 4), node_mentions (per-document
+                              mention counts, ranks a node's own documents) and
+                              node_memory (decay / confidence / superseded,
+                              Phase 5) sidecar tables
   temporal_facts.jsonl        Graphiti-style temporal projection (numeric recurrence confidence)
   graphiti_episodes.jsonl     dependency-free Graphiti episode export
   report.md                   graph quality / summary
