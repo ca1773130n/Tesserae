@@ -764,6 +764,66 @@ everywhere" is not reachable by packing alone; the remaining parities need a
 lever that is neither retrieval nor packing, and both of today's candidates
 (graph expansion §10.2, source standing §10.4) measured as nulls.
 
+### 10.6c The held-out extension — correctness is now significant, and the family is swept
+
+§10.6a left correct answers as a lead that could not be resolved: 7 discordant
+pairs at n=40, p=0.125. That is a POWER problem, and the honest fix is more
+items from the same generator, not a better story about the same ones.
+
+**The blocker I reported was wrong.** §10.6b said the Mem0 arm "cannot be
+re-run" because `qdrant_premise` was deleted and `mem0` is installed nowhere.
+Both facts are true; the conclusion was not. Mem0 with `infer=False` makes no
+paid calls, and the rebuild is deterministic given the same corpus, chunking and
+encoder. Rebuilt into a scratch venv
+(`~/.blackhole/Tesserae/2026-09-03/mem0rebuild/`, mem0ai 2.0.20, 4,842 chunks,
+2.5 min) and checked against the stored evidence:
+
+| faithfulness of the rebuilt competitor, 100 shipped questions | |
+| --- | --- |
+| byte-identical evidence | **100/100** |
+| identical document sequence | **100/100** |
+| document-set Jaccard | mean 1.000, min 1.000 |
+
+That check is what licenses using it on new questions, and it ran before
+anything was extended.
+
+**The extension is pre-registered by construction, not by promise.** The builder
+makes every valid true-premise pair, shuffles with a fixed seed, and the shipped
+set took `true_q[:40]`. This takes `true_q[40:]` — membership fixed by an index,
+verified disjoint (overlap 0). **12 is all that remains**: the corpus yields 52
+usable pairs under these filters, so this is the maximum power available here,
+not a sample sized to taste. The analysis was fixed in advance: paired sign test
+on correct answers over the combined 52, both arms scored by one classifier.
+
+| set | Tesserae | Mem0 | paired | sign p |
+| --- | --- | --- | --- | --- |
+| shipped 40 | 16 | 12 | W5/L1/T34 | 0.219 |
+| held-out 12 | 7 | 2 | W5/L0/T7 | 0.063 |
+| **COMBINED 52** | **23** | **14** | **W10/L1/T41** | **0.0117** |
+
+(The shipped-40 count reads 16 here against §10.6a's 17: this run uses a
+stricter correctness rule — the classifier's own figure field, falling back to
+the answer's figures only when it yields none. Applied identically to both arms,
+and it costs Tesserae one item and Mem0 none, so the stricter rule is the
+conservative one and is what the combined test uses.)
+
+**THE BENCHMARK FAMILY THAT HELD BOTH LOSSES IS NOW SWEPT**, all measured with
+one classifier over both arms:
+
+| metric | Mem0 | Tesserae | |
+| --- | --- | --- | --- |
+| **correct answers** | 14/52 | **23/52** | W10/L1, **p=0.0117** |
+| **hallucination** | 0.133 | **0.000** | 0 vs 8 cases, **p=0.0078** |
+| **precision** | 0.600 | **0.739** | win |
+| **over-refusal** | 0.345 | **0.276** | win |
+
+**Still not "all quality benchmarks."** §4.1 document recall is retrieval, a
+measured null (§10.2). §4.7 contamination-free cannot show a significant win for
+ANYONE: at n=12 a sign test needs 10 wins with zero ties for p<0.05, and its
+standing is 5W/3L/4T on quality, 3W/2L/7T on provenance. Ties dominate because
+the set is underpowered by construction. Those two need a larger corpus and a
+larger question set, not a better packer.
+
 ### 10.7 Operational notes from this continuation
 
 - Background Bash tasks were killed by the harness ~15–20 min in, twice, with
