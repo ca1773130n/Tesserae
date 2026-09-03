@@ -824,6 +824,44 @@ standing is 5W/3L/4T on quality, 3W/2L/7T on provenance. Ties dominate because
 the set is underpowered by construction. Those two need a larger corpus and a
 larger question set, not a better packer.
 
+### 10.6d The last two benchmarks, and the one decision that unblocks them
+
+Both were checked with numbers rather than argued from shape, because §10.6b
+already showed that "this cannot be done" is a claim I get wrong.
+
+**§4.1 document recall — a genuine tie, not a lead to convert.** With the
+encoder equalised it is 8W/8L/41T at ten documents (sign p=1.0) and 6W/3L/48T at
+fifty (p=0.51). There is no direction to push: the arms agree. It is also
+retrieval, where graph expansion measured null twice (§10.2), and both sides
+already run bge-base. Winning it needs a better retriever than a vector store,
+which is the thing three benchmarks now say does not exist here.
+
+**§4.7 contamination-free — the corpus is exhausted, not the method.** Same
+held-out trick as §10.6c, applied to its generator:
+
+| | |
+| --- | --- |
+| qualifying paper pairs (shared terms 8..60) | 55 |
+| used by the shipped run (top 45 by overlap) | 45 |
+| **held out and still available** | **10** |
+| observed survival of the leave-one-out ablation | 12/45 = 27% |
+| questions those 10 pairs would yield | **~3** |
+| resulting n | 12 → **~15** |
+
+At n=15 with a standing of 5W/3L/4T on quality, that is not a significance fix;
+ties dominate and the extra items cannot outvote them. The 11-paper corpus is
+the binding constraint, and the builder's own comment records why: 30 of the 45
+fetched papers "are no longer in corpus/ after the machine forced a smaller
+run". `corpus_all/` still holds all 45.
+
+**THE DECISION.** Compiling the remaining ~34 papers would roughly quadruple the
+corpus, multiply the qualifying pairs (they grow with the square of the paper
+count), and give this benchmark enough items to resolve at all — for either
+system. That needs an explicit authorisation to compile, which is the user's
+standing rule to give (§1), and it is a multi-hour local-model run on a machine
+that has already been at 27% free memory today. Nothing else in this programme
+is blocked on anything but that.
+
 ### 10.7 Operational notes from this continuation
 
 - Background Bash tasks were killed by the harness ~15–20 min in, twice, with
