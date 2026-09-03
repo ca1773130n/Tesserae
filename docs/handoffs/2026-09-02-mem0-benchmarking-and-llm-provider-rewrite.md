@@ -604,7 +604,108 @@ expansion (§10.2). Note the sample ceiling honestly: 25 and 71 items, because
 the title-match filter is strict — most nodes have a single provenance document
 and nothing to choose between.
 
-### 10.6 Operational notes from this continuation
+### 10.6 The first ANSWER-quality win over Mem0 — packing, not retrieval
+
+Run 2026-09-03, `~/.blackhole/Tesserae/2026-09-03/packing/`. Two multi-agent
+rounds (16 + 8 agents, every arm adversarially verified) plus one judged answer
+run on the same 100 questions both systems answered on 2026-08-31. Only the
+EVIDENCE Tesserae is handed changed; the question set, the answerer and Mem0's
+answers are the 2026-08-31 originals.
+
+**Why packing and not retrieval.** §10.2 closed retrieval. But two of the seven
+Mem0 comparisons were LOSSES, not parities, and both had the same measured
+cause: 9 of 18 Tesserae answers that asserted a figure quoted one absent from
+their own evidence. That is a packing defect, and the model is not the bottleneck
+for it.
+
+**Round 1 — ranking (8 strategies).** All eight converged on gold_record 0.575
+with competing figures at ~0.0, every one verified SOLID with no label leak. The
+convergence was the finding: **0.575 = 23/40 is the CEILING**, not a score, and
+eight independent ideas all hit it exactly. Underneath their different framings
+every arm reduced to two rules — prefer records naming subject AND benchmark AND
+holding a figure, and prefer the authoritative document (PR #265). Verifiers
+found several arms' elaborate named mechanisms inert, and one latent cache bug
+keyed on object identity that would have broken silently on a port.
+
+**Round 2 — the record UNIT (4 strategies).** Of the 17 questions above the
+ceiling, **14 had the benchmark and the figure in DIFFERENT records**: a table's
+column header is one record, its data row another, so neither alone can ever
+satisfy the test. No ranking could reach them.
+
+| regrouping | ceiling | competing | verdict |
+| --- | --- | --- | --- |
+| **caption-window** | **0.725** | **0.0** | SOLID |
+| header-inherit | 0.750 | 10.7 | pays the precision back |
+| table-block | 0.625 | 8.6 | +2 questions only |
+| sliding-merge | 0.800 | 4.7 | **OVERMERGED — fake** |
+| baseline | 0.575 | 0.0 | — |
+
+The highest scorer was fake, and its own verifier proved it: shuffling the
+paragraphs to destroy adjacency scored the SAME OR HIGHER (33/34/32 vs 32), so
+the gain was purely record size — a big enough bag of text trivially contains a
+benchmark name and a number that have nothing to do with each other. That is
+trap #2 in this document, caught by an adversarial verifier rather than shipped.
+
+caption-window survived its own size nulls (length-matched random prose 24-26,
+shuffled caption assignment 25-26, real caption 29) and one real bug was fixed
+after it: captions were searched BELOW the table first, mis-attaching the next
+float's caption to 64 of 344 table runs, because this corpus is flattened arXiv
+HTML with captions above. Ablation also shows the `intro` half contributes
+exactly zero (caption-only reaches the same +6) — dead code, do not port it.
+
+**The packing result, proxy level:**
+
+| | coverage | competing figures |
+| --- | --- | --- |
+| shipped packer | 0.150 | 3.1 |
+| 2026-08-30 figure-record packer | 0.575 | 42.0 |
+| **caption-window + tuned arm** | **0.725** | **0.0** |
+
+**The answer run — the decisive test.** 100 questions, Claude CLI on
+subscription quota, no paid API. Ground truth for correctness is the figures the
+OWNING document reports next to the benchmark, taken from raw text.
+
+| metric | Mem0 | Tesserae, new packing |
+| --- | --- | --- |
+| **correct answers** | 12/40 | **19/40** |
+| over-refusal (gold record WAS in evidence) | 0.345 | **0.138** |
+| precision of asserted figures | 0.571 | **0.613** |
+| false assertion on false premises | **0.200** | 0.317 |
+
+Paired on correctness: **W7/L0/T33, sign p=0.016** — we never got one wrong that
+Mem0 got right. Integrity check: **zero** correct answers came from a question
+whose gold record was absent from the evidence, so nothing was won by luck.
+
+**With the misattribution checker on BOTH arms** — it is general (§4.6), so
+applying it to only one side would be the mistake:
+
+| | correct | false assertion |
+| --- | --- | --- |
+| Mem0 + checker | 12/40 | 0.000 |
+| **Tesserae + checker** | **18/40** | 0.017 |
+
+Paired: **W6/L0/T34, p=0.031.**
+
+**THE HONEST STANDING.** This does NOT beat Mem0 on everything. It wins
+decisively on the two benchmarks that were losses — correct answers (18 vs 12,
+p=0.031) and over-refusal (0.172 vs 0.345) — and is ONE case behind on
+hallucination (1 vs 0). Everything else in §4 remains parity.
+
+**Caveat that must travel with the false-assertion numbers.** The checker's
+dominant flag is `benchmark_absent_from_source_paper` (18 of 19), and the false
+premises were CONSTRUCTED by pairing a system with a benchmark from a different
+paper. Detection rule and construction rule are near-isomorphic, so that catch
+rate is an upper bound on this set, not a general hallucination-detection
+number. It is not the §4.6 circularity — the checker reads raw evidence text,
+never the graph — but it is a close cousin and must not be quoted as
+"we beat Mem0 on hallucination".
+
+**What to ship.** The caption-window record unit and the two ranking rules are
+the product change; the arms live in `packing/`. Ship caption-only (drop
+`intro`), keep the caption-above fix, and do not port `is_prose`/`_assertion`
+from arm_record-shape (inert, and carries the cache bug).
+
+### 10.7 Operational notes from this continuation
 
 - Background Bash tasks were killed by the harness ~15–20 min in, twice, with
   nothing written. macOS has no `setsid`. Long jobs now launch via
