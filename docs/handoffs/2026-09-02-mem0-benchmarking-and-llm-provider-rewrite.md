@@ -705,6 +705,65 @@ the product change; the arms live in `packing/`. Ship caption-only (drop
 `intro`), keep the caption-above fix, and do not port `is_prose`/`_assertion`
 from arm_record-shape (inert, and carries the cache bug).
 
+### 10.6a CORRECTION to §10.6 — the assertion metric was mine and it was wrong
+
+**The §10.6 table is superseded by this one.** Read this section instead.
+
+§10.6 counted an assertion with a regex for any figure in the answer, and
+compared that against Mem0's stored flags, which came from an LLM classifier.
+Two different instruments on the two sides, which is trap #2 in this document
+committed while testing for it.
+
+The failure mode is specific and systematic. An answer that correctly REFUSES
+and then cites what the system WAS evaluated on — *"the evidence does not
+mention a benchmark called Next Generation Simulation; Wav2Lip reports 6.843 on
+ReSyncED"* — contains figures, so the regex scored it as a hallucination. The
+single false assertion §10.6 reported as surviving the checker was exactly that
+shape, i.e. not a hallucination at all.
+
+Re-scored with ONE classifier over both arms' 200 answers
+(`packing/classify.py`, Claude CLI, subscription):
+
+| metric | Mem0 | Tesserae, new packing |
+| --- | --- | --- |
+| **false assertion** | 0.133 | **0.000** |
+| **precision of asserted figures** | 0.600 | **0.739** |
+| **over-refusal** | 0.345 | **0.276** |
+| correct answers | 12/40 | 17/40 |
+
+Paired: false assertion **Tesserae-only 0, Mem0-only 8, sign p=0.0078**;
+correct answers **W6/L1/T33, sign p=0.125**.
+
+**Both of §10.6's errors ran in opposite directions.** We do BETTER than it said
+on hallucination — zero false assertions, not 0.317, and the win is significant
+without needing the checker at all. We do WORSE than it said on correctness: 17
+not 19, and the paired test is **p=0.125, NOT significant**. The p=0.016 in
+§10.6 was an artefact of the regex over-counting our assertions.
+
+**Standing on this benchmark family, honestly:** three wins (hallucination,
+precision, over-refusal) and one non-significant lead (correct answers), against
+the two LOSSES it started as. The §10.6 checker-gated table is also superseded —
+with a fair assertion metric the checker is not needed to win hallucination, so
+its construction caveat no longer bears on the headline.
+
+### 10.6b What packing CANNOT reach — scope of the win
+
+Checked before spending further, because the goal was "beat Mem0 on ALL quality
+benchmarks":
+
+- **§4.1 document recall** — retrieval, not packing. Closed as a null in §10.2.
+- **§4.7 contamination-free reasoning** — the 11-paper corpus contains **zero
+  markdown tables**, so the caption-window unit is inert there; and its
+  questions deliberately name no system, so authority ranking has no subject to
+  rank by. Its `provenance` metric scores which DOCUMENTS were packed, not
+  within-document ordering.
+- **§4.2 source-prose** — already discredited as judge-sensitive.
+
+So this change wins where it applies and cannot move the rest. "Beat Mem0
+everywhere" is not reachable by packing alone; the remaining parities need a
+lever that is neither retrieval nor packing, and both of today's candidates
+(graph expansion §10.2, source standing §10.4) measured as nulls.
+
 ### 10.7 Operational notes from this continuation
 
 - Background Bash tasks were killed by the harness ~15–20 min in, twice, with
