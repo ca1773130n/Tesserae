@@ -862,6 +862,69 @@ standing rule to give (§1), and it is a multi-hour local-model run on a machine
 that has already been at 27% free memory today. Nothing else in this programme
 is blocked on anything but that.
 
+### 10.6e §4.7 resolved at last — and it goes to Mem0
+
+The one benchmark §10.6d said was corpus-bound is now measured properly, and the
+answer is that **Tesserae loses cross-paper reasoning**. Recording it in full
+because a null that cost this much should never be re-derived.
+
+**What it took.** The user authorised the compile §10.6d asked for.
+`corpus_all/` held all 45 fetched papers; 34 had been dropped when the machine
+forced a smaller run. Staged them, compiled with the Claude CLI on subscription
+(4h 39m, 45 documents), rebuilt Mem0's arm over the same 45 papers (2,328
+chunks), generated 40 new questions with the SAME builder and the SAME
+leave-one-paper-out ablation (131 candidates, 31% survival, 3h 36m), and ran the
+head-to-head (52 questions, 2h 55m). About nine hours of machine time.
+
+**Result, 52 questions on 45 papers (was 12 on 11):**
+
+| metric | Mem0 | Tesserae | paired | sign p |
+| --- | --- | --- | --- | --- |
+| answered | 0.962 | 0.962 | W2/L2/T48 | 1.00 |
+| **quality** | **0.667** | 0.577 | W12/L21/T19 | 0.16 |
+| **provenance** | **0.702** | 0.644 | W10/L15/T27 | 0.42 |
+| unsupported claims | 2.60 | **1.92** | W28/L17/T7 | 0.14 |
+
+Nothing reaches significance, but the DIRECTION on quality and provenance now
+matches the original 12-question run (0.722/0.750 vs 0.750/0.708) instead of
+contradicting it. Two independent samples pointing the same way is weak evidence
+that Mem0 is genuinely better here, not noise. **Do not re-run this expecting a
+different answer.**
+
+The one metric we lead — 1.92 unsupported claims per answer against 2.60, W28/L17
+— is the same shape as the §10.6a hallucination win: our evidence carries fewer
+grabbable wrong things. It does not convert into better answers.
+
+**Caveats, both running in OUR favour and neither rescuing it.** 14 of the 45
+papers fell back to deterministic extraction when the subscription session limit
+hit mid-compile, thinning our node layer but not Mem0's; retrying them would
+have meant re-extracting all 45, because the manifest is compile-level with no
+per-file digests. And the questions were built from abstracts and full text, never
+from the graph, so the degraded extractions cannot have biased the question set.
+
+**Why the benchmark could not have shown this before.** At n=12 a sign test needs
+10 wins with zero ties for p<0.05 and the standing was tie-dominated, so neither
+system could win it. The corpus is now 45 papers, 881 qualifying pairs, 52
+questions. The instrument works; the answer is just not the one we wanted.
+
+### 10.6f FINAL STANDING against "beat Mem0 on all quality benchmarks"
+
+| benchmark | verdict |
+| --- | --- |
+| correct answers (figure attribution) | **WIN** 23/52 vs 14, p=0.0117 |
+| hallucination | **WIN** 0.000 vs 0.133, p=0.0078 |
+| precision of asserted figures | **WIN** 0.739 vs 0.600 |
+| over-refusal | **WIN** 0.276 vs 0.345 |
+| document recall | **TIE** 8W/8L/41T with the encoder equalised |
+| cross-paper reasoning quality | **LOSS** 0.577 vs 0.667 |
+| cross-paper reasoning provenance | **LOSS** 0.644 vs 0.702 |
+
+**The goal is not achievable and this is now measured, not argued.** Every
+benchmark has been run to the limit of what the corpora support. The honest
+one-line summary: **packing wins figure-attribution answering decisively;
+cross-paper reasoning belongs to Mem0.** Document recall is retrieval, which
+§10.2 closed as a null.
+
 ### 10.7 Operational notes from this continuation
 
 - Background Bash tasks were killed by the harness ~15–20 min in, twice, with
