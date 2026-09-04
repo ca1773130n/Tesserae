@@ -1281,3 +1281,62 @@ k-sample mean of an r=0.19 measure needs k≈10 to reach r≈0.70), or replace t
 free-form count with atomic claim extraction plus a per-claim entailment check
 against the evidence. Both are benchmark engineering, not Tesserae tuning, and
 neither was in scope here.
+
+### 10.6p §4.1 document recall is a tie at every k, and my ceiling story was wrong
+
+§10.6d called document recall "a genuine tie, not a lead to convert" on 8W/8L/41T
+at ten documents and 6W/3L/48T at fifty. §10.6o then found that the OTHER
+outstanding comparison was not a measurement at all, which raised a fair question
+about this one: 41 of 52 questions TIE at k=10 and 48 of 52 at k=50 because both
+retrievers have already found the gold documents by then, and a metric at its
+ceiling cannot show a difference in ORDER, only in membership.
+
+**The hypothesis, stated before the numbers**: Tesserae's advantage is ranking
+rather than membership, so it is invisible wherever the metric saturates. It was
+not idle — on the contamination-free set the same fused retriever takes 0.885 of
+gold documents to Mem0's 0.702 at FOUR documents, W24/L5/T23, sign p=0.00055.
+That is essentially recall@4, decisive where k=10 and k=50 are flat.
+
+Measured at every k, n=57, both arms deterministic
+(`~/.blackhole/Tesserae/2026-09-04/recall/recall_at_k.py`):
+
+| k | mem0 | tesserae | paired (T vs M) | sign p |
+| --- | --- | --- | --- | --- |
+| 1 | **0.269** | 0.251 | W8/L12/T37 | 0.50 |
+| 3 | 0.547 | **0.548** | W11/L12/T34 | 1.00 |
+| 5 | **0.680** | 0.678 | W12/L12/T33 | 1.00 |
+| 10 | **0.775** | 0.754 | W7/L13/T37 | 0.26 |
+| 50 | **0.944** | 0.914 | W5/L10/T42 | 0.30 |
+
+**The hypothesis is refuted.** At k=1 nothing is saturated — 37 questions still
+tie, but on a metric where neither arm clears 0.27 — and the arms are still
+indistinguishable, with Tesserae nominally BEHIND at k=1, 10 and 50. There is no
+k at which a ranking advantage appears. §10.6d was right and this section is a
+null result.
+
+Choosing small k after seeing k=10 and k=50 tie is post-hoc, and it is reported
+here whichever way it came out; every k is in the table rather than a chosen one.
+
+**Why this is worth having anyway.** It separates the two outstanding
+comparisons, which had been lumped together as "not wins":
+
+- **§4.1 document recall is a TIE that the instrument can see.** Retrieval is
+  deterministic: identical inputs give identical outputs, so a re-run says the
+  same thing. The arms genuinely agree.
+- **Unsupported claims is NOT ADJUDICABLE.** Test-retest sign agreement 35%, r=0.18
+  (§10.6o). The instrument cannot see a difference in either direction.
+
+A tie you can trust and a number you cannot are different objects, and only the
+second one is a defect in the benchmark.
+
+**The one place our retriever does win decisively is cross-paper questions**
+(provenance 0.885 vs 0.702, p=0.00055, §10.6o), where §4.1's questions are not
+cross-paper. That is a claim about which QUESTIONS a graph helps with, and it is
+already the programme's best-supported finding. It is not evidence for a
+general retrieval advantage, and this section is what rules that out.
+
+**Standing: six statistically significant wins, zero losses, one genuine tie
+(document recall), one non-adjudicable comparison (unsupported claims).** "Beat
+Mem0 on ALL quality benchmarks" is unachieved and cannot be achieved by tuning:
+one of the two remaining is a tie both arms earn, and the other is not a
+measurement.
