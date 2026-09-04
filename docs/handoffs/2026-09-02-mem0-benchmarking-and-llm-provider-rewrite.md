@@ -1109,3 +1109,58 @@ four arm configurations rather than asserted. The remaining loss is a property
 of how fused retrieval errs, and the fix would have to be a retriever whose
 misses are on-topic rather than plausible — which is a research problem, not a
 configuration.
+
+### 10.6m The prompt axis — the last loss becomes a TIE, at a price neither arm can pay
+
+§10.6k closed the EVIDENCE axis after four configurations. This tests the other
+one §10.6i named and never ran: the ANSWER PROMPT. Over-claiming is a generation
+behaviour, so it should be orthogonal to retrieval — and unlike every previous
+attempt, it does not touch coverage.
+
+**Applied to BOTH arms and both re-answered.** Mem0's 2.60 was produced under the
+permissive prompt; scoring our new number against it would measure the prompt
+rather than the memory. That is the mismatched-instrument error of §10.6a, and it
+is not repeated here.
+
+The prompt change: from "say so rather than inventing" to four ordered rules —
+every claim must be something the evidence explicitly states; connections across
+papers only where the connection is itself stated; no background or implications
+from the model's own knowledge; answer the covered part and name the uncovered
+part.
+
+| metric | mem0 old | **mem0 new** | tess old | **tess new** | paired | sign p |
+| --- | --- | --- | --- | --- | --- | --- |
+| answered | 0.962 | 0.885 | 0.962 | 0.923 | W6/L4/T42 | 0.75 |
+| quality | 0.667 | 0.327 | **0.827** | **0.635** | W32/L3/T17 | **4.2e-07** |
+| provenance | 0.702 | 0.702 | **0.885** | **0.885** | W24/L5/T23 | **0.00055** |
+| unsupported | **2.596** | **1.346** | 4.692 | 1.558 | W14/L24/T14 | **0.143** |
+
+**The last loss becomes a TIE.** Our unsupported claims fall 4.69 → 1.56, a
+threefold improvement, and p goes 0.0000056 → 0.143 — no longer significant. But
+it is a tie and NOT a win, because the same prompt helps Mem0 just as much
+(2.60 → 1.35). Running one arm only would have manufactured a win here.
+
+**Neither arm can afford it.** Quality collapses on both — ours 0.827 → 0.635,
+Mem0's 0.667 → 0.327. Our quality LEAD widens to p=4.2e-07, but both systems are
+absolutely worse. The strict prompt does not make the model more accurate, it
+makes it say less: it trades substance for safety on a synthesis task where the
+required points ARE the connections. **Do not ship this prompt.**
+
+**The full map, five evidence configurations and two prompts:**
+
+| | permissive prompt | strict prompt |
+| --- | --- | --- |
+| quality | WIN p=0.0037 | WIN p=4.2e-07 |
+| provenance | WIN p=0.00055 | WIN p=0.00055 |
+| unsupported | **LOSS** p=0.0000056 | **TIE** p=0.143 |
+| document recall | TIE | TIE |
+
+**No configuration wins everything**, and the two axes are now both closed:
+evidence (§10.6k, four arms) and generation (here, two prompts). Under the
+permissive prompt the unsupported-claims loss is real; under the strict prompt it
+is a tie bought by degrading both arms. Document recall stays a genuine tie
+throughout — 8W/8L with the encoder equalised, no direction to push.
+
+**Revises §10.6l's last row**: the loss is CONFIGURATION-DEPENDENT, not absolute.
+The honest statement is "loses under the shippable prompt, ties under a prompt
+neither arm should ship". Everything else in §10.6l stands.
