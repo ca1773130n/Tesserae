@@ -925,6 +925,76 @@ one-line summary: **packing wins figure-attribution answering decisively;
 cross-paper reasoning belongs to Mem0.** Document recall is retrieval, which
 §10.2 closed as a null.
 
+### 10.6g The §4.7 loss was a harness bug — and fixing it trades one win for another
+
+§10.6e reported cross-paper reasoning as a loss. The diagnosis afterwards found
+the cause, and it was ours:
+
+| | Tesserae (graph-only) | Mem0 |
+| --- | --- | --- |
+| got BOTH gold documents | 22/52 | 21/52 |
+| got ZERO gold documents | **7** | **0** |
+
+We were marginally BETTER at covering both papers. The whole provenance gap was
+7 catastrophic misses. Quality tracks coverage almost deterministically — 0.095
+with no gold document, 0.507 with one, 0.803 with both — so those 7 dragged
+quality down too.
+
+**The cause.** `pack_figure` selects documents with `corpus.graph_docs` —
+structure only. Tesserae ships a FUSED retriever (`hybrid_search`: bm25 +
+lexical + a bge dense lane) and this harness used one lane of three. That is a
+harness bug, not a property of the graph, and the dense lane is the same bge
+encoder Mem0 uses, so the fix borrows nothing from the competitor.
+
+**Re-run with fused selection**, everything else held identical (same 52
+questions, same budget, same answerer and judges, Mem0's answers reused
+verbatim):
+
+| metric | Mem0 | graph-only | **fused** | paired vs Mem0 | sign p |
+| --- | --- | --- | --- | --- | --- |
+| answered | 0.962 | 0.962 | 0.962 | W2/L2/T48 | 1.00 |
+| **quality** | 0.667 | 0.577 | **0.827** | W22/L6/T24 | **0.0037** |
+| **provenance** | 0.702 | 0.644 | **0.885** | W24/L5/T23 | **0.00055** |
+| **unsupported** | **2.60** | 1.92 | 4.69 | W9/L41/T2 | **0.0000056** |
+
+Zero-gold-document questions: **7 → 0**.
+
+**READ THIS AS ONE COUPLED RESULT, NOT FOUR.** Fused selection converts both
+losses into significant wins AND converts our unsupported-claims win into a
+significant loss. Packing four documents of raw chunks buys the coverage quality
+depends on, and the same extra material gives the model more to over-claim from.
+Quoting only the two wins would be dishonest; so would quoting only §10.6e.
+
+**Two things not to overstate.** The configuration was changed AFTER seeing the
+arm lose — the mechanism came from the failure pattern (7 zero-coverage
+questions), not from trying variants until one won, but the ordering is what it
+is and is stated here rather than buried. And the fused arm packs RAW CHUNKS,
+discarding the caption-window record unit that cut competing material to 0.0 in
+§10.6. That is the likely cause of unsupported claims tripling.
+
+**The experiment this implies** (not a claim): fused document SELECTION with
+caption-window record PACKING. §10.6 showed the record unit removes competing
+material at equal coverage; §10.6g shows fused selection removes catastrophic
+misses. They address different halves and have never been combined.
+
+### 10.6h Revised final standing
+
+| benchmark | verdict |
+| --- | --- |
+| correct answers (figure attribution) | **WIN** 23/52 vs 14, p=0.0117 |
+| hallucination | **WIN** 0.000 vs 0.133, p=0.0078 |
+| precision of asserted figures | **WIN** 0.739 vs 0.600 |
+| over-refusal | **WIN** 0.276 vs 0.345 |
+| document recall | **TIE** 8W/8L/41T |
+| reasoning quality | **WIN** 0.827 vs 0.667, p=0.0037 (fused) |
+| reasoning provenance | **WIN** 0.885 vs 0.702, p=0.00055 (fused) |
+| reasoning unsupported claims | **LOSS** 4.69 vs 2.60, p=0.0000056 (fused) |
+
+Six wins, one tie, one loss — and the loss is the direct cost of two of the
+wins. "Beat Mem0 on ALL quality benchmarks" is still not achieved, and the
+remaining gap is a genuine engineering trade-off with a named next experiment,
+not a mystery.
+
 ### 10.7 Operational notes from this continuation
 
 - Background Bash tasks were killed by the harness ~15–20 min in, twice, with
