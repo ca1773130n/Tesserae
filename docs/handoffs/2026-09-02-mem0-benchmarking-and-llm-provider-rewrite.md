@@ -1057,3 +1057,55 @@ achieved, and the remaining loss is not a mystery: it is the measured price of
 the two reasoning wins, and §10.6i rules out the obvious way to avoid paying it.
 The next idea would have to reduce document count without losing coverage —
 which is the same problem §10.2 closed as a null for graph expansion.
+
+### 10.6k My document-count explanation was wrong — it is WHICH documents, not how many
+
+§10.6i concluded that over-claiming scales with how many documents share the
+budget. That was testable and it is **false**. Fused selection capped at TWO
+documents (fewer than Mem0's 2.9 average), same 52 questions, Mem0's answers
+reused verbatim:
+
+| metric | Mem0 | graph-only (≤3 docs) | fused (4 docs) | **fused k=2** |
+| --- | --- | --- | --- | --- |
+| answered | 0.962 | 0.962 | 0.962 | 1.000 |
+| quality | 0.667 | 0.577 | **0.827** | 0.679 |
+| provenance | 0.702 | 0.644 | **0.885** | 0.788 |
+| unsupported | **2.60** | 1.92 | 4.69 | 4.46 |
+
+Halving the document count moved unsupported claims 4.69 → 4.46 — nothing —
+while quality collapsed 0.827 → 0.679 and out of significance. Two documents of
+fused retrieval over-claim as much as four.
+
+**The actual mechanism.** Graph-only packs ≤3 documents at 1.92 unsupported;
+fused packs 2 documents at 4.46. Same count, more than double the over-claiming.
+So it is not the number of documents, it is WHICH documents each retriever
+returns: graph selection returns narrowly on-topic papers and fails CLEANLY when
+it fails (7 zero-coverage questions), while fused retrieval returns
+plausibly-related papers that give the model material to speculate from. **The
+two retrievers have different error profiles, and fused's errors are the kind
+that produce confident wrong claims.**
+
+**Consequence.** The fused arm's precision cost is intrinsic to fused retrieval
+on this task, not a budget or format knob. Four configurations have now been
+tested — graph-only, fused(4), fused(4)+caption-window, fused(2) — and none
+holds coverage without paying in over-claiming. Stop tuning this axis.
+
+### 10.6l FINAL — the programme is closed
+
+| benchmark | verdict |
+| --- | --- |
+| correct answers | **WIN** p=0.0117 |
+| hallucination | **WIN** p=0.0078 |
+| precision of asserted figures | **WIN** |
+| over-refusal | **WIN** |
+| reasoning quality | **WIN** p=0.0037 (fused) |
+| reasoning provenance | **WIN** p=0.00055 (fused) |
+| document recall | **TIE** 8W/8L/41T |
+| reasoning unsupported claims | **LOSS** p=0.0000056 (fused) |
+
+Six wins, one tie, one loss. **"Beat Mem0 on ALL quality benchmarks" is not
+achievable with anything in this repository**, and that is now measured across
+four arm configurations rather than asserted. The remaining loss is a property
+of how fused retrieval errs, and the fix would have to be a retriever whose
+misses are on-topic rather than plausible — which is a research problem, not a
+configuration.
