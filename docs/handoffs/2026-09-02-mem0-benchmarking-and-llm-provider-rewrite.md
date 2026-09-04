@@ -995,6 +995,66 @@ wins. "Beat Mem0 on ALL quality benchmarks" is still not achieved, and the
 remaining gap is a genuine engineering trade-off with a named next experiment,
 not a mystery.
 
+### 10.6i The combination §10.6g proposed does NOT work — the trade is real
+
+§10.6g named an experiment: fused document SELECTION plus caption-window record
+PACKING, on the theory that fused selection loses precision because of WHAT it
+packs (raw chunks) rather than WHICH documents it picks. Run on the same 52
+questions, everything else identical:
+
+| metric | Mem0 | graph-only | fused | **combined** | vs Mem0 | sign p |
+| --- | --- | --- | --- | --- | --- | --- |
+| answered | 0.962 | 0.962 | 0.962 | 0.981 | W2/L1/T49 | 1.00 |
+| quality | 0.667 | 0.577 | **0.827** | 0.763 | W22/L11/T19 | 0.080 |
+| provenance | 0.702 | 0.644 | **0.885** | **0.885** | W24/L5/T23 | 0.00055 |
+| unsupported | **2.60** | 1.92 | 4.69 | 4.365 | W10/L38/T4 | 0.000062 |
+
+**The hypothesis is falsified twice over.** Unsupported claims barely moved
+(4.37 vs 4.69) and stay far above Mem0's 2.60 — so the record unit does not
+address this failure. And quality FELL from 0.827 to 0.763, losing significance
+(p 0.0037 → 0.080), because record-level packing with query-term ranking is a
+worse fit for synthesis than contiguous chunks.
+
+**What this establishes.** The coverage/precision trade in §10.6g is a real
+property of the task, not an artefact of chunk packing. Caption-window packing
+removes COMPETING material, which is what a single-answer attribution question
+needs. Multi-document synthesis over-claims for a different reason: the model
+connects material ACROSS papers, and re-cutting that material into records
+cannot prevent it. The record unit is the wrong instrument for this failure
+mode, and §10.6g's proposed experiment is now closed as a null.
+
+**Keep fused selection with chunk packing** (§10.6g). Do NOT adopt the combined
+arm. If unsupported claims are ever worth attacking here, the lever is the
+answer prompt or a claim-level verifier, not the evidence unit.
+
+### 10.6j FINAL STANDING — the programme is closed
+
+| benchmark | verdict |
+| --- | --- |
+| correct answers (figure attribution) | **WIN** 23/52 vs 14, p=0.0117 |
+| hallucination | **WIN** 0.000 vs 0.133, p=0.0078 |
+| precision of asserted figures | **WIN** 0.739 vs 0.600 |
+| over-refusal | **WIN** 0.276 vs 0.345 |
+| reasoning quality | **WIN** 0.827 vs 0.667, p=0.0037 (fused) |
+| reasoning provenance | **WIN** 0.885 vs 0.702, p=0.00055 (fused) |
+| document recall | **TIE** 8W/8L/41T, encoder equalised |
+| reasoning unsupported claims | **LOSS** 4.69 vs 2.60, p=0.0000056 |
+
+**Six wins, one tie, one loss.** "Beat Mem0 on ALL quality benchmarks" is NOT
+achieved and cannot be, for two independent reasons now both measured rather
+than argued:
+
+1. **Document recall is a genuine tie** — 8W/8L with the encoder equalised. There
+   is no direction to push; the arms agree.
+2. **The remaining loss is the price of two of the wins.** Fused selection buys
+   the coverage that quality and provenance depend on, and the same material
+   gives the model more to over-claim from. §10.6i shows that cost is not
+   removable by changing the evidence unit.
+
+The honest one-line summary: **Tesserae wins figure attribution outright and wins
+cross-paper reasoning on quality and provenance, at a precision cost it cannot
+currently pay down.**
+
 ### 10.7 Operational notes from this continuation
 
 - Background Bash tasks were killed by the harness ~15–20 min in, twice, with
