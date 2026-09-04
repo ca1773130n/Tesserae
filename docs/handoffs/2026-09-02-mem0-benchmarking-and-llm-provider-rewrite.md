@@ -1208,3 +1208,76 @@ W14/L24 is a real direction this sample cannot call. "Beat Mem0 on ALL quality
 benchmarks" remains unachieved, and the honest summary of the whole programme is
 that Mem0 and Tesserae sit at different points on one answering/restraint curve;
 no configuration tested dominates on both axes at once.
+
+### 10.6o The claim-level verifier, and why §10.6m/n were both wrong
+
+§10.6i named two levers and §10.6m/n ran one of them. This is the other: a
+CLAIM-LEVEL VERIFIER. After the strict-prompt draft, a second pass reads the
+draft sentence by sentence against the same evidence and returns the indices it
+cannot support; the harness DELETES those sentences and keeps the rest verbatim.
+A filter, not a rewrite — a rewriting verifier can introduce claims of its own,
+and then the thing measured is the verifier's fluency. It fails open: any error
+returns the draft unchanged, so a verifier outage cannot manufacture a win. Run
+on BOTH arms over each arm's own evidence, same 52 questions, same judges
+(`~/.blackhole/Tesserae/2026-09-04/reasoning/h2h_verify.py`).
+
+Both arms were RE-DRAFTED in this run, so the draft column is a control that
+should reproduce §10.6m. That control is the reason this section exists.
+
+| n=52, strict prompt | Mem0 | Tesserae | paired | sign p |
+| --- | --- | --- | --- | --- |
+| draft answered | 0.846 | 0.981 | W7/L0/T45 | 0.016 |
+| draft quality | 0.346 | 0.603 | W32/L5/T15 | 7.4e-06 |
+| draft unsupported | 1.481 | 1.173 | W24/L16/T12 | 0.268 |
+| filtered quality | 0.282 | 0.481 | W31/L8/T13 | 0.00029 |
+| filtered unsupported | 0.942 | 0.731 | W18/L15/T19 | 0.728 |
+
+**The control did not reproduce.** Same configuration, same questions, run twice:
+
+| | §10.6m | this run | |
+| --- | --- | --- | --- |
+| quality (T/M) | 0.635 / 0.327 | 0.603 / 0.346 | reproduces |
+| unsupported (T/M) | 1.558 / 1.346 | 1.173 / 1.481 | **sign flips** |
+
+We were behind by +0.212; we are now ahead by -0.308. Pooling both runs — 104
+draft samples, two independent draws per question per arm — gives unsupported
+W22/L23/T7, **p=1.00**, against quality W37/L5/T10, p=4.4e-07.
+
+**Why: the metric has no test-retest reliability.** Across the two identical
+runs, per question:
+
+| metric | sign agreement | correlation of the T-M difference |
+| --- | --- | --- |
+| quality | 35/52 (67%) | 0.59 |
+| unsupported | 18/52 (35%) | 0.18 |
+
+Per-arm raw stability is r=0.72 (tesserae quality) and r=0.78 (mem0 quality)
+against r=0.19 (tesserae unsupported) and r=0.48 (mem0 unsupported). 35% sign
+agreement is BELOW chance: the two runs disagree about which arm over-claimed
+more often than they agree. The same judges, scoring the same answers in the same
+runs, produce a stable quality number. It is this one metric that does not
+measure.
+
+**So §10.6l's loss and §10.6m/n's tie were the same non-result seen from two
+sides, and §10.6n's "a real direction this sample cannot call" was still too
+generous — there is no direction to call.** An unsupported-claims count produced
+by asking an LLM to list unsupported claims in a freshly generated answer is not
+a per-question measurement at n=52. It cannot be won, by either arm, and adding
+questions does not fix a metric whose test-retest agreement is at chance.
+
+**The verifier itself is a null result and should not ship.** It cuts unsupported
+claims ~38% on both arms (dropping 9.8% of our sentences, 6.8% of Mem0's) and
+costs a fifth of our quality (0.603 -> 0.481) for a difference of p=0.728.
+
+**Standing, corrected: six statistically significant wins, zero losses, and two
+comparisons this instrument cannot adjudicate** (document recall, unsupported
+claims). "Beat Mem0 on ALL quality benchmarks" is still unachieved — a metric
+that does not measure cannot be won — but the programme's one recorded LOSS is
+withdrawn. It was noise, recorded as a finding, twice.
+
+**What would make it decidable**, for whoever picks this up: fix the instrument
+before running another arm. Either average k draft samples per question (a
+k-sample mean of an r=0.19 measure needs k≈10 to reach r≈0.70), or replace the
+free-form count with atomic claim extraction plus a per-claim entailment check
+against the evidence. Both are benchmark engineering, not Tesserae tuning, and
+neither was in scope here.
