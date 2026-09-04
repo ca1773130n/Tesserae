@@ -1165,7 +1165,13 @@ throughout — 8W/8L with the encoder equalised, no direction to push.
 The honest statement is "loses under the shippable prompt, ties under a prompt
 neither arm should ship". Everything else in §10.6l stands.
 
-### 10.6m The answer prompt — the gap closes but does not reverse
+### 10.6n The same run, read more conservatively than §10.6m
+
+§10.6m calls the strict-prompt result a TIE. This section is the same run and
+the same numbers read a step more cautiously: W14/L24 is a direction the sample
+cannot resolve, so "not significant" is not the same as "tied". Both readings
+are defensible and the choice matters only for how the result is quoted — the
+measurements below are identical to §10.6m's.
 
 §10.6k closed the evidence side: document count, record format and their
 combination are all measured out. The one untried lever was the ANSWER PROMPT.
