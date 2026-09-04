@@ -1007,3 +1007,53 @@ not a mystery.
   `compiled-benchmark-graphs-on-disk`, `long-jobs-need-own-session`).
 - Nothing was compiled, nothing was paid for, no process outside this session
   was signalled.
+
+### 10.6i The trade is real — record format does not break the coverage/precision coupling
+
+§10.6g left one hypothesis open: fused selection's over-claiming might come from
+WHAT it packs (undifferentiated chunks) rather than WHICH documents it picks, in
+which case caption-window records over the same documents would recover
+precision without giving up coverage. Tested on the same 52 questions, Mem0's
+answers reused verbatim.
+
+| metric | Mem0 | graph-only | fused | **combined** | p vs Mem0 |
+| --- | --- | --- | --- | --- | --- |
+| answered | 0.962 | 0.962 | 0.962 | 0.981 | 1.00 |
+| quality | 0.667 | 0.577 | **0.827** | 0.763 | 0.080 |
+| provenance | 0.702 | 0.644 | **0.885** | **0.885** | 0.00055 |
+| unsupported | **2.60** | 1.92 | 4.69 | 4.365 | 0.000062 |
+
+**The hypothesis is false.** Unsupported claims moved 4.69 -> 4.37, nowhere near
+Mem0's 2.60, and per-question it was a coin flip against the fused arm (12
+better, 15 worse, 4 tied at the 31-question checkpoint). Quality FELL 0.827 ->
+0.763 and out of significance, so the change cost more than it bought.
+
+**What that identifies.** The §10.6 precision win came from RESTRICTING TO THE
+AUTHORITATIVE DOCUMENT, not from the record unit. Caption-window packing works
+when one document owns the answer (figure attribution); it does nothing once
+four documents share the budget, because the over-claiming is driven by how many
+documents are present, not by how their text is cut. **Coverage and precision
+are coupled through the document count, and record format does not break that
+coupling.** Do not try to fix the §10.6g trade with another packing format.
+
+**Best configuration remains FUSED (§10.6g)**: quality 0.827 (p=0.0037),
+provenance 0.885 (p=0.00055), unsupported 4.69 (p=0.0000056 against us).
+
+### 10.6j Closing standing
+
+| benchmark | verdict |
+| --- | --- |
+| correct answers | **WIN** p=0.0117 |
+| hallucination | **WIN** p=0.0078 |
+| precision of asserted figures | **WIN** |
+| over-refusal | **WIN** |
+| reasoning quality | **WIN** p=0.0037 (fused) |
+| reasoning provenance | **WIN** p=0.00055 (fused) |
+| document recall | **TIE** 8W/8L/41T, encoder equalised |
+| reasoning unsupported claims | **LOSS** p=0.0000056 (fused) |
+
+Six wins, one tie, one loss. "Beat Mem0 on ALL quality benchmarks" is NOT
+achieved, and the remaining loss is not a mystery: it is the measured price of
+the two reasoning wins, and §10.6i rules out the obvious way to avoid paying it.
+The next idea would have to reduce document count without losing coverage —
+which is the same problem §10.2 closed as a null for graph expansion.
