@@ -1164,3 +1164,41 @@ throughout — 8W/8L with the encoder equalised, no direction to push.
 **Revises §10.6l's last row**: the loss is CONFIGURATION-DEPENDENT, not absolute.
 The honest statement is "loses under the shippable prompt, ties under a prompt
 neither arm should ship". Everything else in §10.6l stands.
+
+### 10.6m The answer prompt — the gap closes but does not reverse
+
+§10.6k closed the evidence side: document count, record format and their
+combination are all measured out. The one untried lever was the ANSWER PROMPT.
+Every run to that point used one permissive instruction ("say so rather than
+inventing"), which asks the model not to fabricate but never tells it to stay
+inside what the evidence states.
+
+Harness (`h2h_strict.py`) verified before being recorded: ONE strict prompt,
+BOTH arms re-answered in the same loop, each on its own best evidence, judges
+byte-identical to §10.6e/g. Fair by construction.
+
+| metric | Mem0 permissive | Mem0 strict | Tesserae permissive | **Tesserae strict** | paired | sign p |
+| --- | --- | --- | --- | --- | --- | --- |
+| answered | 0.962 | 0.885 | 0.962 | 0.923 | W6/L4/T42 | 0.75 |
+| quality | 0.667 | 0.327 | 0.827 | **0.635** | W32/L3/T17 | **4.2e-07** |
+| provenance | 0.702 | 0.702 | 0.885 | **0.885** | W24/L5/T23 | **0.00055** |
+| unsupported | 2.596 | **1.346** | 4.692 | 1.558 | W14/L24/T14 | 0.143 |
+
+**The hallucination gap closes but does not reverse.** Ours falls 4.69 → 1.558,
+Mem0's 2.60 → 1.346. We are still behind, but it is **no longer significant**:
+p=0.143 against p=0.0000056 under the permissive prompt. Quality becomes
+overwhelming (0.635 vs 0.327, p=4.2e-07) because Mem0 loses far more from the
+same instruction.
+
+**The cost is real and must be quoted with the win.** The strict prompt HALVED
+Mem0's quality and cut ours by a quarter. Both models say less. This is a
+different operating point, not a free improvement: choosing it means accepting
+0.635 quality instead of 0.827 in exchange for making the hallucination gap
+statistically vanish.
+
+**Standing after five configurations: six wins, one tie, and one loss that is no
+longer statistically distinguishable.** That is NOT the same as winning it —
+W14/L24 is a real direction this sample cannot call. "Beat Mem0 on ALL quality
+benchmarks" remains unachieved, and the honest summary of the whole programme is
+that Mem0 and Tesserae sit at different points on one answering/restraint curve;
+no configuration tested dominates on both axes at once.
