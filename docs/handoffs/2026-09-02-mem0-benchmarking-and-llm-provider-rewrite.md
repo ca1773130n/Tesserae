@@ -1340,3 +1340,102 @@ general retrieval advantage, and this section is what rules that out.
 Mem0 on ALL quality benchmarks" is unachieved and cannot be achieved by tuning:
 one of the two remaining is a tie both arms earn, and the other is not a
 measurement.
+
+### 10.6q The instrument fix, run — better, still short of the bar, and the noise was mostly generation
+
+§10.6o named the fix and did not run it. This section runs it, on the next
+account after the first one hit its weekly limit: ATOMIC CLAIM EXTRACTION plus
+a PER-CLAIM ENTAILMENT check against the evidence, scored TWICE on identical
+text, with the old free-form judge run twice on the same text as a control.
+
+Nothing on disk could be re-scored — every rows file truncates the answer
+(strict 1200 chars, verify 1500), so the text the judges saw is gone. Both arms
+were therefore RE-DRAFTED under the shippable configuration (§10.6h: fused
+document selection + chunk packing, the permissive prompt from `h2h_fused.py`
+verbatim, Mem0 evidence from `mem0_evidence_45.json`, 13,000-char budget, the
+same 52 questions), and this time the full answer and the evidence it saw are
+stored (`~/.blackhole/Tesserae/2026-09-04/reasoning/claim_entail.py`, rows in
+`claim_entail_rows.jsonl`; `--report` re-prints every table below without a
+call). The cache was OFF for the whole run, so scoring B is a fresh draw and
+not a replay of A.
+
+**Pre-registered, before any number was seen:** the instrument counts as
+repaired only if the per-question (T−M) unsupported difference agrees between
+the two scorings with r ≥ 0.70 AND sign agreement ≥ 0.75 on identical text. A
+WIN needs unsupported(T) < unsupported(M) at sign p < 0.05 in BOTH scorings
+with quality holding; the other direction at p < 0.05 in both is a LOSS.
+
+**The controls reproduce §10.6h** — quality and provenance on the fresh drafts:
+
+| n=52 | Mem0 | Tesserae | paired (T vs M) | sign p |
+| --- | --- | --- | --- | --- |
+| answered | 0.904 | 0.981 | W5/L1/T46 | 0.22 |
+| provenance | 0.702 | 0.885 | W24/L5/T23 | 0.00055 |
+| quality | 0.615 | 0.814 | W28/L7/T17 | 0.00051 |
+
+Provenance is deterministic and lands on §10.6h's figures exactly; quality
+(§10.6h: 0.827 vs 0.667) reproduces within a few points on a new generation.
+
+**The instrument, both scorings on the same answers:**
+
+| n=52 | Mem0 | Tesserae | paired (T vs M) | sign p |
+| --- | --- | --- | --- | --- |
+| unsupported claims, scoring A | 10.65 | 11.46 | W23/L26/T3 | 0.78 |
+| unsupported claims, scoring B | 10.44 | 12.35 | W18/L31/T3 | 0.085 |
+| unsupported RATE, A | 0.433 | 0.479 | W23/L29/T0 | 0.49 |
+| unsupported RATE, B | 0.435 | 0.501 | W21/L30/T1 | 0.26 |
+| atomic claims per answer, A / B | 23.9 / 23.1 | 23.8 / 24.8 | W25/L26/T1 | 1.0 |
+| old HALL judge, A (first 30 Qs) | 4.03 | 4.23 | W10/L14/T6 | 0.54 |
+| old HALL judge, B (first 30 Qs) | 4.37 | 4.27 | W12/L13/T5 | 1.0 |
+
+**Same-text repeatability** (scoring A vs B on IDENTICAL answers):
+
+| instrument | n | r of the T−M difference | sign agreement (all / both non-zero) | per-arm r (T / M) | mean \|A−B\| (T / M) |
+| --- | --- | --- | --- | --- | --- |
+| claim-level | 52 | **0.68** | **65%** / 74% (n=46) | 0.74 / 0.75 | 2.69 / 2.90 |
+| old HALL | 30 | 0.61 | 50% / 70% (n=20) | 0.53 / 0.82 | 1.70 / 1.00 |
+
+**Outcome against the pre-registration: NOT repaired, by a hair — r 0.68
+against 0.70, sign agreement 65% against 75% — so no verdict is read from it.**
+It is reported here whichever way it came out, and it would not have been a win
+in any reading: both scorings put Tesserae with MORE unsupported claims (11.46
+vs 10.65, p=0.78; 12.35 vs 10.44, p=0.085). Post-hoc and labelled as such:
+averaging the two scorings (which Spearman–Brown puts at r≈0.81) gives 11.90 vs
+10.55, W19/L31/T2, p=0.119, mean difference +1.36 ± 1.67 (95% CI); the rate
+reads 0.490 vs 0.434, p=0.49. Not significant, and every reading leans against
+us.
+
+**Where the noise lives — and this is the part §10.6o could not answer.** The
+old judge scoring the SAME text twice agrees at r=0.61 (n=30), against r=0.18
+when the same configuration was DRAFTED twice (§10.6o, n=52, strict prompt).
+The confounds are real (n, prompt) but the gap is not subtle: most of the
+cross-run disagreement was the GENERATION — how much a fresh answer over-claims
+varies from draft to draft — not the judge. Two consequences. A better judge
+alone cannot make this column decidable; the claim-level instrument is more
+repeatable per arm (0.74 / 0.75) and still misses the bar on the difference.
+And the only thing that can decide it is k drafts per question averaged, which
+§10.6o estimated at k≈10 and this run did not attempt (it would be ~5× the
+calls, for a column whose best estimate leans the wrong way).
+
+**What both arms actually do, seen with the finer instrument.** ~24 atomic
+claims per answer on both arms, ~45% of them not stated in the evidence — on
+both arms. The free-form judge, asked to "list" and capped at 8, reports ~4:
+it undercounts by roughly 3×, which is why every earlier unsupported figure in
+this document is small. Within Tesserae, unsupported claims rise with quality
+(r=0.45 across questions) and with coverage: on the 40 questions where fused
+selection holds BOTH gold documents it is 13.2 vs Mem0's 10.8, on the 12 where
+it misses one it is 7.8 vs 9.7. That is §10.6i's coupling seen again, one level
+down — the answers that earn the quality and provenance wins are the ones that
+assert more, and more of it unsupported. Harness notes: 4 rows hit the 40-claim
+cap (1 ours, 3 Mem0's), 2 entailment replies in scoring A came back with the
+wrong length and were padded as SUPPORTED (never as unsupported); ~1,160 Claude
+CLI calls, no paid API, one rolling usage window hit mid-run and resumed from
+the rows file.
+
+**Standing: six statistically significant wins, zero losses, one genuine tie
+(document recall), one comparison that is still not adjudicable at n=52 with
+one draft per question — and whose every reading with the better instrument
+leans against us.** "Beat Mem0 on ALL quality benchmarks" is unmet, and this
+section closes the last lever the programme had named. The next person should
+not relaunch this without k ≥ 5 drafts per question; nothing cheaper can move
+it.
