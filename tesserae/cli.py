@@ -6951,6 +6951,59 @@ def _handle_graph_repair(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_verify_attribution_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae verify-attribution",
+        description=(
+            "Is each figure an answer reports attributed to the system and benchmark "
+            "the question asked about? (the verify_attribution MCP tool as a CLI "
+            "verb; JSON out). Deterministic — no LLM, no graph, no project: a pure "
+            "function of the answer, the evidence and the two names. It finds each "
+            "figure in the evidence and checks whose RECORD (blank-line-delimited "
+            "table row or paragraph) it sits in, and whether that document mentions "
+            "the benchmark at all — the hallucination a coverage check cannot see."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "reasons:\n"
+            "  attributed                          every figure sits in the subject's own record\n"
+            "  figure_attributed_to_other_subject  a real figure, somebody else's row or sentence\n"
+            "  benchmark_absent_from_source_paper  right system, its document never names the benchmark\n"
+            "  figure_absent_from_evidence         the number is not in the evidence at all\n"
+            "  no_checkable_figure                 the answer reports no number\n"
+            "  subject_name_uncheckable /          a name with no identity tokens; the check\n"
+            "  benchmark_name_uncheckable            cannot run (flagged=false)\n"
+            "\n"
+            "flagged=true means ownership could not be confirmed, not that the figure is\n"
+            "false. exit 0 = checked (flagged or not), 2 = could not check.\n"
+            "\n"
+            "examples:\n"
+            "  tesserae verify-attribution -s SystemX -o BenchY \\\n"
+            "      --answer 'SystemX scores 91.4 on BenchY.' --evidence \"$(cat evidence.txt)\"\n"
+        ),
+    )
+    parser.add_argument("-s", "--subject", required=True, help="The system the question asks about.")
+    parser.add_argument("-o", "--object", dest="object_", required=True, help="The benchmark or dataset the question asks about.")
+    parser.add_argument("--answer", required=True, help="The answer text to check.")
+    parser.add_argument("--evidence", required=True, help="The evidence the answer was written from ('[Title]' blocks, blank-line records).")
+    parser.set_defaults(_handler="_handle_verify_attribution")
+    return parser
+
+
+def _route_verify_attribution(rest: List[str]) -> int:
+    args = _build_verify_attribution_parser().parse_args(rest)
+    return _resolve_handler("_handle_verify_attribution")(args)
+
+
+def _handle_verify_attribution(args: argparse.Namespace) -> int:
+    from .verify_answer import check_attribution
+
+    out = check_attribution(args.answer, args.evidence, subject=args.subject, obj=args.object_)
+    print(json.dumps(out, ensure_ascii=False, sort_keys=True))
+    # Could-not-check is the only non-zero exit, as for verify-claim: a flag is an answer.
+    return 2 if str(out.get("reason", "")).endswith("_uncheckable") else 0
+
+
 def _route_verify_claim(rest: List[str]) -> int:
     args = _build_verify_claim_parser().parse_args(rest)
     return _resolve_handler("_handle_verify_claim")(args)
@@ -7260,6 +7313,8 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "charter-route": _route_charter_route,
     # verify_claim MCP tool exposed as a CLI verb for non-MCP callers
     "verify-claim": _route_verify_claim,
+    # verify_attribution MCP tool exposed as a CLI verb for non-MCP callers
+    "verify-attribution": _route_verify_attribution,
     "graph-repair": _route_graph_repair,
     # layered agent KG (Phase 2): per-agent L1 distillation
     "distill": _route_distill,

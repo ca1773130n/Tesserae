@@ -162,6 +162,11 @@ where each occurs in the evidence, check whose record it sits in.
 **Not shipped.** Unresolved: it is a *general* RAG checker — it improves Mem0's
 answers too, so it is not by itself a Tesserae differentiator.
 
+**Shipped 2026-09-06** as `verify_answer.check_attribution`, the `verify_attribution`
+MCP tool and the `verify-attribution` CLI verb (branch `feat/verify-attribution`),
+minus the graph advisory, plus a refusal for names with no identity tokens (audit
+probe P6). Being general is why it ships: it is a check any answer can use.
+
 **Discarded deliberately:** `verify_claim("evaluated_on")` separated true from
 false premises 60/60 and 0/40 — perfect, and perfectly circular, because the
 question set was built from those very edges. Never claim it.

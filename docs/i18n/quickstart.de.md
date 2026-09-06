@@ -35,6 +35,7 @@ ANALYSIS
   query         raw retrieval: BM25/semantic + explicit backends
   graph-map     Budgeted Descent navigation (the graph_map tool as a CLI verb; JSON out)
   verify-claim  Does the graph license this triple? Deterministic verdict, JSON out
+  verify-attribution  Is each figure in an answer attributed to the right system and benchmark? No graph, JSON out
   schema-drift  Propose ResearchNodeType sub-types from clustered nodes (proposals only; promotion is a human edit)
   lint          Graph lint report (--fix-trivial, --severity, --json)
   doctor        Health checks: init/graph/registry/staleness/locks (--fix = safe repairs only)

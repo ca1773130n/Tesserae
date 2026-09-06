@@ -170,3 +170,108 @@ def test_the_band_is_the_measured_one():
     assert (UNCERTAIN_LOW, UNCERTAIN_HIGH) == (0.30, 0.70)
     assert UNCERTAIN_LOW < DEFAULT_COVERAGE < UNCERTAIN_HIGH, \
         "the band must straddle the threshold it exists to second-guess"
+
+
+# --- attribution: the figure is real, the sentence is grounded, the OWNER is wrong -----
+#
+# Coverage checking passes a misattributed figure — every token of "SystemX scored
+# 91.4 on BenchY" is in the evidence when 91.4 sits in SystemZ's row. Built and
+# audited 2026-09-01 (handoff §4.6): 14/15 hallucinations caught across both
+# arms, 4 false alarms in 33 true answers, verdicts byte-identical with the
+# graph absent. Ownership lives in the RECORD (the \n\n-delimited table row or
+# paragraph) and the benchmark in the packed document ("[Title]\n..." block).
+
+ATTR_EVIDENCE = (
+    "[Paper Alpha]\nWe evaluate every method on BenchY under the standard split.\n\n"
+    "| Method | BenchY |\n| SystemZ | 91.4 |\n\n"
+    "| SystemX | 88.0 |\n\n"
+    "[Paper Beta]\nSystemX reaches 77.2 on BenchQ in our runs.\n\n"
+    "[Paper Gamma]\nSystemX is our model. On BenchY, our method achieves 93.1.\n"
+)
+
+
+def _attr(answer, subject="SystemX", obj="BenchY", evidence=ATTR_EVIDENCE):
+    from tesserae.verify_answer import check_attribution
+    return check_attribution(answer, evidence, subject=subject, obj=obj)
+
+
+def test_a_figure_in_the_subjects_own_record_is_attributed():
+    r = _attr("SystemX scores 88.0 on BenchY.")
+    assert r["flagged"] is False and r["reason"] == "attributed"
+    assert r["detail"]["checked_figures"] == ["88.0"]
+
+
+def test_a_real_figure_lifted_from_another_systems_row_is_flagged():
+    """The coverage check cannot see this: every token is in the evidence."""
+    r = _attr("SystemX scores 91.4 on BenchY.")
+    assert r["flagged"] is True and r["reason"] == "figure_attributed_to_other_subject"
+    fig = r["detail"]["figures"][0]
+    assert fig["subject_local"] is False and "SystemZ" in fig["competing"]
+
+
+def test_right_system_wrong_benchmark_is_flagged():
+    """The subject-only shape misses this one: SystemX's real BenchQ number,
+    re-labelled BenchY. The paper that holds the record never says BenchY."""
+    r = _attr("SystemX scores 77.2 on BenchY.")
+    assert r["flagged"] is True and r["reason"] == "benchmark_absent_from_source_paper"
+
+
+def test_a_figure_absent_from_the_evidence_is_the_worst_verdict():
+    r = _attr("SystemX scores 99.9 on BenchY.")
+    assert r["flagged"] is True and r["reason"] == "figure_absent_from_evidence"
+
+
+def test_an_answer_without_a_figure_is_not_checkable_and_not_flagged():
+    r = _attr("SystemX is strong on BenchY.")
+    assert r["flagged"] is False and r["reason"] == "no_checkable_figure"
+
+
+def test_self_reference_binds_our_to_the_papers_own_system():
+    """A results row labelled "our method" belongs to the system the paper is
+    about; naive record matching would call it somebody else's."""
+    r = _attr("SystemX scores 93.1 on BenchY.")
+    assert r["flagged"] is False and r["reason"] == "attributed"
+    assert r["detail"]["figures"][0]["self_referential"] is True
+
+
+def test_the_worst_figure_decides_and_is_named():
+    r = _attr("SystemX scores 88.0 on BenchY, up from 91.4 last year.")
+    assert r["flagged"] is True and r["reason"] == "figure_attributed_to_other_subject"
+    assert r["detail"]["deciding_figure"] == "91.4"
+
+
+def test_a_name_with_no_identity_tokens_is_uncheckable_not_flagged():
+    """Audit probe P6: a name that vanishes under generic-token stripping
+    matches nothing, so the un-audited script auto-flagged it. Refuse instead."""
+    r = _attr("The dataset scores 88.0 on BenchY.", subject="The Dataset")
+    assert r["flagged"] is False and r["reason"] == "subject_name_uncheckable"
+    r = _attr("SystemX scores 88.0 on the benchmark.", obj="The Benchmark")
+    assert r["flagged"] is False and r["reason"] == "benchmark_name_uncheckable"
+
+
+def test_verify_attribution_is_an_mcp_tool_and_a_cli_verb(capsys):
+    """Agents reach it over MCP; Agented reaches it over the CLI — same bytes."""
+    import json
+
+    import tesserae.cli as cli
+    from tesserae.cli import _NEW_DISPATCH
+    from tesserae.cli_tree import KNOWN_COMMANDS
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    server = LLMWikiMCPServer()
+    assert "verify_attribution" in {t["name"] for t in server.list_tools()}
+    from_mcp = server.call_tool("verify_attribution", {
+        "answer": "SystemX scores 91.4 on BenchY.", "evidence": ATTR_EVIDENCE,
+        "subject": "SystemX", "object": "BenchY"})
+    assert from_mcp["flagged"] is True
+
+    assert "verify-attribution" in _NEW_DISPATCH and "verify-attribution" in KNOWN_COMMANDS
+    rc = cli.main(["verify-attribution", "-s", "SystemX", "-o", "BenchY",
+                   "--answer", "SystemX scores 91.4 on BenchY.", "--evidence", ATTR_EVIDENCE])
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == from_mcp
+
+    rc = cli.main(["verify-attribution", "-s", "The Dataset", "-o", "BenchY",
+                   "--answer", "It scores 88.0.", "--evidence", ATTR_EVIDENCE])
+    assert rc == 2, "could-not-check is the only non-zero exit, as for verify-claim"
+    assert json.loads(capsys.readouterr().out)["reason"] == "subject_name_uncheckable"

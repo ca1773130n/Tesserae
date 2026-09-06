@@ -228,6 +228,7 @@ opciones.
 | `tesserae context "<p>"` | Documento de contexto citado bajo demanda vía PPR dentro de `--budget`. Reserva un hueco para memoria **procedimental** —qué se ejecutó y en qué acabó— cuando el grafo tiene procedencia que lo justifique. |
 | `tesserae graph-map` | Budgeted Descent: recorrer de arriba abajo por ámbito, no por término de búsqueda. `--scope org:root` para el árbol organizativo de agentes. |
 | `tesserae verify-claim` | Veredicto determinista sobre si el grafo autoriza una tripleta. Salida JSON. |
+| `tesserae verify-attribution` | ¿Cada cifra de una respuesta se atribuye al sistema y benchmark correctos? Sin grafo, salida JSON. |
 | `tesserae engine [--all]` | Demonio de refresco supervisado: observar, amortiguar, recompilar y consolidar memoria de agentes en reposo (el ciclo de sueño; `--no-consolidate` lo desactiva). `--all` mantiene al día todos los proyectos registrados en un solo proceso. |
 | `tesserae refresh` | De una vez: importar sesiones nuevas → compilar → sincronizar bóveda. |
 | `tesserae agents …` | `init` (inferir la organización) · `tree` · `show` · `drill`: las herramientas de memoria por capas. |

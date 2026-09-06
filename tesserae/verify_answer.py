@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 SUPPORTED = "SUPPORTED"
 UNSUPPORTED = "UNSUPPORTED"
@@ -254,3 +254,197 @@ def separation(matched: Sequence[float], mismatched: Sequence[float]) -> Dict[st
         "matched_mean": sum(matched) / len(matched),
         "mismatched_mean": sum(mismatched) / len(mismatched),
     }
+
+
+# --- attribution: the figure is real, the sentence is grounded, the OWNER is wrong ---------
+#
+# ``check_against_evidence`` asks whether an answer is built from its evidence.
+# Measured on false-premise questions it flagged 0 of 3 hallucinations, not
+# because it is broken but because these hallucinations do not fail that
+# question: the model lifts a REAL number out of a nearby passage and
+# re-attributes it, so every token is present. The right axis is OWNERSHIP,
+# and papers make it syntactically explicit in two shapes that survive the
+# markdown conversion as blank-line-delimited RECORDS — a table row (label
+# first, numbers after) and a prose sentence naming system and number
+# together. A fixed +/- N-char window would span a dozen table rows and make
+# every system "co-located" with every number; the record is the unit.
+#
+# Built and audited 2026-09-01 (handoff §4.6): 14/15 hallucinations caught
+# across both benchmark arms, 4 false alarms in 33 true answers; verdicts are
+# byte-identical with the graph absent, and a subject swap with answer and
+# evidence frozen flips the verdict both ways. The graph-advisory half of the
+# audited script is deliberately NOT ported: it read exactly the edges the
+# question set was built from, so it was perfect and perfectly circular.
+
+_ATTR_GENERIC = frozenset({
+    "the", "a", "an", "of", "to", "on", "in", "and", "or", "for", "with", "by",
+    "benchmark", "benchmarks", "dataset", "datasets", "data", "set", "sets",
+    "table", "figure", "test", "suite", "task", "tasks", "evaluation", "eval",
+    "results", "result", "score", "scores", "split", "version", "full",
+})
+_ATTR_SELF_REF = re.compile(r"\b(our|ours|we|us)\b|\(\s*ours?\s*\)", re.I)
+_ATTR_DECIMAL = re.compile(r"(?<![\w.])(\d{1,4}\.\d+)(?![\w.])")
+_ATTR_PCT_INT = re.compile(r"(?<![\w.])(\d{1,3})\s?%")
+_ATTR_MIN_TOKEN_COVERAGE = 0.6
+ATTRIBUTION_REASONS = (
+    "attributed",
+    "figure_attributed_to_other_subject",
+    "benchmark_absent_from_source_paper",
+    "figure_absent_from_evidence",
+    "no_checkable_figure",
+    "subject_name_uncheckable",
+    "benchmark_name_uncheckable",
+)
+
+
+def _attr_norm(s: str) -> str:
+    return " " + re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip() + " "
+
+
+def _attr_tokens(name: str) -> List[str]:
+    return [t for t in _attr_norm(name).split() if t not in _ATTR_GENERIC and len(t) > 1]
+
+
+def _attr_names(name: str, text: str) -> bool:
+    """Does ``text`` name ``name``? Whole normalised string, else token coverage.
+
+    Coverage exists for scaffolded names ("MTEB benchmark" matches "MTEB"),
+    not to buy fuzzy recall: 60% of the identity-bearing tokens, so "LRS2"
+    never matches "MVTec AD".
+    """
+    ntext = _attr_norm(text)
+    if _attr_norm(name).strip() and _attr_norm(name) in ntext:
+        return True
+    toks = _attr_tokens(name)
+    if not toks:
+        return False
+    hit = sum(1 for t in toks if f" {t} " in ntext)
+    return hit / len(toks) >= _ATTR_MIN_TOKEN_COVERAGE
+
+
+def _attr_figures(answer: str, subject: str, obj: str) -> List[str]:
+    """Reported figures the answer asserts, in order of first appearance. Digits
+    that are part of the system's or benchmark's own name are identity, not
+    measurement, and are dropped."""
+    banned = set(re.findall(r"\d+(?:\.\d+)?", f"{subject} {obj}"))
+    out: List[str] = []
+    for m in list(_ATTR_DECIMAL.finditer(answer)) + list(_ATTR_PCT_INT.finditer(answer)):
+        f = m.group(1)
+        if f in banned or f in out:
+            continue
+        out.append(f)
+    return out
+
+
+def _attr_blocks(evidence: str) -> List[Tuple[int, int, str]]:
+    """``(start, end, title)`` per packed document — "[Title]\\n..." blocks joined
+    by a blank line, as the context bundle emits them. No titles: one block."""
+    heads = [(m.start(), m.group(1)) for m in
+             re.finditer(r"(?:\A|\n\n)\[([^\]\n]+)\]\n", evidence)]
+    if not heads:
+        return [(0, len(evidence), "")]
+    out = []
+    for i, (pos, title) in enumerate(heads):
+        end = heads[i + 1][0] if i + 1 < len(heads) else len(evidence)
+        out.append((pos, end, title))
+    return out
+
+
+def _attr_record(evidence: str, at: int) -> Tuple[int, int]:
+    a = evidence.rfind("\n\n", 0, at)
+    a = 0 if a < 0 else a + 2
+    b = evidence.find("\n\n", at)
+    b = len(evidence) if b < 0 else b
+    return a, b
+
+
+def _attr_competing(record: str, at_in_record: int, subject: str) -> List[str]:
+    """Capitalised / acronym names the record puts near the figure that are NOT
+    the subject. Reported for the reader; never used to decide."""
+    seg = record[max(0, at_in_record - 260):at_in_record + 60]
+    cands = re.findall(r"\b(?:[A-Z][A-Za-z0-9]*(?:[-+][A-Za-z0-9]+)*"
+                       r"(?:\s+[A-Z][A-Za-z0-9]+)?)\b", seg)
+    stop = {"The", "This", "We", "Our", "Ours", "In", "Table", "Figure", "It",
+            "Method", "Model", "Models", "Results", "Source", "And", "As", "A"}
+    out: List[str] = []
+    for c in cands:
+        c = c.strip()
+        if not c or c in stop or len(c) < 3:
+            continue
+        if _attr_names(c, subject) or _attr_names(subject, c):
+            continue
+        if c not in out:
+            out.append(c)
+    return out[:5]
+
+
+def check_attribution(answer: str, evidence: str, *, subject: str, obj: str) -> Dict[str, Any]:
+    """Is each figure the answer reports attributed to ``subject`` on ``obj``?
+
+    Flags MISATTRIBUTION, not absence of grounding: a figure that occurs in the
+    evidence but whose record belongs to somebody else, or whose document never
+    mentions the benchmark asked about. Deterministic — a pure function of the
+    three strings. Returns ``{"flagged", "reason", "detail"}``; ``reason`` is
+    one of :data:`ATTRIBUTION_REASONS` and ``detail["figures"]`` carries the
+    deciding record per figure so a reader can see what was looked at. A flag
+    means ownership could not be confirmed, not that the figure is false.
+
+    A name with no identity-bearing tokens ("The Dataset") matches nothing and
+    would flag every answer (audit probe P6); those are refused as
+    ``*_uncheckable`` with ``flagged`` False — could-not-check is not a flag.
+    """
+    detail: Dict[str, Any] = {"subject": subject, "object": obj, "figures": []}
+    if not _attr_tokens(subject):
+        return {"flagged": False, "reason": "subject_name_uncheckable", "detail": detail}
+    if not _attr_tokens(obj):
+        return {"flagged": False, "reason": "benchmark_name_uncheckable", "detail": detail}
+    figs = _attr_figures(answer or "", subject, obj)
+    detail["checked_figures"] = figs
+    if not figs:
+        return {"flagged": False, "reason": "no_checkable_figure", "detail": detail}
+
+    evidence = evidence or ""
+    blocks = _attr_blocks(evidence)
+    worst: Optional[Tuple[Optional[str], int, str]] = None
+    for fig in figs:
+        occ = list(re.finditer(r"(?<![\d.])" + re.escape(fig) + r"(?![\d])", evidence))
+        best: Dict[str, Any] = {
+            "figure": fig, "occurrences": len(occ), "subject_local": False,
+            "benchmark_in_paper": False, "record_label": None, "block_title": None,
+            "self_referential": False, "competing": [],
+        }
+        for m in occ:
+            a, b = _attr_record(evidence, m.start())
+            rec = evidence[a:b]
+            blk = next((t for s, e, t in blocks if s <= m.start() < e), "")
+            body = next((evidence[s:e] for s, e, t in blocks if s <= m.start() < e), evidence)
+            self_ref = bool(_ATTR_SELF_REF.search(rec))
+            # "our method" in a paper that is about the subject IS the subject.
+            subj_local = _attr_names(subject, rec) or (self_ref and _attr_names(subject, body))
+            cand: Dict[str, Any] = {
+                "figure": fig, "occurrences": len(occ),
+                "subject_local": subj_local, "benchmark_in_paper": _attr_names(obj, body),
+                "record_label": rec.strip().split("\n")[0].strip()[:120], "block_title": blk,
+                "self_referential": self_ref,
+                "competing": [] if subj_local else _attr_competing(rec, m.start() - a, subject),
+            }
+            if (cand["subject_local"], cand["benchmark_in_paper"]) > \
+               (best["subject_local"], best["benchmark_in_paper"]):
+                best = cand
+            elif best["record_label"] is None:
+                best = cand
+        detail["figures"].append(best)
+        if not occ:
+            verdict: Tuple[Optional[str], int] = ("figure_absent_from_evidence", 3)
+        elif not best["subject_local"]:
+            verdict = ("figure_attributed_to_other_subject", 2)
+        elif not best["benchmark_in_paper"]:
+            verdict = ("benchmark_absent_from_source_paper", 1)
+        else:
+            verdict = (None, 0)
+        if worst is None or verdict[1] > worst[1]:
+            worst = (verdict[0], verdict[1], fig)
+    if worst and worst[0]:
+        detail["deciding_figure"] = worst[2]
+        return {"flagged": True, "reason": worst[0], "detail": detail}
+    return {"flagged": False, "reason": "attributed", "detail": detail}
