@@ -216,6 +216,7 @@ Run `tesserae --help` for the grouped list, `tesserae <cmd> --help` for flags.
 | `tesserae context "<q>"` | On-demand cited context doc via PPR under `--budget`. Reserves a slot for **procedural** memory — what was actually run and what came of it — when the graph has provenance to earn it. |
 | `tesserae graph-map` | Budgeted Descent: walk the graph top-down by scope rather than by search term. `--scope org:root` for the agent org tree. |
 | `tesserae verify-claim` | Deterministic verdict on whether the graph licenses a triple. JSON out. |
+| `tesserae verify-attribution` | Is each figure in an answer attributed to the right system and benchmark? No graph, JSON out. |
 | `tesserae engine [--all]` | Supervised refresh daemon — watch, debounce, recompile, and consolidate agent memory on idle (the sleep cycle; `--no-consolidate` to disable). `--all` keeps every registered project fresh in one process. |
 | `tesserae refresh` | One-shot: import new sessions → compile → sync vault. |
 | `tesserae agents …` | `init` (infer the org) · `tree` · `show` · `drill` — the layered-memory org tools. |

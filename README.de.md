@@ -231,6 +231,7 @@ Optionen.
 | `tesserae context "<F>"` | Belegtes Kontextdokument auf Abruf per PPR unter `--budget`. Reserviert einen Platz für **prozedurales** Gedächtnis — was tatsächlich ausgeführt wurde und was dabei herauskam — sofern der Graph die Provenienz dafür hat. |
 | `tesserae graph-map` | Budgeted Descent: von oben nach unten nach Bereich statt nach Suchbegriff. `--scope org:root` für den Agenten-Organisationsbaum. |
 | `tesserae verify-claim` | Deterministisches Urteil, ob der Graph ein Tripel zulässt. JSON-Ausgabe. |
+| `tesserae verify-attribution` | Ist jede Zahl in einer Antwort dem richtigen System und Benchmark zugeordnet? Ohne Graph, JSON-Ausgabe. |
 | `tesserae engine [--all]` | Überwachter Refresh-Daemon — beobachten, entprellen, neu kompilieren und im Leerlauf das Agent-Gedächtnis konsolidieren (der Schlafzyklus; `--no-consolidate` schaltet ihn ab). `--all` hält jedes registrierte Projekt in einem Prozess aktuell. |
 | `tesserae refresh` | Einmalig: neue Sitzungen importieren → kompilieren → Vault synchronisieren. |
 | `tesserae agents …` | `init` (Organisation ableiten) · `tree` · `show` · `drill` — die Werkzeuge des geschichteten Gedächtnisses. |
