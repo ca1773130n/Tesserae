@@ -1465,6 +1465,10 @@ class CodexCLIJsonClient:
         else:
             self.codex_homes = discovered or [str(home / ".codex")]
         self.timeout = int(timeout) if timeout is not None else None
+        #: Set once every home is a proven dead end (out of quota, or logged
+        #: out). Per instance, same guard as ClaudeCLIJsonClient: the next call
+        #: spawns nothing instead of paying the full rotation again.
+        self._accounts_exhausted = False
 
     def _run_prompt(
         self,
@@ -1498,6 +1502,9 @@ class CodexCLIJsonClient:
         import tempfile as _tempfile
         from pathlib import Path as _Path
 
+        if self._accounts_exhausted:
+            _note_failure("exhausted")
+            return None
         last_error: Optional[Exception] = None
         timed_out = False
         # An auth/binary failure is NOT transient: with an expired OAuth token
@@ -1511,6 +1518,10 @@ class CodexCLIJsonClient:
         # env without CODEX_HOME rotates over every ``~/.codex*`` directory,
         # and one stale directory must not cancel the retry for a healthy one.
         logged_out_homes: set[str] = set()
+        # Out of credit / past the usage window. A dead end like logged-out —
+        # the reply is the same on every retry — but NOT an auth failure, and
+        # the verdict it earns is ``exhausted``, which the provider chain acts on.
+        exhausted_homes: set[str] = set()
         binary_missing = False
         # True only while EVERY home tried has answered "not logged in" — the
         # same all-or-nothing rule the Claude client uses, so a capacity failure
@@ -1526,9 +1537,10 @@ class CodexCLIJsonClient:
         # before we sleep and start over on the same set.
         for attempt in range(_TRANSPORT_RETRIES + 1):
             for codex_home in self.codex_homes:
-                if codex_home in logged_out_homes:
-                    # It answered "not logged in" on an earlier attempt and will
-                    # answer the same now. Don't pay another spawn for it.
+                if codex_home in logged_out_homes or codex_home in exhausted_homes:
+                    # It answered "not logged in" / "hit your usage limit" on an
+                    # earlier attempt and will answer the same now. Don't pay
+                    # another spawn for it.
                     continue
                 with _tempfile.NamedTemporaryFile(
                     "w+", suffix=".txt", delete=False, encoding="utf-8"
@@ -1566,8 +1578,12 @@ class CodexCLIJsonClient:
                         # Keep rotating (a later home may be logged in); THIS
                         # home is then skipped for the rest of the call, and
                         # only an all-homes-logged-out rotation stops the retry.
-                        if "not logged in" in f"{stderr_text}\n{stdout_text}".lower():
+                        combined = f"{stderr_text}\n{stdout_text}".lower()
+                        if "not logged in" in combined:
                             logged_out_homes.add(codex_home)
+                        elif _is_quota_exhaustion(last_error):
+                            exhausted_homes.add(codex_home)
+                            auth_only = False
                         else:
                             auth_only = False
                         continue
@@ -1646,10 +1662,30 @@ class CodexCLIJsonClient:
                 or binary_missing
                 or budget_spent
                 or attempt >= _TRANSPORT_RETRIES
-                or len(logged_out_homes) == len(self.codex_homes)
+                or len(logged_out_homes) + len(exhausted_homes) == len(self.codex_homes)
             ):
                 break
             time.sleep(backoff)
+        if exhausted_homes and len(logged_out_homes) + len(exhausted_homes) == len(self.codex_homes):
+            # Every home is a dead end and at least one is out of quota: the
+            # verdict ClaudeCLIJsonClient gives in the same situation, so the
+            # provider chain and the per-document diagnosis can act on it.
+            # Before this it was reported as ``unavailable`` after 3 attempts
+            # over every home — ~55 s per call, and nothing ever fell through
+            # to a logged-in Claude.
+            self._accounts_exhausted = True
+            _note_failure("exhausted")
+            logger.warning(
+                "%s — every CODEX_HOME tried (%d) is out of quota or logged out; no "
+                "further codex calls this run. The next configured provider is tried "
+                "when there is one, otherwise remaining documents use deterministic "
+                "extraction. Buy credit or wait for the window, then re-run "
+                "`compile --changed-only --retry-fallbacks`. Last: %s",
+                error_label,
+                len(self.codex_homes),
+                last_error,
+            )
+            return None
         if last_error is not None:
             # ONE record per call, not one per attempt: three attempts across
             # 137 docs would drown the compile output. Say plainly which
@@ -2313,10 +2349,14 @@ def build_default_json_client(
     if not _endpoint_contract or settings.get("allow_fallback"):
         chain = chain + _fallbacks[resolved_provider]
 
-    for builder in chain:
-        client = builder()
-        if client is not None:
-            return client
+    clients = [client for client in (builder() for builder in chain) if client is not None]
+    if clients:
+        # Every backend the chain could build, tried IN ORDER AT CALL TIME: the
+        # primary answers unless it is exhausted, then the next one. Returning
+        # only the first buildable client made the chain a construction-time
+        # preference — an out-of-credit codex was still "available", so every
+        # call returned None after ~55 s while a logged-in claude was never asked.
+        return clients[0] if len(clients) == 1 else CompositeCLIClient(clients)
     if _endpoint_contract:
         raise LLMProviderConfigError(
             f"provider={resolved_provider} style={resolved_style} "

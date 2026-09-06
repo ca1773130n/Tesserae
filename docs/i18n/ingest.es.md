@@ -58,6 +58,8 @@ Con el proveedor `claude`, Tesserae rota entre tus cuentas de Claude CLI con ses
 iniciada: una cuenta que alcanza su límite cede el paso a la siguiente en lugar de
 perder el resto de la ejecución en extracción determinista. Por defecto detecta
 automáticamente todos los directorios `~/.claude*`.
+Si además está instalado el CLI `codex`, un proveedor cuyas cuentas han agotado
+todas su cuota cede la llamada al otro proveedor en lugar de no devolver nada.
 
 El proveedor **codex** funciona igual: rota entre los directorios `~/.codex*`
 autenticados (un directorio solo cuenta si contiene `auth.json`) y se configura con

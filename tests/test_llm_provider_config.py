@@ -22,6 +22,13 @@ from pathlib import Path
 import pytest
 
 
+def _primary(client):
+    """The backend the builder PREFERRED. With more than one backend built,
+    build_default_json_client returns a CompositeCLIClient that tries them in
+    order at call time; these tests pin the order, not the wrapper."""
+    return getattr(client, "clients", [client])[0]
+
+
 def _isolate_env(monkeypatch):
     monkeypatch.delenv("TESSERAE_LLM_PROVIDER", raising=False)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
@@ -78,13 +85,13 @@ def test_build_json_client_honors_config_provider(tmp_path: Path, monkeypatch):
     wiki = ProjectWiki.init(
         tmp_path, name="llm-codex", llm_provider="codex", llm_codex_home="/x/codex"
     )
-    client = wiki._build_json_client()
+    client = _primary(wiki._build_json_client())
     assert isinstance(client, lj.CodexCLIJsonClient)
     assert client.codex_homes == ["/x/codex"]
 
     # env (i.e. CLI flag) beats the persisted config
     monkeypatch.setenv("TESSERAE_LLM_PROVIDER", "claude")
-    client = wiki._build_json_client()
+    client = _primary(wiki._build_json_client())
     assert isinstance(client, lj.ClaudeCLIJsonClient)
 
 
@@ -97,7 +104,7 @@ def test_build_json_client_defaults_to_claude_without_config(tmp_path: Path, mon
     monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
 
     wiki = ProjectWiki.init(tmp_path, name="llm-default")
-    client = wiki._build_json_client()
+    client = _primary(wiki._build_json_client())
     assert isinstance(client, lj.ClaudeCLIJsonClient)
 
 
@@ -223,7 +230,7 @@ def test_build_json_client_uses_global_when_project_silent(tmp_path: Path, monke
     monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", global_cfg)
 
     wiki = ProjectWiki.init(tmp_path / "proj", name="global-llm")
-    client = wiki._build_json_client()
+    client = _primary(wiki._build_json_client())
     assert isinstance(client, lj.CodexCLIJsonClient)
     assert client.codex_homes == ["/g/.codex-personal1"]
 
@@ -440,7 +447,7 @@ def test_build_default_custom_provider_uses_configured_endpoint(tmp_path: Path, 
     )
 
     # provider comes from config alone — no arg, no env var
-    client = lj.build_default_json_client()
+    client = _primary(lj.build_default_json_client())
     assert isinstance(client, lj.AnthropicLLMJsonClient)
     assert client.model == "glm-4.7"
     assert client.base_url == "https://llm.example.com/api"
@@ -558,13 +565,13 @@ def test_build_default_threads_endpoint_to_claude_cli_only_with_base_url(
         monkeypatch,
         {"llm_base_url": "https://llm.example.com/api", "llm_api_key": "sk-cfg"},
     )
-    client = lj.build_default_json_client()
+    client = _primary(lj.build_default_json_client())
     assert isinstance(client, lj.ClaudeCLIJsonClient)
     assert client.base_url == "https://llm.example.com/api"
     assert client.api_key == "sk-cfg"
 
     _write_global_cfg(tmp_path, monkeypatch, {"llm_api_key": "sk-cfg"})
-    client = lj.build_default_json_client()
+    client = _primary(lj.build_default_json_client())
     assert isinstance(client, lj.ClaudeCLIJsonClient)
     assert client.base_url is None
     assert client.api_key is None
@@ -607,7 +614,7 @@ def test_project_endpoint_config_reaches_the_built_client(tmp_path: Path, monkey
     )
     wiki.paths.config.write_text(json.dumps(cfg), encoding="utf-8")
 
-    client = wiki._build_json_client()
+    client = _primary(wiki._build_json_client())
     assert isinstance(client, lj.AnthropicLLMJsonClient)
     assert client.model == "glm-4.7"
     assert client.base_url == "https://project.example.com/api"
@@ -631,7 +638,7 @@ def test_project_model_is_provider_scoped_when_threaded(tmp_path: Path, monkeypa
     cfg.update({"llm_provider": "claude", "llm_model": "claude-opus-4-6"})
     wiki.paths.config.write_text(json.dumps(cfg), encoding="utf-8")
 
-    client = wiki._build_json_client()
+    client = _primary(wiki._build_json_client())
     assert isinstance(client, lj.CodexCLIJsonClient)
     assert client.model != "claude-opus-4-6"
     assert client.model == lj.CODEX_DEFAULT_MODEL
@@ -771,7 +778,7 @@ def test_an_endpoint_provider_never_degrades_into_another_backend(monkeypatch):
 
     # ...unless the operator asks for the old chaining back.
     settings["allow_fallback"] = True
-    assert isinstance(lj.build_default_json_client(settings=settings), lj.ClaudeCLIJsonClient)
+    assert isinstance(_primary(lj.build_default_json_client(settings=settings)), lj.ClaudeCLIJsonClient)
 
 
 def test_a_misspelled_provider_is_reported_not_silently_claude(monkeypatch):

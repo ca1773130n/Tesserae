@@ -58,6 +58,8 @@ Avec le fournisseur `claude`, Tesserae passe en revue vos comptes Claude CLI
 connectés : un compte qui atteint sa limite laisse la place au suivant, plutôt que de
 faire basculer tout le reste de l'exécution en extraction déterministe. Par défaut,
 tous les répertoires `~/.claude*` sont découverts automatiquement.
+Si le CLI `codex` est lui aussi installé, un fournisseur dont tous les comptes ont
+épuisé leur quota transmet l'appel à l'autre fournisseur au lieu de ne rien renvoyer.
 
 Le fournisseur **codex** fonctionne de la même façon : il parcourt les répertoires
 `~/.codex*` authentifiés (un répertoire ne compte que s'il contient `auth.json`) et se
