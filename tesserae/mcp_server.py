@@ -77,6 +77,7 @@ from .temporal_observed import (
     facts_observed_as_of,
 )
 from .verify import verify_claim
+from .verify_answer import check_attribution
 from .wiki_projector import is_code_graph_node, kind_for_node
 from .wiki_store import WikiPageStore
 
@@ -1428,6 +1429,41 @@ class LLMWikiMCPServer:
                         "budget_chars": budget_chars_prop,
                     },
                     "additionalProperties": False,
+                },
+            },
+            {
+                "name": "verify_attribution",
+                "description": (
+                    "Is each FIGURE an answer reports attributed to the system and benchmark "
+                    "the question asked about? Deterministic — no LLM, no graph, a pure "
+                    "function of three strings. Pulls the figures from the answer, finds each "
+                    "in the evidence, and checks whose RECORD (the blank-line-delimited table "
+                    "row or paragraph) it sits in and whether that packed document mentions "
+                    "the benchmark at all. This is the hallucination a coverage check cannot "
+                    "see — a real number lifted from a neighbour's row (audited: 14/15 caught, "
+                    "4 false alarms in 33 true answers). Returns {flagged, reason, detail}. "
+                    "reason: attributed | figure_attributed_to_other_subject | "
+                    "benchmark_absent_from_source_paper | figure_absent_from_evidence | "
+                    "no_checkable_figure | subject_name_uncheckable | benchmark_name_uncheckable. "
+                    "flagged=true means ownership could not be confirmed, NOT that the figure "
+                    "is false; *_uncheckable means the check could not run (flagged=false)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "answer": {"type": "string", "description": "The answer text to check."},
+                        "evidence": {
+                            "type": "string",
+                            "description": (
+                                "The evidence the answer was written from: packed documents as "
+                                "'[Title]\\n...' blocks, records separated by blank lines — the "
+                                "shape compile_context emits."
+                            ),
+                        },
+                        "subject": {"type": "string", "description": "The system the question asks about."},
+                        "object": {"type": "string", "description": "The benchmark or dataset the question asks about."},
+                    },
+                    "required": ["answer", "evidence", "subject", "object"],
                 },
             },
             {
@@ -2966,6 +3002,13 @@ class LLMWikiMCPServer:
                 include_superseded=bool(args.get("include_superseded", False)),
                 use_ppr=bool(args.get("use_ppr") or False),
                 budget_chars=_budget_chars_arg(args),
+            )
+        if name == "verify_attribution":
+            return check_attribution(
+                str(args.get("answer") or ""),
+                str(args.get("evidence") or ""),
+                subject=str(args.get("subject") or ""),
+                obj=str(args.get("object") or ""),
             )
         if name == "verify_claim":
             graph, project_root = self._load_requested_graph_with_root(args)
