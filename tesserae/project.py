@@ -530,6 +530,36 @@ class ProjectWiki:
             codex_reasoning_effort=settings.get("codex_reasoning_effort"),
         )
 
+    def _default_doc_extractor(self):
+        """The document extractor a compile uses when the caller passes none.
+
+        The configured LLM (the same client :meth:`_build_json_client` gives
+        synthesis), routed over every document, with the deterministic
+        extractor as the per-document fallback — the shape ``tesserae
+        compile`` builds by default. No usable backend degrades to the
+        deterministic extractor with a WARNING, never silently: a structural
+        graph that looks like a compiled one is how the LLM layer got lost.
+        A misconfigured explicit endpoint provider raises, as it does for
+        ``compile``.
+        """
+        from .llm_extractor import LLMResearchExtractor
+        from .selective_extractor import SelectiveClaudeResearchExtractor
+
+        deterministic = ResearchGraphExtractor()
+        client = self._build_json_client()
+        if client is None:
+            logger.warning(
+                "no LLM backend available (codex/claude not authed, no API key): "
+                "building the STRUCTURAL graph only — LLM-typed nodes will be absent. "
+                "Run `tesserae setup` to configure a provider."
+            )
+            return deterministic
+        return SelectiveClaudeResearchExtractor(
+            deterministic=deterministic,
+            claude=LLMResearchExtractor(client),
+            include_patterns=["*"],
+        )
+
     def ingest(
         self,
         inputs: Iterable[str | Path],
@@ -665,10 +695,15 @@ class ProjectWiki:
             use_extraction_feedback
         )
 
-        # ``doc_extractor`` is an injection seam for tests; the default
-        # deterministic extractor ignores guidance, but a Claude/Selective
-        # extractor will pick up ``doc_guidance`` via its ``guidance`` attr.
-        extractor = doc_extractor if doc_extractor is not None else ResearchGraphExtractor()
+        # ``doc_extractor`` is an injection seam (tests, `tesserae compile`'s
+        # --extractor flag). Every other entry point — refresh, the engine
+        # daemon, the MCP materialize, deploy --build — passes nothing, and
+        # "nothing" used to mean the deterministic extractor: a full recompile
+        # from any of them silently rebuilt the document layer WITHOUT the LLM
+        # and erased every LLM-typed node the previous compile had (2026-09-06:
+        # Concept 466 -> 0 on the real project, in one `refresh`). "Nothing"
+        # now means the configured LLM extractor, exactly what `compile` builds.
+        extractor = doc_extractor if doc_extractor is not None else self._default_doc_extractor()
         if doc_guidance and hasattr(extractor, "guidance"):
             extractor.guidance = doc_guidance
         code_inputs: List[Path] = list(input_paths)
