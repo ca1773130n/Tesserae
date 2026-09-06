@@ -1585,11 +1585,7 @@ def _handle_ingest(args: argparse.Namespace) -> int:
             min_trend_sources=args.min_trend_sources,
             # `compile <paths> --extractor` routes through here; honor the LLM
             # extractor (deterministic / unset -> None, unchanged).
-            doc_extractor=(
-                _build_doc_extractor(args, cfg=wiki.config())
-                if getattr(args, "extractor", "deterministic") != "deterministic"
-                else None
-            ),
+            doc_extractor=_build_doc_extractor(args, cfg=wiki.config()),
         )
         print(
             "Ingested project wiki: "
@@ -1852,11 +1848,9 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
             # --extractor != deterministic -> use the LLM extractor (concept/claim
             # layer). Default (deterministic) passes None so the pipeline keeps its
             # existing behaviour byte-for-byte.
-            doc_extractor = (
-                _build_doc_extractor(args, cfg=wiki.config())
-                if getattr(args, "extractor", "deterministic") != "deterministic"
-                else None
-            )
+            # Always built: "deterministic" is an explicit extractor now, not None —
+            # compile() turns None into the configured LLM extractor.
+            doc_extractor = _build_doc_extractor(args, cfg=wiki.config())
             # ``--retry-fallbacks`` only narrows the CHANGED-ONLY work list
             # (BatchIngestRunner.run); on a full compile every doc is
             # re-extracted anyway, so the flag alone silently buys a
