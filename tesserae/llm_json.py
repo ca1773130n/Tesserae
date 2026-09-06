@@ -155,7 +155,7 @@ def _reset_login_warning_for_tests() -> None:
 #: TESSERAE_EXTRACT_CONCURRENCY worker threads, so an instance attribute would
 #: report whichever worker wrote last — the same reason
 #: SelectiveClaudeResearchExtractor keeps its fallback flag in threading.local.
-#: ponytail: four string literals, not an enum or an exception hierarchy —
+#: ponytail: five string literals, not an enum or an exception hierarchy —
 #: there is exactly one consumer (LLMResearchExtractor). Promote if a second
 #: one appears.
 _LAST_FAILURE = threading.local()
@@ -167,7 +167,7 @@ def _note_failure(kind: Optional[str]) -> None:
 
 
 def last_failure_kind() -> Optional[str]:
-    """``"unavailable"`` | ``"timeout"`` | ``"auth"`` | ``"unparseable"`` |
+    """``"unavailable"`` | ``"timeout"`` | ``"auth"`` | ``"unparseable"`` | ``"exhausted"`` |
     ``None`` for this thread's most recent ``complete_json``. Only meaningful
     immediately after a None return."""
     return getattr(_LAST_FAILURE, "kind", None)
@@ -1465,6 +1465,10 @@ class CodexCLIJsonClient:
         else:
             self.codex_homes = discovered or [str(home / ".codex")]
         self.timeout = int(timeout) if timeout is not None else None
+        #: Set once every home is a proven dead end (out of quota, or logged
+        #: out). Per instance, same guard as ClaudeCLIJsonClient: the next call
+        #: spawns nothing instead of paying the full rotation again.
+        self._accounts_exhausted = False
 
     def _run_prompt(
         self,
@@ -1489,8 +1493,10 @@ class CodexCLIJsonClient:
         On failure this records the verdict for the calling thread via
         :func:`_note_failure` — ``"timeout"`` (the attempt didn't finish inside
         the bound; that says nothing about whether the provider saw it),
-        ``"auth"`` (every home tried answered "not logged in") or
-        ``"unavailable"`` (nothing was generated).
+        ``"auth"`` (every home tried answered "not logged in"),
+        ``"exhausted"`` (every home is out of quota or logged out, at least one
+        out of quota — remembered per instance, so later calls spawn nothing)
+        or ``"unavailable"`` (nothing was generated).
         ``complete_json`` must not overwrite it.
         """
         import os as _os
@@ -1498,6 +1504,9 @@ class CodexCLIJsonClient:
         import tempfile as _tempfile
         from pathlib import Path as _Path
 
+        if self._accounts_exhausted:
+            _note_failure("exhausted")
+            return None
         last_error: Optional[Exception] = None
         timed_out = False
         # An auth/binary failure is NOT transient: with an expired OAuth token
@@ -1511,6 +1520,10 @@ class CodexCLIJsonClient:
         # env without CODEX_HOME rotates over every ``~/.codex*`` directory,
         # and one stale directory must not cancel the retry for a healthy one.
         logged_out_homes: set[str] = set()
+        # Out of credit / past the usage window. A dead end like logged-out —
+        # the reply is the same on every retry — but NOT an auth failure, and
+        # the verdict it earns is ``exhausted``, which the provider chain acts on.
+        exhausted_homes: set[str] = set()
         binary_missing = False
         # True only while EVERY home tried has answered "not logged in" — the
         # same all-or-nothing rule the Claude client uses, so a capacity failure
@@ -1526,9 +1539,10 @@ class CodexCLIJsonClient:
         # before we sleep and start over on the same set.
         for attempt in range(_TRANSPORT_RETRIES + 1):
             for codex_home in self.codex_homes:
-                if codex_home in logged_out_homes:
-                    # It answered "not logged in" on an earlier attempt and will
-                    # answer the same now. Don't pay another spawn for it.
+                if codex_home in logged_out_homes or codex_home in exhausted_homes:
+                    # It answered "not logged in" / "hit your usage limit" on an
+                    # earlier attempt and will answer the same now. Don't pay
+                    # another spawn for it.
                     continue
                 with _tempfile.NamedTemporaryFile(
                     "w+", suffix=".txt", delete=False, encoding="utf-8"
@@ -1566,8 +1580,12 @@ class CodexCLIJsonClient:
                         # Keep rotating (a later home may be logged in); THIS
                         # home is then skipped for the rest of the call, and
                         # only an all-homes-logged-out rotation stops the retry.
-                        if "not logged in" in f"{stderr_text}\n{stdout_text}".lower():
+                        combined = f"{stderr_text}\n{stdout_text}".lower()
+                        if "not logged in" in combined:
                             logged_out_homes.add(codex_home)
+                        elif _is_quota_exhaustion(last_error):
+                            exhausted_homes.add(codex_home)
+                            auth_only = False
                         else:
                             auth_only = False
                         continue
@@ -1646,10 +1664,30 @@ class CodexCLIJsonClient:
                 or binary_missing
                 or budget_spent
                 or attempt >= _TRANSPORT_RETRIES
-                or len(logged_out_homes) == len(self.codex_homes)
+                or len(logged_out_homes) + len(exhausted_homes) == len(self.codex_homes)
             ):
                 break
             time.sleep(backoff)
+        if exhausted_homes and len(logged_out_homes) + len(exhausted_homes) == len(self.codex_homes):
+            # Every home is a dead end and at least one is out of quota: the
+            # verdict ClaudeCLIJsonClient gives in the same situation, so the
+            # provider chain and the per-document diagnosis can act on it.
+            # Before this it was reported as ``unavailable`` after 3 attempts
+            # over every home — ~55 s per call, and nothing ever fell through
+            # to a logged-in Claude.
+            self._accounts_exhausted = True
+            _note_failure("exhausted")
+            logger.warning(
+                "%s — every CODEX_HOME tried (%d) is out of quota or logged out; no "
+                "further codex calls this run. The next configured provider is tried "
+                "when there is one, otherwise remaining documents use deterministic "
+                "extraction. Buy credit or wait for the window, then re-run "
+                "`compile --changed-only --retry-fallbacks`. Last: %s",
+                error_label,
+                len(self.codex_homes),
+                last_error,
+            )
+            return None
         if last_error is not None:
             # ONE record per call, not one per attempt: three attempts across
             # 137 docs would drown the compile output. Say plainly which
@@ -2308,15 +2346,36 @@ def build_default_json_client(
     # user's own base URL and reported an unsupported model they never
     # configured, with nothing naming the real cause. Now the chosen provider is
     # built alone and a failure says which provider, wire, URL and model were
-    # used. ``llm_allow_fallback: true`` restores the old chaining.
+    # used. ``llm_allow_fallback: true`` puts the fallback
+    # backends back into the chain, built up front and tried in order at call time.
     chain = (_primary[resolved_provider],)
     if not _endpoint_contract or settings.get("allow_fallback"):
         chain = chain + _fallbacks[resolved_provider]
 
-    for builder in chain:
-        client = builder()
+    clients = []
+    for position, builder in enumerate(chain):
+        try:
+            client = builder()
+        except Exception as exc:  # noqa: BLE001
+            if position == 0:
+                raise  # the chosen provider is a contract; its failure stays visible
+            # A fallback is built up front now, so its constructor can fail on
+            # the happy path where the old lazy loop never reached it. Leave it
+            # out and say so; the primary must not go down with it.
+            logger.warning(
+                "[tesserae] fallback backend could not be built and is left out "
+                "of the provider chain: %s", exc,
+            )
+            continue
         if client is not None:
-            return client
+            clients.append(client)
+    if clients:
+        # Every backend the chain could build, tried IN ORDER AT CALL TIME: the
+        # primary answers unless it is exhausted, then the next one. Returning
+        # only the first buildable client made the chain a construction-time
+        # preference — an out-of-credit codex was still "available", so every
+        # call returned None after ~55 s while a logged-in claude was never asked.
+        return clients[0] if len(clients) == 1 else CompositeCLIClient(clients)
     if _endpoint_contract:
         raise LLMProviderConfigError(
             f"provider={resolved_provider} style={resolved_style} "
@@ -2394,8 +2453,9 @@ def build_rotating_client(
 ) -> Optional[Any]:
     """Build a client that rotates across EVERY available account/provider.
 
-    Unlike :func:`build_default_json_client` (which returns the single
-    best-available client), this composes ALL available backends — Claude
+    Unlike :func:`build_default_json_client` (which composes only what its
+    resolved provider's chain allows, and honours the endpoint contract),
+    this composes ALL available backends — Claude
     CLI (rotating its config dirs), Codex CLI (rotating its homes), and the
     Anthropic SDK if a key is set or provider is ``custom``/``anthropic`` —
     in ``provider`` preference order, and falls through provider-to-provider

@@ -236,7 +236,7 @@ def test_build_default_prefers_claude_cli_over_api_key(monkeypatch, tmp_path):
     monkeypatch.setenv("PATH", f"{fake_bin_dir}:{os.environ.get('PATH','')}")
 
     client = build_default_json_client()
-    assert isinstance(client, ClaudeCLIJsonClient), (
+    assert isinstance(_primary(client), ClaudeCLIJsonClient), (
         "CLI must win over API key when both are available"
     )
 
@@ -1579,6 +1579,13 @@ def test_codex_cli_available_with_binary_and_credentialed_home(monkeypatch, tmp_
     assert _codex_cli_available() is True
 
 
+def _primary(client):
+    """The backend the builder PREFERRED. With more than one backend built,
+    build_default_json_client returns a CompositeCLIClient that tries them in
+    order at call time; the tests below pin the order, not the wrapper."""
+    return getattr(client, "clients", [client])[0]
+
+
 def _isolate_factory(monkeypatch):
     """Common env isolation for build_default_json_client tests.
 
@@ -1605,7 +1612,7 @@ def test_build_default_provider_codex_prefers_codex(monkeypatch):
     monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
 
     client = lj.build_default_json_client(provider="codex")
-    assert isinstance(client, lj.CodexCLIJsonClient)
+    assert isinstance(_primary(client), lj.CodexCLIJsonClient)
 
 
 def test_build_default_env_provider_codex(monkeypatch):
@@ -1617,7 +1624,7 @@ def test_build_default_env_provider_codex(monkeypatch):
     monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
 
     client = lj.build_default_json_client()
-    assert isinstance(client, lj.CodexCLIJsonClient)
+    assert isinstance(_primary(client), lj.CodexCLIJsonClient)
 
 
 def test_build_default_order_unchanged_for_claude_default(monkeypatch):
@@ -1628,7 +1635,7 @@ def test_build_default_order_unchanged_for_claude_default(monkeypatch):
     monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
 
     client = lj.build_default_json_client()
-    assert isinstance(client, lj.ClaudeCLIJsonClient)
+    assert isinstance(_primary(client), lj.ClaudeCLIJsonClient)
 
 
 def test_build_default_codex_fills_former_none_gap(monkeypatch):
@@ -1639,7 +1646,7 @@ def test_build_default_codex_fills_former_none_gap(monkeypatch):
     monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
 
     client = lj.build_default_json_client()
-    assert isinstance(client, lj.CodexCLIJsonClient)
+    assert isinstance(_primary(client), lj.CodexCLIJsonClient)
 
 
 def test_build_default_provider_codex_falls_back_to_claude(monkeypatch):
@@ -1650,7 +1657,7 @@ def test_build_default_provider_codex_falls_back_to_claude(monkeypatch):
     monkeypatch.setattr(lj, "_codex_cli_available", lambda: False)
 
     client = lj.build_default_json_client(provider="codex")
-    assert isinstance(client, lj.ClaudeCLIJsonClient)
+    assert isinstance(_primary(client), lj.ClaudeCLIJsonClient)
 
 
 def test_build_default_passes_codex_home_and_claude_dirs(monkeypatch, tmp_path):
@@ -1661,12 +1668,12 @@ def test_build_default_passes_codex_home_and_claude_dirs(monkeypatch, tmp_path):
     monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
 
     codex_home = str(tmp_path / "codex-personal1")
-    codex = lj.build_default_json_client(provider="codex", codex_home=codex_home)
+    codex = _primary(lj.build_default_json_client(provider="codex", codex_home=codex_home))
     assert isinstance(codex, lj.CodexCLIJsonClient)
     assert codex.codex_homes == [codex_home]
 
     claude_dir = str(tmp_path / "claude-personal2")
-    claude = lj.build_default_json_client(claude_config_dirs=[claude_dir])
+    claude = _primary(lj.build_default_json_client(claude_config_dirs=[claude_dir]))
     assert isinstance(claude, lj.ClaudeCLIJsonClient)
     assert claude.config_dirs == [claude_dir]
 
@@ -1741,7 +1748,7 @@ def test_built_client_rotates_when_only_env_is_set(monkeypatch, tmp_path):
     set_client_factory(None)
 
     client = build_default_json_client(provider="claude")
-    assert isinstance(client, ClaudeCLIJsonClient), f"expected the CLI client, got {client!r}"
+    assert isinstance(_primary(client), ClaudeCLIJsonClient), f"expected the CLI client, got {client!r}"
     dirs = client.config_dirs
     assert dirs[0] == str(fake_home / ".claude-personal2"), f"env dir first, got {dirs}"
     assert len(dirs) == 3, f"the other accounts must stay in rotation, got {dirs}"
@@ -2325,3 +2332,127 @@ def test_openai_client_does_not_retry_a_400(monkeypatch):
     # ladder above it is a separate, older contract and is not under test here
     assert client._post(system="s", user="u", json_mode=True) is None
     assert calls["n"] == 1
+
+
+# --- codex out of credit: exhaustion verdict + call-time provider fallthrough ---
+_CODEX_USAGE_LIMIT = (
+    "ERROR: You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage "
+    "to purchase more credits or try again at Sep 7th, 2026 11:25 AM."
+)
+
+
+def test_codex_usage_limit_is_exhaustion_not_unavailable(monkeypatch, tmp_path):
+    """A home that is out of credit is a dead end, not a transport blip: one
+    spawn, no backoff, verdict ``exhausted`` — and the client remembers, so the
+    next call spawns nothing. Before this, the same reply was retried 3× over
+    every home (~55 s per call) and reported as ``unavailable``."""
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    slept: list = []
+    monkeypatch.setattr(llm_json.time, "sleep", lambda s: slept.append(s))
+    home = tmp_path / "h"
+    home.mkdir()
+    client = CodexCLIJsonClient(codex_homes=[str(home)])
+    calls: list = []
+    monkeypatch.setattr(llm_json, "_run_cli", _codex_fake_run([(1, _CODEX_USAGE_LIMIT)], calls))
+
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    assert llm_json.last_failure_kind() == "exhausted"
+    assert len(calls) == 1 and slept == []
+
+    assert client.complete_text(system="s", user="u") is None
+    assert llm_json.last_failure_kind() == "exhausted"
+    assert len(calls) == 1, "an exhausted client must not spawn again"
+
+
+def test_codex_exhausted_home_is_not_retried_while_another_has_headroom(monkeypatch, tmp_path):
+    """Out of credit on home A, a transport blip on home B: the transport retry
+    must go back to B only. Before this, A was retried too — a dead end spawned
+    once per attempt per call."""
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+    home_a, home_b = tmp_path / "a", tmp_path / "b"
+    home_a.mkdir()
+    home_b.mkdir()
+    client = CodexCLIJsonClient(codex_homes=[str(home_a), str(home_b)])
+    calls: list = []
+    monkeypatch.setattr(llm_json, "_run_cli", _codex_fake_run(
+        [(1, _CODEX_USAGE_LIMIT), (1, "Reconnecting..."), (0, '{"ok": true}')], calls))
+
+    assert client.complete_json(system="s", user="u", schema_name="x") == {"ok": True}
+    assert calls == [str(home_a), str(home_b), str(home_b)]
+
+
+def test_build_default_falls_through_to_claude_when_codex_is_out_of_credit(monkeypatch, tmp_path):
+    """The docstring promises codex → claude. It held only at CONSTRUCTION time
+    (is codex installed?); at CALL time an out-of-credit codex returned None and
+    nothing consulted claude, so every compile on such a machine silently
+    produced nothing. Both CLIs installed, codex out of credit: the answer must
+    come from claude."""
+    import types
+
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    set_client_factory(None)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_CLI_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(lj.time, "sleep", lambda _s: None)
+    seen: list = []
+
+    def fake_run(cmd, **kw):
+        seen.append(cmd[0])
+        if cmd[0] == "codex":
+            return types.SimpleNamespace(returncode=1, stdout="", stderr=_CODEX_USAGE_LIMIT)
+        return types.SimpleNamespace(returncode=0, stdout='{"from": "claude"}', stderr="")
+
+    monkeypatch.setattr(lj, "_run_cli", fake_run)
+    client = lj.build_default_json_client(
+        provider="codex", codex_home=str(tmp_path / "codex"),
+        claude_config_dirs=[str(tmp_path / "claude")])
+
+    assert [type(c) for c in client.clients] == [lj.CodexCLIJsonClient, lj.ClaudeCLIJsonClient]
+    assert client.complete_json(system="s", user="u", schema_name="x") == {"from": "claude"}
+    assert seen[0] == "codex" and "claude" in seen
+
+
+def test_build_default_skips_a_fallback_backend_whose_constructor_raises(monkeypatch, tmp_path):
+    """Every backend in the chain is now BUILT up front. A fallback whose
+    constructor raises is left out with a warning, not allowed to take the
+    primary down with it — the old lazy loop never reached it when the
+    primary built."""
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    set_client_factory(None)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+
+    class _Boom:
+        def __init__(self, *a, **k):
+            raise RuntimeError("codex home unreadable")
+
+    monkeypatch.setattr(lj, "CodexCLIJsonClient", _Boom)
+    client = lj.build_default_json_client(provider="claude", claude_config_dirs=[str(tmp_path / "c")])
+    assert isinstance(client, lj.ClaudeCLIJsonClient)
+
+
+def test_build_default_still_raises_when_the_chosen_provider_cannot_be_built(monkeypatch):
+    """The guard above is for FALLBACKS only: the provider the caller chose is
+    a contract, and its constructor's failure stays visible."""
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    set_client_factory(None)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+
+    class _Boom:
+        def __init__(self, *a, **k):
+            raise RuntimeError("codex home unreadable")
+
+    monkeypatch.setattr(lj, "CodexCLIJsonClient", _Boom)
+    with pytest.raises(RuntimeError, match="codex home unreadable"):
+        lj.build_default_json_client(provider="codex")

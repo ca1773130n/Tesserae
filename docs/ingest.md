@@ -58,6 +58,8 @@ With the `claude` provider, Tesserae rotates over your logged-in Claude CLI
 accounts: a rate-limited account falls through to the next instead of losing the
 rest of the run to deterministic extraction. By default it auto-discovers every
 `~/.claude*` directory.
+When the `codex` CLI is installed too, a provider whose every account is out of
+quota hands the call to the other provider instead of returning nothing.
 
 The **codex** provider works the same way, over authenticated `~/.codex*`
 homes (a directory only counts when it contains `auth.json`), configured with

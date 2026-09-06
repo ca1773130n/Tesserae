@@ -58,6 +58,9 @@ Mit dem Provider `claude` rotiert Tesserae über deine angemeldeten Claude-CLI-K
 Ein Konto, das sein Limit erreicht, übergibt an das nächste, statt den Rest des Laufs
 an die deterministische Extraktion zu verlieren. Standardmäßig werden alle
 `~/.claude*`-Verzeichnisse automatisch erkannt.
+Ist zusätzlich das `codex`-CLI installiert, reicht ein Provider, dessen Konten alle
+ihr Kontingent aufgebraucht haben, den Aufruf an den anderen Provider weiter, statt
+nichts zurückzugeben.
 
 Der Provider **codex** funktioniert genauso: Er rotiert über authentifizierte
 `~/.codex*`-Homes (ein Verzeichnis zählt nur mit `auth.json`) und wird über
