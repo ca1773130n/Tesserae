@@ -155,7 +155,7 @@ def _reset_login_warning_for_tests() -> None:
 #: TESSERAE_EXTRACT_CONCURRENCY worker threads, so an instance attribute would
 #: report whichever worker wrote last — the same reason
 #: SelectiveClaudeResearchExtractor keeps its fallback flag in threading.local.
-#: ponytail: four string literals, not an enum or an exception hierarchy —
+#: ponytail: five string literals, not an enum or an exception hierarchy —
 #: there is exactly one consumer (LLMResearchExtractor). Promote if a second
 #: one appears.
 _LAST_FAILURE = threading.local()
@@ -167,7 +167,7 @@ def _note_failure(kind: Optional[str]) -> None:
 
 
 def last_failure_kind() -> Optional[str]:
-    """``"unavailable"`` | ``"timeout"`` | ``"auth"`` | ``"unparseable"`` |
+    """``"unavailable"`` | ``"timeout"`` | ``"auth"`` | ``"unparseable"`` | ``"exhausted"`` |
     ``None`` for this thread's most recent ``complete_json``. Only meaningful
     immediately after a None return."""
     return getattr(_LAST_FAILURE, "kind", None)
@@ -1493,8 +1493,10 @@ class CodexCLIJsonClient:
         On failure this records the verdict for the calling thread via
         :func:`_note_failure` — ``"timeout"`` (the attempt didn't finish inside
         the bound; that says nothing about whether the provider saw it),
-        ``"auth"`` (every home tried answered "not logged in") or
-        ``"unavailable"`` (nothing was generated).
+        ``"auth"`` (every home tried answered "not logged in"),
+        ``"exhausted"`` (every home is out of quota or logged out, at least one
+        out of quota — remembered per instance, so later calls spawn nothing)
+        or ``"unavailable"`` (nothing was generated).
         ``complete_json`` must not overwrite it.
         """
         import os as _os
@@ -2344,12 +2346,29 @@ def build_default_json_client(
     # user's own base URL and reported an unsupported model they never
     # configured, with nothing naming the real cause. Now the chosen provider is
     # built alone and a failure says which provider, wire, URL and model were
-    # used. ``llm_allow_fallback: true`` restores the old chaining.
+    # used. ``llm_allow_fallback: true`` puts the fallback
+    # backends back into the chain, built up front and tried in order at call time.
     chain = (_primary[resolved_provider],)
     if not _endpoint_contract or settings.get("allow_fallback"):
         chain = chain + _fallbacks[resolved_provider]
 
-    clients = [client for client in (builder() for builder in chain) if client is not None]
+    clients = []
+    for position, builder in enumerate(chain):
+        try:
+            client = builder()
+        except Exception as exc:  # noqa: BLE001
+            if position == 0:
+                raise  # the chosen provider is a contract; its failure stays visible
+            # A fallback is built up front now, so its constructor can fail on
+            # the happy path where the old lazy loop never reached it. Leave it
+            # out and say so; the primary must not go down with it.
+            logger.warning(
+                "[tesserae] fallback backend could not be built and is left out "
+                "of the provider chain: %s", exc,
+            )
+            continue
+        if client is not None:
+            clients.append(client)
     if clients:
         # Every backend the chain could build, tried IN ORDER AT CALL TIME: the
         # primary answers unless it is exhausted, then the next one. Returning
@@ -2434,8 +2453,9 @@ def build_rotating_client(
 ) -> Optional[Any]:
     """Build a client that rotates across EVERY available account/provider.
 
-    Unlike :func:`build_default_json_client` (which returns the single
-    best-available client), this composes ALL available backends — Claude
+    Unlike :func:`build_default_json_client` (which composes only what its
+    resolved provider's chain allows, and honours the endpoint contract),
+    this composes ALL available backends — Claude
     CLI (rotating its config dirs), Codex CLI (rotating its homes), and the
     Anthropic SDK if a key is set or provider is ``custom``/``anthropic`` —
     in ``provider`` preference order, and falls through provider-to-provider

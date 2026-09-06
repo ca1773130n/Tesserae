@@ -2413,5 +2413,46 @@ def test_build_default_falls_through_to_claude_when_codex_is_out_of_credit(monke
         provider="codex", codex_home=str(tmp_path / "codex"),
         claude_config_dirs=[str(tmp_path / "claude")])
 
+    assert [type(c) for c in client.clients] == [lj.CodexCLIJsonClient, lj.ClaudeCLIJsonClient]
     assert client.complete_json(system="s", user="u", schema_name="x") == {"from": "claude"}
     assert seen[0] == "codex" and "claude" in seen
+
+
+def test_build_default_skips_a_fallback_backend_whose_constructor_raises(monkeypatch, tmp_path):
+    """Every backend in the chain is now BUILT up front. A fallback whose
+    constructor raises is left out with a warning, not allowed to take the
+    primary down with it — the old lazy loop never reached it when the
+    primary built."""
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    set_client_factory(None)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+
+    class _Boom:
+        def __init__(self, *a, **k):
+            raise RuntimeError("codex home unreadable")
+
+    monkeypatch.setattr(lj, "CodexCLIJsonClient", _Boom)
+    client = lj.build_default_json_client(provider="claude", claude_config_dirs=[str(tmp_path / "c")])
+    assert isinstance(client, lj.ClaudeCLIJsonClient)
+
+
+def test_build_default_still_raises_when_the_chosen_provider_cannot_be_built(monkeypatch):
+    """The guard above is for FALLBACKS only: the provider the caller chose is
+    a contract, and its constructor's failure stays visible."""
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    set_client_factory(None)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+
+    class _Boom:
+        def __init__(self, *a, **k):
+            raise RuntimeError("codex home unreadable")
+
+    monkeypatch.setattr(lj, "CodexCLIJsonClient", _Boom)
+    with pytest.raises(RuntimeError, match="codex home unreadable"):
+        lj.build_default_json_client(provider="codex")
