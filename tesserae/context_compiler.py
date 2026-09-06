@@ -254,9 +254,29 @@ _MIN_NODE_SHARE = 300
 _MIN_SOURCE_EXCERPT = 2_500
 
 
+def _owning_path(node: ResearchNode, root: Optional[str]) -> Optional[str]:
+    """The document that ELABORATES ``node``, else its first-seen ``source_path``.
+
+    ``node.source_path`` is the first document that mentioned the entity;
+    measured on two corpora it names the paper the entity is about about half
+    the time, the most-mentioning document nine times in ten (handoff §10.5).
+    Reads the project's SQLite mirror through
+    :func:`tesserae.graph_stores.sqlite.owning_documents`, which answers ``[]``
+    for a missing or stale mirror — so without one this is exactly the old
+    behaviour, byte for byte.
+    """
+    from .graph_stores.sqlite import owning_documents
+
+    ranked = owning_documents(root, node.id, limit=1)
+    return (ranked[0][0] if ranked else None) or getattr(node, "source_path", None)
+
+
 def _source_text(node: ResearchNode, cache: Dict[str, str],
-                 root: Optional[str] = None) -> str:
+                 root: Optional[str] = None, path: Optional[str] = None) -> str:
     """The raw source document behind ``node``, read once per path.
+
+    ``path`` overrides the node's own ``source_path`` — the caller has usually
+    resolved the OWNING document through :func:`_owning_path`.
 
     Why this exists. The bundle used to carry only EXTRACTED text — the node's
     wiki projection or its description — and measurement showed exactly what
@@ -275,7 +295,7 @@ def _source_text(node: ResearchNode, cache: Dict[str, str],
     bundle (PITFALL 2), and 21% of real-graph nodes are derived and have no
     source document by construction.
     """
-    path = getattr(node, "source_path", None)
+    path = path or getattr(node, "source_path", None)
     if not path:
         return ""
     key = f"{root}\x00{path}"
@@ -1148,6 +1168,7 @@ def compile_context(
     chars_used = 0
     _source_cache: Dict[str, str] = {}
     _docs_emitted: set = set()
+    _doc_for: Dict[str, Optional[str]] = {}
     # The share any one node may claim. ``budget <= 0`` is uncapped, and a
     # budget generous enough that the share exceeds SOURCE_EXCERPT_CHARS leaves
     # every body exactly as it was — so the default 32,000 path is unchanged
@@ -1164,10 +1185,11 @@ def compile_context(
         # once. Deduplicated by path because several nodes routinely extract
         # from one document and repeating it would spend the budget on copies
         # instead of on coverage.
-        _sp = getattr(node, "source_path", None)
+        _sp = _owning_path(node, project_root)
+        _doc_for[node.id] = _sp
         _can_afford_source = _per_node == 0 or _per_node >= _MIN_SOURCE_EXCERPT
         if _sp and _sp not in _docs_emitted and _can_afford_source:
-            _raw = _source_text(node, _source_cache, project_root)
+            _raw = _source_text(node, _source_cache, project_root, path=_sp)
             if _raw:
                 _docs_emitted.add(_sp)
                 # REPLACE the extracted body with the source, do not append it.
@@ -1236,7 +1258,7 @@ def compile_context(
             ContextCitation(
                 node_id=node.id,
                 node_name=node.name,
-                source_path=node.source_path,
+                source_path=_doc_for.get(node.id) or node.source_path,
                 wiki_kind=kind_for_node(node),
                 via_views=via_map.get(node.id, ()),
             )

@@ -1691,3 +1691,35 @@ def _row_to_node(row: tuple) -> ResearchNode:
         source_path=row[5],
         metadata=json.loads(row[6] or "{}"),
     )
+
+
+def owning_documents(
+    project_root: Optional[Union[str, Path]], node_id: str, *, limit: Optional[int] = None
+) -> List[Tuple[str, int]]:
+    """:meth:`SqliteGraphStore.node_documents` reached from a project root.
+
+    This is the read the product uses wherever it needs "which document is
+    this entity about": the context bundle's packed prose and citations, and
+    ``node_context``. Measured 2026-09-02/03 on two corpora, the first-seen
+    ``source_path`` names the elaborating paper 0.52 / 0.55 of the time; the
+    most-mentioning document 0.92 / 0.85 (handoff §10.5).
+
+    Trusts the mirror only when it is not older than ``graph.json`` — the same
+    rule as the MCP keyed reads: a graph.json newer than its mirror did not
+    come from the same compile. Never raises; a missing, stale or unreadable
+    mirror answers ``[]`` so every caller falls back to ``source_path``. Not
+    for retrieval expansion (§10.2 measured that as a loss).
+    """
+    if project_root is None or not node_id:
+        return []
+    tdir = Path(project_root) / ".tesserae"
+    db_path, graph_path = tdir / "sqlite.db", tdir / "graph.json"
+    try:
+        if not db_path.is_file():
+            return []
+        if graph_path.is_file() and graph_path.stat().st_mtime > db_path.stat().st_mtime:
+            return []
+        return SqliteGraphStore(db_path).node_documents(node_id, limit=limit)
+    except Exception:  # noqa: BLE001 — a sidecar problem must never sink a read
+        _LOG.warning("owning_documents: mirror at %s unreadable for %s", db_path, node_id)
+        return []

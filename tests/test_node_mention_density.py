@@ -239,3 +239,81 @@ def test_a_compile_writes_mention_rows_and_ranks_the_elaborating_document(tmp_pa
     assert Path(ranked[0][0]).parent.name == "b"
     assert Path(ranked[1][0]).parent.name == "a"
     assert ranked[0][1] > ranked[1][1] >= 1
+
+
+# --- the read the product uses for "which document is this entity about" --------------
+
+def _term_id(wiki: ProjectWiki) -> str:
+    graph = json.loads(wiki.paths.graph.read_text(encoding="utf-8"))
+    term = [n for n in graph["nodes"] if n["name"].casefold() == _TERM.casefold()]
+    assert term, f"fixture no longer produces a {_TERM} node"
+    return term[0]["id"]
+
+
+def _compiled(tmp_path: Path) -> ProjectWiki:
+    root = tmp_path / "project"
+    _corpus(root)
+    wiki = ProjectWiki.init(root, name="mentions_test")
+    wiki.compile()
+    return wiki
+
+
+def test_owning_documents_reads_the_mirror_and_refuses_a_stale_one(tmp_path: Path) -> None:
+    """``owning_documents`` is ``node_documents`` reached from a project root.
+    Same mtime rule as the MCP keyed reads — a graph.json newer than the mirror
+    did not come from the same compile — and it never raises: a missing or
+    stale mirror answers ``[]`` so callers fall back to ``source_path``."""
+    import os
+    import time
+
+    from tesserae.graph_stores.sqlite import owning_documents
+
+    wiki = _compiled(tmp_path)
+    term_id = _term_id(wiki)
+    ranked = owning_documents(wiki.project_root, term_id)
+    assert [Path(p).parent.name for p, _ in ranked] == ["b", "a"]
+    assert owning_documents(wiki.project_root, term_id, limit=1) == ranked[:1]
+    assert owning_documents(None, term_id) == []
+    assert owning_documents(tmp_path / "nowhere", term_id) == []
+    future = time.time() + 60
+    os.utime(wiki.paths.graph, (future, future))
+    assert owning_documents(wiki.project_root, term_id) == []
+
+
+def test_compile_context_packs_and_cites_the_elaborating_document(tmp_path: Path) -> None:
+    """The bundle used to hand an agent the FIRST document that mentioned an
+    entity. Measured 2026-09-02/03 (handoff §10.5): first-seen picks the owning
+    paper 0.52 / 0.55 of the time against 0.92 / 0.85 for mention density. The
+    entity's own section and its citation now come from the document that
+    elaborates it; the first-seen path remains the fallback."""
+    from tesserae.context_compiler import compile_context
+    from tesserae.project import load_graph_file
+
+    wiki = _compiled(tmp_path)
+    term_id = _term_id(wiki)
+    graph = load_graph_file(wiki.paths.graph)
+    name = next(n.name for n in graph.nodes if n.id == term_id)
+    bundle = compile_context(
+        graph, project_root=str(wiki.project_root), seeds=[term_id], depth=1, budget=64_000
+    )
+    cite = next(c for c in bundle.citations if c.node_id == term_id)
+    assert Path(cite.source_path).parent.name == "b", cite
+    section = bundle.body.split(f"## [{name}]", 1)[1].split("\n## [", 1)[0]
+    assert "is our subject" in section, section[:300]
+
+
+def test_node_context_lists_the_documents_by_mention_density(tmp_path: Path) -> None:
+    """Agent-facing: ``node_context`` carries the ranked documents next to the
+    first-seen ``source_path`` it always had. Additive key; absent when the
+    mirror cannot answer."""
+    from tesserae.mcp_server import LLMWikiMCPServer
+    from tesserae.project import load_graph_file
+
+    wiki = _compiled(tmp_path)
+    term_id = _term_id(wiki)
+    graph = load_graph_file(wiki.paths.graph)
+    server = LLMWikiMCPServer(default_graph_path=wiki.paths.graph)
+    out = server.node_context(graph, wiki.project_root, node_id=term_id)
+    docs = out["node"]["documents"]
+    assert [Path(d["source_path"]).parent.name for d in docs] == ["b", "a"]
+    assert docs[0]["mentions"] > docs[1]["mentions"] >= 1

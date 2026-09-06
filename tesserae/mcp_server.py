@@ -1016,6 +1016,21 @@ def _load_federated_child(alias: str, graph_path: Path) -> _FederatedChild:
     return child
 
 
+def _documents_field(project_root: Optional[Path], node_id: str) -> JSONDict:
+    """``{"documents": [...]}`` ranked by mention density, or ``{}``.
+
+    Additive next to the node's first-seen ``source_path``: the document that
+    elaborates an entity is the one an agent should open (handoff §10.5).
+    Absent, not empty, when the project has no fresh SQLite mirror.
+    """
+    from .graph_stores.sqlite import owning_documents
+
+    ranked = owning_documents(project_root, node_id, limit=5)
+    if not ranked:
+        return {}
+    return {"documents": [{"source_path": path, "mentions": n} for path, n in ranked]}
+
+
 class LLMWikiMCPServer:
     """Tool implementation backing the Tesserae MCP JSON-RPC server."""
 
@@ -5531,6 +5546,7 @@ class LLMWikiMCPServer:
             node_payload = node_to_dict(node)
             node_payload["superseded"] = node.id in _superseded_ids(graph)
             node_payload["retracted"] = node.id in _retracted_ids(graph)
+            node_payload.update(_documents_field(project_root, node.id))
             node_payload = _clamp_payload_item(node_payload, per_entry_cap, "description")
             # LRU: the focal node AND the neighbourhood actually RETURNED are
             # reads (budget-dropped neighbours were not surfaced).
@@ -5573,6 +5589,7 @@ class LLMWikiMCPServer:
         node_payload = node_to_dict(node)
         node_payload["superseded"] = node.id in _superseded_ids(graph)
         node_payload["retracted"] = node.id in _retracted_ids(graph)
+        node_payload.update(_documents_field(project_root, node.id))
         node_payload = _clamp_payload_item(node_payload, per_entry_cap, "description")
         # KB-02/LRU: record that an agent actually read this node AND the live
         # neighbours surfaced alongside it (the nodes actually RETURNED —
