@@ -92,8 +92,9 @@ tesserae init --yes
 |---|---|---|
 | `llm_provider` | `--llm-provider {claude,codex,anthropic,openai,custom}` | Бэкенд LLM-клиента: `claude`/`codex` используют залогиненный CLI через OAuth; `anthropic` и `openai` используют эти API напрямую; `custom` нацеливается на эндпоинт, который вы указали. |
 | `llm_model` | `--llm-model` | Модель для LLM-клиента синтеза/инсайтов. |
-| `llm_base_url` | `--llm-base-url` | Базовый URL эндпоинта для `anthropic`/`openai`/`custom`. |
+| `llm_base_url` | `--llm-base-url` | Базовый URL эндпоинта для `anthropic`/`openai`/`custom`, либо шлюз, на который направляется CLI `claude`. |
 | `llm_api_key` | `--llm-api-key` | API-ключ для `anthropic`/`openai`/`custom`. |
+| `llm_auth_token` | `--llm-auth-token` | Bearer-учётные данные для эндпоинта; с `claude` они передаются CLI, так что `claude /login` не нужен. |
 
 > **Предупреждение о хранении в открытом виде.** `llm_api_key` хранится
 > **открытым текстом** в `.tesserae/config.json`. Предпочитайте переменные

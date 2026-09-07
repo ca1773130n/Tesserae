@@ -63,7 +63,7 @@ def test_mcp_ingest_ingests_clip_and_graph_gains_node(tmp_path, monkeypatch):
 
     # No real LLM: fixed TL;DR.
     import tesserae.clip as clip
-    monkeypatch.setattr(clip, "_summarize", lambda content: "fixed tldr")
+    monkeypatch.setattr(clip, "_summarize", lambda content, *a, **k: "fixed tldr")
 
     # No real compile: the recorder writes a node into graph.json, mimicking a
     # compile that ingested the clip, then reports the new counts.

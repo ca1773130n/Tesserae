@@ -88,6 +88,8 @@ Claude CLI 설정 디렉터리와 Codex 홈은 서로 호환되지 않는다:
 띄우는 모든 프로세스에 상속되므로, 그대로 두면 컴파일 전체가 그 세션 하나의
 할당량에 묶인다. 설정이 없으면 `CLAUDE_CONFIG_DIR`이 첫 번째 시도 계정으로 쓰인다.
 
+`claude` 프로바이더는 Anthropic 대신 claude 호환 게이트웨이를 향하게 할 수도 있다. 그 옆에 `llm_base_url`과 `llm_auth_token`을 설정하면 된다(예: `tesserae init --llm-provider claude --claude-config-dir ~/.claude-work --llm-base-url https://gw.example --llm-auth-token ...`, 또는 마법사의 엔드포인트 질문에 답한다). 이후 컴파일, `tesserae ask`, 클립 TL;DR, doctor 등 모든 호출이 그 토큰과 함께 CLI를 그곳으로 보낸다. `claude /login`은 필요 없고, 설정 디렉터리는 CLI 자체 상태용으로 계속 쓰인다.
+
 설정된 모든 계정이 사용량 한도에 도달하면, 컴파일은 문서마다 다시 묻는 대신 남은
 실행 동안 LLM 호출을 멈추고 해당 문서들을 `fallback: true`로 표시한 뒤 그 사실을
 알린다. 한도가 초기화된 뒤 전체 재컴파일 없이 복구하려면:

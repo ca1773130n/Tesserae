@@ -81,11 +81,14 @@ def build_clip_markdown(
     return frontmatter + "\n" + "\n\n".join(sections) + "\n"
 
 
-def _summarize(content: str) -> Optional[str]:
-    """Best-effort bounded TL;DR via the CLI-backed LLM layer. ``None`` on failure.
+def _summarize(content: str, project_root: Optional[str | Path] = None) -> Optional[str]:
+    """Best-effort bounded TL;DR via the CONFIGURED LLM backend. ``None`` on failure.
 
-    Uses ``run_claude_cli`` (no API key required). Imported lazily so this module
-    imports cleanly even when the LLM layer / ``claude`` binary is unavailable.
+    Goes through :func:`tesserae.llm_json.build_default_json_client` with the
+    project's own resolved settings, so the clip TL;DR spends the same provider,
+    config dirs and endpoint as compile does. It used to shell out to ``claude``
+    directly over every ``~/.claude*`` dir it could find, ignoring
+    ``llm_provider``, ``llm_claude_config_dirs`` and any custom endpoint.
     Any exception — missing binary, non-zero exit, timeout, import error — is
     swallowed and treated as "no summary".
     """
@@ -94,28 +97,25 @@ def _summarize(content: str) -> Optional[str]:
         return None
     try:
         # Lazy import: keeps top-level imports light and lets the module load
-        # even if the extractor's dependencies are missing.
-        from .llm_extractor import ClaudeCLIResearchExtractor, run_claude_cli
+        # even if the LLM layer's dependencies are missing.
+        from .llm_json import build_default_json_client, project_llm_settings
 
-        prompt = (
-            "Summarize the following in 2 sentences as a TL;DR. "
-            "Return only the summary, no preamble:\n\n" + text[:_SUMMARY_INPUT_MAX]
+        settings = project_llm_settings(project_root)
+        client = build_default_json_client(
+            provider=settings.get("provider"),
+            claude_config_dirs=settings.get("claude_config_dirs"),
+            settings=settings,
+            timeout=60,
         )
-        # Reuse the extractor's config-dir discovery (explicit → env →
-        # ~/.claude* → fallback) and try each dir on failure, mirroring how the
-        # extractor recovers from auth/config issues across dirs.
-        config_dirs = ClaudeCLIResearchExtractor().config_dirs
-        last_error: Optional[Exception] = None
-        for config_dir in config_dirs:
-            try:
-                out = run_claude_cli(prompt, config_dir, "sonnet", 60).strip()
-                if out:
-                    return out
-            except Exception as exc:  # try the next config dir
-                last_error = exc
-        # Exhausted all config dirs without a usable summary — skip TL;DR.
-        _ = last_error
-        return None
+        if client is None:
+            return None
+        out = client.complete_text(
+            system="Summarize the user's text in 2 sentences as a TL;DR. "
+                   "Return only the summary, no preamble.",
+            user=text[:_SUMMARY_INPUT_MAX],
+        )
+        out = (out or "").strip()
+        return out or None
     except Exception:
         # ANY failure (import error, missing binary, etc.) → no summary, never raise.
         return None
@@ -184,7 +184,7 @@ def ingest_clip(
     # context just by importing this module.
     from .ingest.orchestrator import ingest_sources
 
-    tldr_text = _summarize(content) if tldr else None
+    tldr_text = _summarize(content, getattr(wiki, "project_root", None)) if tldr else None
     dest_path = write_clip_file(
         wiki, content=content, url=url, title=title, note=note, tags=tags,
         tldr_text=tldr_text, clipped_at=clipped_at,

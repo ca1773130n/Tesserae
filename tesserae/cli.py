@@ -1497,6 +1497,11 @@ def _handle_setup(args: argparse.Namespace) -> int:
                 "llm_model": getattr(args, "llm_model", None),
                 "llm_base_url": getattr(args, "llm_base_url", None),
                 "llm_api_key": getattr(args, "llm_api_key", None),
+                # The parser accepted these two and this dict dropped them, so
+                # `init --llm-auth-token ...` wrote a config with the URL but
+                # no credential — the CLI then fell back to OAuth.
+                "llm_auth_token": getattr(args, "llm_auth_token", None),
+                "llm_api_style": getattr(args, "llm_api_style", None),
                 "codex_home": getattr(args, "codex_home", None),
                 "claude_config_dir": (
                     args.claude_config_dir[0]
@@ -3618,10 +3623,10 @@ def _build_init_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bare", action="store_true", help="Skip the wizard; write a minimal workspace (the old `project init`)")
     _add_llm_client_args(parser, persisted=True)
     parser.add_argument("--llm-model", default=None, help="Model for the synthesis/insights LLM client (persisted into config.json as llm_model)")
-    parser.add_argument("--llm-base-url", default=None, help="Endpoint base URL (see --llm-api-style) for --llm-provider anthropic/custom (persisted as llm_base_url)")
+    parser.add_argument("--llm-base-url", default=None, help="Endpoint base URL (see --llm-api-style) for --llm-provider anthropic/custom, or a gateway the claude CLI is routed at (persisted as llm_base_url)")
     parser.add_argument("--llm-api-key", default=None, help="API key for --llm-provider anthropic/custom (persisted in PLAINTEXT config.json as llm_api_key; prefer ANTHROPIC_API_KEY)")
     parser.add_argument("--llm-api-style", choices=["anthropic", "openai"], default=None, help="Wire protocol for the endpoint: anthropic (POST {base}/v1/messages) or openai (POST {base}/chat/completions, i.e. vLLM/LiteLLM/OpenRouter/Ollama/LM Studio) (llm_api_style)")
-    parser.add_argument("--llm-auth-token", default=None, help="Bearer credential for the endpoint, sent as Authorization: Bearer. Use instead of --llm-api-key when the gateway wants a bearer token (stored in PLAINTEXT)")
+    parser.add_argument("--llm-auth-token", default=None, help="Bearer credential for the endpoint, sent as Authorization: Bearer. Use instead of --llm-api-key when the gateway wants a bearer token; with --llm-provider claude it is handed to the CLI, so no login is needed (stored in PLAINTEXT)")
     return parser
 
 
@@ -4518,6 +4523,18 @@ def _handle_config_status(args: argparse.Namespace) -> int:
     else:
         dirs = settings["claude_config_dirs"] or ["<CLI default>"]
         print(f"  claude_dirs: {dirs}   [{_source('llm_claude_config_dirs', 'CLAUDE_CONFIG_DIR')}]")
+        # A custom endpoint applies to the claude CLI too (it is handed to the
+        # child as ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN), so say so — this
+        # panel used to hide it and the user could not tell whether the CLI
+        # was being routed at their gateway or at Anthropic.
+        if settings.get("base_url"):
+            print(f"  base_url   : {settings['base_url']}   [{_source('llm_base_url')}]  (claude CLI is routed here)")
+            if settings.get("auth_token"):
+                print(f"  credential : auth_token (Authorization: Bearer)   [{_source('llm_auth_token')}]")
+            elif settings.get("api_key"):
+                print(f"  credential : api_key (sent as a bearer token)   [{_source('llm_api_key')}]")
+            else:
+                print("  credential : none — the CLI will use the config dir's own login")
     if provider not in ("anthropic", "custom", "openai") and settings.get("model"):
         print(f"  model      : {settings['model']}   [{_source('llm_model', 'TESSERAE_LLM_MODEL')}]")
 
@@ -4636,10 +4653,10 @@ def _build_config_parser() -> argparse.ArgumentParser:
     p_llm.add_argument("--codex-home", default=None, help="Default Codex CLI home (e.g. ~/.codex-personal1)")
     p_llm.add_argument("--reasoning-effort", choices=["low", "medium", "high", "xhigh"], default=None, help="Default codex reasoning effort for Tesserae's own LLM calls")
     p_llm.add_argument("--llm-model", default=None, help="Default model for the synthesis LLM client (llm_model)")
-    p_llm.add_argument("--llm-base-url", default=None, help="Endpoint base URL (see --llm-api-style) for anthropic/custom (llm_base_url)")
+    p_llm.add_argument("--llm-base-url", default=None, help="Endpoint base URL (see --llm-api-style) for anthropic/custom, or a gateway the claude CLI is routed at (llm_base_url)")
     p_llm.add_argument("--llm-api-key", default=None, help="API key for anthropic/custom (stored in PLAINTEXT ~/.tesserae/config.json; prefer ANTHROPIC_API_KEY)")
     p_llm.add_argument("--llm-api-style", choices=["anthropic", "openai"], default=None, help="Wire protocol for the endpoint: anthropic (POST {base}/v1/messages) or openai (POST {base}/chat/completions, i.e. vLLM/LiteLLM/OpenRouter/Ollama/LM Studio) (llm_api_style)")
-    p_llm.add_argument("--llm-auth-token", default=None, help="Bearer credential for the endpoint, sent as Authorization: Bearer. Use instead of --llm-api-key when the gateway wants a bearer token (stored in PLAINTEXT)")
+    p_llm.add_argument("--llm-auth-token", default=None, help="Bearer credential for the endpoint, sent as Authorization: Bearer. Use instead of --llm-api-key when the gateway wants a bearer token; with --llm-provider claude it is handed to the CLI, so no login is needed (stored in PLAINTEXT)")
     p_llm.set_defaults(_handler="_handle_config_llm")
 
     p_deps = sub.add_parser(
@@ -4985,10 +5002,10 @@ def _build_setup_parser() -> argparse.ArgumentParser:
     parser.add_argument("--codex-home", default=None, help="Default Codex CLI home")
     parser.add_argument("--reasoning-effort", choices=["low", "medium", "high", "xhigh"], default=None, help="Default codex reasoning effort")
     parser.add_argument("--llm-model", default=None, help="Machine-wide default model for the synthesis LLM client (llm_model)")
-    parser.add_argument("--llm-base-url", default=None, help="Endpoint base URL (see --llm-api-style) for anthropic/custom (llm_base_url)")
+    parser.add_argument("--llm-base-url", default=None, help="Endpoint base URL (see --llm-api-style) for anthropic/custom, or a gateway the claude CLI is routed at (llm_base_url)")
     parser.add_argument("--llm-api-key", default=None, help="API key for anthropic/custom (stored in PLAINTEXT ~/.tesserae/config.json; prefer ANTHROPIC_API_KEY)")
     parser.add_argument("--llm-api-style", choices=["anthropic", "openai"], default=None, help="Wire protocol for the endpoint: anthropic (POST {base}/v1/messages) or openai (POST {base}/chat/completions, i.e. vLLM/LiteLLM/OpenRouter/Ollama/LM Studio) (llm_api_style)")
-    parser.add_argument("--llm-auth-token", default=None, help="Bearer credential for the endpoint, sent as Authorization: Bearer. Use instead of --llm-api-key when the gateway wants a bearer token (stored in PLAINTEXT)")
+    parser.add_argument("--llm-auth-token", default=None, help="Bearer credential for the endpoint, sent as Authorization: Bearer. Use instead of --llm-api-key when the gateway wants a bearer token; with --llm-provider claude it is handed to the CLI, so no login is needed (stored in PLAINTEXT)")
     parser.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, raganything, or 'all'); repeat")
     parser.add_argument("--install-all", action="store_true", help="Install every known optional dependency")
     # Removed backend (0.19): the cognee cognify pass no longer exists.

@@ -91,6 +91,8 @@ lancé depuis une session Claude Code et qui, sinon, lierait toute la compilatio
 quota de cette seule session. Sans configuration, `CLAUDE_CONFIG_DIR` reste le premier
 compte essayé.
 
+Le provider `claude` peut aussi être pointé vers une passerelle compatible claude au lieu d'Anthropic : définissez à côté `llm_base_url` et `llm_auth_token` (par exemple `tesserae init --llm-provider claude --claude-config-dir ~/.claude-work --llm-base-url https://gw.example --llm-auth-token ...`, ou répondez à la question d'endpoint de l'assistant). Chaque appel — la compilation, `tesserae ask`, les TL;DR de clips, doctor — route alors le CLI là-bas avec ce token ; aucun `claude /login` n'est nécessaire, et le répertoire de configuration reste utilisé pour l'état propre du CLI.
+
 Lorsque tous les comptes configurés signalent leur limite d'usage, la compilation
 cesse d'appeler le LLM pour le reste de l'exécution au lieu de reposer la question
 document par document, marque ces documents `fallback: true` et vous le signale.

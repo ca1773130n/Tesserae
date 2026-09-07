@@ -92,6 +92,8 @@ gestartete Prozess erbt und die andernfalls die gesamte Kompilierung an das Kont
 genau dieser einen Sitzung binden würde. Ohne Konfiguration bleibt
 `CLAUDE_CONFIG_DIR` das zuerst versuchte Konto.
 
+Der Provider `claude` lässt sich auch statt auf Anthropic auf ein claude-kompatibles Gateway richten: setze daneben `llm_base_url` und `llm_auth_token` (zum Beispiel `tesserae init --llm-provider claude --claude-config-dir ~/.claude-work --llm-base-url https://gw.example --llm-auth-token ...`, oder beantworte die Endpunkt-Frage des Assistenten). Jeder Aufruf — Kompilierung, `tesserae ask`, Clip-TL;DRs, doctor — leitet die CLI dann mit diesem Token dorthin; kein `claude /login` ist nötig, und das Konfigurationsverzeichnis wird weiterhin für den eigenen Zustand der CLI verwendet.
+
 Melden alle konfigurierten Konten ihr Nutzungslimit, stellt die Kompilierung für den
 Rest des Laufs LLM-Aufrufe ein, statt pro Dokument erneut nachzufragen, markiert diese
 Dokumente mit `fallback: true` und sagt es dir. Nach dem Zurücksetzen des Limits ohne

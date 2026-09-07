@@ -1134,3 +1134,30 @@ def test_scope_aliases_is_comma_separated_and_does_not_swallow_question():
     args = parser.parse_args(["--scope-aliases", "research,work", "what changed?"])
     assert args.scope_aliases == ["research", "work"]
     assert args.question == "what changed?"
+
+
+def test_init_yes_persists_claude_cli_endpoint_with_config_dir(tmp_path, monkeypatch):
+    """A claude-CLI harness on a gateway: config dir + base URL + bearer token
+    + wire, all through the wizard/plan path. `init --yes` used to drop the
+    token and the wire on the floor (only --bare persisted them)."""
+    import json
+
+    import tesserae.cli as cli
+
+    acct = tmp_path / "claude-work"
+    acct.mkdir()
+    rc = cli.main([
+        "init", "--yes", "--project", str(tmp_path),
+        "--llm-provider", "claude",
+        "--claude-config-dir", str(acct),
+        "--llm-base-url", "https://gw.example/anthropic",
+        "--llm-auth-token", "tok-secret",
+        "--llm-api-style", "anthropic",
+    ])
+    assert rc == 0
+    cfg = json.loads((tmp_path / ".tesserae" / "config.json").read_text())
+    assert cfg["llm_provider"] == "claude"
+    assert cfg["llm_claude_config_dirs"] == [str(acct)]
+    assert cfg["llm_base_url"] == "https://gw.example/anthropic"
+    assert cfg["llm_auth_token"] == "tok-secret"
+    assert cfg["llm_api_style"] == "anthropic"

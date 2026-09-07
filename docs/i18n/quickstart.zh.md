@@ -88,8 +88,9 @@ tesserae init --yes
 |---|---|---|
 | `llm_provider` | `--llm-provider {claude,codex,anthropic,openai,custom}` | LLM 客户端的后端：`claude`/`codex` 通过 OAuth 使用已登录的 CLI；`anthropic` 和 `openai` 直接使用那些 API；`custom` 指向你命名的一个端点。 |
 | `llm_model` | `--llm-model` | 合成/洞见 LLM 客户端使用的模型。 |
-| `llm_base_url` | `--llm-base-url` | `anthropic`/`openai`/`custom` 的端点基础 URL。 |
+| `llm_base_url` | `--llm-base-url` | `anthropic`/`openai`/`custom` 的端点基础 URL，或 `claude` CLI 被路由到的网关。 |
 | `llm_api_key` | `--llm-api-key` | `anthropic`/`openai`/`custom` 的 API key。 |
+| `llm_auth_token` | `--llm-auth-token` | 端点的 Bearer 凭据；使用 `claude` 时会传给 CLI，因此无需 `claude /login`。 |
 
 > **明文警告。** `llm_api_key` 以**明文**存储在 `.tesserae/config.json` 中。请优先使用环境变量：
 > `TESSERAE_LLM_API_KEY`（密钥）、`TESSERAE_LLM_BASE_URL`（端点）和 `TESSERAE_LLM_MODEL`（模型）。解析顺序为 env → 项目配置 →

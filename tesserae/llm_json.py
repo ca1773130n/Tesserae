@@ -810,6 +810,7 @@ class ClaudeCLIJsonClient:
         timeout: int = 180,
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
+        auth_token: Optional[str] = None,
     ) -> None:
         import os as _os
         from pathlib import Path as _Path
@@ -819,9 +820,15 @@ class ClaudeCLIJsonClient:
         self.model = model or _configured_default_model(("claude",)) or "sonnet"
         # Custom claude-compatible endpoint routing: when set, these are
         # surfaced to the CLI child process as ANTHROPIC_BASE_URL /
-        # ANTHROPIC_AUTH_TOKEN in _run_prompt.
+        # ANTHROPIC_AUTH_TOKEN in _run_prompt. ``auth_token`` is the
+        # documented bearer credential (``llm_auth_token``); it used to be
+        # dropped on the way to this client, so a claude-CLI harness pointed
+        # at a gateway was sent there WITHOUT its token, fell back to the
+        # OAuth login of whatever config dir it landed on, and the user saw
+        # "it always uses the default claude config dir".
         self.base_url = base_url
         self.api_key = api_key
+        self.auth_token = auth_token
         # Resolution order:
         #   1. Explicit ``config_dirs`` argument wins (tests, MCP override,
         #      CLI flags like --claude-config-dir).
@@ -940,8 +947,11 @@ class ClaudeCLIJsonClient:
                 # bearer token for that endpoint.
                 if self.base_url:
                     env["ANTHROPIC_BASE_URL"] = self.base_url
-                if self.api_key:
-                    env["ANTHROPIC_AUTH_TOKEN"] = self.api_key
+                # The bearer credential wins; ``api_key`` keeps its historical
+                # bearer mapping so existing configs keep working unchanged.
+                token = self.auth_token or self.api_key
+                if token:
+                    env["ANTHROPIC_AUTH_TOKEN"] = token
                 cmd = [
                     "claude",
                     "-p",
@@ -1877,11 +1887,38 @@ def _claude_cli_available() -> bool:
             if p.is_dir() and not p.name.endswith((".bak", ".old"))
         )
         candidates = discovered or [home / ".claude"]
-    markers = ("settings.json", "settings.local.json", "projects", "history.jsonl")
+    markers = (
+        "settings.json", "settings.local.json", "projects", "history.jsonl",
+        # A dir that only ever ran `claude /login` (no session yet) has
+        # nothing but this file — and it is the one marker that means
+        # "credentialed" rather than "was used once".
+        ".credentials.json",
+    )
     return any(
         cdir.exists() and any((cdir / m).exists() for m in markers)
         for cdir in candidates
     )
+
+
+def _claude_cli_usable(config_dirs: Optional[Sequence[str]] = None) -> bool:
+    """:func:`_claude_cli_available`, widened by the dirs the user CONFIGURED.
+
+    The discovery probe only looks at ``CLAUDE_CONFIG_DIR`` and ``~/.claude*``,
+    so a configured ``llm_claude_config_dirs`` entry anywhere else (say
+    ``~/.config/claude-work``) read as "no Claude CLI" and the builders
+    silently dropped to the next backend — the user had named the account to
+    spend and Tesserae answered from a different one. A configured dir that
+    exists is enough here; whether it is logged in is settled by the rotation
+    loop, exactly as for discovered dirs.
+    """
+    import shutil as _shutil
+    from pathlib import Path as _Path
+
+    if _claude_cli_available():
+        return True
+    if not config_dirs or not _shutil.which("claude"):
+        return False
+    return any(_Path(str(d)).expanduser().is_dir() for d in config_dirs)
 
 
 def _codex_cli_available() -> bool:
@@ -1944,11 +1981,14 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     > ``~/.tesserae/config.json`` > default.
 
     Keys read from both config layers: ``llm_provider`` (``"claude"`` |
-    ``"codex"`` | ``"anthropic"`` | ``"custom"``), ``llm_claude_config_dirs``
-    (list or str), ``llm_codex_home`` (str), ``llm_model`` (str),
-    ``llm_base_url`` (str), ``llm_api_key`` (str). Env overrides:
-    ``TESSERAE_LLM_MODEL`` → model, ``ANTHROPIC_BASE_URL`` → base_url,
-    ``ANTHROPIC_API_KEY`` → api_key.
+    ``"codex"`` | ``"anthropic"`` | ``"openai"`` | ``"custom"``),
+    ``llm_claude_config_dirs`` (list or str; the legacy singular
+    ``llm_claude_config_dir`` and ``extraction.claude_config_dir`` are read
+    too), ``llm_codex_homes`` / ``llm_codex_home``, ``llm_model``,
+    ``llm_base_url``, ``llm_api_key``, ``llm_auth_token``, ``llm_api_style``.
+    Env overrides: the ``TESSERAE_LLM_*`` names first, then the ambient
+    ``ANTHROPIC_BASE_URL`` / ``ANTHROPIC_API_KEY`` / ``ANTHROPIC_AUTH_TOKEN``.
+    Every resolved knob records the layer that won it under ``sources``.
     """
     import os
 
@@ -1975,10 +2015,12 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     )
 
     def _as_dirs(raw: object) -> Optional[List[str]]:
+        # ``~`` is expanded here, once: the value goes verbatim into the
+        # child's CLAUDE_CONFIG_DIR, which the CLI does not expand.
         if isinstance(raw, str) and raw:
-            return [raw]
+            return [os.path.expanduser(raw)]
         if isinstance(raw, list) and raw:
-            return [str(d) for d in raw]
+            return [os.path.expanduser(str(d)) for d in raw if str(d)]
         return None
 
     # Deliberate config beats the ambient env var, NOT the other way round.
@@ -2002,11 +2044,26 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     # authoritative. Scalar CLAUDE_CONFIG_DIR is still deliberately absent —
     # see the note below.
     _env_dirs = os.environ.get("TESSERAE_CLAUDE_CONFIG_DIRS") or ""
-    claude_config_dirs = (
-        _as_dirs([d for d in _env_dirs.split(os.pathsep) if d])
-        or _as_dirs(cfg.get("llm_claude_config_dirs"))
-        or _as_dirs(global_cfg.get("llm_claude_config_dirs"))
-    )
+    _extraction = cfg.get("extraction") if isinstance(cfg.get("extraction"), dict) else {}
+    # ``llm_claude_config_dir`` (singular) and ``extraction.claude_config_dir``
+    # are what older ``tesserae init`` wizards wrote. Nothing read them, so the
+    # dir the user chose at setup was silently ignored and every run went to
+    # the CLI's own default. They rank as project config, below the plural key.
+    claude_config_dirs = None
+    for _label, _raw in (
+        ("env TESSERAE_CLAUDE_CONFIG_DIRS", [d for d in _env_dirs.split(os.pathsep) if d]),
+        ("project .tesserae/config.json", cfg.get("llm_claude_config_dirs")),
+        ("project .tesserae/config.json (llm_claude_config_dir)", cfg.get("llm_claude_config_dir")),
+        ("project .tesserae/config.json (extraction.claude_config_dir)", _extraction.get("claude_config_dir")),
+        ("~/.tesserae/config.json", global_cfg.get("llm_claude_config_dirs")),
+        ("~/.tesserae/config.json (llm_claude_config_dir)", global_cfg.get("llm_claude_config_dir")),
+    ):
+        claude_config_dirs = _as_dirs(_raw)
+        if claude_config_dirs:
+            _provider_sources["claude_config_dirs"] = _label
+            break
+    else:
+        _provider_sources["claude_config_dirs"] = "default"
 
     # Codex gets the same treatment as claude above, for the same reasons.
     # ``llm_codex_homes`` (a LIST, rotation order) is the modern key; the older
@@ -2265,18 +2322,26 @@ def build_default_json_client(
         return None
 
     def _claude() -> Optional[LLMJsonClient]:
-        if _claude_cli_available():
-            # Thread the endpoint pair only when a custom base_url is in
-            # play — a stray ANTHROPIC_API_KEY env var must not flip the
-            # CLI from OAuth to bearer-token auth.
+        _dirs = claude_config_dirs or settings.get("claude_config_dirs")
+        if _claude_cli_usable(_dirs):
+            # Thread the endpoint knobs when a custom base_url OR a bearer
+            # token is in play — a stray ANTHROPIC_API_KEY env var alone must
+            # not flip the CLI from OAuth to bearer-token auth. (An ambient
+            # ANTHROPIC_AUTH_TOKEN reaches the child anyway; a configured
+            # llm_auth_token is deliberate.) All three travel together: the
+            # token used to be left behind here.
             _ekw = (
-                {"base_url": resolved_base_url, "api_key": resolved_api_key}
-                if resolved_base_url
+                {
+                    "base_url": resolved_base_url,
+                    "api_key": resolved_api_key,
+                    "auth_token": resolved_auth_token,
+                }
+                if resolved_base_url or resolved_auth_token
                 else {}
             )
             return ClaudeCLIJsonClient(
                 model=_model_for(("claude",)),
-                config_dirs=claude_config_dirs or settings.get("claude_config_dirs"),
+                config_dirs=_dirs,
                 **_ekw,
                 **_tkw,
             )
@@ -2492,15 +2557,24 @@ def build_rotating_client(
     # endpoint only when a base_url is in play, so a stray ANTHROPIC_API_KEY
     # env var never flips the CLI from OAuth to bearer-token auth.
     _claude_ekw = (
-        {"base_url": resolved_base_url, "api_key": resolved_api_key}
-        if resolved_base_url
+        {
+            "base_url": resolved_base_url,
+            "api_key": resolved_api_key,
+            "auth_token": resolved_auth_token,
+        }
+        if resolved_base_url or resolved_auth_token
         else {}
     )
+    # The configured dir list was only honoured when a caller passed it by
+    # hand; every real caller passes ``settings=`` alone, so `tesserae ask`,
+    # `query --llm` and the activity summaries rotated over every ``~/.claude*``
+    # on the box while compile obeyed ``llm_claude_config_dirs``.
+    _resolved_claude_dirs = claude_config_dirs or settings.get("claude_config_dirs")
     claude_client = (
         ClaudeCLIJsonClient(
-            model=model_claude, config_dirs=claude_config_dirs, **_claude_ekw
+            model=model_claude, config_dirs=_resolved_claude_dirs, **_claude_ekw
         )
-        if _claude_cli_available()
+        if _claude_cli_usable(_resolved_claude_dirs)
         else None
     )
     codex_client = (

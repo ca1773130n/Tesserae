@@ -701,6 +701,10 @@ _TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
     # ``system=`` kwargs from the AST instead of guessing at verbs.
     "You extract a typed research-intelligence graph",
     "You are a Tesserae liveness probe",
+    # The clip TL;DR (tesserae/clip.py) — routed through the configured
+    # provider since the CLI-only path was removed, so it now issues a
+    # ``system=`` prompt like every other Tesserae call.
+    "Summarize the user's text in 2 sentences as a TL;DR",
     # Found only once the anti-drift scanner learned to resolve module-level
     # constants (`system=_SUMMARY_SYSTEM`) rather than inline literals alone.
     # Every one of these was landing in the session store as a user session;

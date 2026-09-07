@@ -90,6 +90,8 @@ LLM バックエンドが未設定/未認証の場合、compile は**決定論�
 1つのクォータに縛られる。何も設定されていなければ、`CLAUDE_CONFIG_DIR` が最初に試す
 アカウントとして使われる。
 
+`claude` プロバイダーは Anthropic の代わりに claude 互換ゲートウェイへ向けることもできる。隣に `llm_base_url` と `llm_auth_token` を設定する（例えば `tesserae init --llm-provider claude --claude-config-dir ~/.claude-work --llm-base-url https://gw.example --llm-auth-token ...`、またはウィザードのエンドポイント質問に答える）。以後はコンパイル、`tesserae ask`、クリップの TL;DR、doctor のすべての呼び出しが、そのトークン付きで CLI をそこへ向ける。`claude /login` は不要で、設定ディレクトリは引き続き CLI 自身の状態に使われる。
+
 設定されたすべてのアカウントが使用上限に達すると、コンパイルは文書ごとに問い直す代わ
 りに残りの実行で LLM 呼び出しを止め、それらの文書を `fallback: true` と記録して通知
 する。上限がリセットされた後、全体を再コンパイルせずに回復するには:

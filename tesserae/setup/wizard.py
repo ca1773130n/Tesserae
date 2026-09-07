@@ -122,6 +122,10 @@ def render_review(plan: SetupPlan) -> str:
     if plan.llm_api_key:
         # Never echo the key: this rendering reaches MCP/non-TTY consumers.
         table.add_row("llm_api_key", "(set — will be stored in plaintext config.json)")
+    if getattr(plan, "llm_auth_token", None):
+        table.add_row("llm_auth_token", "(set — will be stored in plaintext config.json)")
+    if getattr(plan, "llm_api_style", None):
+        table.add_row("llm_api_style", plan.llm_api_style)
     if plan.claude_config_dir:
         table.add_row("claude_config_dir", plan.claude_config_dir)
     if plan.codex_home:
@@ -205,12 +209,31 @@ def run_wizard(
     llm_model = base_plan.llm_model
     llm_base_url = base_plan.llm_base_url
     llm_api_key = base_plan.llm_api_key
+    llm_auth_token = getattr(base_plan, "llm_auth_token", None)
+    llm_api_style = getattr(base_plan, "llm_api_style", None)
     if llm_provider == "claude":
         raw_dir = Prompt.ask(
             "CLAUDE_CONFIG_DIR (blank = auto; set only for multi-account)",
             default="",
         )
         claude_config_dir = raw_dir.strip() or None
+        # The claude CLI can be pointed at a claude-compatible gateway
+        # (ANTHROPIC_BASE_URL + bearer token) without logging in. The wizard
+        # only offered that under `custom`, so a claude-CLI harness on a
+        # gateway had no way to record its endpoint here.
+        llm_base_url = Prompt.ask(
+            "Custom endpoint base URL for the claude CLI (blank = Anthropic via the CLI's own login)",
+            default=llm_base_url or "",
+        ).strip() or None
+        if llm_base_url:
+            llm_auth_token = Prompt.ask(
+                "Bearer token for that endpoint (blank = none; stored in plaintext config)",
+                default=llm_auth_token or "",
+                password=True,
+            ).strip() or None
+            llm_model = Prompt.ask(
+                "Model name (blank = provider default)", default=llm_model or ""
+            ).strip() or None
     if llm_provider == "codex":
         codex_model = Prompt.ask("Codex model", default=codex_model or "gpt-5.4")
     if llm_provider == "custom":
@@ -255,6 +278,8 @@ def run_wizard(
             "llm_model": llm_model,
             "llm_base_url": llm_base_url,
             "llm_api_key": llm_api_key,
+            "llm_auth_token": llm_auth_token,
+            "llm_api_style": llm_api_style,
             "include_raganything": include_raganything,
             "install_raganything": install_raganything,
             "install_agent_pointer": install_pointer,

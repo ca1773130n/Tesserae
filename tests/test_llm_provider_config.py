@@ -988,3 +988,44 @@ def test_synthesis_derives_its_project_root_from_the_wiki_store(tmp_path: Path):
     from tesserae.site.raw_view import derive_project_root
 
     assert derive_project_root(tmp_path / "proj" / ".tesserae" / "wiki") == tmp_path / "proj"
+
+
+def test_resolve_settings_honours_legacy_project_claude_config_dir_keys(tmp_path: Path, monkeypatch):
+    """Older `tesserae init` wizards wrote ``extraction.claude_config_dir`` (and
+    a singular ``llm_claude_config_dir``); nothing read them, so the dir the
+    user chose at setup was ignored and every run went to the CLI default."""
+    import tesserae.llm_json as lj
+
+    _isolate_env(monkeypatch)
+    _write_global_cfg(tmp_path, monkeypatch, {"llm_claude_config_dirs": ["/global/acct"]})
+
+    legacy = lj.resolve_llm_client_settings(
+        {"extraction": {"backend": "claude-cli", "claude_config_dir": "/proj/.claude-work"}}
+    )
+    assert legacy["claude_config_dirs"] == ["/proj/.claude-work"]
+    assert "extraction.claude_config_dir" in legacy["sources"]["claude_config_dirs"]
+
+    singular = lj.resolve_llm_client_settings({"llm_claude_config_dir": "/proj/one"})
+    assert singular["claude_config_dirs"] == ["/proj/one"]
+
+    # The plural key still outranks both legacy spellings.
+    plural = lj.resolve_llm_client_settings({
+        "llm_claude_config_dirs": ["/proj/a", "/proj/b"],
+        "extraction": {"claude_config_dir": "/proj/.claude-work"},
+    })
+    assert plural["claude_config_dirs"] == ["/proj/a", "/proj/b"]
+    assert plural["sources"]["claude_config_dirs"] == "project .tesserae/config.json"
+
+    # And global config is reached only when the project says nothing.
+    assert lj.resolve_llm_client_settings({})["claude_config_dirs"] == ["/global/acct"]
+    assert lj.resolve_llm_client_settings({})["sources"]["claude_config_dirs"] == "~/.tesserae/config.json"
+
+
+def test_resolve_settings_reports_default_source_for_unconfigured_claude_dirs(tmp_path: Path, monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_env(monkeypatch)
+    _write_global_cfg(tmp_path, monkeypatch, {})
+    settings = lj.resolve_llm_client_settings({})
+    assert settings["claude_config_dirs"] is None
+    assert settings["sources"]["claude_config_dirs"] == "default"

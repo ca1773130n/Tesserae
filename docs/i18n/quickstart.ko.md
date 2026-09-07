@@ -93,8 +93,9 @@ tesserae init --yes
 |---|---|---|
 | `llm_provider` | `--llm-provider {claude,codex,anthropic,openai,custom}` | LLM 클라이언트의 백엔드: `claude`/`codex`는 OAuth로 로그인된 CLI 사용; `anthropic`과 `openai`는 그 API를 직접 사용; `custom`은 당신이 명명하는 엔드포인트를 대상으로 합니다. |
 | `llm_model` | `--llm-model` | synthesis/insights LLM 클라이언트용 모델. |
-| `llm_base_url` | `--llm-base-url` | `anthropic`/`openai`/`custom`용 엔드포인트 기본 URL. |
+| `llm_base_url` | `--llm-base-url` | `anthropic`/`openai`/`custom`용 엔드포인트 기본 URL, 또는 `claude` CLI를 보낼 게이트웨이. |
 | `llm_api_key` | `--llm-api-key` | `anthropic`/`openai`/`custom`용 API 키. |
+| `llm_auth_token` | `--llm-auth-token` | 엔드포인트용 베어러 자격 증명. `claude`에서는 CLI에 전달되므로 `claude /login`이 필요 없다. |
 
 > **평문 경고.** `llm_api_key`는 `.tesserae/config.json`에 **평문**으로
 > 저장됩니다. 대신 환경 변수를 선호하세요:

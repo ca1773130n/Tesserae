@@ -148,7 +148,7 @@ def test_ingest_clip_writes_file_and_returns_report_with_tldr(
     project = _bootstrap_project(tmp_path)
 
     # No real LLM: summarizer returns a fixed string.
-    monkeypatch.setattr(clip, "_summarize", lambda content: "A fixed TL;DR.")
+    monkeypatch.setattr(clip, "_summarize", lambda content, *a, **k: "A fixed TL;DR.")
 
     captured: dict = {}
     _patch_ingest_sources(monkeypatch, captured)
@@ -200,7 +200,7 @@ def test_ingest_clip_defers_when_compile_lock_held(
     from tesserae.project import ProjectWiki
 
     project = _bootstrap_project(tmp_path)
-    monkeypatch.setattr(clip, "_summarize", lambda content: None)
+    monkeypatch.setattr(clip, "_summarize", lambda content, *a, **k: None)
 
     def _lock_held(wiki, inputs, **kwargs):
         raise CompileLockHeldError("another tesserae compile/refresh is already running (pid 999)")
@@ -224,7 +224,7 @@ def test_ingest_clip_tldr_none_on_summarizer_failure(
     project = _bootstrap_project(tmp_path)
 
     # Summarizer yields None (best-effort skip) — no '## TL;DR' section.
-    monkeypatch.setattr(clip, "_summarize", lambda content: None)
+    monkeypatch.setattr(clip, "_summarize", lambda content, *a, **k: None)
 
     captured: dict = {}
     _patch_ingest_sources(monkeypatch, captured)
@@ -258,7 +258,7 @@ def test_ingest_clip_skips_summarizer_when_tldr_false(
     project = _bootstrap_project(tmp_path)
 
     # If tldr=False the summarizer must never be invoked — make it explode if it is.
-    def _boom(content):
+    def _boom(content, *a, **k):
         raise AssertionError("_summarize should not be called when tldr=False")
 
     monkeypatch.setattr(clip, "_summarize", _boom)
@@ -281,3 +281,63 @@ def test_ingest_clip_skips_summarizer_when_tldr_false(
     assert report["status"] == "ok"
     assert report["tldr"] is None
     assert Path(report["path"]).exists()
+
+
+# ---------------------------------------------------------------------------
+# _summarize — goes through the project's CONFIGURED provider
+# ---------------------------------------------------------------------------
+
+
+def test_summarize_uses_the_projects_configured_llm_backend(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The TL;DR used to shell out to ``claude`` over every ``~/.claude*`` dir it
+    could find, ignoring ``llm_provider``, ``llm_claude_config_dirs`` and any
+    custom endpoint the project had configured."""
+    import json
+
+    import tesserae.llm_json as lj
+
+    project = _bootstrap_project(tmp_path)
+    cfg_path = project / ".tesserae" / "config.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["llm_provider"] = "claude"
+    cfg["llm_claude_config_dirs"] = [str(tmp_path / "acct-work")]
+    cfg["llm_base_url"] = "https://gw.example/anthropic"
+    cfg["llm_auth_token"] = "tok-secret"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+    for var in ("TESSERAE_LLM_PROVIDER", "TESSERAE_CLAUDE_CONFIG_DIRS",
+                "TESSERAE_LLM_BASE_URL", "TESSERAE_LLM_AUTH_TOKEN",
+                "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", tmp_path / "no-global.json")
+
+    seen: dict = {}
+
+    class _Client:
+        def complete_text(self, *, system, user, **kw):
+            seen["user"] = user
+            return "  A two-sentence TL;DR.  "
+
+    def _fake_builder(**kwargs):
+        seen["kwargs"] = kwargs
+        return _Client()
+
+    monkeypatch.setattr(lj, "build_default_json_client", _fake_builder)
+
+    assert clip._summarize("some clipped text", project) == "A two-sentence TL;DR."
+    assert seen["user"] == "some clipped text"
+    settings = seen["kwargs"]["settings"]
+    assert settings["claude_config_dirs"] == [str(tmp_path / "acct-work")]
+    assert settings["base_url"] == "https://gw.example/anthropic"
+    assert settings["auth_token"] == "tok-secret"
+    assert seen["kwargs"]["claude_config_dirs"] == [str(tmp_path / "acct-work")]
+
+
+def test_summarize_returns_none_when_no_backend_is_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tesserae.llm_json as lj
+
+    monkeypatch.setattr(lj, "build_default_json_client", lambda **kw: None)
+    assert clip._summarize("text", tmp_path) is None

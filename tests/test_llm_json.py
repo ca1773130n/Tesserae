@@ -2456,3 +2456,155 @@ def test_build_default_still_raises_when_the_chosen_provider_cannot_be_built(mon
     monkeypatch.setattr(lj, "CodexCLIJsonClient", _Boom)
     with pytest.raises(RuntimeError, match="codex home unreadable"):
         lj.build_default_json_client(provider="codex")
+
+
+# ---------------------------------------------------------------------------
+# Custom endpoint + configured config dirs reach the Claude CLI child
+# ---------------------------------------------------------------------------
+
+
+def test_claude_cli_child_gets_base_url_and_bearer_token(monkeypatch):
+    """``llm_auth_token`` never reached the CLI: the client had no such
+    parameter, so a claude-CLI harness pointed at a gateway was sent there
+    without its credential and fell back to the config dir's OAuth login."""
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    seen = {}
+
+    def fake_run_cli(cmd, *, prompt, env, timeout):
+        seen["env"] = dict(env)
+        return _make_completed_process(returncode=0, stdout='{"ok": 1}')
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run_cli)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    client = ClaudeCLIJsonClient(
+        config_dirs=["/acct/work"],
+        base_url="https://gw.example/anthropic",
+        auth_token="tok-bearer",
+    )
+    assert client.complete_json(system="s", user="u", schema_name="t") == {"ok": 1}
+    assert seen["env"]["CLAUDE_CONFIG_DIR"] == "/acct/work"
+    assert seen["env"]["ANTHROPIC_BASE_URL"] == "https://gw.example/anthropic"
+    assert seen["env"]["ANTHROPIC_AUTH_TOKEN"] == "tok-bearer"
+
+
+def test_claude_cli_auth_token_outranks_api_key_for_the_bearer(monkeypatch):
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    seen = {}
+
+    def fake_run_cli(cmd, *, prompt, env, timeout):
+        seen["env"] = dict(env)
+        return _make_completed_process(returncode=0, stdout="prose")
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run_cli)
+    ClaudeCLIJsonClient(
+        config_dirs=["/acct/a"], base_url="https://gw", api_key="key", auth_token="tok",
+    ).complete_text(system="s", user="u")
+    assert seen["env"]["ANTHROPIC_AUTH_TOKEN"] == "tok"
+    # api_key alone keeps its historical bearer mapping.
+    ClaudeCLIJsonClient(
+        config_dirs=["/acct/a"], base_url="https://gw", api_key="key",
+    ).complete_text(system="s", user="u")
+    assert seen["env"]["ANTHROPIC_AUTH_TOKEN"] == "key"
+
+
+def test_build_default_threads_auth_token_and_configured_dirs_to_claude_cli(monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: False)
+    settings = lj.resolve_llm_client_settings({
+        "llm_provider": "claude",
+        "llm_claude_config_dirs": ["/acct/work"],
+        "llm_base_url": "https://gw.example/anthropic",
+        "llm_auth_token": "tok-bearer",
+    })
+    client = _primary(lj.build_default_json_client(settings=settings))
+    assert isinstance(client, lj.ClaudeCLIJsonClient)
+    assert client.config_dirs == ["/acct/work"]
+    assert client.base_url == "https://gw.example/anthropic"
+    assert client.auth_token == "tok-bearer"
+
+
+def test_build_rotating_client_honours_configured_claude_dirs_and_token(monkeypatch):
+    """Every real caller passes ``settings=`` alone, and the rotating builder
+    only honoured a dir list passed by hand — so `tesserae ask` rotated over
+    every ``~/.claude*`` on the box while compile obeyed the configured list."""
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: False)
+    settings = lj.resolve_llm_client_settings({
+        "llm_provider": "claude",
+        "llm_claude_config_dirs": ["/acct/work", "/acct/personal"],
+        "llm_base_url": "https://gw.example/anthropic",
+        "llm_auth_token": "tok-bearer",
+    })
+    client = _primary(lj.build_rotating_client(settings=settings))
+    assert isinstance(client, lj.ClaudeCLIJsonClient)
+    assert client.config_dirs == ["/acct/work", "/acct/personal"]
+    assert client.auth_token == "tok-bearer"
+
+
+def test_build_default_threads_a_configured_bearer_token_without_base_url(monkeypatch):
+    """A configured llm_auth_token is deliberate even against Anthropic itself
+    (no base_url); only a stray ANTHROPIC_API_KEY alone stays un-threaded."""
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: False)
+    settings = lj.resolve_llm_client_settings({"llm_provider": "claude", "llm_auth_token": "tok"})
+    client = _primary(lj.build_default_json_client(settings=settings))
+    assert isinstance(client, lj.ClaudeCLIJsonClient)
+    assert client.auth_token == "tok" and client.base_url is None
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-stray")
+    settings = lj.resolve_llm_client_settings({"llm_provider": "claude"})
+    client = _primary(lj.build_default_json_client(settings=settings))
+    assert client.api_key is None and client.auth_token is None
+
+
+def test_resolve_settings_expands_tilde_in_configured_claude_dirs(monkeypatch, tmp_path):
+    import os
+
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", tmp_path / "no-global.json")
+    settings = lj.resolve_llm_client_settings({"llm_claude_config_dirs": ["~/.claude-work", "/abs/x"]})
+    assert settings["claude_config_dirs"] == [os.path.expanduser("~/.claude-work"), "/abs/x"]
+
+
+def test_claude_cli_usable_accepts_a_configured_dir_outside_home(monkeypatch, tmp_path):
+    """A configured dir anywhere on disk counts; the discovery probe only saw
+    ``~/.claude*`` and reported "no Claude CLI" for ``~/.config/claude-work``."""
+    import shutil
+
+    import tesserae.llm_json as lj
+
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: False)
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/claude" if name == "claude" else None)
+    configured = tmp_path / "config" / "claude-work"
+    configured.mkdir(parents=True)
+    assert lj._claude_cli_usable([str(configured)]) is True
+    assert lj._claude_cli_usable([str(tmp_path / "gone")]) is False
+    assert lj._claude_cli_usable(None) is False
+    # No binary: a configured dir is not enough.
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    assert lj._claude_cli_usable([str(configured)]) is False
+
+
+def test_claude_cli_available_counts_a_credentials_file_as_a_marker(monkeypatch, tmp_path):
+    import shutil
+
+    fake_home = tmp_path / "home"
+    (fake_home / ".claude-fresh").mkdir(parents=True)
+    (fake_home / ".claude-fresh" / ".credentials.json").write_text("{}")
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/claude" if name == "claude" else None)
+    assert llm_json._claude_cli_available() is True

@@ -92,8 +92,9 @@ La elección de proveedor del asistente (o los flags equivalentes) persiste esta
 |---|---|---|
 | `llm_provider` | `--llm-provider {claude,codex,anthropic,openai,custom}` | Backend para el cliente LLM: `claude`/`codex` usan la CLI con sesión iniciada vía OAuth; `anthropic` y `openai` usan esas APIs directamente; `custom` apunta a un endpoint que tú indiques. |
 | `llm_model` | `--llm-model` | Modelo para el cliente LLM de síntesis/insights. |
-| `llm_base_url` | `--llm-base-url` | URL base del endpoint para `anthropic`/`openai`/`custom`. |
+| `llm_base_url` | `--llm-base-url` | URL base del endpoint para `anthropic`/`openai`/`custom`, o un gateway al que se dirige la CLI de `claude`. |
 | `llm_api_key` | `--llm-api-key` | Clave de API para `anthropic`/`openai`/`custom`. |
+| `llm_auth_token` | `--llm-auth-token` | Credencial portadora para el endpoint; con `claude` se entrega a la CLI, así que no hace falta `claude /login`. |
 
 > **Advertencia de texto plano.** `llm_api_key` se guarda en **texto plano** en
 > `.tesserae/config.json`. Prefiere las variables de entorno en su lugar:
