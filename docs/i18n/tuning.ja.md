@@ -195,6 +195,22 @@ tesserae config status --no-ping       # skip the probe, spend nothing
 
 ---
 
+## バックエンドは実際に応答しているか？（`tesserae test`）
+
+`tesserae config status` は各設定をどの層が勝ち取ったかを示すだけで、バックエンドが
+応答することは証明しない。`tesserae test` は実際の呼び出しを 2 回使って証明する:
+
+```bash
+tesserae test                    # resolve, build, one JSON call, one prose call
+tesserae test --json             # machine-readable
+tesserae test --provider codex   # try a backend before committing to it
+```
+
+両方が返ってきたときだけ 0 で終了する。JSON 呼び出しは抽出が必要とするもの、散文
+呼び出しは `ask` が必要とするもので、ゲートウェイは一方だけを提供して他方を拒む
+ことがある。どちらもキャッシュしない。「今応答しているか」へのキャッシュされた
+はいは、誤ったはいだからだ。`tesserae doctor` は呼び出しを一切使わない。
+
 ## コンパイルパス
 
 | 変数 | デフォルト | 何を制御するか |

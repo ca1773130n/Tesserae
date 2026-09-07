@@ -12,9 +12,23 @@ ne peut jamais détruire un état vivant.
 ```bash
 tesserae doctor                 # check the current project
 tesserae doctor --fix           # apply the safe repairs, then re-check
+tesserae doctor --fix --deep    # + the slow local repairs (session-chunk backfill)
 tesserae doctor --all --json    # every registered project, JSON report
 tesserae doctor --project ~/src/other
 ```
+
+## Ce que `--fix` ne fera jamais
+
+`--fix` se répète jusqu'à ce qu'une passe ne change plus rien, si bien qu'une
+réparation invalidant une vérification antérieure est attrapée dans la même
+exécution plutôt qu'à la suivante. `--fix --deep` ajoute les réparations locales
+lentes. Quatre choses restent manuelles, et toute exécution qui en laisse une
+l'imprime sous **Still open** avec la commande et la raison :
+
+- **Spend.** Aucune compilation n'est lancée à votre place. Elle coûte de l'argent et des heures, et cette décision vous revient.
+- **Install.** Les dépendances optionnelles et les rafraîchissements de backend passent par le réseau.
+- **Authenticate.** Personne ne peut se connecter à votre place — si le backend répond, `tesserae test` le prouve.
+- **Destroy.** Aucun processus n'est tué, et aucun état que doctor n'a pas écrit n'est supprimé.
 
 ## Ce qu’il vérifie
 
@@ -24,13 +38,13 @@ Les vérifications, regroupées par catégorie :
 |---|---|---|---|
 | `project_initialized` | core | `.tesserae/` existe et ressemble à un espace de travail Tesserae | rapport seulement (suggère `tesserae init`) |
 | `graph_parse` | core | `graph.json` se parse et a la forme attendue | rapport seulement (suggère `tesserae compile`) |
-| `config_valid` | core | `.tesserae/config.json` se parse et se valide contre le modèle d’init | rapport seulement |
+| `config_valid` | core | `.tesserae/config.json` se parse et se valide contre le modèle d’init | **SAFE** : complète les clés requises avec les valeurs qu'`init` écrit ; une configuration qui ne *parse* pas est signalée, jamais réécrite |
 | `vault_configured` | core | le chemin de vault configuré se résout | **SAFE** : crée le répertoire de vault résolu lorsqu’il vit à l’intérieur du projet |
 | `registry_consistent` | registry | les entrées de `~/.tesserae/registry.json` pointent vers de vraies racines de projet | **SAFE** : élague les entrées dont la racine a disparu, supprime la clé héritée `active` ; un graphe manquant reste rapport seulement |
 | `graph_staleness` | freshness | delta git depuis le `git_head` enregistré par la dernière compilation | rapport seulement (suggère `tesserae refresh` — les compilations sont lourdes) |
 | `site_search_index` | freshness | le site statique / `search-index.json` est plus récent que `graph.json` | **SAFE** : reconstruit le site |
 | `backend_artifacts` | freshness | les artefacts RAG-Anything sont à jour | rapport seulement (leur rafraîchissement est lourd en LLM/réseau) |
-| `session_chunks` | freshness | la couverture des [chunks de session quotidiens](session-chunks.fr.md) n’a pas de trous dans la fenêtre récente | rapport seulement (suggère `tesserae sessions chunk-backfill`) |
+| `session_chunks` | freshness | la couverture des [chunks de session quotidiens](session-chunks.fr.md) n’a pas de trous dans la fenêtre récente | **SAFE, slow** : `--fix --deep` lance le backfill (local et sans LLM, mais des minutes sur un long historique) |
 | `wiki_lint` | graph | dérive graphe ⇄ wiki + constats de lint trivialement corrigeables | **SAFE** : applique les corrections triviales du lint (`fix_trivial`) |
 | `compile_lock` | processes | si un verrou de compilation vivant est détenu, et par quel pid **et quel hôte** | rapport seulement — doctor **ne tue jamais et ne supprime jamais un verrou vivant** |
 | `filesystem_locking` | processes | si `.tesserae/` se trouve sur un système de fichiers réseau, où `flock(2)` peut être un no-op silencieux | rapport seulement (il ne peut pas prouver l’application inter-hôtes — voir plus bas) |

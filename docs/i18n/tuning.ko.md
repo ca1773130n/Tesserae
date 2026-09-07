@@ -211,6 +211,22 @@ endpoint를 명명합니다. 그 전에, misconfigured URL은 LLM을 설치하�
 
 ---
 
+## 백엔드가 실제로 응답하는가? (`tesserae test`)
+
+`tesserae config status`는 각 설정을 어느 레이어가 이겼는지 보여줄 뿐, 백엔드가
+응답한다는 것을 증명하지는 않는다. `tesserae test`는 실제 호출 두 번을 써서 증명한다:
+
+```bash
+tesserae test                    # resolve, build, one JSON call, one prose call
+tesserae test --json             # machine-readable
+tesserae test --provider codex   # try a backend before committing to it
+```
+
+둘 다 돌아올 때만 0으로 끝난다. JSON 호출은 추출이 필요로 하는 것이고 산문 호출은
+`ask`가 필요로 하는 것이며, 게이트웨이는 한쪽만 제공하고 다른 쪽은 거부할 수 있다.
+둘 다 캐시하지 않는다. "지금 응답하는가"에 대한 캐시된 예는 틀린 예이기 때문이다.
+`tesserae doctor`는 호출을 아예 쓰지 않는다.
+
 ## Compile 패스
 
 | 변수 | 기본값 | 제어 대상 |

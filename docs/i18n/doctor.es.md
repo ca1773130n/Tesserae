@@ -12,9 +12,23 @@ estado vivo.
 ```bash
 tesserae doctor                 # check the current project
 tesserae doctor --fix           # apply the safe repairs, then re-check
+tesserae doctor --fix --deep    # + the slow local repairs (session-chunk backfill)
 tesserae doctor --all --json    # every registered project, JSON report
 tesserae doctor --project ~/src/other
 ```
+
+## Lo que `--fix` nunca hará
+
+`--fix` se repite hasta que una pasada no cambia nada, así que una reparación que
+invalida una comprobación anterior se detecta en la misma ejecución en vez de en
+la siguiente. `--fix --deep` añade las reparaciones locales lentas. Cuatro cosas
+siguen siendo manuales, y cualquier ejecución que deje una la imprime bajo
+**Still open** con el comando y el motivo:
+
+- **Spend.** Nunca se ejecuta una compilación por ti. Cuesta dinero y horas, y esa decisión es tuya.
+- **Install.** Las dependencias opcionales y los refrescos de backend van por red.
+- **Authenticate.** Nadie puede iniciar sesión por ti — si el backend responde lo demuestra `tesserae test`.
+- **Destroy.** No se mata ningún proceso, ni se borra estado que doctor no escribió.
 
 ## Qué comprueba
 
@@ -24,13 +38,13 @@ Las comprobaciones, agrupadas por categoría:
 |---|---|---|---|
 | `project_initialized` | core | `.tesserae/` existe y tiene aspecto de workspace de Tesserae | solo informe (sugiere `tesserae init`) |
 | `graph_parse` | core | `graph.json` se parsea y tiene la forma esperada | solo informe (sugiere `tesserae compile`) |
-| `config_valid` | core | `.tesserae/config.json` se parsea y valida contra la plantilla de init | solo informe |
+| `config_valid` | core | `.tesserae/config.json` se parsea y valida contra la plantilla de init | **SAFE**: rellena las claves requeridas con los valores que escribe `init`; una configuración que no *parsea* se reporta, nunca se reescribe |
 | `vault_configured` | core | la ruta del vault configurada se resuelve | **SAFE**: crea el directorio del vault resuelto cuando vive dentro del proyecto |
 | `registry_consistent` | registry | las entradas de `~/.tesserae/registry.json` apuntan a raíces de proyecto reales | **SAFE**: poda las entradas cuya raíz ha desaparecido, elimina la clave legacy `active`; un grafo ausente es solo informe |
 | `graph_staleness` | freshness | delta de git desde el `git_head` registrado en la última compilación | solo informe (sugiere `tesserae refresh` — las compilaciones son pesadas) |
 | `site_search_index` | freshness | el sitio estático / `search-index.json` es más reciente que `graph.json` | **SAFE**: reconstruye el sitio |
 | `backend_artifacts` | freshness | los artefactos de RAG-Anything están al día | solo informe (su refresco es pesado en LLM/red) |
-| `session_chunks` | freshness | la cobertura de [session-chunks diarios](session-chunks.es.md) no tiene huecos en la ventana reciente | solo informe (sugiere `tesserae sessions chunk-backfill`) |
+| `session_chunks` | freshness | la cobertura de [session-chunks diarios](session-chunks.es.md) no tiene huecos en la ventana reciente | **SAFE, slow**: `--fix --deep` ejecuta el backfill (local y sin LLM, pero minutos con un historial largo) |
 | `wiki_lint` | graph | deriva grafo ⇄ wiki + hallazgos de lint trivialmente corregibles | **SAFE**: aplica las correcciones triviales del lint (`fix_trivial`) |
 | `compile_lock` | processes | si hay un lock de compilación vivo retenido, y por qué pid **y qué host** | solo informe — doctor **nunca mata ni elimina un lock vivo** |
 | `filesystem_locking` | processes | si `.tesserae/` está sobre un sistema de archivos de red, donde `flock(2)` puede ser un no-op silencioso | solo informe (no puede probar que se aplique entre hosts — ver abajo) |

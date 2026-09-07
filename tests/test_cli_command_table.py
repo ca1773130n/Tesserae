@@ -35,6 +35,8 @@ EXPECTED_VERBS = {
     "lint",
     "query",
     "ask",
+    "doctor",
+    "test",
 }
 
 

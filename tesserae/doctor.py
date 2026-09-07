@@ -133,6 +133,13 @@ class Check:
     detect: Callable[[DoctorContext], Optional[Finding]]
     fix: Optional[Callable[[DoctorContext], Optional[str]]] = None
     safe: bool = False
+    #: Local and credential-free, but expensive enough that a routine ``--fix``
+    #: must not pay for it. Applied only under ``--deep``.
+    slow: bool = False
+    #: Why this check is never repaired automatically. Printed next to whatever
+    #: it left behind, so "doctor --fix did nothing about this" is never a
+    #: silence the reader has to interpret. ``None`` means "has a fixer".
+    manual: Optional[str] = None
 
 
 @dataclass
@@ -142,6 +149,16 @@ class DoctorReport:
     fixed: List[str] = field(default_factory=list)
     exit_code: int = 0
     checked_at: str = ""
+    #: What is still wrong after the fix passes, each with the command that
+    #: addresses it and the reason doctor would not run that command itself.
+    remaining: List[dict] = field(default_factory=list)
+    #: Fix passes actually run (1 when ``fix=False``). A second pass exists
+    #: because one repair can invalidate an earlier check — see ``run_doctor``.
+    passes: int = 1
+    #: Whether repairs were REQUESTED. Not the same as ``bool(fixed)``: a
+    #: ``--fix`` run that repaired nothing still declined to act on what is
+    #: left, and the report says so.
+    fix_requested: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -536,9 +553,45 @@ def _detect_config_valid(ctx: DoctorContext) -> Optional[Finding]:
             "core",
             WARN,
             f"config.json is missing expected keys: {', '.join(missing)}",
-            suggestion="re-run tesserae init (it merges, not clobbers)",
+            suggestion="tesserae doctor --fix (backfills the defaults init would write)",
+            fixable=True,
         )
     return _f("config_valid", "core", OK, "config.json parses and carries the expected keys")
+
+
+def _fix_config_valid(ctx: DoctorContext) -> Optional[str]:
+    """Backfill only the missing required keys, with the values ``init`` uses.
+
+    Deliberately narrow. A config that does not parse is never rewritten — the
+    file may hold an api key or a hand-edited source list, and guessing at what
+    a broken JSON document meant is how a repair destroys the thing it was
+    called to save. Existing keys are never touched, so this cannot overwrite a
+    deliberate choice; the merge is the same shape ``tesserae init`` writes on
+    re-run, which is why the two agree about what a valid config looks like.
+    """
+    config_path = _tesserae_dir(ctx) / "config.json"
+    if not config_path.is_file():
+        return None
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None  # unparseable: report-only, never rewritten
+    if not isinstance(payload, dict):
+        return None
+    defaults = {
+        "name": ctx.project_root.name,
+        "sources": [],
+        "graph_path": ".tesserae/graph.json",
+    }
+    added = [key for key in _REQUIRED_CONFIG_KEYS if key not in payload]
+    if not added:
+        return None
+    for key in added:
+        payload[key] = defaults[key]
+    tmp = config_path.with_suffix(".json.doctor-tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(config_path)  # atomic: a half-written config is worse than a missing key
+    return f"config: backfilled {', '.join(added)}"
 
 
 def _detect_registry_consistent(ctx: DoctorContext) -> Optional[Finding]:
@@ -1475,6 +1528,7 @@ def _detect_session_chunks(ctx: DoctorContext) -> Optional[Finding]:
             WARN,
             "session-chunk db has no day coverage — summaries take the slow raw-scan path",
             suggestion="tesserae sessions chunk-backfill",
+            fixable=True,
         )
     try:
         threshold = sc.day_label(_aware(ctx.now) - timedelta(days=SESSION_CHUNK_STALE_DAYS))
@@ -1487,6 +1541,7 @@ def _detect_session_chunks(ctx: DoctorContext) -> Optional[Finding]:
             WARN,
             f"session-chunk coverage stale — last covered day is {days[-1]}",
             suggestion="tesserae sessions chunk-backfill",
+            fixable=True,
         )
     return _f(
         "session_chunks",
@@ -1494,6 +1549,31 @@ def _detect_session_chunks(ctx: DoctorContext) -> Optional[Finding]:
         OK,
         f"session chunks cover {len(days)} day(s) (through {days[-1]})",
     )
+
+
+def _fix_session_chunks(ctx: DoctorContext) -> Optional[str]:
+    """Walk existing transcripts into the chunk store (``--deep`` only).
+
+    Deterministic and credential-free — it parses transcripts already on disk
+    and spends no LLM call — but it can take minutes on a long history, which
+    is why it is gated behind ``--deep`` rather than run on every ``--fix``.
+    ``backfill`` takes the same skip-if-held lock the daemon does, so a running
+    daemon means this returns "skipped" instead of racing it.
+    """
+    if ctx.wiki is None:
+        return None
+    try:
+        from .session_chunks import backfill
+    except Exception:
+        return None
+    result = backfill(ctx.project_root)
+    if getattr(result, "skipped", False):
+        return None
+    inserted = getattr(result, "turns_inserted", 0)
+    days = getattr(result, "days_covered", 0)
+    if not inserted and not days:
+        return None
+    return f"session-chunks: backfilled {inserted} turn(s) over {days} day(s)"
 
 
 def _detect_environment(ctx: DoctorContext) -> Optional[Finding]:
@@ -2069,30 +2149,49 @@ def _detect_code_scope_leftovers(ctx: DoctorContext) -> Optional[Finding]:
 # registry of checks (data)
 # ---------------------------------------------------------------------------
 
+#: Why a check is never repaired automatically. Four reasons and no others —
+#: anything outside them should grow a fixer instead of an excuse.
+#:
+#:   * **spends** — needs a compile, which costs money and hours. The user
+#:     decides when to spend that, never a health check.
+#:   * **networked** — needs a package install or a remote refresh.
+#:   * **credentials** — needs a login only the operator can perform.
+#:   * **destructive** — would kill a process or delete state doctor did not
+#:     write. Report and stand down; that rule is older than this file.
+_SPENDS = "needs a compile — doctor never spends LLM calls or hours on your behalf"
+_NETWORKED = "needs a network install/refresh — run it yourself when you want it"
+_CREDENTIALS = "needs your credentials — nobody can log in on your behalf"
+_DESTRUCTIVE = "would kill a process or delete state doctor did not write"
+_ENVIRONMENTAL = "describes the machine, not a repairable defect"
+
 CHECKS: List[Check] = [
-    Check("project_initialized", "core", _detect_project_initialized),
-    Check("graph_parse", "core", _detect_graph_parse),
-    Check("config_valid", "core", _detect_config_valid),
+    Check("project_initialized", "core", _detect_project_initialized,
+          manual="creating a workspace is `tesserae init`, not a repair"),
+    Check("graph_parse", "core", _detect_graph_parse, manual=_SPENDS),
+    Check("config_valid", "core", _detect_config_valid, fix=_fix_config_valid, safe=True),
     Check("registry_consistent", "registry", _detect_registry_consistent, fix=_fix_registry_consistent, safe=True),
-    Check("graph_staleness", "freshness", _detect_graph_staleness),
+    Check("graph_staleness", "freshness", _detect_graph_staleness, manual=_SPENDS),
     Check("site_search_index", "freshness", _detect_site_stale, fix=_fix_site_stale, safe=True),
     Check("wiki_lint", "graph", _detect_wiki_lint, fix=_fix_wiki_lint, safe=True),
-    Check("compile_lock", "processes", _detect_compile_lock),  # report-only, NEVER kill
-    Check("filesystem_locking", "processes", _detect_filesystem_locking),  # read-only probe
+    Check("compile_lock", "processes", _detect_compile_lock, manual=_DESTRUCTIVE),  # NEVER kill
+    Check("filesystem_locking", "processes", _detect_filesystem_locking, manual=_ENVIRONMENTAL),
     Check("daemon_pid", "processes", _detect_daemon_pid, fix=_fix_daemon_pid, safe=True),
-    Check("llm_login", "environment", _detect_llm_login),
-    Check("optional_deps", "environment", _detect_optional_deps),
-    Check("embedding_backend", "environment", _detect_embedding_backend),
+    Check("llm_login", "environment", _detect_llm_login,
+          manual=_CREDENTIALS + " — `tesserae test` proves whether the backend answers"),
+    Check("optional_deps", "environment", _detect_optional_deps, manual=_NETWORKED),
+    Check("embedding_backend", "environment", _detect_embedding_backend, manual=_NETWORKED),
     Check("build_history", "hygiene", _detect_build_history, fix=_fix_build_history, safe=True),
-    Check("backend_artifacts", "freshness", _detect_backend_artifacts),
-    Check("code_scope_leftovers", "hygiene", _detect_code_scope_leftovers),
-    Check("idempotence", "hygiene", _detect_idempotence),
+    Check("backend_artifacts", "freshness", _detect_backend_artifacts, manual=_NETWORKED),
+    Check("code_scope_leftovers", "hygiene", _detect_code_scope_leftovers,
+          manual="deletes hundreds of thousands of pages — its own verb, with a dry run"),
+    Check("idempotence", "hygiene", _detect_idempotence, manual=_SPENDS),
     Check("orphan_worktrees", "hygiene", _detect_orphan_worktrees, fix=_fix_orphan_worktrees, safe=True),
     Check("hook_log_bloat", "hygiene", _detect_hook_logs, fix=_fix_hook_logs, safe=True),
     Check("sidecars", "hygiene", _detect_sidecars, fix=_fix_sidecars, safe=True),
     Check("vault_configured", "core", _detect_vault, fix=_fix_vault, safe=True),
-    Check("session_chunks", "freshness", _detect_session_chunks),
-    Check("environment", "environment", _detect_environment),
+    Check("session_chunks", "freshness", _detect_session_chunks, fix=_fix_session_chunks,
+          safe=True, slow=True),
+    Check("environment", "environment", _detect_environment, manual=_ENVIRONMENTAL),
 ]
 
 
@@ -2111,10 +2210,75 @@ def _safe_detect(check: Check, ctx: DoctorContext) -> Finding:
     return finding
 
 
+#: Ceiling on the fix loop below. Three is the shape of the dependency chain
+#: (lint rewrites the graph -> the site goes stale -> rebuilding it writes a new
+#: index), plus one spare. A fix that still reports work left after three passes
+#: is oscillating, and looping forever would be worse than reporting it.
+MAX_FIX_PASSES = 3
+
+
+def _remaining_reason(check: Optional[Check], finding: Finding, *, fix: bool, deep: bool) -> str:
+    """Why this finding is still here — accurate for the run that produced it.
+
+    The distinction that matters is whether a repair was even attempted: on a
+    read-only run the honest answer is "nothing tried it yet, here is the flag",
+    and reporting "the fix ran and the finding survived" would be a plain lie
+    about work that never happened.
+    """
+    if check is None:
+        return "unknown check"
+    repairable = check.fix is not None and check.safe and finding.fixable
+    if repairable and check.slow and not deep:
+        return (
+            "repairable, but only under --deep (minutes of local work)"
+            if fix
+            else "repairable by `tesserae doctor --fix --deep`"
+        )
+    if repairable and not fix:
+        return "repairable by `tesserae doctor --fix`"
+    if check.manual:
+        return check.manual
+    if check.fix is None:
+        return "no automatic repair exists for this check"
+    if not finding.fixable:
+        return "this particular finding is not the shape the fixer repairs"
+    return "the fix ran and the finding survived it"
+
+
+def _remaining_actions(
+    report: DoctorReport, checks: List[Check], *, fix: bool, deep: bool
+) -> List[dict]:
+    """Every finding still not OK, with the command and why doctor left it.
+
+    The point of the list is that a run never ends in an ambiguous silence.
+    Before it existed, a repair run printed the same table as a read-only run
+    and the reader had to diff two screens to learn which warnings were
+    deliberate. Each row says what to run and which of the standing reasons
+    kept doctor's hands off it.
+    """
+    by_id = {check.id: check for check in checks}
+    rows: List[dict] = []
+    for finding in report.findings:
+        if finding.severity == OK:
+            continue
+        reason = _remaining_reason(by_id.get(finding.check_id), finding, fix=fix, deep=deep)
+        rows.append(
+            {
+                "check_id": finding.check_id,
+                "severity": finding.severity,
+                "message": finding.message,
+                "command": finding.suggestion,
+                "reason": reason,
+            }
+        )
+    return rows
+
+
 def run_doctor(
     project_root: str | Path,
     fix: bool = False,
     *,
+    deep: bool = False,
     registry_path: Optional[Path] = None,
     now: Optional[datetime] = None,
     checks: Optional[List[Check]] = None,
@@ -2122,9 +2286,15 @@ def run_doctor(
     """Run every check against ``project_root`` and return a DoctorReport.
 
     ``fix=False`` (the default) is guaranteed read-only. ``fix=True`` applies
-    only the fixes on checks marked ``safe=True``, then re-detects so the
-    report reflects the post-fix state. Exit codes: 0 healthy / 1 warnings /
-    2 errors.
+    the fixes on checks marked ``safe=True``, repeating until a pass changes
+    nothing (at most :data:`MAX_FIX_PASSES`) — one repair can invalidate a
+    check that already ran, and a single pass left that work for a second
+    invocation the user had no reason to know they needed. ``deep=True`` adds
+    the ``slow`` repairs: still local and credential-free, just expensive.
+
+    Whatever is left over lands in ``report.remaining`` with the command that
+    addresses it, so a fix run always says what it did NOT do and why.
+    Exit codes: 0 healthy / 1 warnings / 2 errors.
     """
     root = Path(project_root).resolve()
     ctx = DoctorContext(
@@ -2133,21 +2303,54 @@ def run_doctor(
         registry=_load_registry(registry_path),
         now=_aware(now if now is not None else datetime.now(tz=timezone.utc)),
     )
+    active = list(checks if checks is not None else CHECKS)
     report = DoctorReport(project_root=str(root), checked_at=ctx.now.isoformat())
-    for check in checks if checks is not None else CHECKS:
-        finding = _safe_detect(check, ctx)
-        if fix and check.safe and check.fix is not None and finding.fixable:
-            try:
-                applied = check.fix(ctx)
-            except Exception as exc:  # noqa: BLE001 — a crashing fix is a finding too
-                report.findings.append(
-                    _f(check.id, check.category, ERROR, f"fix crashed: {exc!r}")
-                )
-                continue
-            if applied:
-                report.fixed.append(f"{check.id}: {applied}")
-                finding = _safe_detect(check, ctx)  # re-detect: report the post-fix state
-        report.findings.append(finding)
+    passes = 0
+    while True:
+        passes += 1
+        report.findings = []
+        applied_this_pass = 0
+        for check in active:
+            finding = _safe_detect(check, ctx)
+            eligible = (
+                fix
+                and check.safe
+                and check.fix is not None
+                and finding.fixable
+                and (deep or not check.slow)
+            )
+            if eligible:
+                try:
+                    applied = check.fix(ctx)
+                except Exception as exc:  # noqa: BLE001 — a crashing fix is a finding too
+                    report.findings.append(
+                        _f(check.id, check.category, ERROR, f"fix crashed: {exc!r}")
+                    )
+                    continue
+                if applied:
+                    report.fixed.append(f"{check.id}: {applied}")
+                    applied_this_pass += 1
+                    # A repair can change what a LATER check sees (a lint fix
+                    # rewrites graph.json, which makes the site stale). The
+                    # loop below re-runs everything; this re-detect only keeps
+                    # THIS pass's report honest.
+                    finding = _safe_detect(check, ctx)
+            report.findings.append(finding)
+        # A pass that repaired nothing has reached the fixed point: the
+        # findings in hand already describe the post-fix world.
+        if not applied_this_pass or passes >= MAX_FIX_PASSES:
+            break
+        # A repair may have created the workspace objects a later check reads
+        # (config backfill, a vault mkdir), so rebuild the context too.
+        ctx = DoctorContext(
+            project_root=root,
+            wiki=_load_wiki(root),
+            registry=_load_registry(registry_path),
+            now=ctx.now,
+        )
+    report.passes = passes
+    report.fix_requested = fix
+    report.remaining = _remaining_actions(report, active, fix=fix, deep=deep)
     worst = max((_SEVERITY_RANK.get(f.severity, 2) for f in report.findings), default=0)
     report.exit_code = worst
     return report
@@ -2157,6 +2360,7 @@ def run_doctor_all(
     registry,
     fix: bool = False,
     *,
+    deep: bool = False,
     now: Optional[datetime] = None,
 ) -> Dict[str, DoctorReport]:
     """Doctor every registered project. ``registry`` is a ProjectRegistry (or
@@ -2173,7 +2377,7 @@ def run_doctor_all(
         return reports
     for alias, project_root in pairs:
         reports[alias] = run_doctor(
-            project_root, fix, registry_path=Path(registry.path), now=now
+            project_root, fix, deep=deep, registry_path=Path(registry.path), now=now
         )
     return reports
 
@@ -2212,10 +2416,25 @@ def render_markdown(report: DoctorReport) -> str:
             lines.append(f"  - suggested: `{finding.suggestion}`")
     if report.fixed:
         lines.append("")
-        lines.append("## Fixed this run")
+        lines.append(
+            f"## Fixed this run ({len(report.fixed)} in {report.passes} pass"
+            f"{'' if report.passes == 1 else 'es'})"
+        )
         lines.append("")
         for entry in report.fixed:
             lines.append(f"- {entry}")
+    if report.remaining:
+        lines.append("")
+        lines.append(
+            "## Still open"
+            + (" — doctor will not do these for you" if report.fix_requested else "")
+        )
+        lines.append("")
+        for row in report.remaining:
+            glyph = _GLYPHS.get(row["severity"], "?")
+            lines.append(f"- [{glyph}] **{row['check_id']}**: {row['reason']}")
+            if row.get("command"):
+                lines.append(f"  - run: `{row['command']}`")
     lines.append("")
     return "\n".join(lines)
 
@@ -2225,7 +2444,10 @@ def to_json(report: DoctorReport) -> str:
         "project_root": report.project_root,
         "checked_at": report.checked_at,
         "exit_code": report.exit_code,
+        "passes": report.passes,
+        "fix_requested": report.fix_requested,
         "fixed": list(report.fixed),
+        "remaining": list(report.remaining),
         "findings": [finding.to_dict() for finding in report.findings],
     }
     return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"

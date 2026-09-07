@@ -246,6 +246,24 @@ configurée était indiscernable de n'avoir aucun LLM installé du tout.
 
 ---
 
+## Le backend répond-il vraiment ? (`tesserae test`)
+
+`tesserae config status` montre quelle couche a gagné chaque réglage ; il ne
+prouve pas que le backend répond. `tesserae test` le prouve, en dépensant deux
+vrais appels dessus :
+
+```bash
+tesserae test                    # resolve, build, one JSON call, one prose call
+tesserae test --json             # machine-readable
+tesserae test --provider codex   # try a backend before committing to it
+```
+
+Il sort avec 0 seulement quand les deux reviennent. L'appel JSON est ce dont
+l'extraction a besoin et l'appel en prose ce dont `ask` a besoin, et une
+passerelle peut servir l'un en refusant l'autre. Aucun n'est mis en cache, car un
+oui en cache à « répond-il en ce moment » est un oui faux. `tesserae doctor` ne
+dépense aucun appel.
+
 ## Passes de compilation
 
 | Variable | Par défaut | Ce qu'elle contrôle |

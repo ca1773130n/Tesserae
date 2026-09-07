@@ -243,6 +243,24 @@ installiert hatte.
 
 ---
 
+## Antwortet das Backend wirklich? (`tesserae test`)
+
+`tesserae config status` zeigt, welche Schicht jede Einstellung gewonnen hat; es
+beweist nicht, dass das Backend antwortet. `tesserae test` beweist es, indem es
+zwei echte Aufrufe dafür ausgibt:
+
+```bash
+tesserae test                    # resolve, build, one JSON call, one prose call
+tesserae test --json             # machine-readable
+tesserae test --provider codex   # try a backend before committing to it
+```
+
+Es endet nur dann mit 0, wenn beide zurückkommen. Der JSON-Aufruf ist das, was
+die Extraktion braucht, und der Prosa-Aufruf das, was `ask` braucht, und ein
+Gateway kann den einen bedienen und den anderen ablehnen. Keiner wird
+zwischengespeichert, denn ein gecachtes Ja auf „antwortet es gerade jetzt" ist
+ein falsches Ja. `tesserae doctor` gibt überhaupt keinen Aufruf aus.
+
 ## Kompilierungs-Pässe
 
 | Variable | Standard | Was es steuert |

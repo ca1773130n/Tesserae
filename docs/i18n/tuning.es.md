@@ -220,6 +220,23 @@ era indistinguible de no tener ningún LLM instalado en absoluto.
 
 ---
 
+## ¿El backend responde de verdad? (`tesserae test`)
+
+`tesserae config status` muestra qué capa ganó cada ajuste; no demuestra que el
+backend responda. `tesserae test` sí, gastando dos llamadas reales en él:
+
+```bash
+tesserae test                    # resolve, build, one JSON call, one prose call
+tesserae test --json             # machine-readable
+tesserae test --provider codex   # try a backend before committing to it
+```
+
+Sale con 0 solo cuando vuelven ambas. La llamada JSON es la que necesita la
+extracción y la de prosa la que necesita `ask`, y una pasarela puede servir una
+mientras rechaza la otra. Ninguna se cachea, porque un sí cacheado a "¿está
+respondiendo ahora mismo?" es un sí equivocado. `tesserae doctor` no gasta
+ninguna llamada.
+
 ## Pasadas de compilación
 
 | Variable | Por defecto | Qué controla |
