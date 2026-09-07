@@ -198,6 +198,21 @@ tesserae config status --no-ping       # 跳过探针，花费零
 
 ---
 
+## 后端真的在应答吗？（`tesserae test`）
+
+`tesserae config status` 只显示每项设置由哪一层胜出，并不能证明后端会应答。
+`tesserae test` 能证明——它在后端上花掉两次真实调用：
+
+```bash
+tesserae test                    # resolve, build, one JSON call, one prose call
+tesserae test --json             # machine-readable
+tesserae test --provider codex   # try a backend before committing to it
+```
+
+只有两次都返回时才以 0 退出。JSON 调用是提取所需要的，散文调用是 `ask` 所需要的，
+而网关可能只服务其中一种、拒绝另一种。两者都不缓存，因为对"它现在是否在应答"
+给出缓存的"是"，是一个错误的"是"。`tesserae doctor` 则完全不花任何调用。
+
 ## 编译通道
 
 | 变量 | 默认值 | 控制内容 |

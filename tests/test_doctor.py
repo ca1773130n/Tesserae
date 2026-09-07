@@ -917,3 +917,209 @@ def test_llm_login_says_a_routed_claude_cli_needs_no_login(tmp_path, monkeypatch
     f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "llm_login")
     assert f.severity == "warn"
     assert str(tmp_path / "gone") in f.message
+
+
+# ---------------------------------------------------------------------------
+# --fix: the config backfill, the fixed-point loop, the slow tier, and the
+# "still open" list that keeps a repair run from ending in an ambiguous silence
+# ---------------------------------------------------------------------------
+
+
+def test_config_missing_keys_are_backfilled_by_fix(tmp_path):
+    wiki = make_project(tmp_path)
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg.pop("sources")
+    cfg.pop("graph_path")
+    wiki.paths.config.write_text(json.dumps(cfg), encoding="utf-8")
+
+    before = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "config_valid")
+    assert before.severity == "warn" and before.fixable is True
+
+    report = doctor.run_doctor(tmp_path, fix=True, now=PINNED_NOW)
+    assert finding(report, "config_valid").severity == "ok"
+    assert any("config: backfilled" in entry for entry in report.fixed)
+    written = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    assert written["graph_path"] == ".tesserae/graph.json"
+    assert written["sources"] == []
+    # The keys that were already there are untouched.
+    assert written["name"] == "doctorproj"
+
+
+def test_fix_never_rewrites_a_config_it_cannot_parse(tmp_path):
+    """The file may hold an api key or a hand-edited source list; guessing at a
+    broken document is how a repair destroys what it was called to save."""
+    make_project(tmp_path)
+    broken = tmp_path / ".tesserae" / "config.json"
+    broken.write_text('{"name": "x", ', encoding="utf-8")
+
+    report = doctor.run_doctor(tmp_path, fix=True, now=PINNED_NOW)
+
+    assert broken.read_text(encoding="utf-8") == '{"name": "x", '
+    assert finding(report, "config_valid").severity == "error"
+    assert not any("config" in entry for entry in report.fixed)
+
+
+def test_fix_repeats_until_a_pass_changes_nothing(tmp_path):
+    """One repair can invalidate a check that already ran. A single pass left
+    that work for a second invocation the user had no reason to know about."""
+    make_project(tmp_path)
+    state = {"a_done": False, "b_done": False}
+
+    def detect_a(ctx):
+        return doctor._f("a", "hygiene", "ok" if state["a_done"] else "warn",
+                         "a", fixable=not state["a_done"])
+
+    def fix_a(ctx):
+        state["a_done"] = True
+        return "a fixed"
+
+    def detect_b(ctx):
+        # b only becomes repairable once a is done — the ordering trap: b is
+        # checked BEFORE a, so a single pass could never fix it.
+        broken = state["a_done"] and not state["b_done"]
+        return doctor._f("b", "hygiene", "warn" if broken else "ok", "b", fixable=broken)
+
+    def fix_b(ctx):
+        state["b_done"] = True
+        return "b fixed"
+
+    checks = [
+        doctor.Check("b", "hygiene", detect_b, fix=fix_b, safe=True),
+        doctor.Check("a", "hygiene", detect_a, fix=fix_a, safe=True),
+    ]
+    report = doctor.run_doctor(tmp_path, fix=True, now=PINNED_NOW, checks=checks)
+
+    assert report.fixed == ["a: a fixed", "b: b fixed"]
+    # Three passes for two fixes: the last one applies nothing, and that is
+    # what proves the fixed point was reached rather than assumed.
+    assert report.passes == 3
+    assert report.exit_code == 0
+    assert [f.severity for f in report.findings] == ["ok", "ok"]
+
+
+def test_a_fix_that_never_settles_stops_at_the_pass_ceiling(tmp_path):
+    """Looping forever would be worse than reporting the oscillation."""
+    make_project(tmp_path)
+    calls = {"n": 0}
+
+    def detect(ctx):
+        return doctor._f("flap", "hygiene", "warn", "always broken", fixable=True)
+
+    def fix(ctx):
+        calls["n"] += 1
+        return f"pass {calls['n']}"
+
+    checks = [doctor.Check("flap", "hygiene", detect, fix=fix, safe=True)]
+    report = doctor.run_doctor(tmp_path, fix=True, now=PINNED_NOW, checks=checks)
+
+    assert report.passes == doctor.MAX_FIX_PASSES
+    assert calls["n"] == doctor.MAX_FIX_PASSES
+    assert report.exit_code == 1
+
+
+def test_read_only_run_reports_one_pass_and_applies_nothing(tmp_path):
+    make_project(tmp_path)
+    calls = {"n": 0}
+
+    def fix(ctx):
+        calls["n"] += 1
+        return "should never run"
+
+    checks = [doctor.Check(
+        "x", "hygiene",
+        lambda ctx: doctor._f("x", "hygiene", "warn", "x", fixable=True),
+        fix=fix, safe=True,
+    )]
+    report = doctor.run_doctor(tmp_path, now=PINNED_NOW, checks=checks)
+
+    assert calls["n"] == 0
+    assert report.passes == 1
+    assert report.fixed == []
+
+
+def test_slow_repairs_wait_for_deep(tmp_path):
+    make_project(tmp_path)
+    ran = {"n": 0}
+
+    def fix(ctx):
+        ran["n"] += 1
+        return "slow work done"
+
+    def detect(ctx):
+        return doctor._f("slow", "freshness", "warn" if ran["n"] == 0 else "ok",
+                         "slow thing", fixable=ran["n"] == 0)
+
+    checks = [doctor.Check("slow", "freshness", detect, fix=fix, safe=True, slow=True)]
+
+    shallow = doctor.run_doctor(tmp_path, fix=True, now=PINNED_NOW, checks=checks)
+    assert ran["n"] == 0
+    assert shallow.fixed == []
+    assert shallow.remaining[0]["reason"].startswith("repairable, but only under --deep")
+
+    deep = doctor.run_doctor(tmp_path, fix=True, deep=True, now=PINNED_NOW, checks=checks)
+    assert ran["n"] == 1
+    assert deep.fixed == ["slow: slow work done"]
+    assert deep.remaining == []
+
+
+def test_remaining_names_the_command_and_why_doctor_stood_down(tmp_path):
+    make_project(tmp_path)
+    checks = [
+        doctor.Check(
+            "graph_staleness", "freshness",
+            lambda ctx: doctor._f("graph_staleness", "freshness", "warn", "stale",
+                                  suggestion="tesserae refresh"),
+            manual=doctor._SPENDS,
+        ),
+    ]
+    report = doctor.run_doctor(tmp_path, fix=True, now=PINNED_NOW, checks=checks)
+
+    assert len(report.remaining) == 1
+    row = report.remaining[0]
+    assert row["check_id"] == "graph_staleness"
+    assert row["command"] == "tesserae refresh"
+    assert "never spends LLM calls" in row["reason"]
+    rendered = doctor.render_markdown(report)
+    assert "Still open — doctor will not do these for you" in rendered
+    assert "tesserae refresh" in rendered
+    assert row["reason"] in json.loads(doctor.to_json(report))["remaining"][0]["reason"]
+
+
+def test_a_healthy_project_has_nothing_still_open(tmp_path):
+    make_project(tmp_path)
+    report = doctor.run_doctor(tmp_path, fix=True, now=PINNED_NOW)
+    assert [row["check_id"] for row in report.remaining] == []
+    assert "Still open" not in doctor.render_markdown(report)
+
+
+def test_every_report_only_check_says_why_it_is_report_only():
+    """A check with no fixer must carry a reason, or --fix leaves a silence the
+    reader has to interpret."""
+    unexplained = [
+        check.id
+        for check in doctor.CHECKS
+        if check.fix is None and not check.manual
+    ]
+    assert not unexplained, f"report-only checks with no stated reason: {unexplained}"
+
+
+def test_a_read_only_run_never_claims_a_fix_was_attempted(tmp_path):
+    """"the fix ran and the finding survived it" about a run that applied
+    nothing is a lie about work that never happened."""
+    make_project(tmp_path)
+    checks = [doctor.Check(
+        "x", "hygiene",
+        lambda ctx: doctor._f("x", "hygiene", "warn", "x", suggestion="do the thing", fixable=True),
+        fix=lambda ctx: "fixed", safe=True,
+    )]
+
+    read_only = doctor.run_doctor(tmp_path, now=PINNED_NOW, checks=checks)
+    assert read_only.remaining[0]["reason"] == "repairable by `tesserae doctor --fix`"
+
+    slow = [doctor.Check(
+        "y", "hygiene",
+        lambda ctx: doctor._f("y", "hygiene", "warn", "y", suggestion="do the thing", fixable=True),
+        fix=lambda ctx: "fixed", safe=True, slow=True,
+    )]
+    read_only_slow = doctor.run_doctor(tmp_path, now=PINNED_NOW, checks=slow)
+    assert read_only_slow.remaining[0]["reason"] == "repairable by `tesserae doctor --fix --deep`"

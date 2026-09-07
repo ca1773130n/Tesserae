@@ -12,9 +12,22 @@ state.
 ```bash
 tesserae doctor                 # check the current project
 tesserae doctor --fix           # apply the safe repairs, then re-check
+tesserae doctor --fix --deep    # + the slow local repairs (session-chunk backfill)
 tesserae doctor --all --json    # every registered project, JSON report
 tesserae doctor --project ~/src/other
 ```
+
+## What `--fix` will never do
+
+`--fix` repeats until a pass changes nothing, so a repair that invalidates an
+earlier check is caught in the same run instead of the next one. `--fix --deep`
+adds the slow local repairs. Four things stay manual, and any run that leaves
+one prints it under **Still open** with the command and the reason:
+
+- **Spend.** No compile is ever run for you. It costs money and hours, and that decision is yours.
+- **Install.** Optional dependencies and backend refreshes are networked.
+- **Authenticate.** Nobody can log in on your behalf — `tesserae test` proves whether the backend answers.
+- **Destroy.** No process is killed, and no state doctor did not write is deleted.
 
 ## What it checks
 
@@ -24,13 +37,13 @@ The checks, grouped by category:
 |---|---|---|---|
 | `project_initialized` | core | `.tesserae/` exists and looks like a Tesserae workspace | report-only (suggests `tesserae init`) |
 | `graph_parse` | core | `graph.json` parses and has the expected shape | report-only (suggests `tesserae compile`) |
-| `config_valid` | core | `.tesserae/config.json` parses and validates against the init template | report-only |
+| `config_valid` | core | `.tesserae/config.json` parses and validates against the init template | **SAFE**: backfills the required keys with the values `init` writes; a config that does not *parse* is reported, never rewritten |
 | `vault_configured` | core | the configured vault path resolves | **SAFE**: creates the resolved vault directory when it lives inside the project |
 | `registry_consistent` | registry | `~/.tesserae/registry.json` entries point at real project roots | **SAFE**: prunes entries whose root is gone, drops the legacy `active` key; a missing graph is report-only |
 | `graph_staleness` | freshness | git delta since the last compile's recorded `git_head` | report-only (suggests `tesserae refresh` — compiles are heavy) |
 | `site_search_index` | freshness | the static site / `search-index.json` is newer than `graph.json` | **SAFE**: rebuilds the site |
 | `backend_artifacts` | freshness | RAG-Anything artifacts are current | report-only (their refresh is LLM/network heavy) |
-| `session_chunks` | freshness | [daily session-chunk](session-chunks.md) coverage has no gaps in the recent window | report-only (suggests `tesserae sessions chunk-backfill`) |
+| `session_chunks` | freshness | [daily session-chunk](session-chunks.md) coverage has no gaps in the recent window | **SAFE, slow**: `--fix --deep` runs the backfill (local and LLM-free, but minutes on a long history) |
 | `wiki_lint` | graph | graph ⇄ wiki drift + trivially fixable lint findings | **SAFE**: applies the lint trivial fixes (`fix_trivial`) |
 | `compile_lock` | processes | whether a live compile lock is held, and by which pid **and host** | report-only — doctor **never kills or removes a live lock** |
 | `filesystem_locking` | processes | whether `.tesserae/` sits on a network filesystem, where `flock(2)` may be a silent no-op | report-only (it cannot prove cross-host enforcement — see below) |

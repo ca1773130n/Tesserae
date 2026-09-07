@@ -6577,6 +6577,7 @@ def _build_doctor_parser() -> argparse.ArgumentParser:
             "examples:\n"
             "  tesserae doctor\n"
             "  tesserae doctor --fix\n"
+            "  tesserae doctor --fix --deep     # + the slow local repairs\n"
             "  tesserae doctor --all --json\n"
             "  tesserae doctor migrate-code-scope           # dry run\n"
             "  tesserae doctor migrate-code-scope --apply\n"
@@ -6598,6 +6599,7 @@ def _build_doctor_parser() -> argparse.ArgumentParser:
     parser.add_argument("--all", dest="all_projects", action="store_true", help="Doctor every registered project (ignores --project)")
     parser.add_argument("--apply", action="store_true", help="With migrate-code-scope: actually delete. Without it the verb reports what it would remove and touches nothing.")
     parser.add_argument("--fix", action="store_true", help="Apply the safe fixes only: registry prune, site rebuild, lint trivial fixes, stale daemon-pidfile removal (THIS host's only — another machine's pidfile is never touched), build-history trim, hook-log rotation, vault mkdir, git worktree prune. Never kills or removes a live compile lock.")
+    parser.add_argument("--deep", action="store_true", help="With --fix: also apply the SLOW local repairs (session-chunk backfill). Still credential-free and LLM-free — just minutes rather than seconds.")
     parser.add_argument("--json", dest="doctor_json", action="store_true", help="Print the JSON report to stdout instead of the markdown checklist")
     return parser
 
@@ -6644,16 +6646,19 @@ def _handle_doctor(args: argparse.Namespace) -> int:
 
     if getattr(args, "verb", None) == "migrate-code-scope":
         return _handle_doctor_migrate_code_scope(args)
+    if getattr(args, "deep", False) and not args.fix:
+        print("doctor: --deep only means something with --fix", file=sys.stderr)
+        return 2
     if args.all_projects:
         from .mcp_server import ProjectRegistry
 
-        reports = run_doctor_all(ProjectRegistry(), fix=args.fix)
+        reports = run_doctor_all(ProjectRegistry(), fix=args.fix, deep=args.deep)
         for _alias, report in sorted(reports.items()):
             if (Path(report.project_root) / ".tesserae").is_dir():
                 write_report(report.project_root, report)
             sys.stdout.write(to_json(report) if args.doctor_json else render_markdown(report))
         return overall_exit_code(reports)
-    report = run_doctor(args.project, fix=args.fix)
+    report = run_doctor(args.project, fix=args.fix, deep=args.deep)
     if (Path(args.project) / ".tesserae").is_dir():
         write_report(args.project, report)  # .tesserae/doctor-report.{md,json}
     sys.stdout.write(to_json(report) if args.doctor_json else render_markdown(report))
@@ -7001,6 +7006,64 @@ def _build_verify_attribution_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _build_test_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae test",
+        description=(
+            "Does the configured LLM backend actually answer? Resolves the "
+            "settings the way compile does, builds the same client, and spends "
+            "two real calls on it — one JSON (what extraction needs) and one "
+            "prose (what `ask` needs). Exit 0 only if both answer."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae test\n"
+            "  tesserae test --json\n"
+            "  tesserae test --provider codex      # try a backend before committing to it\n"
+            "  tesserae test --no-prose            # one call instead of two\n"
+            "\n"
+            "`tesserae config status` shows the same resolution WITHOUT spending a call;\n"
+            "`tesserae doctor` never spends one at all.\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to the current directory")
+    parser.add_argument(
+        "--provider",
+        choices=["claude", "codex", "anthropic", "openai", "custom"],
+        default=None,
+        help="Test this backend instead of the configured one (this run only; nothing is written)",
+    )
+    parser.add_argument("--timeout", type=int, default=None, help="Per-call timeout in seconds (default: the client's own)")
+    parser.add_argument("--no-prose", dest="prose", action="store_false", default=True, help="Skip the prose round trip; test JSON only")
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit the machine-readable result instead of the report")
+    return parser
+
+
+def _handle_test(args: argparse.Namespace) -> int:
+    from .llm_selftest import render_selftest, run_llm_selftest
+
+    result = run_llm_selftest(
+        args.project,
+        provider=args.provider,
+        timeout=args.timeout,
+        prose=args.prose,
+    )
+    if args.as_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        sys.stdout.write(render_selftest(result))
+    # 0 answering / 2 not usable. Deliberately not 1: a warning tier would
+    # invite scripts to treat "the backend did not answer" as a soft failure,
+    # and every caller of this command is asking a yes/no question.
+    return 0 if result.get("ok") else 2
+
+
+def _route_test(rest: List[str]) -> int:
+    args = _build_test_parser().parse_args(rest)
+    return _resolve_handler("_handle_test")(args)
+
+
 def _route_verify_attribution(rest: List[str]) -> int:
     args = _build_verify_attribution_parser().parse_args(rest)
     return _resolve_handler("_handle_verify_attribution")(args)
@@ -7329,6 +7392,9 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "graph-repair": _route_graph_repair,
     # layered agent KG (Phase 2): per-agent L1 distillation
     "distill": _route_distill,
+    # the one command that spends a real LLM call on purpose, to prove the
+    # configured backend answers — doctor and `config status` never do
+    "test": _route_test,
 }
 
 

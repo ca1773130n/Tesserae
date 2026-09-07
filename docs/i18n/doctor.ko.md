@@ -12,9 +12,22 @@
 ```bash
 tesserae doctor                 # check the current project
 tesserae doctor --fix           # apply the safe repairs, then re-check
+tesserae doctor --fix --deep    # + the slow local repairs (session-chunk backfill)
 tesserae doctor --all --json    # every registered project, JSON report
 tesserae doctor --project ~/src/other
 ```
+
+## `--fix`가 절대 하지 않는 일
+
+`--fix`는 한 패스가 아무것도 바꾸지 않을 때까지 반복한다. 그래서 어떤 수리가 앞선
+검사를 무효화해도 다음 실행이 아니라 같은 실행 안에서 잡힌다. `--fix --deep`은
+느린 로컬 수리를 추가한다. 네 가지는 수동으로 남으며, 그중 하나라도 남긴 실행은
+그것을 **Still open** 아래에 명령과 이유와 함께 출력한다:
+
+- **Spend.** 컴파일은 대신 실행하지 않는다. 돈과 시간이 들고, 그 결정은 당신 몫이다.
+- **Install.** 선택적 의존성과 백엔드 갱신은 네트워크를 탄다.
+- **Authenticate.** 아무도 당신 대신 로그인할 수 없다 — 백엔드가 응답하는지는 `tesserae test`가 증명한다.
+- **Destroy.** 어떤 프로세스도 죽이지 않고, doctor가 쓰지 않은 상태는 지우지 않는다.
 
 ## 무엇을 점검하는가
 
@@ -24,13 +37,13 @@ tesserae doctor --project ~/src/other
 |---|---|---|---|
 | `project_initialized` | core | `.tesserae/`가 존재하고 Tesserae 워크스페이스로 보이는지 | 보고만 (`tesserae init` 제안) |
 | `graph_parse` | core | `graph.json`이 파싱되고 기대한 형태를 갖는지 | 보고만 (`tesserae compile` 제안) |
-| `config_valid` | core | `.tesserae/config.json`이 파싱되고 init 템플릿에 대해 유효한지 | 보고만 |
+| `config_valid` | core | `.tesserae/config.json`이 파싱되고 init 템플릿에 대해 유효한지 | **SAFE**: `init`이 쓰는 값으로 필수 키를 채운다. *파싱*되지 않는 설정은 보고만 하고 절대 다시 쓰지 않는다 |
 | `vault_configured` | core | 설정된 vault 경로가 해석(resolve)되는지 | **SAFE**: 해석된 vault 디렉터리가 프로젝트 내부에 있을 때 생성 |
 | `registry_consistent` | registry | `~/.tesserae/registry.json` 항목이 실제 프로젝트 루트를 가리키는지 | **SAFE**: 루트가 사라진 항목을 정리하고, 레거시 `active` 키를 제거; 그래프 누락은 보고만 |
 | `graph_staleness` | freshness | 마지막 compile에 기록된 `git_head` 이후의 git delta | 보고만 (`tesserae refresh` 제안 — compile은 무거움) |
 | `site_search_index` | freshness | 정적 사이트 / `search-index.json`이 `graph.json`보다 최신인지 | **SAFE**: 사이트를 재빌드 |
 | `backend_artifacts` | freshness | RAG-Anything 아티팩트가 최신인지 | 보고만 (해당 refresh는 LLM/네트워크 비용이 큼) |
-| `session_chunks` | freshness | [일일 session-chunk](session-chunks.ko.md) 커버리지에 최근 윈도우 내 공백이 없는지 | 보고만 (`tesserae sessions chunk-backfill` 제안) |
+| `session_chunks` | freshness | [일일 session-chunk](session-chunks.ko.md) 커버리지에 최근 윈도우 내 공백이 없는지 | **SAFE, slow**: `--fix --deep`가 백필을 실행한다 (로컬이며 LLM을 쓰지 않지만, 기록이 길면 몇 분 걸린다) |
 | `wiki_lint` | graph | graph ⇄ wiki 드리프트 + 자명하게 고칠 수 있는 lint 발견 사항 | **SAFE**: lint의 자명한 수정(`fix_trivial`)을 적용 |
 | `compile_lock` | processes | 라이브 compile lock이 잡혀 있는지, 어느 pid **와 어느 호스트**가 잡고 있는지 | 보고만 — doctor는 **살아 있는 lock을 절대 죽이거나 제거하지 않음** |
 | `filesystem_locking` | processes | `.tesserae/`가 `flock(2)`이 조용한 no-op일 수 있는 네트워크 파일시스템 위에 있는지 | 보고만 (호스트 간 강제를 증명할 수는 없음 — 아래 참조) |

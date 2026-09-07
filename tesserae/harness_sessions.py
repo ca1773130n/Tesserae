@@ -701,6 +701,9 @@ _TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
     # ``system=`` kwargs from the AST instead of guessing at verbs.
     "You extract a typed research-intelligence graph",
     "You are a Tesserae liveness probe",
+    # `tesserae test` — the prose half of the backend self-test. The JSON half
+    # reuses the liveness-probe prompt above.
+    "You are a Tesserae backend self-test",
     # The clip TL;DR (tesserae/clip.py) — routed through the configured
     # provider since the CLI-only path was removed, so it now issues a
     # ``system=`` prompt like every other Tesserae call.

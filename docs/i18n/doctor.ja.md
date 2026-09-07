@@ -11,9 +11,22 @@
 ```bash
 tesserae doctor                 # check the current project
 tesserae doctor --fix           # apply the safe repairs, then re-check
+tesserae doctor --fix --deep    # + the slow local repairs (session-chunk backfill)
 tesserae doctor --all --json    # every registered project, JSON report
 tesserae doctor --project ~/src/other
 ```
+
+## `--fix` が決してしないこと
+
+`--fix` は、あるパスが何も変えなくなるまで繰り返す。だから、ある修復が先行する
+チェックを無効にしても、次回の実行ではなく同じ実行の中で捕まる。`--fix --deep` は
+遅いローカル修復を追加する。4 つは手動のままで、そのいずれかを残した実行は、
+それを **Still open** の下にコマンドと理由とともに出力する:
+
+- **Spend.** コンパイルを代わりに実行することはない。お金と時間がかかり、その判断はあなたのものだ。
+- **Install.** オプション依存関係とバックエンド更新はネットワークを使う。
+- **Authenticate.** 誰もあなたの代わりにログインできない — バックエンドが応答するかは `tesserae test` が証明する。
+- **Destroy.** プロセスを kill せず、doctor が書いていない状態も削除しない。
 
 ## チェック内容
 
@@ -23,13 +36,13 @@ tesserae doctor --project ~/src/other
 |---|---|---|---|
 | `project_initialized` | core | `.tesserae/` が存在し、Tesserae ワークスペースの体裁であること | レポートのみ（`tesserae init` を提案） |
 | `graph_parse` | core | `graph.json` がパースでき、期待される形をしていること | レポートのみ（`tesserae compile` を提案） |
-| `config_valid` | core | `.tesserae/config.json` がパースでき、init テンプレートに対して妥当であること | レポートのみ |
+| `config_valid` | core | `.tesserae/config.json` がパースでき、init テンプレートに対して妥当であること | **SAFE**: `init` が書く値で必須キーを補完する。*パース*できない設定は報告するだけで、決して書き換えない |
 | `vault_configured` | core | 設定された vault パスが解決できること | **SAFE**: 解決された vault ディレクトリがプロジェクト内にある場合に作成 |
 | `registry_consistent` | registry | `~/.tesserae/registry.json` のエントリが実在するプロジェクトルートを指していること | **SAFE**: ルートが消滅したエントリを削除し、レガシーの `active` キーを除去。グラフの欠落はレポートのみ |
 | `graph_staleness` | freshness | 最後のコンパイルで記録された `git_head` 以降の git 差分 | レポートのみ（`tesserae refresh` を提案 — コンパイルは重い処理のため） |
 | `site_search_index` | freshness | 静的サイト / `search-index.json` が `graph.json` より新しいこと | **SAFE**: サイトを再ビルド |
 | `backend_artifacts` | freshness | RAG-Anything の成果物が最新であること | レポートのみ（これらのリフレッシュは LLM / ネットワーク負荷が大きいため） |
-| `session_chunks` | freshness | [日次セッションチャンク](session-chunks.ja.md)のカバレッジに直近ウィンドウの欠落がないこと | レポートのみ（`tesserae sessions chunk-backfill` を提案） |
+| `session_chunks` | freshness | [日次セッションチャンク](session-chunks.ja.md)のカバレッジに直近ウィンドウの欠落がないこと | **SAFE, slow**: `--fix --deep` がバックフィルを実行する（ローカルで LLM 不要だが、履歴が長いと数分かかる） |
 | `wiki_lint` | graph | グラフ ⇄ wiki のドリフト + 自明に修正可能な lint 検出項目 | **SAFE**: lint の自明な修正（`fix_trivial`）を適用 |
 | `compile_lock` | processes | 稼働中のコンパイルロックが保持されているか、またどの pid **とホスト**によってか | レポートのみ — doctor は**稼働中のロックを決して kill も削除もしません** |
 | `filesystem_locking` | processes | `.tesserae/` がネットワークファイルシステム上にあり、`flock(2)` が黙って no-op になりうる場所かどうか | レポートのみ（ホスト間での強制は証明できません — 後述） |

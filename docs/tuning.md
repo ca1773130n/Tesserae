@@ -231,6 +231,22 @@ URL was indistinguishable from having no LLM installed at all.
 
 ---
 
+## Is the backend actually answering? (`tesserae test`)
+
+`tesserae config status` shows which layer won each setting; it does not prove
+the backend answers. `tesserae test` does, by spending two real calls on it:
+
+```bash
+tesserae test                    # resolve, build, one JSON call, one prose call
+tesserae test --json             # machine-readable
+tesserae test --provider codex   # try a backend before committing to it
+```
+
+It exits 0 only when both come back. The JSON call is what extraction needs and
+the prose call is what `ask` needs, and a gateway can serve one while refusing
+the other. Neither is cached, because a cached yes to "is it answering right
+now" is a wrong yes. `tesserae doctor` never spends a call at all.
+
 ## Compile passes
 
 | Variable | Default | What it gates |

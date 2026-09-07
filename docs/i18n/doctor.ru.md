@@ -12,9 +12,23 @@
 ```bash
 tesserae doctor                 # check the current project
 tesserae doctor --fix           # apply the safe repairs, then re-check
+tesserae doctor --fix --deep    # + the slow local repairs (session-chunk backfill)
 tesserae doctor --all --json    # every registered project, JSON report
 tesserae doctor --project ~/src/other
 ```
+
+## Чего `--fix` не сделает никогда
+
+`--fix` повторяется, пока очередной проход не перестанет что-либо менять, так что
+починка, обесценившая более ранюю проверку, ловится в том же запуске, а не в
+следующем. `--fix --deep` добавляет медленные локальные починки. Четыре вещи
+остаются ручными, и любой запуск, оставивший одну из них, печатает её под
+**Still open** с командой и причиной:
+
+- **Spend.** Компиляция за вас не запускается никогда. Она стоит денег и часов, и это ваше решение.
+- **Install.** Опциональные зависимости и обновления бэкендов ходят в сеть.
+- **Authenticate.** Никто не войдёт в систему за вас — отвечает ли бэкенд, доказывает `tesserae test`.
+- **Destroy.** Ни один процесс не убивается, и состояние, которого doctor не писал, не удаляется.
 
 ## Что проверяется
 
@@ -24,13 +38,13 @@ tesserae doctor --project ~/src/other
 |---|---|---|---|
 | `project_initialized` | core | `.tesserae/` существует и выглядит как рабочее пространство Tesserae | только отчёт (предлагает `tesserae init`) |
 | `graph_parse` | core | `graph.json` парсится и имеет ожидаемую форму | только отчёт (предлагает `tesserae compile`) |
-| `config_valid` | core | `.tesserae/config.json` парсится и валиден относительно шаблона init | только отчёт |
+| `config_valid` | core | `.tesserae/config.json` парсится и валиден относительно шаблона init | **SAFE**: дописывает обязательные ключи значениями, которые пишет `init`; конфиг, который не *разбирается*, только сообщается и никогда не переписывается |
 | `vault_configured` | core | настроенный путь vault разрешается | **SAFE**: создаёт разрешённый каталог vault, если он находится внутри проекта |
 | `registry_consistent` | registry | записи `~/.tesserae/registry.json` указывают на реальные корни проектов | **SAFE**: удаляет записи с исчезнувшим корнем, убирает устаревший ключ `active`; отсутствующий граф — только отчёт |
 | `graph_staleness` | freshness | git-дельта с момента `git_head`, записанного при последней компиляции | только отчёт (предлагает `tesserae refresh` — компиляции тяжелы) |
 | `site_search_index` | freshness | статический сайт / `search-index.json` новее, чем `graph.json` | **SAFE**: пересобирает сайт |
 | `backend_artifacts` | freshness | артефакты RAG-Anything актуальны | только отчёт (их обновление тяжёлое по LLM/сети) |
-| `session_chunks` | freshness | покрытие [дневных чанков сессий](session-chunks.ru.md) не имеет пропусков в недавнем окне | только отчёт (предлагает `tesserae sessions chunk-backfill`) |
+| `session_chunks` | freshness | покрытие [дневных чанков сессий](session-chunks.ru.md) не имеет пропусков в недавнем окне | **SAFE, slow**: `--fix --deep` запускает бэкфилл (локально и без LLM, но минуты на длинной истории) |
 | `wiki_lint` | graph | дрейф графа ⇄ wiki + тривиально исправимые находки линта | **SAFE**: применяет тривиальные исправления линта (`fix_trivial`) |
 | `compile_lock` | processes | удерживается ли живая блокировка компиляции, и каким pid **и на каком хосте** | только отчёт — doctor **никогда не убивает процесс и не снимает живую блокировку** |
 | `filesystem_locking` | processes | лежит ли `.tesserae/` на сетевой файловой системе, где `flock(2)` может молча оказаться no-op | только отчёт (доказать межхостовое соблюдение блокировок он не может — см. ниже) |

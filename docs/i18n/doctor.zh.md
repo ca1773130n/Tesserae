@@ -8,9 +8,22 @@
 ```bash
 tesserae doctor                 # check the current project
 tesserae doctor --fix           # apply the safe repairs, then re-check
+tesserae doctor --fix --deep    # + the slow local repairs (session-chunk backfill)
 tesserae doctor --all --json    # every registered project, JSON report
 tesserae doctor --project ~/src/other
 ```
+
+## `--fix` 绝不会做的事
+
+`--fix` 会反复执行，直到某一轮不再改变任何东西；因此一次修复让先前的检查失效时，
+会在同一次运行中被抓住，而不是留到下一次。`--fix --deep` 会追加缓慢的本地修复。
+有四件事仍需手动，任何留下其中之一的运行都会把它打印在 **Still open** 之下，
+连同命令和原因：
+
+- **Spend.** 绝不替你运行编译。它花钱也花时间，这个决定属于你。
+- **Install.** 可选依赖和后端刷新都要联网。
+- **Authenticate.** 没人能代你登录 —— 后端是否应答由 `tesserae test` 证明。
+- **Destroy.** 不杀任何进程，也不删除 doctor 没有写过的状态。
 
 ## 检查内容
 
@@ -20,13 +33,13 @@ tesserae doctor --project ~/src/other
 |---|---|---|---|
 | `project_initialized` | core | `.tesserae/` 存在且看起来像一个 Tesserae 工作区 | 仅报告（建议运行 `tesserae init`） |
 | `graph_parse` | core | `graph.json` 可解析且形状符合预期 | 仅报告（建议运行 `tesserae compile`） |
-| `config_valid` | core | `.tesserae/config.json` 可解析并通过 init 模板校验 | 仅报告 |
+| `config_valid` | core | `.tesserae/config.json` 可解析并通过 init 模板校验 | **SAFE**：用 `init` 会写入的值补齐必需键；无法*解析*的配置只报告，绝不重写 |
 | `vault_configured` | core | 配置的 vault 路径可以解析 | **SAFE**：当解析出的 vault 目录位于项目内部时创建该目录 |
 | `registry_consistent` | registry | `~/.tesserae/registry.json` 的条目指向真实存在的项目根目录 | **SAFE**：清理根目录已消失的条目，删除遗留的 `active` 键；图谱缺失时仅报告 |
 | `graph_staleness` | freshness | 自上次编译记录的 `git_head` 以来的 git 增量 | 仅报告（建议运行 `tesserae refresh` —— 编译开销较大） |
 | `site_search_index` | freshness | 静态站点 / `search-index.json` 比 `graph.json` 更新 | **SAFE**：重建站点 |
 | `backend_artifacts` | freshness | RAG-Anything 产物是最新的 | 仅报告（它们的刷新是 LLM/网络重操作） |
-| `session_chunks` | freshness | [每日 session-chunk](session-chunks.zh.md) 覆盖率在近期窗口内没有缺口 | 仅报告（建议运行 `tesserae sessions chunk-backfill`） |
+| `session_chunks` | freshness | [每日 session-chunk](session-chunks.zh.md) 覆盖率在近期窗口内没有缺口 | **SAFE, slow**：`--fix --deep` 会执行回填（本地且不用 LLM，但历史长时需要数分钟） |
 | `wiki_lint` | graph | 图谱 ⇄ wiki 漂移 + 可轻易修复的 lint 发现 | **SAFE**：应用 lint 的琐碎修复（`fix_trivial`） |
 | `compile_lock` | processes | 是否有活动的编译锁被持有，以及被哪个 pid **和哪台主机**持有 | 仅报告 —— doctor **绝不杀掉进程也绝不移除活动锁** |
 | `filesystem_locking` | processes | `.tesserae/` 是否位于网络文件系统上——在那里 `flock(2)` 可能是一个静默的空操作 | 仅报告（它无法证明跨主机的强制生效——见下文） |
