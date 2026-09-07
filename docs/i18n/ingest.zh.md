@@ -71,6 +71,8 @@ Tesserae 是一个 LLM wiki，因此 `compile` **默认构建概念/断言层**�
 编译锁定在那一个会话的配额上。若未做任何配置，`CLAUDE_CONFIG_DIR` 仍会作为首个尝试
 的账户。
 
+`claude` 提供方也可以指向 claude 兼容的网关而不是 Anthropic：在旁边设置 `llm_base_url` 和 `llm_auth_token`（例如 `tesserae init --llm-provider claude --claude-config-dir ~/.claude-work --llm-base-url https://gw.example --llm-auth-token ...`，或回答向导的端点提示）。之后每次调用——编译、`tesserae ask`、剪藏 TL;DR、doctor——都会带着该令牌把 CLI 路由到那里；无需 `claude /login`，配置目录仍用于 CLI 自身的状态。
+
 当所有已配置账户都报告用量上限时，编译会在本次运行的剩余部分停止调用 LLM，而不是
 逐个文档重复询问，并将这些文档标记为 `fallback: true` 并告知你。限额重置后，无需
 重新编译全部内容即可恢复：

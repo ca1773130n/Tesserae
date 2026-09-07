@@ -93,8 +93,9 @@ The wizard's provider pick (or the equivalent flags) persists these config keys:
 |---|---|---|
 | `llm_provider` | `--llm-provider {claude,codex,anthropic,openai,custom}` | Backend for the LLM client: `claude`/`codex` use the logged-in CLI over OAuth; `anthropic` and `openai` use those APIs directly; `custom` targets an endpoint you name. |
 | `llm_model` | `--llm-model` | Model for the synthesis/insights LLM client. |
-| `llm_base_url` | `--llm-base-url` | Endpoint base URL for `anthropic`/`openai`/`custom`. |
+| `llm_base_url` | `--llm-base-url` | Endpoint base URL for `anthropic`/`openai`/`custom`, or a gateway the `claude` CLI is routed at. |
 | `llm_api_key` | `--llm-api-key` | API key for `anthropic`/`openai`/`custom`. |
+| `llm_auth_token` | `--llm-auth-token` | Bearer credential for the endpoint; with `claude` it is handed to the CLI, so no `claude /login` is needed. |
 
 > **Plaintext warning.** `llm_api_key` is stored in **plaintext** in
 > `.tesserae/config.json`. Prefer the environment variables instead:

@@ -91,6 +91,8 @@ session inherits and which would otherwise pin the whole compile to that one
 session's quota. With nothing configured, `CLAUDE_CONFIG_DIR` is still used as
 the first account to try.
 
+The `claude` provider can also be pointed at a claude-compatible gateway instead of Anthropic: set `llm_base_url` and `llm_auth_token` next to it (for example `tesserae init --llm-provider claude --claude-config-dir ~/.claude-work --llm-base-url https://gw.example --llm-auth-token ...`, or answer the wizard's endpoint prompt). Every call — compile, `tesserae ask`, clip TL;DRs, doctor — then routes the CLI there with that token; no `claude /login` is needed, and the config dir is still used for the CLI's own state.
+
 When every configured account reports its usage limit, compile stops calling the
 LLM for the rest of the run rather than re-asking per document, marks those
 documents `fallback: true`, and tells you so. Recover them once the limit resets

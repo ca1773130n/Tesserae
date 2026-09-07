@@ -151,3 +151,56 @@ def test_wizard_claude_provider_blank_config_dir_means_auto(
     plan = run_wizard(report, console=console)
     assert plan.llm_provider == "claude"
     assert plan.claude_config_dir is None
+
+
+def test_wizard_claude_provider_can_name_a_custom_endpoint(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The claude CLI can be routed at a claude-compatible gateway; the wizard
+    only offered an endpoint under `custom`, so a claude-CLI harness had no
+    way to record its base URL and bearer token here."""
+    import shutil
+
+    from tesserae import llm_json
+
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda name: "/fake/bin/claude" if name == "claude" else None,
+    )
+    monkeypatch.setattr(llm_json, "_claude_cli_available", lambda: True)
+    report = detect(tmp_path)
+    _interactive(monkeypatch)
+    acct = tmp_path / "claude-work"
+    acct.mkdir()
+
+    def fake_prompt_ask(prompt="", **kwargs):
+        text = str(prompt)
+        if "Pick a provider" in text:
+            return "1"
+        if "CLAUDE_CONFIG_DIR" in text:
+            return str(acct)
+        if "Custom endpoint base URL" in text:
+            return "https://gw.example/anthropic"
+        if "Bearer token" in text:
+            return "tok-secret"
+        if "Model name" in text:
+            return "claude-sonnet-4-6"
+        if "Toggle by number" in text or "Additional source" in text:
+            return ""
+        return kwargs.get("default") or ""
+
+    monkeypatch.setattr(wizard_mod.Prompt, "ask", staticmethod(fake_prompt_ask))
+    monkeypatch.setattr(
+        wizard_mod.Confirm, "ask", staticmethod(lambda *a, **k: True)
+    )
+    console = Console(file=StringIO(), force_terminal=False, width=100)
+    plan = run_wizard(report, console=console)
+    assert plan.llm_provider == "claude"
+    assert plan.claude_config_dir == str(acct)
+    assert plan.llm_base_url == "https://gw.example/anthropic"
+    assert plan.llm_auth_token == "tok-secret"
+    assert plan.llm_model == "claude-sonnet-4-6"
+    review = render_review(plan)
+    assert "tok-secret" not in review
+    assert "llm_auth_token" in review

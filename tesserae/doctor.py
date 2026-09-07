@@ -278,6 +278,17 @@ def _llm_login_status() -> Dict[str, Optional[bool]]:
     return out
 
 
+def _project_llm_settings(ctx: DoctorContext) -> dict:
+    """The resolved LLM settings for THIS project, ``{}`` when unreadable."""
+    try:
+        from .llm_json import resolve_llm_client_settings
+
+        cfg = ctx.wiki.config() if ctx.wiki is not None else {}
+        return resolve_llm_client_settings(cfg if isinstance(cfg, dict) else {})
+    except Exception:  # noqa: BLE001 — an unreadable config must never crash doctor
+        return {}
+
+
 def _project_claude_config_dirs(ctx: DoctorContext) -> List[str]:
     """The claude config dirs a compile in THIS project would actually try.
 
@@ -291,12 +302,8 @@ def _project_claude_config_dirs(ctx: DoctorContext) -> List[str]:
     client then discovers dirs itself) or claude is not what a compile here
     reaches for first, see below.
     """
-    try:
-        from .llm_json import resolve_llm_client_settings
-
-        cfg = ctx.wiki.config() if ctx.wiki is not None else {}
-        settings = resolve_llm_client_settings(cfg if isinstance(cfg, dict) else {})
-    except Exception:  # noqa: BLE001 — an unreadable config must never crash doctor
+    settings = _project_llm_settings(ctx)
+    if not settings:
         return []
     # ``llm_claude_config_dirs`` is resolved for every provider, but
     # ``build_default_json_client`` only puts the claude CLI first when the
@@ -905,6 +912,35 @@ def _detect_llm_login(ctx: DoctorContext) -> Optional[Finding]:
     because it no longer makes the claim that was being contradicted.
     """
     dirs = _project_claude_config_dirs(ctx)
+    settings = _project_llm_settings(ctx)
+    routed = (
+        settings.get("base_url")
+        if str(settings.get("provider") or "claude") == "claude"
+        and (settings.get("auth_token") or settings.get("api_key"))
+        else None
+    )
+    if routed:
+        # A claude CLI pointed at a gateway with a bearer token needs no
+        # `claude /login`; asking for one here sent users to log into an
+        # account the run was never going to spend.
+        missing = [d for d in dirs if not Path(d).is_dir()]
+        if missing:
+            return _f(
+                "llm_login",
+                "environment",
+                WARN,
+                f"claude CLI is routed at {routed} with a configured credential, but these "
+                f"configured config dirs do not exist: {', '.join(missing)}",
+                suggestion="mkdir the dir, or correct llm_claude_config_dirs in .tesserae/config.json",
+            )
+        return _f(
+            "llm_login",
+            "environment",
+            OK,
+            f"claude CLI is routed at {routed} with a configured credential — no CLI login needed"
+            + (f" (config dir(s): {', '.join(dirs)})" if dirs else ""),
+            suggestion="if compile reports an HTTP error, check llm_base_url / llm_auth_token in .tesserae/config.json",
+        )
     if dirs:
         present = [d for d in dirs if Path(d).is_dir()]
         if not present:

@@ -116,16 +116,30 @@ def make_claude_llm_func(
     async def llm_model_func(prompt, system_prompt=None, history_messages=None, **kwargs):
         from . import llm_extractor as _le
 
+        from .llm_json import resolve_llm_client_settings
+
         # Resolve at call time so env-var fallback honors any post-construction changes
         # (matters for tests that monkeypatch CLAUDE_CONFIG_DIR between calls).
+        # The Tesserae-configured dir list (env → ~/.tesserae/config.json) ranks
+        # above the ambient CLAUDE_CONFIG_DIR, exactly as it does for compile;
+        # a custom endpoint configured there is routed the same way too.
+        settings = resolve_llm_client_settings()
+        configured = settings.get("claude_config_dirs") or []
         resolved_config_dir = (
             config_dir
+            or (configured[0] if configured else None)
             or os.environ.get("CLAUDE_CONFIG_DIR")
             or str(Path.home() / ".claude")
         )
+        extra: dict = {}
+        if settings.get("base_url") and (settings.get("api_style") or "anthropic") == "anthropic":
+            extra["base_url"] = settings["base_url"]
+            token = settings.get("auth_token") or settings.get("api_key")
+            if token:
+                extra["auth_token"] = token
         flat = _flatten_prompt(prompt, system_prompt, history_messages)
         return await asyncio.to_thread(
-            _le.run_claude_cli, flat, resolved_config_dir, model or "", timeout
+            _le.run_claude_cli, flat, resolved_config_dir, model or "", timeout, **extra
         )
 
     return llm_model_func

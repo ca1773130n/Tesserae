@@ -108,9 +108,9 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 | `llm_model` | `TESSERAE_LLM_MODEL` | `sonnet`（claude CLI）、`gpt-5.6-luna`（codex CLI）、`claude-sonnet-4-6`（anthropic 线路）、`gpt-4o-mini`（openai 线路） | 在两个 CLI 后端上按提供商作用域，所以 claude 形状的模型永远不会落在 codex 路径上。配置的端点提供商即使在提供商和模型在不同配置层中设置时也会保留其模型 |
 | `llm_base_url` | `TESSERAE_LLM_BASE_URL`，然后 `ANTHROPIC_BASE_URL` | `https://api.anthropic.com`（anthropic 线路）、`https://api.openai.com/v1`（openai 线路） | 端点，被修剪为每条线路追加的内容——参见 [自定义端点](#自定义端点) |
 | `llm_api_key` | `TESSERAE_LLM_API_KEY`，然后 `ANTHROPIC_API_KEY` | — | API 密钥凭证：anthropic 线路上的 `X-Api-Key`，openai 线路上的 `Authorization: Bearer` |
-| `llm_auth_token` | `TESSERAE_LLM_AUTH_TOKEN`，然后 `ANTHROPIC_AUTH_TOKEN` | — | Bearer 凭证，两条线路上都是 `Authorization: Bearer`。设置这个**或** `llm_api_key`：在 anthropic 线路上令牌被传递给 SDK 作为 `auth_token=` 而不设置 api 密钥，所以两者永不冲突 |
+| `llm_auth_token` | `TESSERAE_LLM_AUTH_TOKEN`，然后 `ANTHROPIC_AUTH_TOKEN` | — | Bearer 凭证，两条线路上都是 `Authorization: Bearer`。设置这个**或** `llm_api_key`：在 anthropic 线路上令牌被传递给 SDK 作为 `auth_token=` 而不设置 api 密钥，所以两者永不冲突 使用 `claude` 提供方时，令牌会以 `ANTHROPIC_AUTH_TOKEN`（`llm_base_url` 则以 `ANTHROPIC_BASE_URL`）传给 CLI 子进程，因此走网关的 claude CLI 无需 `claude /login` |
 | `llm_allow_fallback` | `TESSERAE_LLM_ALLOW_FALLBACK` | 关闭 | 允许配置的端点提供商转向另一个后端而不是失败——参见 [端点提供商是一份契约](#端点提供商是一份契约)。环境变量的任何非空值都会打开它 |
-| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | CLI 自身的默认值 | Claude 配置目录（按轮换顺序），在环境变量中以 `os.pathsep` 分隔——即重复 `--claude-config-dir` 的环境变量通道。只有*显式配置*的列表才具有权威性；环境中的 `CLAUDE_CONFIG_DIR` 刻意不具权威性，因为固定到它会让多账号轮换塌缩为单账号 |
+| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | CLI 自身的默认值 | Claude 配置目录（按轮换顺序），在环境变量中以 `os.pathsep` 分隔——即重复 `--claude-config-dir` 的环境变量通道。只有*显式配置*的列表才具有权威性；环境中的 `CLAUDE_CONFIG_DIR` 刻意不具权威性，因为固定到它会让多账号轮换塌缩为单账号 旧配置中的单数 `llm_claude_config_dir` 和 `extraction.claude_config_dir` 仍会被读取，作为项目配置，优先级低于复数键 |
 | `llm_codex_homes` | `TESSERAE_CODEX_HOMES` | CLI 自身的默认值 | Codex homes，形状和推理同上。较旧的单数 `llm_codex_home` 仍然有效，意思是一个单一 home 的列表 |
 | `llm_codex_reasoning_effort` | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | 结构化提取不需要你可能为交互工作设置的 `xhigh`——`xhigh` 使多文档编译多倍变慢 |
 

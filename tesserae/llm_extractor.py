@@ -963,8 +963,22 @@ Document:
     return prompt
 
 
-def run_claude_cli(prompt: str, config_dir: str, model: str, timeout: int) -> str:
+def run_claude_cli(
+    prompt: str,
+    config_dir: str,
+    model: str,
+    timeout: int,
+    *,
+    base_url: Optional[str] = None,
+    auth_token: Optional[str] = None,
+) -> str:
     env = os.environ.copy()
+    # Same routing as ClaudeCLIJsonClient._run_prompt: a configured custom
+    # endpoint reaches the CLI child as ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN.
+    if base_url:
+        env["ANTHROPIC_BASE_URL"] = base_url
+    if auth_token:
+        env["ANTHROPIC_AUTH_TOKEN"] = auth_token
     # Same Claude CLI quirk workaround as ClaudeCLIJsonClient: setting
     # CLAUDE_CONFIG_DIR explicitly to the canonical default ~/.claude
     # breaks the CLI's auth-lookup chain. Pop the env in that case so

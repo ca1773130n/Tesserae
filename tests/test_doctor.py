@@ -26,9 +26,10 @@ from tesserae.project import ProjectWiki
 
 PINNED_NOW = datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc)
 
-#: Captured before the autouse fixture pins the module attribute, so one test
-#: can exercise the real config-dir resolution.
+#: Captured before the autouse fixture pins the module attributes, so a test
+#: can exercise the real config-dir / settings resolution.
 _REAL_PROJECT_CLAUDE_DIRS = doctor._project_claude_config_dirs
+_REAL_PROJECT_LLM_SETTINGS = doctor._project_llm_settings
 
 
 @pytest.fixture(autouse=True)
@@ -36,6 +37,10 @@ def _pin_probes(monkeypatch):
     """Pin the machine-environment probes so doctor results are deterministic."""
     monkeypatch.setattr(doctor, "_llm_login_status", lambda: {"claude": True, "codex": None})
     monkeypatch.setattr(doctor, "_project_claude_config_dirs", lambda ctx: [])
+    # Same reason: the llm_login check now reads the resolved endpoint too, and
+    # a dev box with a global base_url + token would flip every "NOT verified"
+    # assertion below.
+    monkeypatch.setattr(doctor, "_project_llm_settings", lambda ctx: {})
     monkeypatch.setattr(doctor, "_embedding_probe", lambda: {"backend": "pinned", "semantic": True})
     monkeypatch.setattr(doctor, "_environment_probe", lambda root: "pinned environment summary")
     # The filesystem under tmp_path differs per box (apfs here, ext4/overlay
@@ -464,6 +469,7 @@ def test_llm_login_config_dirs_come_from_the_projects_own_config(tmp_path, monke
     # a dev box set to codex would otherwise resolve no claude dirs at all and
     # this assertion would pass or fail depending on whose machine ran it.
     monkeypatch.setenv("TESSERAE_LLM_PROVIDER", "claude")
+    monkeypatch.setattr(doctor, "_project_llm_settings", _REAL_PROJECT_LLM_SETTINGS)
     ctx = doctor.DoctorContext(
         project_root=tmp_path, wiki=ProjectWiki.load(tmp_path), registry=None, now=PINNED_NOW
     )
@@ -488,6 +494,7 @@ def test_llm_login_says_nothing_about_claude_dirs_when_the_provider_is_codex(
     wiki.paths.config.write_text(json.dumps(cfg), encoding="utf-8")
     monkeypatch.delenv("TESSERAE_CLAUDE_CONFIG_DIRS", raising=False)
     monkeypatch.delenv("TESSERAE_LLM_PROVIDER", raising=False)
+    monkeypatch.setattr(doctor, "_project_llm_settings", _REAL_PROJECT_LLM_SETTINGS)
     ctx = doctor.DoctorContext(
         project_root=tmp_path, wiki=ProjectWiki.load(tmp_path), registry=None, now=PINNED_NOW
     )
@@ -877,3 +884,36 @@ def test_wiki_lint_fresh_clean_report_is_ok(tmp_path):
     f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "wiki_lint")
     assert f.severity == "ok"
     assert "clean" in f.message
+
+
+def test_llm_login_says_a_routed_claude_cli_needs_no_login(tmp_path, monkeypatch):
+    """A claude CLI pointed at a gateway with a bearer token never logs in;
+    doctor used to send the user to `claude /login` for an account the run
+    was never going to spend."""
+    wiki = make_project(tmp_path)
+    acct = tmp_path / "acct"
+    acct.mkdir()
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["llm_provider"] = "claude"
+    cfg["llm_claude_config_dirs"] = [str(acct)]
+    cfg["llm_base_url"] = "https://gw.example/anthropic"
+    cfg["llm_auth_token"] = "tok"
+    wiki.paths.config.write_text(json.dumps(cfg), encoding="utf-8")
+    for var in ("TESSERAE_CLAUDE_CONFIG_DIRS", "TESSERAE_LLM_PROVIDER",
+                "TESSERAE_LLM_BASE_URL", "TESSERAE_LLM_AUTH_TOKEN",
+                "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(doctor, "_project_claude_config_dirs", _REAL_PROJECT_CLAUDE_DIRS)
+    monkeypatch.setattr(doctor, "_project_llm_settings", _REAL_PROJECT_LLM_SETTINGS)
+    f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "llm_login")
+    assert f.severity == "ok"
+    assert "https://gw.example/anthropic" in f.message
+    assert "no CLI login needed" in f.message
+    assert "tok" not in f.message.replace("token", "")
+
+    # The configured dir still has to exist: the CLI keeps its state there.
+    cfg["llm_claude_config_dirs"] = [str(tmp_path / "gone")]
+    wiki.paths.config.write_text(json.dumps(cfg), encoding="utf-8")
+    f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "llm_login")
+    assert f.severity == "warn"
+    assert str(tmp_path / "gone") in f.message

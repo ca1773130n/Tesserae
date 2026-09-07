@@ -24,9 +24,20 @@ def test_make_codex_llm_func_routes_to_run_codex_cli(monkeypatch):
     assert captured["timeout"] == 60
 
 
+def _isolate_llm_settings(monkeypatch, tmp_path):
+    """make_claude_llm_func now consults the resolved Tesserae settings, so
+    this box's ~/.tesserae/config.json and env must not leak into the test."""
+    monkeypatch.setattr("tesserae.llm_json.GLOBAL_CONFIG_PATH", tmp_path / "no-global.json")
+    for var in ("TESSERAE_CLAUDE_CONFIG_DIRS", "TESSERAE_LLM_BASE_URL",
+                "TESSERAE_LLM_AUTH_TOKEN", "TESSERAE_LLM_API_KEY", "TESSERAE_LLM_API_STYLE",
+                "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+
+
 def test_make_claude_llm_func_sets_config_dir(monkeypatch, tmp_path):
     import tesserae.raganything_llm as mod
     captured = {}
+    _isolate_llm_settings(monkeypatch, tmp_path)
 
     def fake_run_claude_cli(prompt, config_dir, model, timeout):
         captured["prompt"] = prompt
@@ -47,10 +58,11 @@ def test_make_claude_llm_func_sets_config_dir(monkeypatch, tmp_path):
     assert captured["timeout"] == 120
 
 
-def test_make_claude_llm_func_falls_back_to_env_then_home(monkeypatch):
+def test_make_claude_llm_func_falls_back_to_env_then_home(monkeypatch, tmp_path):
     import tesserae.raganything_llm as mod
 
     captured = {}
+    _isolate_llm_settings(monkeypatch, tmp_path)
 
     def fake_run_claude_cli(prompt, config_dir, model, timeout):
         captured["config_dir"] = config_dir
@@ -147,3 +159,33 @@ def test_deterministic_embedding_func_returns_correct_shape():
     vecs = asyncio.run(callable_(["alpha", "beta", "gamma"]))
     assert len(vecs) == 3
     assert all(len(v) == 256 for v in vecs)
+
+
+def test_make_claude_llm_func_honours_configured_dirs_and_endpoint(monkeypatch, tmp_path):
+    """The Tesserae-configured claude dir list and custom endpoint reach the
+    raganything claude func too — it used to read only CLAUDE_CONFIG_DIR."""
+    import json
+
+    import tesserae.raganything_llm as mod
+
+    captured = {}
+
+    def fake_run_claude_cli(prompt, config_dir, model, timeout, **kwargs):
+        captured["config_dir"] = config_dir
+        captured["kwargs"] = kwargs
+        return "ok"
+
+    monkeypatch.setattr("tesserae.llm_extractor.run_claude_cli", fake_run_claude_cli)
+    _isolate_llm_settings(monkeypatch, tmp_path)
+    global_cfg = tmp_path / "global.json"
+    global_cfg.write_text(json.dumps({
+        "llm_claude_config_dirs": ["/acct/work", "/acct/personal"],
+        "llm_base_url": "https://gw.example",
+        "llm_auth_token": "tok",
+    }), encoding="utf-8")
+    monkeypatch.setattr("tesserae.llm_json.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/tmp/ambient-session-dir")
+
+    asyncio.run(mod.make_claude_llm_func()("x"))
+    assert captured["config_dir"] == "/acct/work", "configured list beats the ambient env var"
+    assert captured["kwargs"] == {"base_url": "https://gw.example", "auth_token": "tok"}
