@@ -127,8 +127,10 @@ resolves the same way, and only this way:
 | `llm_api_key` | `TESSERAE_LLM_API_KEY`, then `ANTHROPIC_API_KEY` | — | The api-key credential: `X-Api-Key` on the anthropic wire, `Authorization: Bearer` on the openai wire |
 | `llm_auth_token` | `TESSERAE_LLM_AUTH_TOKEN`, then `ANTHROPIC_AUTH_TOKEN` | — | The bearer credential, `Authorization: Bearer` on both wires. Set this **or** `llm_api_key`: on the anthropic wire the token is handed to the SDK as `auth_token=` and no api key is set, so the two never collide With the `claude` provider the token is handed to the CLI child process as `ANTHROPIC_AUTH_TOKEN` (and `llm_base_url` as `ANTHROPIC_BASE_URL`), so a claude-CLI harness on a gateway needs no `claude /login` |
 | `llm_allow_fallback` | `TESSERAE_LLM_ALLOW_FALLBACK` | off | Lets a configured endpoint provider fall through to another backend instead of failing — see [an endpoint provider is a contract](#an-endpoint-provider-is-a-contract). Any non-empty value of the env var turns it on |
-| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | the CLI's own default | Claude config directories in rotation order, `os.pathsep`-separated in the env var — the env channel for a repeated `--claude-config-dir`. A *configured* list is authoritative; the ambient `CLAUDE_CONFIG_DIR` deliberately is not, because pinning to it collapses multi-account rotation to one account Older configs' singular `llm_claude_config_dir` and `extraction.claude_config_dir` are still read, as project config, below the plural key |
+| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | the CLI's own default | Claude config directories in rotation order, `os.pathsep`-separated in the env var — the env channel for a repeated `--claude-config-dir`. A *configured* list is tried **first**, not exclusively: every other credentialed `~/.claude*` on the machine is appended behind it, so a named account that is out of quota or logged out falls through to one that works. The ambient `CLAUDE_CONFIG_DIR` deliberately does not rank here at all, because pinning to it collapses multi-account rotation to one account Older configs' singular `llm_claude_config_dir` and `extraction.claude_config_dir` are still read, as project config, below the plural key |
+| `llm_claude_config_dirs_exclusive` | `TESSERAE_LLM_CLAUDE_CONFIG_DIRS_EXCLUSIVE` | off | Suppresses that fallback tail, so only the accounts you named may ever be spent. Turn it on when spending an unnamed account is a billing problem rather than a rescue |
 | `llm_codex_homes` | `TESSERAE_CODEX_HOMES` | the CLI's own default | Codex homes, same shape and same reasoning as above. The older singular `llm_codex_home` still works and means a one-home list |
+| `llm_codex_homes_exclusive` | `TESSERAE_LLM_CODEX_HOMES_EXCLUSIVE` | off | `llm_claude_config_dirs_exclusive` for codex |
 | `llm_codex_reasoning_effort` | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | Structured extraction does not need the `xhigh` you may set for interactive work — `xhigh` makes a multi-document compile many times slower |
 
 The `ANTHROPIC_*` names still work, one rung below the Tesserae-owned ones: they
@@ -139,6 +141,34 @@ value you set for Tesserae specifically, but they still beat both config files.
 `llm_*` keys in its `.tesserae/config.json`. A credential written to either file
 is stored in **plaintext**, so prefer `TESSERAE_LLM_API_KEY` /
 `TESSERAE_LLM_AUTH_TOKEN` for those two.
+
+### Account paths do not travel between machines
+
+An account list holds absolute paths. Copy a `.tesserae/config.json` to a second
+machine and the dirs it names may not exist there — the CLI is handed a config
+dir that is not on disk, answers `Not logged in`, and you are told to run
+`claude /login` for accounts you are already logged into. Two things now catch
+that:
+
+- rotation continues past the missing dir into whatever credentialed accounts
+  the machine actually has, so the run survives;
+- `tesserae doctor` reports the absent dirs as a warning, and
+  `tesserae doctor --fix` drops them from the config — a dir that is not there
+  cannot be logged into, so removing it cannot cost you an account.
+
+`tesserae test` is the verifier for all of this. It spends two real calls and
+prints one line per account it tried, with what that account said:
+
+```
+  accounts tried (in rotation order):
+    [✗] /Users/you/.claude-personal1   quota: You've hit your weekly limit · resets Sep 11
+    [✗] /Users/you/.claude             not_logged_in: OAuth session expired
+    [✓] /Users/you/.claude-personal2   answered
+```
+
+When the provider you configured is dead and another backend answered for it,
+the verdict says so rather than reporting a plain "backend is answering" over an
+account that has been refusing every call for days.
 
 ### Custom endpoints
 

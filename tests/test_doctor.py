@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from tesserae import doctor
+from tesserae import llm_json
 from tesserae.project import ProjectWiki
 
 PINNED_NOW = datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc)
@@ -41,6 +42,11 @@ def _pin_probes(monkeypatch):
     # a dev box with a global base_url + token would flip every "NOT verified"
     # assertion below.
     monkeypatch.setattr(doctor, "_project_llm_settings", lambda ctx: {})
+    # And the box's own credentialed ~/.claude* dirs: the llm_login check
+    # compares them against the accounts the project may spend, so a developer
+    # logged into three accounts would see a WARN no CI machine sees.
+    monkeypatch.setattr(llm_json, "_discover_credentialed_claude_dirs", lambda: [])
+    monkeypatch.setattr(llm_json, "_discover_codex_homes", lambda: [])
     monkeypatch.setattr(doctor, "_embedding_probe", lambda: {"backend": "pinned", "semantic": True})
     monkeypatch.setattr(doctor, "_environment_probe", lambda root: "pinned environment summary")
     # The filesystem under tmp_path differs per box (apfs here, ext4/overlay
@@ -454,6 +460,87 @@ def test_llm_login_warns_when_no_configured_config_dir_exists(tmp_path, monkeypa
     f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "llm_login")
     assert f.severity == "warn"
     assert str(gone) in f.message
+
+
+def test_llm_login_warns_when_a_configured_dir_is_absent_from_this_machine(
+    tmp_path, monkeypatch
+):
+    """The cross-machine trap, which used to render as `run claude /login`.
+
+    An absolute path in config.json does not travel: on the second machine the
+    dir simply is not there, the CLI answers `Not logged in` for it, and the
+    user — logged into every account they own — is sent to log in again.
+    """
+    make_project(tmp_path)
+    here = tmp_path / "acct-here"
+    here.mkdir()
+    gone = tmp_path / "acct-on-the-other-machine"
+    monkeypatch.setattr(
+        doctor, "_project_llm_settings",
+        lambda ctx: {
+            "provider": "claude",
+            "claude_config_dirs": [str(gone), str(here)],
+            "claude_config_dirs_configured": [str(gone)],
+        },
+    )
+    monkeypatch.setattr(
+        doctor, "_project_claude_config_dirs", lambda ctx: [str(gone), str(here)]
+    )
+    f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "llm_login")
+    assert f.severity == "warn"
+    assert f.fixable is True
+    assert str(gone) in f.message
+    assert str(here) in f.message, "the message must name what rotation falls back to"
+
+
+def test_llm_login_fix_drops_only_the_dirs_that_are_not_on_this_machine(tmp_path):
+    """`doctor --fix` converges the account list; it never drops a live dir."""
+    wiki = make_project(tmp_path)
+    here = tmp_path / "acct-here"
+    here.mkdir()
+    gone = tmp_path / "acct-gone"
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["llm_claude_config_dirs"] = [str(gone), str(here)]
+    cfg["extraction"] = {"backend": "claude-cli", "claude_config_dir": str(gone)}
+    cfg["llm_codex_home"] = str(gone)
+    wiki.paths.config.write_text(json.dumps(cfg), encoding="utf-8")
+
+    ctx = doctor.DoctorContext(
+        project_root=tmp_path, wiki=ProjectWiki.load(tmp_path), registry=None, now=PINNED_NOW
+    )
+    assert doctor._fix_llm_login(ctx) is not None
+
+    after = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    assert after["llm_claude_config_dirs"] == [str(here)], "a live dir is never dropped"
+    # A key whose entries all vanished is REMOVED, not left as []: empty means
+    # "nothing configured", which hands the choice back to discovery.
+    assert "claude_config_dir" not in after["extraction"]
+    assert "llm_codex_home" not in after
+    assert after["extraction"]["backend"] == "claude-cli", "unrelated keys untouched"
+    # Idempotent: a second pass has nothing left to do.
+    assert doctor._fix_llm_login(ctx) is None
+
+
+def test_llm_login_warns_when_credentialed_accounts_are_excluded(tmp_path, monkeypatch):
+    """Pinning the list exclusively is legal, and worth saying out loud."""
+    make_project(tmp_path)
+    only = tmp_path / "acct-only"
+    only.mkdir()
+    monkeypatch.setattr(
+        doctor, "_project_llm_settings",
+        lambda ctx: {
+            "provider": "claude",
+            "claude_config_dirs": [str(only)],
+            "claude_config_dirs_configured": [str(only)],
+        },
+    )
+    monkeypatch.setattr(doctor, "_project_claude_config_dirs", lambda ctx: [str(only)])
+    monkeypatch.setattr(
+        llm_json, "_discover_credentialed_claude_dirs", lambda: ["/home/me/.claude-personal2"]
+    )
+    f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "llm_login")
+    assert f.severity == "warn"
+    assert "/home/me/.claude-personal2" in f.message
 
 
 def test_llm_login_config_dirs_come_from_the_projects_own_config(tmp_path, monkeypatch):

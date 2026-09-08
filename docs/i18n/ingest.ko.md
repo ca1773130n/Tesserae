@@ -83,10 +83,26 @@ Claude CLI 설정 디렉터리와 Codex 홈은 서로 호환되지 않는다:
 }
 ```
 
-이 목록이 최종 권위를 가지며, 목록 밖의 계정은 시도되지 않는다. 또한 이 설정은
-**주변 환경의 `CLAUDE_CONFIG_DIR`보다 우선한다**. 이 변수는 Claude Code 세션이
-띄우는 모든 프로세스에 상속되므로, 그대로 두면 컴파일 전체가 그 세션 하나의
+이 목록은 **먼저** 시도될 뿐 벽이 아니다. 머신에 있는 다른 모든 자격증 있는
+`~/.claude*` 디렉터리가 그 뒤에 덧붙으므로, 지정한 계정 중 하나가 동작하는 동안에는
+여전히 그 계정들만 사용되고, 할당량이 소진되었거나 로그아웃되었거나 (두 번째 머신에서)
+아예 존재하지 않는 지정 계정은 동작하는 계정으로 넘어간다. 지정하지 않은 계정을 쓰는
+것이 구조가 아니라 청구 문제라면 `"llm_claude_config_dirs_exclusive": true`를
+설정하라 (codex는 `llm_codex_homes_exclusive`).
+
+또한 이 목록은 **주변 환경의 `CLAUDE_CONFIG_DIR`보다 우선한다**. 이 변수는 Claude Code
+세션이 띄우는 모든 프로세스에 상속되므로, 그대로 두면 컴파일 전체가 그 세션 하나의
 할당량에 묶인다. 설정이 없으면 `CLAUDE_CONFIG_DIR`이 첫 번째 시도 계정으로 쓰인다.
+
+절대 경로는 머신 사이를 이동하지 않는다: 설정을 두 번째 머신으로 복사하면 그것이
+가리키는 디렉터리가 거기에는 없을 수 있다. CLI는 디스크에 없는 디렉터리에 대해
+`Not logged in`이라고 답하고, 그렇게 이미 로그인한 사용자가 `claude /login`으로
+내몰린다. 이제 로테이션은 그것을 지나 계속 진행하고, `tesserae doctor`는 없는
+디렉터리를 경고하며, `tesserae doctor --fix`는 그것들을 설정에서 제거한다.
+
+`tesserae test`는 시도한 계정마다 한 줄씩, 그 계정이 무엇이라고 답했는지 —
+할당량 창, 만료된 세션, 또는 응답 — 를 출력하므로 "내 계정 중 어느 것이 실제로
+죽었는가"가 더 이상 추측이 아니게 된다.
 
 `claude` 프로바이더는 Anthropic 대신 claude 호환 게이트웨이를 향하게 할 수도 있다. 그 옆에 `llm_base_url`과 `llm_auth_token`을 설정하면 된다(예: `tesserae init --llm-provider claude --claude-config-dir ~/.claude-work --llm-base-url https://gw.example --llm-auth-token ...`, 또는 마법사의 엔드포인트 질문에 답한다). 이후 컴파일, `tesserae ask`, 클립 TL;DR, doctor 등 모든 호출이 그 토큰과 함께 CLI를 그곳으로 보낸다. `claude /login`은 필요 없고, 설정 디렉터리는 CLI 자체 상태용으로 계속 쓰인다.
 

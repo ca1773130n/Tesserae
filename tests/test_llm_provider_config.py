@@ -46,6 +46,13 @@ def _isolate_env(monkeypatch):
     monkeypatch.delenv("TESSERAE_LLM_API_STYLE", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    # The machine's own accounts are a channel too: a configured list now gets
+    # every credentialed ~/.claude* / ~/.codex* appended behind it as a
+    # fallback, so without this the assertions read whoever is logged in here.
+    import tesserae.llm_json as _lj
+
+    monkeypatch.setattr(_lj, "_discover_credentialed_claude_dirs", lambda: [])
+    monkeypatch.setattr(_lj, "_discover_codex_homes", lambda: [])
 
 
 def test_project_init_persists_llm_keys(tmp_path: Path):

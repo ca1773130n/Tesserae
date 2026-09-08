@@ -66,10 +66,23 @@ Tesserae 是一个 LLM wiki，因此 `compile` **默认构建概念/断言层**�
 }
 ```
 
-该列表具有最终权威——列表之外的账户一律不会被尝试。它同样**优先于环境中的
-`CLAUDE_CONFIG_DIR`**：该变量会被 Claude Code 会话派生的每个进程继承，否则会把整次
-编译锁定在那一个会话的配额上。若未做任何配置，`CLAUDE_CONFIG_DIR` 仍会作为首个尝试
-的账户。
+该列表**优先**被尝试——但它不是一堵墙。机器上其他所有已授权的 `~/.claude*` 目录都会
+追加在它后面，因此只要你指定的账户中还有一个能用，被消耗的仍然只有它们；而配额耗尽、
+已登出、或（在第二台机器上）根本不存在的指定账户会落到一个还能用的账户上。当动用未
+指定的账户是账单问题而非救援时，设置
+`"llm_claude_config_dirs_exclusive": true`（codex 对应 `llm_codex_homes_exclusive`）。
+
+该列表同样**优先于环境中的 `CLAUDE_CONFIG_DIR`**：该变量会被 Claude Code 会话派生的
+每个进程继承，否则会把整次编译锁定在那一个会话的配额上。若未做任何配置，
+`CLAUDE_CONFIG_DIR` 仍会作为首个尝试的账户。
+
+绝对路径不会跨机器迁移：把配置复制到第二台机器，它列出的目录在那里可能并不存在。CLI
+对磁盘上没有的目录回答 `Not logged in`，一个早已登录的用户就这样被推去执行
+`claude /login`。现在轮换会越过它继续，`tesserae doctor` 会对缺失的目录发出警告，
+`tesserae doctor --fix` 会把它们从配置中删除。
+
+`tesserae test` 为每个尝试过的账户打印一行，说明那个账户回答了什么——配额窗口、过期
+会话，还是已应答——于是“我的哪个账户其实已经死了”不再是猜测。
 
 `claude` 提供方也可以指向 claude 兼容的网关而不是 Anthropic：在旁边设置 `llm_base_url` 和 `llm_auth_token`（例如 `tesserae init --llm-provider claude --claude-config-dir ~/.claude-work --llm-base-url https://gw.example --llm-auth-token ...`，或回答向导的端点提示）。之后每次调用——编译、`tesserae ask`、剪藏 TL;DR、doctor——都会带着该令牌把 CLI 路由到那里；无需 `claude /login`，配置目录仍用于 CLI 自身的状态。
 

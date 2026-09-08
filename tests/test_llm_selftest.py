@@ -27,6 +27,11 @@ def _isolate(monkeypatch, tmp_path):
         "CLAUDE_CONFIG_DIR", "CODEX_HOME",
     ):
         monkeypatch.delenv(var, raising=False)
+    # ...and none of the box's own accounts: a configured list now gets every
+    # credentialed ~/.claude* / ~/.codex* appended behind it as a fallback, so
+    # without this the assertions below read whoever is logged in here.
+    monkeypatch.setattr(lj, "_discover_credentialed_claude_dirs", lambda: [])
+    monkeypatch.setattr(lj, "_discover_codex_homes", lambda: [])
 
 
 class _Client:
@@ -253,3 +258,135 @@ def test_the_prose_prompt_is_a_registered_self_capture_signature():
 
     assert any(sig in st.PROSE_SYSTEM for sig in _TESSERAE_PROMPT_SIGNATURES)
     assert any(sig in st.JSON_SYSTEM for sig in _TESSERAE_PROMPT_SIGNATURES)
+
+
+# ---------------------------------------------------------------------------
+# which account answered, and was it the one you configured
+# ---------------------------------------------------------------------------
+
+
+class _Composite:
+    """The provider chain build_default_json_client returns in practice."""
+
+    def __init__(self, clients):
+        self.clients = clients
+
+    def complete_json(self, **kw):
+        for c in self.clients:
+            out = c.complete_json(**kw)
+            if out is not None:
+                return out
+        return None
+
+    def complete_text(self, **kw):
+        for c in self.clients:
+            out = c.complete_text(**kw)
+            if out is not None:
+                return out
+        return None
+
+
+class _Sub:
+    """One backend in the chain, with the per-account rows rotation records."""
+
+    def __init__(self, attempts, json_payload=None, text="backend ok"):
+        self.last_attempts = attempts
+        self._json = json_payload
+        self._text = text
+
+    def complete_json(self, **kw):
+        return self._json
+
+    def complete_text(self, **kw):
+        return self._text
+
+
+def _named(cls_name, sub):
+    """Give ``sub`` a class name, since the verdict keys on the backend class."""
+    return type(cls_name, (type(sub),), {})(
+        sub.last_attempts, sub._json, sub._text
+    )
+
+
+def test_accounts_are_reported_per_config_dir_with_the_reason_each_refused():
+    """The rotation already knows which account refused and why.
+
+    Before this, a five-account rotation collapsed to one pass/fail line: the
+    user saw "Backend is answering" and had no way to learn that the account
+    they configured had been out of quota for three days.
+    """
+    result = {
+        "ok": True,
+        "settings": {"provider": "claude"},
+        "steps": [{"step": "json", "ok": True, "detail": "answered", "seconds": 1.0}],
+        "accounts": [
+            {"backend": "ClaudeCLIJsonClient", "config_dir": "/acct/a",
+             "outcome": "quota", "error": "You've hit your weekly limit"},
+            {"backend": "ClaudeCLIJsonClient", "config_dir": "/acct/b",
+             "outcome": "not_logged_in", "error": "OAuth session expired"},
+            {"backend": "ClaudeCLIJsonClient", "config_dir": "/acct/c",
+             "outcome": "ok", "error": ""},
+        ],
+    }
+    text = st.render_selftest(result)
+    assert "/acct/a" in text and "weekly limit" in text
+    assert "CLAUDE_CONFIG_DIR=/acct/b claude /login" in text, (
+        "an expired session earns the one command that fixes it"
+    )
+    # One remedy per DISTINCT failure — not one per account.
+    assert text.count("claude /login") == 1
+
+
+def test_a_fallback_answering_for_the_configured_provider_is_reported_as_degraded(
+    monkeypatch, tmp_path
+):
+    """provider=claude + a dead claude account + codex answering is NOT a plain OK.
+
+    That combination printed a green "Backend is answering. Compile, ask and the
+    daemon will use exactly this configuration" directly above a Claude account
+    that had been refusing every call for days.
+    """
+    claude = _named("ClaudeCLIJsonClient", _Sub(
+        [{"config_dir": "/acct/a", "outcome": "quota", "error": "weekly limit"}],
+        json_payload=None, text=None,
+    ))
+    codex = _named("CodexCLIJsonClient", _Sub(
+        [{"config_dir": "/codex/a", "outcome": "ok", "error": ""}],
+        json_payload={"ok": True}, text="backend ok",
+    ))
+    _install(monkeypatch, _Composite([claude, codex]))
+    root = _project(tmp_path, {"llm_provider": "claude"})
+
+    result = st.run_llm_selftest(root)
+
+    assert result["ok"] is True, "the chain really did answer"
+    assert result["degraded"] is True
+    assert result["answered_by"] == "CodexCLIJsonClient"
+    text = st.render_selftest(result)
+    assert "NOT through the provider you configured" in text
+    assert "/acct/a" in text, "the account that refused is named"
+
+
+def test_the_configured_provider_answering_is_not_degraded(monkeypatch, tmp_path):
+    claude = _named("ClaudeCLIJsonClient", _Sub(
+        [{"config_dir": "/acct/a", "outcome": "ok", "error": ""}],
+        json_payload={"ok": True}, text="backend ok",
+    ))
+    _install(monkeypatch, _Composite([claude]))
+    result = st.run_llm_selftest(_project(tmp_path, {"llm_provider": "claude"}))
+    assert result["ok"] is True and result["degraded"] is False
+    assert "NOT through the provider" not in st.render_selftest(result)
+
+
+def test_a_configured_dir_missing_from_this_machine_is_called_out(monkeypatch, tmp_path):
+    """Absolute paths do not travel between machines — say so, don't say /login."""
+    _install(monkeypatch, _Client())
+    root = _project(tmp_path, {
+        "llm_provider": "claude",
+        "llm_claude_config_dirs": [str(tmp_path / "not-here")],
+    })
+    result = st.run_llm_selftest(root)
+    assert result["missing_dirs"] == [str(tmp_path / "not-here")]
+    text = st.render_selftest(result)
+    assert "do not exist on THIS machine" in text
+    assert "Absolute paths do not travel between machines" in text

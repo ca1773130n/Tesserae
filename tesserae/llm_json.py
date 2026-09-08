@@ -39,7 +39,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, List, Mapping, Optional, Protocol, Sequence, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol, Sequence, Union
 
 logger = logging.getLogger(__name__)
 
@@ -790,6 +790,26 @@ def _extract_text(response: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
+#: Substrings that mean "this account needs a fresh login", case-insensitively.
+#: ``not logged in`` alone missed the shape a MAX account actually presents once
+#: its refresh token dies — ``Failed to authenticate: OAuth session expired and
+#: could not be refreshed`` — which was then classified as a generic error, so
+#: the rotation never latched the auth verdict and the operator got "read the
+#: error" instead of the one command that fixes it. Kept narrow on purpose: a
+#: bare "failed to authenticate" from a gateway is a bad bearer token, and
+#: sending that user to `claude /login` is the same wrong-remedy defect.
+_CLI_AUTH_FAILURE_MARKERS = (
+    "not logged in",
+    "oauth session expired",
+    "please run /login",
+)
+
+
+def _is_cli_auth_failure(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(marker in lowered for marker in _CLI_AUTH_FAILURE_MARKERS)
+
+
 class ClaudeCLIJsonClient:
     """LLMJsonClient backed by the ``claude`` CLI subprocess over OAuth.
 
@@ -868,6 +888,12 @@ class ClaudeCLIJsonClient:
         #: (quota exhausted, or not logged in). Per-instance on purpose — see
         #: the guard in :meth:`_run_prompt`.
         self._accounts_exhausted = False
+        #: One row per config dir the LAST :meth:`_run_prompt` actually tried:
+        #: ``{"config_dir": str, "outcome": str, "error": str}``. Rotation
+        #: already knows which account refused and why; without this it threw
+        #: that away and the operator was left with a single collapsed verdict
+        #: over N accounts. ``tesserae test`` renders it.
+        self.last_attempts: List[Dict[str, str]] = []
 
     def _run_prompt(
         self,
@@ -914,6 +940,13 @@ class ClaudeCLIJsonClient:
             return None
 
         last_error: Optional[Exception] = None
+        self.last_attempts = []
+
+        def _attempt(config_dir: str, outcome: str, error: object = "") -> None:
+            self.last_attempts.append(
+                {"config_dir": config_dir, "outcome": outcome, "error": str(error)[:300]}
+            )
+
         all_not_logged_in = True  # only True if EVERY tried config_dir was Not-logged-in
         any_attempted = False
         # Latching needs proof about EVERY account, not just the last one. With
@@ -974,8 +1007,8 @@ class ClaudeCLIJsonClient:
                     # the Claude CLI. Substring + case-insensitive so
                     # we're robust to minor phrasing drift (e.g.
                     # "Not logged in · Please run /login").
-                    combined = f"{stderr_text}\n{stdout_text}".lower()
-                    if "not logged in" in combined:
+                    combined = f"{stderr_text}\n{stdout_text}"
+                    if _is_cli_auth_failure(combined):
                         # Continue to the next config_dir — a later
                         # configured profile may be logged in. Only
                         # emit the actionable warning AFTER every
@@ -984,6 +1017,7 @@ class ClaudeCLIJsonClient:
                             f"claude exited {proc.returncode}: {stderr_text or stdout_text}"
                         )
                         dead_ends += 1
+                        _attempt(config_dir, "not_logged_in", last_error)
                         continue  # skip to next config_dir
                     # Non-auth failure on this profile (incl. a rate
                     # limit — `claude -p` exits non-zero with "You've
@@ -1005,13 +1039,20 @@ class ClaudeCLIJsonClient:
                     last_error = RuntimeError(
                         f"claude exited 0 but printed nothing (config dir {config_dir})"
                     )
+                    _attempt(config_dir, "empty", last_error)
                     continue
+                _attempt(config_dir, "ok")
                 return proc.stdout
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 if _is_quota_exhaustion(exc):
                     quota_hits += 1
                     dead_ends += 1
+                    _attempt(config_dir, "quota", exc)
+                elif isinstance(exc, _subprocess.TimeoutExpired):
+                    _attempt(config_dir, "timeout", exc)
+                else:
+                    _attempt(config_dir, "error", exc)
                 # Reaching here means this profile did NOT answer "Not logged
                 # in" (that branch continues above without raising), so the
                 # auth verdict is off the table. It used to be cleared only on
@@ -1453,17 +1494,9 @@ class CodexCLIJsonClient:
         #   3. Auto-discover every ``~/.codex*`` directory at $HOME.
         #   4. Final fallback: ``[~/.codex]``.
         home = _Path.home()
-        discovered = sorted(
-            str(p)
-            for p in home.glob(".codex*")
-            # A codex home is a DIRECTORY holding auth.json. The glob otherwise
-            # sweeps up siblings like ~/.codex-review-pr208.log — 24 of them on
-            # one real machine — and every one costs a doomed `codex exec` per
-            # document before rotation moves on.
-            if p.is_dir()
-            and not p.name.endswith((".bak", ".old"))
-            and (p / "auth.json").exists()
-        )
+        # A codex home is a DIRECTORY holding auth.json — see
+        # _discover_codex_homes, which is the one place that rule lives.
+        discovered = _discover_codex_homes()
         if codex_homes:
             self.codex_homes = list(codex_homes)
         elif _os.environ.get("CODEX_HOME"):
@@ -1474,6 +1507,9 @@ class CodexCLIJsonClient:
             self.codex_homes = [env_home] + [d for d in discovered if d != env_home]
         else:
             self.codex_homes = discovered or [str(home / ".codex")]
+        #: One row per CODEX_HOME the LAST ``_run_prompt`` tried — see the
+        #: identically-named attribute on :class:`ClaudeCLIJsonClient`.
+        self.last_attempts: List[Dict[str, str]] = []
         self.timeout = int(timeout) if timeout is not None else None
         #: Set once every home is a proven dead end (out of quota, or logged
         #: out). Per instance, same guard as ClaudeCLIJsonClient: the next call
@@ -1518,6 +1554,13 @@ class CodexCLIJsonClient:
             _note_failure("exhausted")
             return None
         last_error: Optional[Exception] = None
+        self.last_attempts = []
+
+        def _attempt(codex_home: str, outcome: str, error: object = "") -> None:
+            self.last_attempts.append(
+                {"config_dir": codex_home, "outcome": outcome, "error": str(error)[:300]}
+            )
+
         timed_out = False
         # An auth/binary failure is NOT transient: with an expired OAuth token
         # the retry loop costs 3 spawns + 6s of sleep PER DOCUMENT, so a
@@ -1590,14 +1633,17 @@ class CodexCLIJsonClient:
                         # Keep rotating (a later home may be logged in); THIS
                         # home is then skipped for the rest of the call, and
                         # only an all-homes-logged-out rotation stops the retry.
-                        combined = f"{stderr_text}\n{stdout_text}".lower()
-                        if "not logged in" in combined:
+                        combined = f"{stderr_text}\n{stdout_text}"
+                        if _is_cli_auth_failure(combined):
                             logged_out_homes.add(codex_home)
+                            _attempt(codex_home, "not_logged_in", last_error)
                         elif _is_quota_exhaustion(last_error):
                             exhausted_homes.add(codex_home)
                             auth_only = False
+                            _attempt(codex_home, "quota", last_error)
                         else:
                             auth_only = False
+                            _attempt(codex_home, "error", last_error)
                         continue
                     final = (
                         output_path.read_text(encoding="utf-8", errors="replace")
@@ -1619,7 +1665,9 @@ class CodexCLIJsonClient:
                             f"codex exited 0 but produced an empty last message "
                             f"(CODEX_HOME {codex_home})"
                         )
+                        _attempt(codex_home, "empty", last_error)
                         continue
+                    _attempt(codex_home, "ok")
                     return answer
                 except _subprocess.TimeoutExpired as exc:
                     # The wedge guard already bounded THIS attempt
@@ -1630,6 +1678,7 @@ class CodexCLIJsonClient:
                     last_error = exc
                     timed_out = True
                     auth_only = False
+                    _attempt(codex_home, "timeout", exc)
                     continue
                 except FileNotFoundError as exc:
                     # No ``codex`` on PATH. No amount of backoff installs it,
@@ -1638,10 +1687,12 @@ class CodexCLIJsonClient:
                     last_error = exc
                     binary_missing = True
                     auth_only = False
+                    _attempt(codex_home, "binary_missing", exc)
                     continue
                 except Exception as exc:  # noqa: BLE001
                     last_error = exc
                     auth_only = False
+                    _attempt(codex_home, "error", exc)
                     continue
                 finally:
                     try:
@@ -1860,6 +1911,69 @@ class CodexCLIJsonClient:
 # ---------------------------------------------------------------------------
 
 
+#: Files that make a ``~/.claude*`` directory a Claude CLI config dir rather
+#: than an unrelated dotdir that merely starts with the same letters.
+#: ``.credentials.json`` is the only one that means "credentialed" rather than
+#: "was used once", so it also decides which dirs a rotation spends a
+#: subprocess on first.
+_CLAUDE_DIR_MARKERS = (
+    "settings.json", "settings.local.json", "projects", "history.jsonl",
+    ".credentials.json",
+)
+
+#: The same idea for ``~/.codex*`` homes; matches the codex root detection in
+#: :mod:`tesserae.harness_sessions`.
+_CODEX_HOME_MARKERS = ("auth.json", "config.toml", "sessions")
+
+
+def _discover_credentialed_claude_dirs() -> List[str]:
+    """``~/.claude*`` dirs that look like a Claude CLI config dir, best first.
+
+    Marker-filtered, unlike :class:`ClaudeCLIJsonClient`'s own glob: this list
+    is appended BEHIND what the user configured, so it must not pad a rotation
+    with dirs that merely start with the right letters. Dirs carrying
+    ``.credentials.json`` sort first — those are the ones worth spending a
+    subprocess on before the rest.
+    """
+    from pathlib import Path as _Path
+
+    home = _Path.home()
+    found = [
+        p
+        for p in home.glob(".claude*")
+        if p.is_dir()
+        and not p.name.endswith((".bak", ".old"))
+        and any((p / marker).exists() for marker in _CLAUDE_DIR_MARKERS)
+    ]
+    return [
+        str(p)
+        for p in sorted(
+            found, key=lambda p: (not (p / ".credentials.json").exists(), p.name)
+        )
+    ]
+
+
+def _discover_codex_homes() -> List[str]:
+    """``_discover_credentialed_claude_dirs`` for ``~/.codex*``, keyed on ``auth.json``.
+
+    Stricter than :data:`_CODEX_HOME_MARKERS` on purpose, and for the same
+    reason :class:`CodexCLIJsonClient` is: a home without ``auth.json`` cannot
+    answer, so putting it in a rotation buys one doomed ``codex exec`` per
+    document. The looser marker set stays where it belongs — answering "has
+    this machine ever had codex configured", not "which homes may be spent".
+    """
+    from pathlib import Path as _Path
+
+    home = _Path.home()
+    return sorted(
+        str(p)
+        for p in home.glob(".codex*")
+        if p.is_dir()
+        and not p.name.endswith((".bak", ".old"))
+        and (p / "auth.json").exists()
+    )
+
+
 def _claude_cli_available() -> bool:
     """Return True when the ``claude`` binary is on PATH AND at least one
     candidate config dir looks credentialed.
@@ -1881,21 +1995,13 @@ def _claude_cli_available() -> bool:
     if env_dir:
         candidates = [_Path(env_dir)]
     else:
-        home = _Path.home()
-        discovered = sorted(
-            p for p in home.glob(".claude*")
-            if p.is_dir() and not p.name.endswith((".bak", ".old"))
-        )
-        candidates = discovered or [home / ".claude"]
-    markers = (
-        "settings.json", "settings.local.json", "projects", "history.jsonl",
-        # A dir that only ever ran `claude /login` (no session yet) has
-        # nothing but this file — and it is the one marker that means
-        # "credentialed" rather than "was used once".
-        ".credentials.json",
-    )
+        # Already marker-filtered, so a hit here means the dir carries one.
+        discovered = [_Path(d) for d in _discover_credentialed_claude_dirs()]
+        if discovered:
+            return True
+        candidates = [_Path.home() / ".claude"]
     return any(
-        cdir.exists() and any((cdir / m).exists() for m in markers)
+        cdir.exists() and any((cdir / m).exists() for m in _CLAUDE_DIR_MARKERS)
         for cdir in candidates
     )
 
@@ -1946,9 +2052,8 @@ def _codex_cli_available() -> bool:
             if p.is_dir() and not p.name.endswith((".bak", ".old"))
         )
         candidates = discovered or [home / ".codex"]
-    markers = ("auth.json", "config.toml", "sessions")
     return any(
-        cdir.exists() and any((cdir / m).exists() for m in markers)
+        cdir.exists() and any((cdir / m).exists() for m in _CODEX_HOME_MARKERS)
         for cdir in candidates
     )
 
@@ -1985,6 +2090,13 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     ``llm_claude_config_dirs`` (list or str; the legacy singular
     ``llm_claude_config_dir`` and ``extraction.claude_config_dir`` are read
     too), ``llm_codex_homes`` / ``llm_codex_home``, ``llm_model``,
+
+    Configured account lists are **preferred-first, not exclusive**: any other
+    credentialed ``~/.claude*`` / ``~/.codex*`` on the machine is appended
+    behind them so a quota-exhausted or logged-out named account falls through
+    to one that works instead of degrading the whole run. Set
+    ``llm_claude_config_dirs_exclusive`` / ``llm_codex_homes_exclusive`` to
+    ``true`` to suppress that tail. Remaining keys:
     ``llm_base_url``, ``llm_api_key``, ``llm_auth_token``, ``llm_api_style``.
     Env overrides: the ``TESSERAE_LLM_*`` names first, then the ambient
     ``ANTHROPIC_BASE_URL`` / ``ANTHROPIC_API_KEY`` / ``ANTHROPIC_AUTH_TOKEN``.
@@ -2014,6 +2126,19 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
         or None
     )
 
+    def _flag(key: str) -> bool:
+        """``TESSERAE_<KEY>`` env → project config → global config → False.
+
+        Parsed, not merely present: ``bool("0")`` is True, which is the
+        opposite of what anyone setting ``0`` means.
+        """
+        raw = os.environ.get("TESSERAE_" + key.upper())
+        if raw is None or not raw.strip():
+            raw = cfg.get(key, global_cfg.get(key))
+        if isinstance(raw, str):
+            return raw.strip().lower() not in ("", "0", "false", "no", "off")
+        return bool(raw)
+
     def _as_dirs(raw: object) -> Optional[List[str]]:
         # ``~`` is expanded here, once: the value goes verbatim into the
         # child's CLAUDE_CONFIG_DIR, which the CLI does not expand.
@@ -2029,8 +2154,10 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     # overrode the accounts the user had actually chosen — and pinned the
     # whole run to one account's quota. Set ``llm_claude_config_dirs`` (a
     # list) in .tesserae/config.json or ~/.tesserae/config.json to say
-    # exactly which accounts may be spent, in rotation order; that list is
-    # then authoritative and nothing else is tried.
+    # exactly which accounts to spend, in rotation order; that list is then
+    # tried FIRST, with any other credentialed dir on the box appended behind
+    # it as a last resort (see the fallback-tail note below, and
+    # ``llm_claude_config_dirs_exclusive`` to turn the tail off).
     # NOTE the deliberate absence of a CLAUDE_CONFIG_DIR fallback here. Whatever
     # this returns is passed to the client as an EXPLICIT ``config_dirs=``, which
     # pins it verbatim — so returning ``[env_claude]`` collapsed the rotation to
@@ -2065,6 +2192,30 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     else:
         _provider_sources["claude_config_dirs"] = "default"
 
+    # A configured list says which account to spend FIRST — not which is the
+    # only one that may ever be tried. Treating it as exclusive is what left a
+    # user with two logged-in Claude accounts staring at "Claude CLI not logged
+    # in (tried 1 config dir)": the single dir named in
+    # ``extraction.claude_config_dir`` was out of its weekly quota, and the
+    # rotation loop — the entire mechanism for surviving exactly that — had
+    # nothing to rotate to. Same failure on a second machine, where an absolute
+    # path from the first machine's config does not exist at all.
+    #
+    # Discovered dirs are appended BEHIND the configured ones, so a named
+    # account that works is still the only one spent: the client returns on the
+    # first success, and the tail is reached only once every named account is a
+    # proven dead end (logged out, or out of quota). Set
+    # ``llm_claude_config_dirs_exclusive: true`` when spending an unnamed
+    # account is a billing problem rather than a rescue.
+    claude_config_dirs_configured = list(claude_config_dirs or [])
+    if claude_config_dirs and not _flag("llm_claude_config_dirs_exclusive"):
+        tail = [d for d in _discover_credentialed_claude_dirs() if d not in claude_config_dirs]
+        if tail:
+            claude_config_dirs = list(claude_config_dirs) + tail
+            _provider_sources["claude_config_dirs"] += (
+                f" + {len(tail)} discovered as fallback"
+            )
+
     # Codex gets the same treatment as claude above, for the same reasons.
     # ``llm_codex_homes`` (a LIST, rotation order) is the modern key; the older
     # singular ``llm_codex_home`` still works and means a one-account list.
@@ -2073,13 +2224,27 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     # honouring the env var here would collapse rotation to one account. Left
     # None, CodexCLIJsonClient ranks CODEX_HOME first and keeps the rest.
     _env_codex = os.environ.get("TESSERAE_CODEX_HOMES") or ""
-    codex_homes = (
-        _as_dirs([d for d in _env_codex.split(os.pathsep) if d])
-        or _as_dirs(cfg.get("llm_codex_homes"))
-        or _as_dirs(cfg.get("llm_codex_home"))
-        or _as_dirs(global_cfg.get("llm_codex_homes"))
-        or _as_dirs(global_cfg.get("llm_codex_home"))
-    )
+    codex_homes = None
+    for _label, _raw in (
+        ("env TESSERAE_CODEX_HOMES", [d for d in _env_codex.split(os.pathsep) if d]),
+        ("project .tesserae/config.json", cfg.get("llm_codex_homes")),
+        ("project .tesserae/config.json (llm_codex_home)", cfg.get("llm_codex_home")),
+        ("~/.tesserae/config.json", global_cfg.get("llm_codex_homes")),
+        ("~/.tesserae/config.json (llm_codex_home)", global_cfg.get("llm_codex_home")),
+    ):
+        codex_homes = _as_dirs(_raw)
+        if codex_homes:
+            _provider_sources["codex_homes"] = _label
+            break
+    else:
+        _provider_sources["codex_homes"] = "default"
+    # Preferred-first, not exclusive — see the claude note above.
+    codex_homes_configured = list(codex_homes or [])
+    if codex_homes and not _flag("llm_codex_homes_exclusive"):
+        _tail = [d for d in _discover_codex_homes() if d not in codex_homes]
+        if _tail:
+            codex_homes = list(codex_homes) + _tail
+            _provider_sources["codex_homes"] += f" + {len(_tail)} discovered as fallback"
     # Back-compat scalar for the callers/CLI that still display a single home.
     codex_home = codex_homes[0] if codex_homes else (os.environ.get("CODEX_HOME") or None)
 
@@ -2165,7 +2330,12 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     return {
         "provider": provider,
         "claude_config_dirs": claude_config_dirs,
+        # The dirs the USER named, before any discovered fallback was appended.
+        # "you configured this" and "we found this and put it behind yours" are
+        # different facts, and doctor has to be able to tell them apart.
+        "claude_config_dirs_configured": claude_config_dirs_configured,
         "codex_homes": codex_homes,
+        "codex_homes_configured": codex_homes_configured,
         "codex_home": codex_home,
         "codex_reasoning_effort": codex_reasoning_effort,
         "model": model,

@@ -113,8 +113,10 @@ export TESSERAE_LLM_CACHE=0   # 항상 re-ask
 | `llm_api_key` | `TESSERAE_LLM_API_KEY`, 그리고 `ANTHROPIC_API_KEY` | — | `api-key` 자격증: anthropic 와이어에서 `X-Api-Key`, openai 와이어에서 `Authorization: Bearer` |
 | `llm_auth_token` | `TESSERAE_LLM_AUTH_TOKEN`, 그리고 `ANTHROPIC_AUTH_TOKEN` | — | bearer 자격증으로 둘 다 와이어에서 `Authorization: Bearer`. **이것 또는** `llm_api_key` 설정하세요: anthropic 와이어에서 token은 SDK에 `auth_token=`로 전달되고 api key는 설정되지 않으므로 둘은 절대 충돌하지 않습니다 `claude` 프로바이더에서는 토큰이 CLI 자식 프로세스에 `ANTHROPIC_AUTH_TOKEN`으로(`llm_base_url`은 `ANTHROPIC_BASE_URL`로) 전달되므로, 게이트웨이를 쓰는 claude CLI 하네스에는 `claude /login`이 필요 없다 |
 | `llm_allow_fallback` | `TESSERAE_LLM_ALLOW_FALLBACK` | off | 설정된 엔드포인트 provider가 실패할 때 다른 백엔드로 넘어갈 수 있게 합니다 — [an endpoint provider is a contract](#an-endpoint-provider-is-a-contract) 참조. env var의 공백이 아닌 값이 켭니다 |
-| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | CLI의 자체 기본값 | 로테이션 순서로 Claude 설정 디렉터리로, env var에서는 `os.pathsep`으로 구분 — 반복된 `--claude-config-dir`의 환경 변수 통로. *설정된* 목록만 권위를 가집니다. 주변 환경의 `CLAUDE_CONFIG_DIR`는 의도적으로 권위가 없는데, 거기에 고정하면 다중 계정 로테이션이 한 계정으로 붕괴하기 때문입니다 예전 단수형 `llm_claude_config_dir`와 `extraction.claude_config_dir`도 복수형 키보다 낮은 프로젝트 설정으로 계속 읽힌다 |
+| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | CLI의 자체 기본값 | 로테이션 순서로 Claude 설정 디렉터리로, env var에서는 `os.pathsep`으로 구분 — 반복된 `--claude-config-dir`의 환경 변수 통로. *설정된* 목록은 배타적이 아니라 **먼저** 시도됩니다: 머신에 있는 다른 모든 자격증 있는 `~/.claude*` 디렉터리가 그 뒤에 덧붙으므로, 할당량이 소진되었거나 로그아웃된 지정 계정은 동작하는 계정으로 넘어갑니다. 주변 환경의 `CLAUDE_CONFIG_DIR`는 의도적으로 여기서 아예 순위를 갖지 않는데, 거기에 고정하면 다중 계정 로테이션이 한 계정으로 붕괴하기 때문입니다 예전 단수형 `llm_claude_config_dir`와 `extraction.claude_config_dir`도 복수형 키보다 낮은 프로젝트 설정으로 계속 읽힌다 |
+| `llm_claude_config_dirs_exclusive` | `TESSERAE_LLM_CLAUDE_CONFIG_DIRS_EXCLUSIVE` | 꺼짐 | 그 폴백 꼬리를 억제하여 지정한 계정만 사용되게 합니다. 지정하지 않은 계정을 쓰는 것이 구조가 아니라 청구 문제일 때 켜세요 |
 | `llm_codex_homes` | `TESSERAE_CODEX_HOMES` | CLI의 자체 기본값 | Codex homes로 같은 모양, 같은 논리입니다. 예전의 단수 `llm_codex_home`은 여전히 작동하고 `one-home` 목록을 의미합니다 |
+| `llm_codex_homes_exclusive` | `TESSERAE_LLM_CODEX_HOMES_EXCLUSIVE` | 꺼짐 | codex를 위한 `llm_claude_config_dirs_exclusive` |
 | `llm_codex_reasoning_effort` | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | Structured extraction은 interactive work에 설정할 수 있는 `xhigh`를 필요로 하지 않습니다 — `xhigh`는 multi-document compile을 여러 배 느리게 만듭니다 |
 
 `ANTHROPIC_*` 이름은 여전히 작동하며 Tesserae 소유의 이름 하나 아래에 있습니다: 이들은
@@ -124,6 +126,32 @@ export TESSERAE_LLM_CACHE=0   # 항상 re-ask
 `tesserae config llm`은 머신 전역 파일을 작성합니다; 한 프로젝트에 대해서는 같은 `llm_*`
 키를 `.tesserae/config.json`에 놓으세요. 파일에 작성된 자격증은 **평문**으로 저장되므로
 그 둘에 대해 `TESSERAE_LLM_API_KEY` / `TESSERAE_LLM_AUTH_TOKEN`를 선호하세요.
+
+### 계정 경로는 머신 사이를 이동하지 않는다
+
+계정 목록은 절대 경로를 담는다. `.tesserae/config.json`을 두 번째 머신으로 복사하면
+그 목록이 가리키는 디렉터리가 거기에는 없을 수 있다 — CLI는 디스크에 없는 설정
+디렉터리를 받아 `Not logged in`이라고 답하고, 이미 로그인해 둔 계정에 대해
+`claude /login`을 실행하라는 말을 듣게 된다. 이제 두 가지가 이것을 잡는다:
+
+- 로테이션이 없는 디렉터리를 지나 머신이 실제로 가진 자격증 있는 계정으로 계속
+  진행하므로 실행이 살아남는다;
+- `tesserae doctor`가 없는 디렉터리를 경고로 보고하고,
+  `tesserae doctor --fix`가 그것들을 설정에서 제거한다 — 거기에 없는 디렉터리는
+  로그인될 수 없으므로, 제거해도 계정을 잃을 수 없다.
+
+`tesserae test`가 이 모든 것의 검증자다. 실제 호출 두 번을 쓰고, 시도한 계정마다
+그 계정이 무엇이라고 답했는지 한 줄씩 출력한다:
+
+```
+  accounts tried (in rotation order):
+    [✗] /Users/you/.claude-personal1   quota: You've hit your weekly limit · resets Sep 11
+    [✗] /Users/you/.claude             not_logged_in: OAuth session expired
+    [✓] /Users/you/.claude-personal2   answered
+```
+
+설정한 provider가 죽었고 다른 백엔드가 대신 답했다면, 며칠째 모든 호출을 거부해 온
+계정 위에 밋밋하게 "백엔드가 응답한다"고 보고하는 대신 그 사실을 말한다.
 
 ### 커스텀 엔드포인트
 

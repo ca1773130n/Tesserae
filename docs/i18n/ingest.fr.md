@@ -85,11 +85,29 @@ définissez `llm_claude_config_dirs` dans `.tesserae/config.json` (projet) ou
 }
 ```
 
-Cette liste fait autorité — rien en dehors n'est essayé. Elle **l'emporte aussi sur la
-variable d'environnement ambiante `CLAUDE_CONFIG_DIR`**, héritée par tout processus
-lancé depuis une session Claude Code et qui, sinon, lierait toute la compilation au
-quota de cette seule session. Sans configuration, `CLAUDE_CONFIG_DIR` reste le premier
-compte essayé.
+Cette liste est essayée **en premier** — ce n'est pas un mur. Tout autre `~/.claude*`
+accrédité de la machine est ajouté derrière elle, si bien que les comptes que vous avez
+nommés restent les seuls dépensés tant que l'un d'eux fonctionne, et qu'un compte nommé
+à court de quota, déconnecté ou (sur une deuxième machine) tout simplement absent cède
+la place à un compte qui marche. Mettez `"llm_claude_config_dirs_exclusive": true`
+(`llm_codex_homes_exclusive` pour codex) quand dépenser un compte non nommé est un
+problème de facturation plutôt qu'un sauvetage.
+
+La liste **l'emporte aussi sur le `CLAUDE_CONFIG_DIR` ambiant**, hérité par tout
+processus lancé depuis une session Claude Code et qui, sinon, lierait toute la
+compilation au quota de cette seule session. Sans configuration,
+`CLAUDE_CONFIG_DIR` reste le premier compte essayé.
+
+Les chemins absolus ne voyagent pas entre machines : copiez une configuration sur une
+deuxième machine et les répertoires qu'elle nomme peuvent ne pas y exister. Le CLI
+répond `Not logged in` pour un répertoire absent du disque, et c'est ainsi qu'un
+utilisateur déjà connecté se retrouve envoyé vers `claude /login`. Désormais la rotation
+poursuit au-delà, `tesserae doctor` avertit des répertoires absents, et
+`tesserae doctor --fix` les retire de la configuration.
+
+`tesserae test` imprime une ligne par compte essayé et ce que ce compte a répondu
+— fenêtre de quota, session expirée, ou a répondu — de sorte que « lequel de mes comptes
+est réellement mort » cesse d'être une devinette.
 
 Le provider `claude` peut aussi être pointé vers une passerelle compatible claude au lieu d'Anthropic : définissez à côté `llm_base_url` et `llm_auth_token` (par exemple `tesserae init --llm-provider claude --claude-config-dir ~/.claude-work --llm-base-url https://gw.example --llm-auth-token ...`, ou répondez à la question d'endpoint de l'assistant). Chaque appel — la compilation, `tesserae ask`, les TL;DR de clips, doctor — route alors le CLI là-bas avec ce token ; aucun `claude /login` n'est nécessaire, et le répertoire de configuration reste utilisé pour l'état propre du CLI.
 
