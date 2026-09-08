@@ -85,11 +85,29 @@ Para controlar exactamente qué cuentas pueden gastarse, y en qué orden, define
 }
 ```
 
-Esa lista es la autoridad final: no se prueba nada fuera de ella. También **gana a la
-variable ambiental `CLAUDE_CONFIG_DIR`**, que hereda cada proceso lanzado desde una
-sesión de Claude Code y que, de otro modo, ataría toda la compilación a la cuota de
-esa única sesión. Sin nada configurado, `CLAUDE_CONFIG_DIR` sigue siendo la primera
-cuenta que se intenta.
+Esa lista se prueba **primero**: no es un muro. Cualquier otro `~/.claude*` con
+credenciales en la máquina se añade detrás, así que las cuentas que nombraste siguen
+siendo las únicas que se gastan mientras una de ellas funcione, y una cuenta nombrada
+que esté sin cuota, deslogueada o (en una segunda máquina) simplemente ausente cede el
+paso a una que sí funcione. Pon `"llm_claude_config_dirs_exclusive": true`
+(`llm_codex_homes_exclusive` para codex) cuando gastar una cuenta no nombrada sea un
+problema de facturación y no un rescate.
+
+La lista también **gana a la variable ambiental `CLAUDE_CONFIG_DIR`**, que hereda cada
+proceso lanzado desde una sesión de Claude Code y que, de otro modo, ataría toda la
+compilación a la cuota de esa única sesión. Sin nada configurado, `CLAUDE_CONFIG_DIR`
+sigue siendo la primera cuenta que se intenta.
+
+Las rutas absolutas no viajan entre máquinas: copia una configuración a una segunda
+caja y los directorios que nombra pueden no existir allí. La CLI responde
+`Not logged in` para un directorio que no está en disco, y así es como un usuario ya
+logueado acaba enviado a `claude /login`. Ahora la rotación continúa más allá,
+`tesserae doctor` avisa de los directorios ausentes y `tesserae doctor --fix` los quita
+de la configuración.
+
+`tesserae test` imprime una línea por cada cuenta que probó y lo que dijo esa cuenta
+— ventana de cuota, sesión expirada o respondió — de modo que "cuál de mis cuentas está
+realmente muerta" deja de ser una conjetura.
 
 El proveedor `claude` también puede apuntar a un gateway compatible con claude en vez de a Anthropic: establece a su lado `llm_base_url` y `llm_auth_token` (por ejemplo `tesserae init --llm-provider claude --claude-config-dir ~/.claude-work --llm-base-url https://gw.example --llm-auth-token ...`, o responde a la pregunta de endpoint del asistente). Cada llamada — la compilación, `tesserae ask`, los TL;DR de clips, doctor — dirige entonces la CLI allí con ese token; no hace falta `claude /login`, y el directorio de configuración se sigue usando para el estado propio de la CLI.
 

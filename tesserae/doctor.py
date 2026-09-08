@@ -963,7 +963,20 @@ def _detect_llm_login(ctx: DoctorContext) -> Optional[Finding]:
     actually try, and states only what it verified: that they exist. The
     green check no longer contradicts the failure the user is standing in,
     because it no longer makes the claim that was being contradicted.
+
+    Two things it CAN settle for free, and both were behind real "it tells me
+    to /login and I am logged in" reports:
+
+    * a configured dir that is **not on this machine**. Absolute paths do not
+      travel, so a config copied from another box names dirs that are not
+      here; the CLI answers ``Not logged in`` for a dir that does not exist,
+      whatever the user is logged into. Fixable — see :func:`_fix_llm_login`.
+    * credentialed dirs the project has **excluded**. Legal (that is what
+      ``llm_claude_config_dirs_exclusive`` is for) and worth saying: it is the
+      configuration under which one exhausted account sinks the whole run.
     """
+    from .llm_json import _discover_credentialed_claude_dirs
+
     dirs = _project_claude_config_dirs(ctx)
     settings = _project_llm_settings(ctx)
     routed = (
@@ -996,6 +1009,13 @@ def _detect_llm_login(ctx: DoctorContext) -> Optional[Finding]:
         )
     if dirs:
         present = [d for d in dirs if Path(d).is_dir()]
+        # A dir the user NAMED that is not on this machine is the one thing
+        # doctor can settle here without spending a call, and it is the exact
+        # shape behind "it tells me to /login on my other machine": an absolute
+        # path from machine A, handed to the CLI on machine B, which answers
+        # `Not logged in` because there is nothing there to be logged in to.
+        configured = [str(d) for d in (settings.get("claude_config_dirs_configured") or [])]
+        missing_configured = [d for d in configured if not Path(d).is_dir()]
         if not present:
             return _f(
                 "llm_login",
@@ -1003,16 +1023,41 @@ def _detect_llm_login(ctx: DoctorContext) -> Optional[Finding]:
                 WARN,
                 "none of the claude config dirs this project is configured to use exist: "
                 + ", ".join(dirs),
-                suggestion="claude /login, or correct llm_claude_config_dirs in .tesserae/config.json",
+                suggestion="tesserae doctor --fix (drops the dirs that are not on this machine)",
+                fixable=True,
+            )
+        if missing_configured:
+            return _f(
+                "llm_login",
+                "environment",
+                WARN,
+                f"configured claude config dir(s) do not exist on this machine: "
+                f"{', '.join(missing_configured)} — the CLI answers `Not logged in` for a "
+                f"dir that is not there, whatever you are logged into. Rotation falls back "
+                f"to {', '.join(d for d in dirs if d not in missing_configured)}",
+                suggestion="tesserae doctor --fix (drops the dirs that are not on this machine)",
+                fixable=True,
+            )
+        excluded = [d for d in _discover_credentialed_claude_dirs() if d not in dirs]
+        if excluded:
+            return _f(
+                "llm_login",
+                "environment",
+                WARN,
+                f"only {len(dirs)} claude account(s) may be spent here ({', '.join(dirs)}); "
+                f"{len(excluded)} other credentialed dir(s) are excluded "
+                f"({', '.join(excluded)}). When the configured account is out of quota or "
+                "logged out, the run degrades instead of rotating to one that works",
+                suggestion="drop llm_claude_config_dirs_exclusive from config.json to allow the fallback",
             )
         return _f(
             "llm_login",
             "environment",
             OK,
-            f"claude config dir(s) this project would use exist ({', '.join(present)}) "
+            f"claude config dir(s) this project would try, in order: {', '.join(present)} "
             "— credentials NOT verified: doctor spends no LLM call, so a logged-out CLI "
             "looks exactly like this",
-            suggestion="if compile reports `not logged in`, run `claude /login` for that config dir",
+            suggestion="run `tesserae test` — it spends two calls and reports which account answered",
         )
     status = _llm_login_status()
     configured = sorted(name for name, value in status.items() if value is True)
@@ -1023,7 +1068,7 @@ def _detect_llm_login(ctx: DoctorContext) -> Optional[Finding]:
             OK,
             f"LLM CLI config present: {', '.join(configured)} — credentials NOT verified "
             "(a config dir is not a live token; only a compile proves the CLI is logged in)",
-            suggestion="if compile reports `not logged in`, run `claude /login` or `codex login`",
+            suggestion="run `tesserae test` — it spends two calls and reports which account answered",
         )
     return _f(
         "llm_login",
@@ -1031,6 +1076,74 @@ def _detect_llm_login(ctx: DoctorContext) -> Optional[Finding]:
         WARN,
         "no LLM CLI config detected — LLM-backed features degrade to no-LLM paths",
         suggestion="claude /login  or  codex login",
+    )
+
+
+def _fix_llm_login(ctx: DoctorContext) -> Optional[str]:
+    """Drop configured claude config dirs that do not exist on THIS machine.
+
+    Narrow on purpose. The only thing repaired is a path that is provably not
+    here — a dir that does not exist cannot be logged into, so removing it
+    cannot cost the user an account, and leaving it in costs a doomed
+    subprocess (and a wrong `/login` verdict) on every document. Everything
+    else about the account list is a deliberate choice and is left alone.
+
+    Every key the resolver reads is swept, including the legacy singular ones
+    an older ``tesserae init`` wrote, because that is the key that actually
+    carries the stale absolute path in the field. A key whose entries all
+    vanish is removed rather than left as an empty list: empty means "nothing
+    configured", which hands the decision back to discovery, and that is the
+    right answer once the named dirs are gone.
+    """
+    config_path = _tesserae_dir(ctx) / "config.json"
+    if not config_path.is_file():
+        return None
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None  # unparseable: report-only, never rewritten
+    if not isinstance(payload, dict):
+        return None
+
+    def _alive(raw: object) -> tuple[list, list]:
+        """(kept, dropped) for a str-or-list config value."""
+        values = [raw] if isinstance(raw, str) else list(raw or [])
+        kept, dropped = [], []
+        for value in values:
+            if not isinstance(value, str) or not value:
+                continue
+            (kept if Path(value).expanduser().is_dir() else dropped).append(value)
+        return kept, dropped
+
+    removed: List[str] = []
+
+    def _sweep(container: dict, key: str) -> None:
+        if key not in container:
+            return
+        kept, dropped = _alive(container.get(key))
+        if not dropped:
+            return
+        removed.extend(dropped)
+        if kept:
+            container[key] = kept if not isinstance(container[key], str) else kept[0]
+        else:
+            container.pop(key, None)
+
+    for key in ("llm_claude_config_dirs", "llm_claude_config_dir",
+                "llm_codex_homes", "llm_codex_home"):
+        _sweep(payload, key)
+    extraction = payload.get("extraction")
+    if isinstance(extraction, dict):
+        _sweep(extraction, "claude_config_dir")
+
+    if not removed:
+        return None
+    tmp = config_path.with_suffix(".json.doctor-tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(config_path)  # atomic: a half-written config is worse than a stale path
+    return (
+        f"llm accounts: dropped {len(removed)} configured dir(s) absent from this "
+        f"machine ({', '.join(removed)}); rotation now uses the dirs that are here"
     )
 
 
@@ -2176,7 +2289,7 @@ CHECKS: List[Check] = [
     Check("compile_lock", "processes", _detect_compile_lock, manual=_DESTRUCTIVE),  # NEVER kill
     Check("filesystem_locking", "processes", _detect_filesystem_locking, manual=_ENVIRONMENTAL),
     Check("daemon_pid", "processes", _detect_daemon_pid, fix=_fix_daemon_pid, safe=True),
-    Check("llm_login", "environment", _detect_llm_login,
+    Check("llm_login", "environment", _detect_llm_login, fix=_fix_llm_login, safe=True,
           manual=_CREDENTIALS + " — `tesserae test` proves whether the backend answers"),
     Check("optional_deps", "environment", _detect_optional_deps, manual=_NETWORKED),
     Check("embedding_backend", "environment", _detect_embedding_backend, manual=_NETWORKED),

@@ -694,14 +694,9 @@
     "org-aware"
    ]
   },
-  "docs/i18n/ingest.ja.md": {
-   "structure": {
-    "bold": 1
-   }
-  },
   "docs/i18n/ingest.ko.md": {
    "structure": {
-    "bold": 2
+    "bold": 1
    },
    "untranslated_words": [
     "deprecated"
@@ -1376,11 +1371,6 @@
    "structure": {
     "bold": 1
    }
-  },
-  "docs/i18n/quickstart.ja.md": {
-   "untranslated_words": [
-    "none"
-   ]
   },
   "docs/i18n/quickstart.ko.md": {
    "untranslated_words": [
@@ -2405,8 +2395,7 @@
   },
   "docs/i18n/session-chunks.zh.md": {
    "untranslated_words": [
-    "chunk",
-    "daemon"
+    "chunk"
    ]
   },
   "docs/i18n/session-history.de.md": {
@@ -2614,7 +2603,6 @@
     "contract",
     "directory",
     "endpoints",
-    "extraction",
     "generation",
     "hang",
     "hitting",

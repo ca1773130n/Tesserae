@@ -110,8 +110,10 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 | `llm_api_key` | `TESSERAE_LLM_API_KEY`，然后 `ANTHROPIC_API_KEY` | — | API 密钥凭证：anthropic 线路上的 `X-Api-Key`，openai 线路上的 `Authorization: Bearer` |
 | `llm_auth_token` | `TESSERAE_LLM_AUTH_TOKEN`，然后 `ANTHROPIC_AUTH_TOKEN` | — | Bearer 凭证，两条线路上都是 `Authorization: Bearer`。设置这个**或** `llm_api_key`：在 anthropic 线路上令牌被传递给 SDK 作为 `auth_token=` 而不设置 api 密钥，所以两者永不冲突 使用 `claude` 提供方时，令牌会以 `ANTHROPIC_AUTH_TOKEN`（`llm_base_url` 则以 `ANTHROPIC_BASE_URL`）传给 CLI 子进程，因此走网关的 claude CLI 无需 `claude /login` |
 | `llm_allow_fallback` | `TESSERAE_LLM_ALLOW_FALLBACK` | 关闭 | 允许配置的端点提供商转向另一个后端而不是失败——参见 [端点提供商是一份契约](#端点提供商是一份契约)。环境变量的任何非空值都会打开它 |
-| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | CLI 自身的默认值 | Claude 配置目录（按轮换顺序），在环境变量中以 `os.pathsep` 分隔——即重复 `--claude-config-dir` 的环境变量通道。只有*显式配置*的列表才具有权威性；环境中的 `CLAUDE_CONFIG_DIR` 刻意不具权威性，因为固定到它会让多账号轮换塌缩为单账号 旧配置中的单数 `llm_claude_config_dir` 和 `extraction.claude_config_dir` 仍会被读取，作为项目配置，优先级低于复数键 |
+| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | CLI 自身的默认值 | Claude 配置目录（按轮换顺序），在环境变量中以 `os.pathsep` 分隔——即重复 `--claude-config-dir` 的环境变量通道。*显式配置*的列表**优先**被尝试，但并不排他：机器上其他所有已授权的 `~/.claude*` 目录都会追加在它后面，因此配额耗尽或已登出的指定账号会落到一个还能用的账号上。环境中的 `CLAUDE_CONFIG_DIR` 刻意完全不参与此处的排序，因为固定到它会让多账号轮换塌缩为单账号 旧配置中的单数 `llm_claude_config_dir` 和 `extraction.claude_config_dir` 仍会被读取，作为项目配置，优先级低于复数键 |
+| `llm_claude_config_dirs_exclusive` | `TESSERAE_LLM_CLAUDE_CONFIG_DIRS_EXCLUSIVE` | 关闭 | 抑制那条回退尾链，只有你指定的账号才可能被消耗。当动用未指定的账号是账单问题而非救援时打开它 |
 | `llm_codex_homes` | `TESSERAE_CODEX_HOMES` | CLI 自身的默认值 | Codex homes，形状和推理同上。较旧的单数 `llm_codex_home` 仍然有效，意思是一个单一 home 的列表 |
+| `llm_codex_homes_exclusive` | `TESSERAE_LLM_CODEX_HOMES_EXCLUSIVE` | 关闭 | 面向 codex 的 `llm_claude_config_dirs_exclusive` |
 | `llm_codex_reasoning_effort` | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | 结构化提取不需要你可能为交互工作设置的 `xhigh`——`xhigh` 使多文档编译多倍变慢 |
 
 `ANTHROPIC_*` 名称仍然有效，在 Tesserae 自有名称下面一级：
@@ -120,6 +122,30 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 `tesserae config llm` 写入机器级文件；对于单个项目，在其 `.tesserae/config.json` 中放入相同的
 `llm_*` 键。写入任一文件的凭证以**明文**存储，所以那两个请优先使用 `TESSERAE_LLM_API_KEY` /
 `TESSERAE_LLM_AUTH_TOKEN`。
+
+### 账号路径不会跨机器迁移
+
+账号列表保存的是绝对路径。把 `.tesserae/config.json` 复制到第二台机器，它列出的目录
+在那里可能并不存在——CLI 收到一个磁盘上没有的配置目录，回答 `Not logged in`，于是你
+被要求为早已登录的账号运行 `claude /login`。现在有两件事能挡住它：
+
+- 轮换会越过缺失的目录，继续走向机器实际拥有的已授权账号，因此这次运行得以存活；
+- `tesserae doctor` 把缺失的目录报告为警告，
+  `tesserae doctor --fix` 把它们从配置中删除——不存在的目录无法被登录，所以删除它
+  不可能让你损失一个账号。
+
+`tesserae test` 是这一切的验证者。它花费两次真实调用，并为每个尝试过的账号打印一行，
+说明那个账号回答了什么：
+
+```
+  accounts tried (in rotation order):
+    [✗] /Users/you/.claude-personal1   quota: You've hit your weekly limit · resets Sep 11
+    [✗] /Users/you/.claude             not_logged_in: OAuth session expired
+    [✓] /Users/you/.claude-personal2   answered
+```
+
+当你配置的 provider 已经死掉而由另一个后端代为作答时，结论会直说，而不是在一个连续
+数天拒绝每次调用的账号之上平淡地报告“后端正在应答”。
 
 ### 自定义端点
 

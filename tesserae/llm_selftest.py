@@ -69,6 +69,61 @@ def _project_config(project_root: str | Path) -> dict:
     return {}
 
 
+#: Which backend class serves which ``llm_provider``. Used to tell "the
+#: provider you configured answered" apart from "something else answered for
+#: it", which the old pass/fail verdict could not express: with
+#: ``llm_provider: claude`` out of quota and codex picking up the call, this
+#: command printed a green "Backend is answering" over a dead Claude account.
+_PROVIDER_BACKENDS = {
+    "claude": ("ClaudeCLIJsonClient",),
+    "codex": ("CodexCLIJsonClient",),
+    "anthropic": ("AnthropicLLMJsonClient",),
+    "custom": ("AnthropicLLMJsonClient", "OpenAICompatibleJsonClient"),
+    "openai": ("OpenAICompatibleJsonClient",),
+}
+
+#: ``outcome`` → the one-line remedy that outcome actually earns. Keyed on the
+#: rotation's own verdict rather than on parsed error text, so a phrasing change
+#: upstream cannot turn a quota window into a login prompt.
+_OUTCOME_REMEDY = {
+    "not_logged_in": "CLAUDE_CONFIG_DIR={dir} claude /login",
+    "quota": "wait for the window to reset, or add another logged-in account",
+    "timeout": "raise TESSERAE_EXTRACT_TIMEOUT, or check this host can reach the provider",
+    "binary_missing": "install the CLI and put it on PATH",
+    "empty": "the CLI exited 0 with no output — re-run; if it persists, `tesserae doctor`",
+    "error": "read the error above; `tesserae config status` shows where each setting came from",
+}
+
+
+def _collect_accounts(client: Any) -> List[Dict[str, Any]]:
+    """Per-account rows from the rotation that just ran, newest call only.
+
+    Every CLI client records one :attr:`last_attempts` row per config dir it
+    spawned — which account, what happened, the CLI's own words. Reading them
+    back costs nothing (the calls are already paid for) and is the difference
+    between "backend not usable" and "personal1 is out of quota until Sep 11,
+    personal2 answered".
+    """
+    rows: List[Dict[str, Any]] = []
+    for sub in getattr(client, "clients", None) or [client]:
+        for attempt in getattr(sub, "last_attempts", None) or []:
+            rows.append({"backend": type(sub).__name__, **attempt})
+    return rows
+
+
+def _missing_dirs(settings: dict) -> List[str]:
+    """Configured account dirs that do not exist on THIS machine.
+
+    An absolute path copied between machines is the quiet version of this
+    failure: the CLI is handed a config dir that isn't there, answers "Not
+    logged in", and the user — logged in on both accounts — is told to log in.
+    """
+    dirs = list(settings.get("claude_config_dirs") or []) + list(
+        settings.get("codex_homes") or []
+    )
+    return [d for d in dirs if not Path(d).is_dir()]
+
+
 def _credential_kind(settings: dict) -> str:
     if settings.get("auth_token"):
         return "auth_token (Authorization: Bearer)"
@@ -122,6 +177,7 @@ def run_llm_selftest(
         "claude_config_dirs": settings.get("claude_config_dirs"),
         "claude_config_dirs_source": sources.get("claude_config_dirs", "default"),
         "codex_homes": settings.get("codex_homes"),
+        "codex_homes_source": sources.get("codex_homes", "default"),
         "base_url": settings.get("base_url"),
         "base_url_source": sources.get("base_url", "default"),
         "api_style": settings.get("api_style") or "anthropic",
@@ -228,7 +284,27 @@ def run_llm_selftest(
                 _step("prose", False, f"{type(exc).__name__}: {str(exc)[:300]}", time.monotonic() - started)
             )
 
+    # ---- 5. who actually answered ----------------------------------------
+    # Free: the rotation already recorded every account it spawned. Without
+    # this the command could only report that SOMETHING answered, which is how
+    # a green "Backend is answering" came to sit directly above a Claude
+    # account that had been out of quota for three days.
+    accounts = _collect_accounts(client)
+    out["accounts"] = accounts
+    answered_by = next(
+        (row["backend"] for row in reversed(accounts) if row.get("outcome") == "ok"),
+        None,
+    )
+    out["answered_by"] = answered_by
+    expected = _PROVIDER_BACKENDS.get(resolved_provider, ())
     out["ok"] = all(step["ok"] for step in steps)
+    # "Answering, but not through the backend you configured." Not a failure —
+    # compile and ask really will keep working — but the configured provider is
+    # dead and saying so is the whole point of the command.
+    out["degraded"] = bool(
+        out["ok"] and answered_by and expected and answered_by not in expected
+    )
+    out["missing_dirs"] = _missing_dirs(settings)
     return out
 
 
@@ -248,7 +324,10 @@ def render_selftest(result: Dict[str, Any]) -> str:
                 f"[{settings.get('claude_config_dirs_source')}]"
             )
         if settings.get("codex_homes"):
-            lines.append(f"  codex_homes: {settings['codex_homes']}")
+            lines.append(
+                f"  codex_homes: {settings['codex_homes']}   "
+                f"[{settings.get('codex_homes_source')}]"
+            )
         if settings.get("base_url"):
             lines.append(
                 f"  base_url   : {settings['base_url']}   [{settings.get('base_url_source')}]"
@@ -261,8 +340,64 @@ def render_selftest(result: Dict[str, Any]) -> str:
         seconds = step.get("seconds") or 0
         timing = f"  ({seconds:.2f}s)" if seconds else ""
         lines.append(f"  [{glyph}] {step['step']:<8} {step['detail']}{timing}")
+
+    accounts = result.get("accounts") or []
+    if accounts:
+        lines.append("")
+        lines.append("  accounts tried (in rotation order):")
+        for row in accounts:
+            ok = row.get("outcome") == "ok"
+            glyph = "✓" if ok else "✗"
+            detail = "answered" if ok else row.get("outcome", "?")
+            error = (row.get("error") or "").splitlines()
+            if error and not ok:
+                detail = f"{detail}: {error[0][:120]}"
+            lines.append(f"    [{glyph}] {row.get('config_dir', '?')}   {detail}")
+
+    missing = result.get("missing_dirs") or []
+    if missing:
+        lines.append("")
+        lines.append(
+            "  configured account dirs that do not exist on THIS machine: "
+            + ", ".join(missing)
+        )
+        lines.append(
+            "    A dir that isn't there makes the CLI answer `Not logged in`, which is "
+            "what sends an already-logged-in user to `/login`. Absolute paths do not "
+            "travel between machines — set llm_claude_config_dirs per machine, or "
+            "delete the key and let Tesserae discover the accounts."
+        )
+
+    # One remedy per DISTINCT failure, so a five-account rotation does not print
+    # five copies of the same line.
+    remedies: List[str] = []
+    for row in accounts:
+        outcome = row.get("outcome")
+        if outcome in (None, "ok"):
+            continue
+        remedy = _OUTCOME_REMEDY.get(outcome)
+        if not remedy:
+            continue
+        if outcome == "not_logged_in" and "Codex" in str(row.get("backend")):
+            remedy = "CODEX_HOME={dir} codex login"
+        text = remedy.format(dir=row.get("config_dir", "<dir>"))
+        if text not in remedies:
+            remedies.append(text)
+    if remedies:
+        lines.append("")
+        lines.append("  to revive the accounts that refused:")
+        for remedy in remedies:
+            lines.append(f"    - {remedy}")
+
     lines.append("")
-    if result.get("ok"):
+    if result.get("degraded"):
+        lines.append(
+            f"Backend is answering, but NOT through the provider you configured "
+            f"({settings.get('provider')}): {result.get('answered_by')} took the call. "
+            "Compile and ask keep working through that fallback — the accounts above "
+            "say why the configured one refused."
+        )
+    elif result.get("ok"):
         lines.append("Backend is answering. Compile, ask and the daemon will use exactly this configuration.")
     else:
         lines.append(

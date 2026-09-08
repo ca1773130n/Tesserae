@@ -311,6 +311,10 @@ def test_summarize_uses_the_projects_configured_llm_backend(
                 "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", tmp_path / "no-global.json")
+    # The resolver appends this box's credentialed ~/.claude* dirs behind a
+    # configured list as a rotation fallback; the assertion below is about the
+    # list the PROJECT contributes, not about who is logged in on this machine.
+    monkeypatch.setattr(lj, "_discover_credentialed_claude_dirs", lambda: [])
 
     seen: dict = {}
 

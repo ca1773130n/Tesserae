@@ -135,8 +135,10 @@ ci-dessous se résout de la même façon, et d'une seule façon :
 | `llm_api_key` | `TESSERAE_LLM_API_KEY`, puis `ANTHROPIC_API_KEY` | — | L'accréditation par clé API : `X-Api-Key` sur le protocole anthropic, `Authorization: Bearer` sur le protocole openai |
 | `llm_auth_token` | `TESSERAE_LLM_AUTH_TOKEN`, puis `ANTHROPIC_AUTH_TOKEN` | — | L'accréditation porteuse, `Authorization: Bearer` sur les deux protocoles. Définissez **soit** cela **soit** `llm_api_key` : sur le protocole anthropic le token est remis au SDK comme `auth_token=` et aucune clé API n'est définie, donc les deux ne se heurtent jamais Avec le provider `claude`, le token est transmis au processus enfant du CLI comme `ANTHROPIC_AUTH_TOKEN` (et `llm_base_url` comme `ANTHROPIC_BASE_URL`), donc un harness claude-CLI derrière une passerelle n'a pas besoin de `claude /login` |
 | `llm_allow_fallback` | `TESSERAE_LLM_ALLOW_FALLBACK` | désactivé | Permet à un fournisseur d'endpoint configuré de basculer vers un autre serveur au lieu d'échouer — voir [Un fournisseur d'endpoint est un contrat](#un-fournisseur-dendpoint-est-un-contrat). Toute valeur non vide de la var d'env l'active |
-| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | la valeur par défaut du CLI | Répertoires de configuration Claude dans l'ordre de rotation, séparés par `os.pathsep` dans la var d'env — le canal d'environnement pour un `--claude-config-dir` répété. Seule une liste *configurée* fait autorité ; le `CLAUDE_CONFIG_DIR` ambiant délibérément pas, car s'y épingler réduit la rotation multi-comptes à un seul compte Les anciennes clés `llm_claude_config_dir` (singulier) et `extraction.claude_config_dir` sont encore lues, comme configuration de projet, sous la clé plurielle |
+| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | la valeur par défaut du CLI | Répertoires de configuration Claude dans l'ordre de rotation, séparés par `os.pathsep` dans la var d'env — le canal d'environnement pour un `--claude-config-dir` répété. Une liste *configurée* est essayée **en premier**, sans être exclusive : tout autre `~/.claude*` accrédité de la machine est ajouté derrière elle, si bien qu'un compte nommé à court de quota ou déconnecté cède la place à un compte qui fonctionne. Le `CLAUDE_CONFIG_DIR` ambiant n'entre délibérément pas du tout dans cet ordre, car s'y épingler réduit la rotation multi-comptes à un seul compte Les anciennes clés `llm_claude_config_dir` (singulier) et `extraction.claude_config_dir` sont encore lues, comme configuration de projet, sous la clé plurielle |
+| `llm_claude_config_dirs_exclusive` | `TESSERAE_LLM_CLAUDE_CONFIG_DIRS_EXCLUSIVE` | désactivé | Supprime cette queue de secours, de sorte que seuls les comptes que vous avez nommés puissent être dépensés. Activez-le quand dépenser un compte non nommé est un problème de facturation plutôt qu'un sauvetage |
 | `llm_codex_homes` | `TESSERAE_CODEX_HOMES` | la valeur par défaut du CLI | Maisons Codex, même forme et même raisonnement que ci-dessus. L'ancien singulier `llm_codex_home` fonctionne toujours et signifie une liste à une maison |
+| `llm_codex_homes_exclusive` | `TESSERAE_LLM_CODEX_HOMES_EXCLUSIVE` | désactivé | `llm_claude_config_dirs_exclusive` pour codex |
 | `llm_codex_reasoning_effort` | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | L'extraction structurée ne nécessite pas le `xhigh` que vous pourriez définir pour un travail interactif — `xhigh` rend une compilation multi-documents plusieurs fois plus lente |
 
 Les noms `ANTHROPIC_*` fonctionnent toujours, un degré en dessous des noms possédés
@@ -148,6 +150,34 @@ mais ils battent quand même les deux fichiers de config.
 clés `llm_*` dans son `.tesserae/config.json`. Une accréditation écrite dans l'un ou
 l'autre fichier est stockée en **texte clair**, donc préférez `TESSERAE_LLM_API_KEY` /
 `TESSERAE_LLM_AUTH_TOKEN` pour ces deux-là.
+
+### Les chemins de comptes ne voyagent pas entre machines
+
+Une liste de comptes contient des chemins absolus. Copiez un `.tesserae/config.json`
+sur une deuxième machine et les répertoires qu'il nomme peuvent ne pas y exister — le
+CLI reçoit un répertoire de configuration absent du disque, répond `Not logged in`, et
+on vous demande de lancer `claude /login` pour des comptes auxquels vous êtes déjà
+connecté. Deux choses attrapent désormais cela :
+
+- la rotation passe outre le répertoire manquant vers les comptes accrédités que la
+  machine possède réellement, donc l'exécution survit ;
+- `tesserae doctor` signale les répertoires absents par un avertissement, et
+  `tesserae doctor --fix` les retire de la configuration — on ne peut pas se connecter
+  à un répertoire qui n'est pas là, donc le retirer ne peut pas vous coûter un compte.
+
+`tesserae test` est le vérificateur de tout ceci. Il dépense deux appels réels et
+imprime une ligne par compte essayé, avec ce que ce compte a répondu :
+
+```
+  accounts tried (in rotation order):
+    [✗] /Users/you/.claude-personal1   quota: You've hit your weekly limit · resets Sep 11
+    [✗] /Users/you/.claude             not_logged_in: OAuth session expired
+    [✓] /Users/you/.claude-personal2   answered
+```
+
+Quand le provider que vous avez configuré est mort et qu'un autre backend a répondu à
+sa place, le verdict le dit, au lieu de rapporter un plat « le backend répond » au-dessus
+d'un compte qui refuse chaque appel depuis des jours.
 
 ### Points d'accès personnalisés
 

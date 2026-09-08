@@ -86,11 +86,30 @@ Reihenfolge, setze `llm_claude_config_dirs` in `.tesserae/config.json` (Projekt)
 }
 ```
 
-Diese Liste ist maßgeblich — außerhalb davon wird nichts versucht. Sie **schlägt auch
-die ambiente Variable `CLAUDE_CONFIG_DIR`**, die jeder aus einer Claude-Code-Sitzung
-gestartete Prozess erbt und die andernfalls die gesamte Kompilierung an das Kontingent
-genau dieser einen Sitzung binden würde. Ohne Konfiguration bleibt
-`CLAUDE_CONFIG_DIR` das zuerst versuchte Konto.
+Diese Liste wird **zuerst** versucht — sie ist keine Mauer. Jedes andere beglaubigte
+`~/.claude*` auf der Maschine wird dahinter angehängt, sodass die von Ihnen benannten
+Konten weiterhin die einzigen ausgegebenen bleiben, solange eines davon funktioniert,
+und ein benanntes Konto ohne Kontingent, ohne Anmeldung oder (auf einer zweiten
+Maschine) schlicht nicht vorhanden an eines abgibt, das funktioniert. Setzen Sie
+`"llm_claude_config_dirs_exclusive": true` (`llm_codex_homes_exclusive` für codex),
+wenn das Ausgeben eines nicht benannten Kontos eher ein Abrechnungsproblem als eine
+Rettung ist.
+
+Die Liste **schlägt auch die ambiente Variable `CLAUDE_CONFIG_DIR`**, die jeder aus
+einer Claude-Code-Sitzung gestartete Prozess erbt und die andernfalls die gesamte
+Kompilierung an das Kontingent genau dieser einen Sitzung binden würde. Ohne
+Konfiguration bleibt `CLAUDE_CONFIG_DIR` das zuerst versuchte Konto.
+
+Absolute Pfade reisen nicht zwischen Maschinen: Kopieren Sie eine Konfiguration auf eine
+zweite Kiste, und die dort genannten Verzeichnisse existieren dort womöglich nicht. Die
+CLI antwortet `Not logged in` für ein Verzeichnis, das nicht auf der Platte liegt — so
+landet ein bereits angemeldeter Benutzer bei `claude /login`. Jetzt läuft die Rotation
+daran vorbei weiter, `tesserae doctor` warnt vor den abwesenden Verzeichnissen, und
+`tesserae doctor --fix` entfernt sie aus der Konfiguration.
+
+`tesserae test` druckt eine Zeile pro versuchtem Konto und was dieses Konto gesagt hat
+— Kontingentfenster, abgelaufene Sitzung oder geantwortet —, sodass „welches meiner
+Konten ist eigentlich tot" keine Ratefrage mehr ist.
 
 Der Provider `claude` lässt sich auch statt auf Anthropic auf ein claude-kompatibles Gateway richten: setze daneben `llm_base_url` und `llm_auth_token` (zum Beispiel `tesserae init --llm-provider claude --claude-config-dir ~/.claude-work --llm-base-url https://gw.example --llm-auth-token ...`, oder beantworte die Endpunkt-Frage des Assistenten). Jeder Aufruf — Kompilierung, `tesserae ask`, Clip-TL;DRs, doctor — leitet die CLI dann mit diesem Token dorthin; kein `claude /login` ist nötig, und das Konfigurationsverzeichnis wird weiterhin für den eigenen Zustand der CLI verwendet.
 

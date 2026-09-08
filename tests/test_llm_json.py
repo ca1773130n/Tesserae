@@ -332,6 +332,7 @@ def test_codex_homes_list_config(monkeypatch):
 
     monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.setattr(llm_json, "_load_global_llm_config", lambda: {})
+    monkeypatch.setattr(llm_json, "_discover_codex_homes", lambda: [])
 
     listed = resolve_llm_client_settings({"llm_codex_homes": ["/a", "/b"]})
     assert listed["codex_homes"] == ["/a", "/b"]
@@ -1602,6 +1603,12 @@ def _isolate_factory(monkeypatch):
         "TESSERAE_LLM_ALLOW_FALLBACK", "TESSERAE_CLAUDE_CONFIG_DIRS", "TESSERAE_CODEX_HOMES",
     ):
         monkeypatch.delenv(var, raising=False)
+    # The machine's OWN accounts are a channel the resolver reads too: a
+    # configured list now gets every credentialed ~/.claude* / ~/.codex*
+    # appended behind it as a fallback. Left alone, these tests would assert
+    # against whatever the developer happens to be logged into.
+    monkeypatch.setattr(llm_json, "_discover_credentialed_claude_dirs", lambda: [])
+    monkeypatch.setattr(llm_json, "_discover_codex_homes", lambda: [])
 
 
 def test_build_default_provider_codex_prefers_codex(monkeypatch):
@@ -2577,6 +2584,91 @@ def test_resolve_settings_expands_tilde_in_configured_claude_dirs(monkeypatch, t
     monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", tmp_path / "no-global.json")
     settings = lj.resolve_llm_client_settings({"llm_claude_config_dirs": ["~/.claude-work", "/abs/x"]})
     assert settings["claude_config_dirs"] == [os.path.expanduser("~/.claude-work"), "/abs/x"]
+
+
+def test_configured_claude_dirs_are_preferred_first_not_exclusive(monkeypatch):
+    """A configured list says which account to spend FIRST, not the only one.
+
+    Regression: ``extraction.claude_config_dir`` pinned the rotation to one
+    account. When that account's weekly quota ran out — or when the absolute
+    path came from another machine and simply wasn't there — the client had
+    nothing to rotate to and reported "Claude CLI not logged in (tried 1 config
+    dir)" to a user logged into two healthy accounts.
+    """
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    monkeypatch.setattr(lj, "_load_global_llm_config", lambda: {})
+    monkeypatch.setattr(
+        lj, "_discover_credentialed_claude_dirs",
+        lambda: ["/home/me/.claude", "/home/me/.claude-personal2"],
+    )
+
+    settings = lj.resolve_llm_client_settings(
+        {"extraction": {"claude_config_dir": "/home/me/.claude-personal1"}}
+    )
+    assert settings["claude_config_dirs"] == [
+        "/home/me/.claude-personal1",  # configured: still tried first
+        "/home/me/.claude",
+        "/home/me/.claude-personal2",
+    ]
+    # The pre-tail list stays visible: "you configured this" and "we found this
+    # and put it behind yours" are different facts, and doctor reports on both.
+    assert settings["claude_config_dirs_configured"] == ["/home/me/.claude-personal1"]
+    assert "discovered as fallback" in settings["sources"]["claude_config_dirs"]
+
+    # A dir already named is not duplicated into the tail.
+    same = lj.resolve_llm_client_settings(
+        {"llm_claude_config_dirs": ["/home/me/.claude-personal2"]}
+    )
+    assert same["claude_config_dirs"] == [
+        "/home/me/.claude-personal2", "/home/me/.claude",
+    ]
+
+
+def test_exclusive_flag_suppresses_the_discovered_fallback(monkeypatch):
+    """Opt-out for the case where spending an unnamed account is a billing problem."""
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    monkeypatch.setattr(lj, "_load_global_llm_config", lambda: {})
+    monkeypatch.setattr(lj, "_discover_credentialed_claude_dirs", lambda: ["/home/me/.claude"])
+    monkeypatch.setattr(lj, "_discover_codex_homes", lambda: ["/home/me/.codex-work"])
+
+    settings = lj.resolve_llm_client_settings({
+        "llm_claude_config_dirs": ["/acct/only"],
+        "llm_claude_config_dirs_exclusive": True,
+        "llm_codex_homes": ["/codex/only"],
+        "llm_codex_homes_exclusive": True,
+    })
+    assert settings["claude_config_dirs"] == ["/acct/only"]
+    assert settings["codex_homes"] == ["/codex/only"]
+
+    # Parsed, not merely present: "0"/"false" must mean OFF, so the fallback stays.
+    off = lj.resolve_llm_client_settings({
+        "llm_claude_config_dirs": ["/acct/only"],
+        "llm_claude_config_dirs_exclusive": "false",
+    })
+    assert off["claude_config_dirs"] == ["/acct/only", "/home/me/.claude"]
+
+
+def test_expired_oauth_session_is_an_auth_failure_not_a_generic_error():
+    """`Failed to authenticate: OAuth session expired` earns `claude /login`.
+
+    The substring test was ``not logged in`` alone, so the shape a MAX account
+    actually presents once its refresh token dies fell through to the generic
+    error path — and the operator was told to read a stack trace instead of
+    running the one command that fixes it.
+    """
+    from tesserae.llm_json import _is_cli_auth_failure
+
+    assert _is_cli_auth_failure(
+        "Failed to authenticate: OAuth session expired and could not be refreshed"
+    )
+    assert _is_cli_auth_failure("Not logged in · Please run /login")
+    # A gateway rejecting a bearer token is NOT a CLI login problem; sending
+    # that user to `claude /login` is the same wrong-remedy defect mirrored.
+    assert not _is_cli_auth_failure("401 Unauthorized: invalid bearer token")
 
 
 def test_claude_cli_usable_accepts_a_configured_dir_outside_home(monkeypatch, tmp_path):

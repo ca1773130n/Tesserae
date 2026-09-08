@@ -118,8 +118,10 @@ se resuelve de la misma forma, y solo de esta forma:
 | `llm_api_key` | `TESSERAE_LLM_API_KEY`, luego `ANTHROPIC_API_KEY` | — | La credencial de api-key: `X-Api-Key` en el protocolo anthropic, `Authorization: Bearer` en el protocolo openai |
 | `llm_auth_token` | `TESSERAE_LLM_AUTH_TOKEN`, luego `ANTHROPIC_AUTH_TOKEN` | — | La credencial portadora, `Authorization: Bearer` en ambos protocolos. Establece **esto** o `llm_api_key`: en el protocolo anthropic el token se entrega al SDK como `auth_token=` y no se establece clave de api, así que los dos nunca chocan Con el proveedor `claude` el token se entrega al proceso hijo de la CLI como `ANTHROPIC_AUTH_TOKEN` (y `llm_base_url` como `ANTHROPIC_BASE_URL`), así que un harness de la CLI de claude sobre un gateway no necesita `claude /login` |
 | `llm_allow_fallback` | `TESSERAE_LLM_ALLOW_FALLBACK` | desactivado | Permite que un proveedor de endpoint configurado pase a otro backend en lugar de fallar — ver [un proveedor de endpoint es un contrato](#un-proveedor-de-endpoint-es-un-contrato). Cualquier valor no vacío de la variable de entorno lo activa |
-| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | el predeterminado propio de la CLI | Directorios de configuración de Claude en orden de rotación, separados por `os.pathsep` en la variable de entorno — el canal de entorno para un `--claude-config-dir` repetido. Solo una lista *configurada* es autoritativa; el `CLAUDE_CONFIG_DIR` del entorno deliberadamente no lo es, porque fijarse a él colapsa la rotación multicuenta a una sola cuenta Las claves antiguas `llm_claude_config_dir` (singular) y `extraction.claude_config_dir` se siguen leyendo, como configuración de proyecto, por debajo de la clave plural |
+| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | el predeterminado propio de la CLI | Directorios de configuración de Claude en orden de rotación, separados por `os.pathsep` en la variable de entorno — el canal de entorno para un `--claude-config-dir` repetido. Una lista *configurada* se prueba **primero**, no en exclusiva: cualquier otro `~/.claude*` con credenciales en la máquina se añade detrás, así que una cuenta nombrada que esté sin cuota o deslogueada cede el paso a una que funcione. El `CLAUDE_CONFIG_DIR` del entorno deliberadamente no entra en este orden, porque fijarse a él colapsa la rotación multicuenta a una sola cuenta Las claves antiguas `llm_claude_config_dir` (singular) y `extraction.claude_config_dir` se siguen leyendo, como configuración de proyecto, por debajo de la clave plural |
+| `llm_claude_config_dirs_exclusive` | `TESSERAE_LLM_CLAUDE_CONFIG_DIRS_EXCLUSIVE` | apagado | Suprime esa cola de reserva, de modo que solo se gasten las cuentas que nombraste. Actívalo cuando gastar una cuenta no nombrada sea un problema de facturación y no un rescate |
 | `llm_codex_homes` | `TESSERAE_CODEX_HOMES` | el predeterminado propio de la CLI | Codex homes, la misma forma y el mismo razonamiento que arriba. El antiguo singular `llm_codex_home` sigue funcionando y significa una lista de un home |
+| `llm_codex_homes_exclusive` | `TESSERAE_LLM_CODEX_HOMES_EXCLUSIVE` | apagado | `llm_claude_config_dirs_exclusive` para codex |
 | `llm_codex_reasoning_effort` | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | La extracción estructurada no necesita el `xhigh` que puedas establecer para trabajo interactivo — `xhigh` hace que una compilación multiDocumento sea muchas veces más lenta |
 
 Los nombres `ANTHROPIC_*` aún funcionan, un escalón por debajo de los específicos de Tesserae: son
@@ -130,6 +132,34 @@ valor que estableciste para Tesserae específicamente, pero aún superan a ambos
 claves `llm_*` en su `.tesserae/config.json`. Una credencial escrita en cualquier archivo
 se almacena en **texto plano**, así que prefiere `TESSERAE_LLM_API_KEY` /
 `TESSERAE_LLM_AUTH_TOKEN` para esas dos.
+
+### Las rutas de cuenta no viajan entre máquinas
+
+Una lista de cuentas guarda rutas absolutas. Copia un `.tesserae/config.json` a una
+segunda máquina y los directorios que nombra pueden no existir allí — a la CLI se le
+entrega un directorio de configuración que no está en disco, responde `Not logged in`,
+y se te dice que ejecutes `claude /login` para cuentas en las que ya has iniciado
+sesión. Ahora dos cosas atrapan eso:
+
+- la rotación continúa más allá del directorio ausente hacia las cuentas con
+  credenciales que la máquina sí tiene, así que la ejecución sobrevive;
+- `tesserae doctor` reporta los directorios ausentes como advertencia, y
+  `tesserae doctor --fix` los quita de la configuración — a un directorio que no está
+  ahí no se puede iniciar sesión, así que quitarlo no puede costarte una cuenta.
+
+`tesserae test` es el verificador de todo esto. Gasta dos llamadas reales e imprime una
+línea por cada cuenta que probó, con lo que dijo esa cuenta:
+
+```
+  accounts tried (in rotation order):
+    [✗] /Users/you/.claude-personal1   quota: You've hit your weekly limit · resets Sep 11
+    [✗] /Users/you/.claude             not_logged_in: OAuth session expired
+    [✓] /Users/you/.claude-personal2   answered
+```
+
+Cuando el provider que configuraste está muerto y otro backend respondió por él, el
+veredicto lo dice, en lugar de reportar un llano "el backend responde" sobre una cuenta
+que lleva días rechazando cada llamada.
 
 ### Endpoints personalizados
 

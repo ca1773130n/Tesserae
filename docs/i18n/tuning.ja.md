@@ -128,14 +128,44 @@ export TESSERAE_LLM_CACHE=0   # 常に再度質問
 | `llm_api_key` | `TESSERAE_LLM_API_KEY`、その後 `ANTHROPIC_API_KEY` | — | API キー認証情報：anthropic ワイヤでは `X-Api-Key`、openai ワイヤでは `Authorization: Bearer` |
 | `llm_auth_token` | `TESSERAE_LLM_AUTH_TOKEN`、その後 `ANTHROPIC_AUTH_TOKEN` | — | ベアラー認証情報。両方のワイヤで `Authorization: Bearer`。**`llm_api_key`** のいずれかを設定してください。anthropic ワイヤでは、トークンは SDK に `auth_token=` として渡され、API キーは設定されないため、この 2 つは決して衝突しません `claude` プロバイダーでは、トークンは CLI の子プロセスに `ANTHROPIC_AUTH_TOKEN` として（`llm_base_url` は `ANTHROPIC_BASE_URL` として）渡されるため、ゲートウェイ経由の claude CLI ハーネスに `claude /login` は不要です |
 | `llm_allow_fallback` | `TESSERAE_LLM_ALLOW_FALLBACK` | オフ | 設定されたエンドポイントプロバイダーが失敗せずに別のバックエンドにフォールスルーすることを許可します — [エンドポイントプロバイダーは契約です](#エンドポイントプロバイダーは契約です)を参照してください。環境変数の任意の空でない値がオンにします |
-| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | CLI 独自のデフォルト | ローテーション順の Claude 設定ディレクトリ、環境変数では `os.pathsep` で区切られます — 繰り返される `--claude-config-dir` の環境変数チャネルです。*設定された*リストのみが権威を持ちます。周囲の `CLAUDE_CONFIG_DIR` は意図的に権威を持ちません。それに固定するとマルチアカウント rotation が 1 つのアカウントに潰れるからです 古い単数形の `llm_claude_config_dir` と `extraction.claude_config_dir` も、複数形キーより下位のプロジェクト設定として引き続き読まれます |
+| `llm_claude_config_dirs` | `TESSERAE_CLAUDE_CONFIG_DIRS` | CLI 独自のデフォルト | ローテーション順の Claude 設定ディレクトリ、環境変数では `os.pathsep` で区切られます — 繰り返される `--claude-config-dir` の環境変数チャネルです。*設定された*リストは排他的ではなく**最初に**試されます: マシン上の他のすべての認証済み `~/.claude*` ディレクトリがその後ろに追加されるため、クォータ切れやログアウト状態の指定アカウントは動作するアカウントへ引き継がれます。周囲の `CLAUDE_CONFIG_DIR` は意図的にここでは一切順位を持ちません。それに固定するとマルチアカウント rotation が 1 つのアカウントに潰れるからです 古い単数形の `llm_claude_config_dir` と `extraction.claude_config_dir` も、複数形キーより下位のプロジェクト設定として引き続き読まれます |
+| `llm_claude_config_dirs_exclusive` | `TESSERAE_LLM_CLAUDE_CONFIG_DIRS_EXCLUSIVE` | オフ | そのフォールバックの末尾を抑止し、指定したアカウントだけが使われるようにします。指定していないアカウントを使うことが救済ではなく請求上の問題になる場合にオンにしてください |
 | `llm_codex_homes` | `TESSERAE_CODEX_HOMES` | CLI 独自のデフォルト | Codex ホーム。上記と同じ形状と同じ理由です。古い単数形の `llm_codex_home` は引き続き機能し、1 つのホームリストを意味します |
+| `llm_codex_homes_exclusive` | `TESSERAE_LLM_CODEX_HOMES_EXCLUSIVE` | オフ | codex 向けの `llm_claude_config_dirs_exclusive` |
 | `llm_codex_reasoning_effort` | `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | 構造化抽出は、対話的な作業のために設定される可能性のある `xhigh` を必要としません — `xhigh` はマルチドキュメント compile を何倍も遅くします |
 
 `ANTHROPIC_*` の名前はまだ機能し、Tesserae 所有のものの 1 段下です。これらは ambient です — Claude Code セッションはそれらをエクスポートします — そのため、Tesserae に特に設定した値より上位にランク付けされてはいけませんが、それでも両方の config ファイルを上回ります。
 
 `tesserae config llm` はマシン全体のファイルを書き込みます。1 つのプロジェクトの場合は、その `.tesserae/config.json` に同じ `llm_*` キーを入れてください。いずれかのファイルに書き込まれた認証情報は**平文**で保存されるため、これらの 2 つについては `TESSERAE_LLM_API_KEY` /
 `TESSERAE_LLM_AUTH_TOKEN` を優先してください。
+
+### アカウントのパスはマシン間を移動しません
+
+アカウントリストは絶対パスを保持します。`.tesserae/config.json` を 2 台目のマシンに
+コピーすると、そこに書かれたディレクトリはそのマシンには存在しないかもしれません —
+CLI はディスク上にない設定ディレクトリを渡されて `Not logged in` と答え、すでに
+ログイン済みのアカウントについて `claude /login` を実行するよう言われます。いまは
+2 つの仕組みがこれを捕まえます:
+
+- rotation は欠けているディレクトリを飛び越えて、マシンが実際に持つ認証済みアカウント
+  へ進むため、実行は生き延びます;
+- `tesserae doctor` が存在しないディレクトリを警告として報告し、
+  `tesserae doctor --fix` がそれらを設定から削除します — そこにないディレクトリは
+  ログインできないので、削除してアカウントを失うことはありません。
+
+`tesserae test` がこのすべての検証者です。実際の呼び出しを 2 回使い、試したアカウント
+ごとに、そのアカウントが何と答えたかを 1 行ずつ出力します:
+
+```
+  accounts tried (in rotation order):
+    [✗] /Users/you/.claude-personal1   quota: You've hit your weekly limit · resets Sep 11
+    [✗] /Users/you/.claude             not_logged_in: OAuth session expired
+    [✓] /Users/you/.claude-personal2   answered
+```
+
+設定した provider が死んでいて別のバックエンドが代わりに答えた場合、何日も呼び出しを
+拒否し続けているアカウントの上に素っ気なく「バックエンドは応答しています」と報告する
+のではなく、そのことを述べます。
 
 ### カスタムエンドポイント
 

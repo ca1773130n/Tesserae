@@ -85,11 +85,28 @@ for your provider in `.tesserae/config.json` (project) or
 }
 ```
 
-That list is authoritative — nothing outside it is tried. It also **beats the
-ambient `CLAUDE_CONFIG_DIR`**, which every process spawned from a Claude Code
-session inherits and which would otherwise pin the whole compile to that one
-session's quota. With nothing configured, `CLAUDE_CONFIG_DIR` is still used as
-the first account to try.
+That list is tried **first** — it is not a wall. Every other credentialed
+`~/.claude*` on the machine is appended behind it, so the accounts you named are
+still the only ones spent while one of them works, and a named account that is
+out of quota, logged out, or (on a second machine) simply not there falls
+through to one that does. Set `"llm_claude_config_dirs_exclusive": true`
+(`llm_codex_homes_exclusive` for codex) when spending an unnamed account is a
+billing problem rather than a rescue.
+
+The list also **beats the ambient `CLAUDE_CONFIG_DIR`**, which every process
+spawned from a Claude Code session inherits and which would otherwise pin the
+whole compile to that one session's quota. With nothing configured,
+`CLAUDE_CONFIG_DIR` is still used as the first account to try.
+
+Absolute paths do not travel between machines: copy a config to a second box and
+the dirs it names may not exist there. The CLI answers `Not logged in` for a dir
+that is not on disk, which is how an already-logged-in user gets sent to
+`claude /login`. Rotation now continues past it, `tesserae doctor` warns about
+the absent dirs, and `tesserae doctor --fix` drops them from the config.
+
+`tesserae test` prints one line per account it tried and what that account
+said — quota window, expired session, or answered — so "which of my accounts is
+actually dead" stops being a guess.
 
 The `claude` provider can also be pointed at a claude-compatible gateway instead of Anthropic: set `llm_base_url` and `llm_auth_token` next to it (for example `tesserae init --llm-provider claude --claude-config-dir ~/.claude-work --llm-base-url https://gw.example --llm-auth-token ...`, or answer the wizard's endpoint prompt). Every call — compile, `tesserae ask`, clip TL;DRs, doctor — then routes the CLI there with that token; no `claude /login` is needed, and the config dir is still used for the CLI's own state.
 
