@@ -44,12 +44,16 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import logging
 import os
+import sqlite3
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
+
+_LOG_DOCTOR = logging.getLogger(__name__)
 
 __all__ = [
     "Check",
@@ -1144,6 +1148,127 @@ def _fix_llm_login(ctx: DoctorContext) -> Optional[str]:
     return (
         f"llm accounts: dropped {len(removed)} configured dir(s) absent from this "
         f"machine ({', '.join(removed)}); rotation now uses the dirs that are here"
+    )
+
+
+def _sqlite_bloat(ctx: DoctorContext) -> Optional[tuple]:
+    """``(db_path, dead_memory, dead_facts, free_bytes, total_bytes)`` or None.
+
+    Read-only and cheap: two id scans and the freelist header, no VACUUM.
+    """
+    if ctx.wiki is None:
+        return None
+    db = _tesserae_dir(ctx) / "sqlite.db"
+    graph_path = _tesserae_dir(ctx) / "graph.json"
+    if not db.is_file() or not graph_path.is_file():
+        return None
+    try:
+        payload = json.loads(graph_path.read_text(encoding="utf-8"))
+        live_nodes = {n["id"] for n in payload.get("nodes") or []}
+        live_edges = {
+            (e["source"], e["type"], e["target"]) for e in payload.get("edges") or []
+        }
+        with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as con:
+            def _table(name: str) -> bool:
+                return con.execute(
+                    "select 1 from sqlite_master where type='table' and name=?", (name,)
+                ).fetchone() is not None
+
+            dead_mem = 0
+            if _table("node_memory"):
+                dead_mem = sum(
+                    1 for (nid,) in con.execute("select node_id from node_memory")
+                    if nid not in live_nodes
+                )
+            dead_facts = 0
+            if _table("fact_observed"):
+                dead_facts = sum(
+                    1 for row in con.execute(
+                        "select subject_id, predicate, object_id from fact_observed"
+                    ) if tuple(row) not in live_edges
+                )
+            page = con.execute("pragma page_size").fetchone()[0]
+            free = con.execute("pragma freelist_count").fetchone()[0]
+        return (db, dead_mem, dead_facts, free * page, db.stat().st_size)
+    except (OSError, ValueError, KeyError, sqlite3.Error):
+        return None
+
+
+def _detect_sqlite_bloat(ctx: DoctorContext) -> Optional[Finding]:
+    """Sidecar rows for nodes and edges the graph no longer contains.
+
+    ``node_provenance`` / ``edge_provenance`` are reconciled on every full
+    compile. ``node_memory`` and ``fact_observed`` had no equivalent until
+    v0.40, so a store compiled before that carries one row per id that has ever
+    existed. Measured on this project after 238 builds: 371,943 node_memory
+    rows for 16,869 live nodes (95.5% dead) and 74.3% of fact_observed, in a
+    1.19 GB file that pruned and vacuumed to 0.42 GB.
+
+    That is not only disk. Every read pages the dead rows in beside the live
+    ones, which is what a reader stalled in ``wait_on_page_bit_common`` is
+    waiting on.
+    """
+    stats = _sqlite_bloat(ctx)
+    if stats is None:
+        return None
+    db, dead_mem, dead_facts, free_bytes, total = stats
+    dead = dead_mem + dead_facts
+    # Free pages alone are normal churn; only a big share is worth a VACUUM.
+    bloated = free_bytes > 64 * 1024 * 1024 and free_bytes > total * 0.25
+    if not dead and not bloated:
+        return _f(
+            "sqlite_bloat", "hygiene", OK,
+            f"sqlite sidecar is tight ({total / 1e6:.0f} MB, "
+            f"{free_bytes / 1e6:.0f} MB free pages, no orphaned rows)",
+        )
+    parts = []
+    if dead_mem:
+        parts.append(f"{dead_mem:,} orphaned node_memory row(s)")
+    if dead_facts:
+        parts.append(f"{dead_facts:,} orphaned fact_observed row(s)")
+    if bloated:
+        parts.append(f"{free_bytes / 1e6:.0f} MB of free pages")
+    return _f(
+        "sqlite_bloat", "hygiene", WARN,
+        f"sqlite.db is {total / 1e6:.0f} MB carrying " + "; ".join(parts)
+        + " — dead rows are paged in beside live ones on every read",
+        suggestion="tesserae doctor --fix (deletes the orphans, then VACUUMs)",
+        fixable=True,
+    )
+
+
+def _fix_sqlite_bloat(ctx: DoctorContext) -> Optional[str]:
+    """Delete orphaned sidecar rows, then VACUUM to return the pages.
+
+    VACUUM is deliberately NOT on the compile path: it rewrites the whole file
+    (22s measured on 1.19 GB) and a compile should not pay that. Deleting rows
+    without it leaves the file its old size with the space on the freelist, so
+    the two belong together and both belong here.
+    """
+    stats = _sqlite_bloat(ctx)
+    if stats is None:
+        return None
+    db, dead_mem, dead_facts, free_bytes, before = stats
+    if not dead_mem and not dead_facts and free_bytes < 64 * 1024 * 1024:
+        return None
+    try:
+        from .graph_stores.sqlite import SqliteGraphStore
+
+        payload = json.loads((_tesserae_dir(ctx) / "graph.json").read_text(encoding="utf-8"))
+        pruned = SqliteGraphStore(db).prune_orphaned_sidecars(
+            {n["id"] for n in payload.get("nodes") or []},
+            {(e["source"], e["type"], e["target"]) for e in payload.get("edges") or []},
+        )
+        with sqlite3.connect(str(db)) as con:
+            con.execute("VACUUM")
+        after = db.stat().st_size
+    except (OSError, ValueError, KeyError, sqlite3.Error) as exc:
+        _LOG_DOCTOR.warning("sqlite_bloat fix failed: %s", exc)
+        return None
+    removed = sum(pruned.values())
+    return (
+        f"sqlite: removed {removed:,} orphaned sidecar row(s) and vacuumed; "
+        f"{before / 1e6:.0f} MB -> {after / 1e6:.0f} MB"
     )
 
 
@@ -2300,6 +2425,7 @@ CHECKS: List[Check] = [
     Check("idempotence", "hygiene", _detect_idempotence, manual=_SPENDS),
     Check("orphan_worktrees", "hygiene", _detect_orphan_worktrees, fix=_fix_orphan_worktrees, safe=True),
     Check("hook_log_bloat", "hygiene", _detect_hook_logs, fix=_fix_hook_logs, safe=True),
+    Check("sqlite_bloat", "hygiene", _detect_sqlite_bloat, fix=_fix_sqlite_bloat, safe=True),
     Check("sidecars", "hygiene", _detect_sidecars, fix=_fix_sidecars, safe=True),
     Check("vault_configured", "core", _detect_vault, fix=_fix_vault, safe=True),
     Check("session_chunks", "freshness", _detect_session_chunks, fix=_fix_session_chunks,
