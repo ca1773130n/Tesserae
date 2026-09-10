@@ -14,6 +14,7 @@ import re
 import secrets
 import shutil
 import sys
+import time
 from dataclasses import dataclass, field, replace as dataclasses_replace
 from datetime import date
 from pathlib import Path
@@ -720,6 +721,26 @@ class ProjectWiki:
         # to a TRUE full recompile: re-extract the WHOLE corpus with
         # changed_only=False, so the default path is byte-identical to a
         # from-scratch compile (Codex B4) — never a prior+delta merge.
+        # Wall-clock for the build-history row. 238 entries recorded node and
+        # edge counts and no duration at all, so "are compiles getting slower"
+        # — the question that decides whether incremental is worth its
+        # correctness cost — could not be answered from the ledger the project
+        # keeps for exactly that purpose. monotonic, so a clock adjustment
+        # mid-compile cannot produce a negative or absurd elapsed.
+        self._compile_started = time.monotonic()
+        #: ``downgrade`` answers the question the logs could not: you asked for
+        #: ``--changed-only`` and got a full recompile — why. Every demotion
+        #: site below already knows the reason and none of it reached either the
+        #: operator or the ledger, so "incremental does nothing for me" was
+        #: indistinguishable from "incremental is off".
+        self._compile_stats = {
+            "mode": "full", "sources_extracted": 0, "downgrade": None,
+        }
+        if changed_only and not bool(cfg.get("incremental_compile", False)) and (
+            incremental_override is not False
+        ):
+            self._compile_stats["downgrade"] = "incremental_compile flag is off"
+
         incremental_active = False
         prior_graph_for_diff: Optional[ResearchGraph] = None
         if changed_only and self.paths.graph.exists():
@@ -785,6 +806,13 @@ class ProjectWiki:
         # the manifest shows ``graph.json`` is not known to cover every tracked
         # document: the differ would reuse that partial graph as the corpus.
         effective_changed_only = changed_only and incremental_active
+        if incremental_active:
+            self._compile_stats["mode"] = "incremental"
+            self._compile_stats["downgrade"] = None
+        elif changed_only and self._compile_stats.get("downgrade") is None:
+            self._compile_stats["downgrade"] = (
+                "provenance sidecar missing or does not cover the prior graph"
+            )
         # ...with ONE narrow exception, decided below: ``--changed-only
         # --retry-fallbacks`` on a corpus that is byte-for-byte unchanged AND
         # whose prior ``graph.json`` is known-complete. That is the one shape
@@ -958,6 +986,10 @@ class ProjectWiki:
                         prior_graph_for_diff = None
                         effective_changed_only = False
                         noop_blocked = ungraphed_reason
+                        self._compile_stats["mode"] = "full"
+                        self._compile_stats["downgrade"] = (
+                            f"graph does not cover the corpus ({ungraphed_reason})"
+                        )
                     # else: coverage is complete, so the differ's reuse is sound
                     # and the scoped run proceeds — no standing full-recompile
                     # tax on incremental workspaces.
@@ -1662,6 +1694,16 @@ class ProjectWiki:
         # first_seen_at) and then reconciles the sidecar against the final
         # graph (Codex M5), so stale rows for dropped nodes/edges are purged.
         extraction_prov = compute_extraction_provenance(extracted_graphs)
+        # The blast radius, stamped BEFORE the artifacts are written: it is
+        # ``_write_artifacts`` that appends the build-history row, so a stat
+        # recorded at result-assembly time (~150 lines below) lands after the
+        # ledger has already been written and never reaches it. An incremental
+        # run whose ``processed`` approaches the corpus size is a full compile
+        # paying incremental's correctness tax for nothing, and that comparison
+        # is the whole basis for keeping or dropping the feature.
+        if isinstance(getattr(self, "_compile_stats", None), dict):
+            self._compile_stats["sources_extracted"] = processed
+
         self._write_artifacts(
             graph,
             store=store,
@@ -4078,6 +4120,21 @@ class ProjectWiki:
             "code_nodes": len(code_graph.nodes),
             "code_edges": len(code_graph.edges),
         }
+        # Duration and mode. Without these the ledger records what the graph
+        # became and nothing about what it cost, which is the half needed to
+        # judge incremental against the full recompile it is meant to replace.
+        # ``sources_extracted`` is the one that settles it: an incremental run
+        # that re-extracts most of the corpus is a full compile wearing a flag.
+        started = getattr(self, "_compile_started", None)
+        if started is not None:
+            entry["duration_seconds"] = round(time.monotonic() - started, 3)
+        stats = getattr(self, "_compile_stats", None) or {}
+        if stats.get("mode"):
+            entry["mode"] = stats["mode"]
+        if stats.get("sources_extracted"):
+            entry["sources_extracted"] = int(stats["sources_extracted"])
+        if stats.get("downgrade"):
+            entry["downgrade"] = str(stats["downgrade"])
         head = read_git_head(self.project_root)
         if head:
             entry["git_head"] = head
