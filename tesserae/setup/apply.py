@@ -106,8 +106,14 @@ def _build_config_payload(plan: SetupPlan) -> dict[str, Any]:
     # these). Persisted only when set so untouched configs stay byte-stable.
     if plan.llm_provider:
         payload["llm_provider"] = plan.llm_provider
-    if plan.claude_config_dir:
-        payload["llm_claude_config_dirs"] = [plan.claude_config_dir]
+    # The whole rotation order when the wizard collected one, else the single
+    # dir every older path produced. Writing only the first of a list the user
+    # typed would silently discard their fallback accounts.
+    _dirs = list(getattr(plan, "claude_config_dirs", None) or [])
+    if not _dirs and plan.claude_config_dir:
+        _dirs = [plan.claude_config_dir]
+    if _dirs:
+        payload["llm_claude_config_dirs"] = _dirs
     if plan.codex_home:
         payload["llm_codex_home"] = plan.codex_home
     if plan.llm_model:

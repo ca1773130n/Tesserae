@@ -4440,9 +4440,50 @@ def _route_ingest(rest: List[str]) -> int:
 
 # ----- config ---------------------------------------------------------------
 def _handle_config_llm(args: argparse.Namespace) -> int:
-    """`config llm` = old `llm-defaults` minus --show."""
+    """`config llm` = old `llm-defaults` minus --show.
+
+    Bare on a TTY it now runs the same guided conversation ``setup`` and
+    ``init`` run, instead of printing usage. This is the command a user reaches
+    for when a backend is misconfigured, and it was the one that could only be
+    driven by typing every knob out — the shape a wrong endpoint sends you back
+    to over and over.
+    """
     args.show = False
+    if _config_llm_wants_interactive(args):
+        from rich.prompt import Confirm
+
+        import tesserae.llm_json as _lj
+        from .setup.llm_prompts import prompt_llm_backend
+
+        try:
+            print(f"tesserae config llm — machine-wide LLM defaults ({_lj.GLOBAL_CONFIG_PATH}).\n")
+            _apply_llm_answers(args, prompt_llm_backend(_lj._load_global_llm_config()))
+            print()
+            if not Confirm.ask("Save these defaults?", default=True):
+                print("Nothing changed.")
+                return 0
+        except (KeyboardInterrupt, EOFError):
+            print("\nCancelled — nothing changed.")
+            return 130
     return _handle_llm_defaults(args)
+
+
+def _config_llm_wants_interactive(args: argparse.Namespace) -> bool:
+    """Bare invocation, on a TTY, with nothing to write.
+
+    Every knob is checked, not a representative few: a flag the check forgets is
+    a flag the wizard then overwrites with its own answer.
+    """
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False  # CI and scripts must never block on input
+    return not any(
+        getattr(args, name, None)
+        for name in (
+            "llm_provider", "claude_config_dir", "codex_home", "reasoning_effort",
+            "llm_model", "llm_base_url", "llm_api_key", "llm_auth_token",
+            "llm_api_style",
+        )
+    )
 
 
 def _handle_config_show(args: argparse.Namespace) -> int:
@@ -4859,97 +4900,21 @@ def _setup_wants_interactive(args: argparse.Namespace) -> bool:
 
 def _setup_interactive_fill(args: argparse.Namespace) -> bool:
     """Prompt for LLM defaults + which optional deps to install, writing the
-    answers back onto ``args``. Returns False if the user declines to apply."""
-    from rich.prompt import Confirm, Prompt
+    answers back onto ``args``. Returns False if the user declines to apply.
+
+    The backend conversation itself lives in ``setup.llm_prompts`` because
+    ``init`` and ``config llm`` need the same one — see that module for why
+    having three copies of it was how the same defect shipped twice.
+    """
+    from rich.prompt import Confirm
 
     import tesserae.llm_json as _lj
     from . import deps
-
-    current = _lj._load_global_llm_config()
-
-    def _as_list(raw: object) -> List[str]:
-        """The stored value is a list, or the legacy singular string, or absent."""
-        if isinstance(raw, str):
-            return [raw] if raw else []
-        return [str(d) for d in (raw or []) if str(d)]
+    from .setup.llm_prompts import prompt_llm_backend
 
     print("Tesserae setup — machine-wide LLM defaults + optional dependencies.\n")
-    # Same choices the parser accepts. ``openai`` was missing here, so the one
-    # provider whose whole point is a non-Anthropic wire could not be picked
-    # interactively at all.
-    args.llm_provider = Prompt.ask(
-        "LLM provider", choices=["codex", "claude", "anthropic", "openai", "custom"],
-        default=current.get("llm_provider") or "codex",
-    )
-    if args.llm_provider == "codex":
-        args.reasoning_effort = Prompt.ask(
-            "Codex reasoning effort", choices=["low", "medium", "high", "xhigh"],
-            default=current.get("llm_codex_reasoning_effort") or "medium",
-        )
-        args.codex_home = Prompt.ask(
-            "Codex home (blank = every credentialed ~/.codex*)",
-            default=current.get("llm_codex_home") or "",
-        ) or None
-    elif args.llm_provider == "claude":
-        # Comma-separated because the flag is repeatable and the list is a
-        # rotation order — asking for one dir is what produced a single-account
-        # pin that dies with that account's quota.
-        _dirs = Prompt.ask(
-            "Claude config dirs, in rotation order, comma-separated "
-            "(blank = every credentialed ~/.claude*)",
-            default=", ".join(
-                _as_list(current.get("llm_claude_config_dirs"))
-                or _as_list(current.get("llm_claude_config_dir"))
-            ),
-        )
-        args.claude_config_dir = [d.strip() for d in _dirs.split(",") if d.strip()]
-    if args.llm_provider in ("custom", "openai", "anthropic"):
-        # The wire is a different question from the backend, and it is the one
-        # the wizard used to decide silently: `custom` defaults to the Anthropic
-        # wire, so an OpenAI-compatible gateway configured here could not answer
-        # and the user had to fall back to `tesserae config llm`.
-        if args.llm_provider != "anthropic":
-            args.llm_api_style = Prompt.ask(
-                "Wire protocol — anthropic (POST {base}/v1/messages) or "
-                "openai (POST {base}/chat/completions: vLLM, LiteLLM, "
-                "OpenRouter, Ollama, LM Studio)",
-                choices=["anthropic", "openai"],
-                default=(
-                    current.get("llm_api_style")
-                    or ("openai" if args.llm_provider == "openai" else "anthropic")
-                ),
-            )
-            args.llm_base_url = Prompt.ask(
-                "Base URL", default=current.get("llm_base_url") or "",
-            ) or None
-        # Bearer vs api key: the gateway decides, and picking the wrong one
-        # sends the credential in a header the endpoint does not read.
-        _kind = Prompt.ask(
-            "Credential — bearer sends Authorization: Bearer, "
-            "api-key sends the provider's own key header",
-            choices=["bearer", "api-key", "none"],
-            default=(
-                "bearer" if current.get("llm_auth_token")
-                else "none" if args.llm_provider != "anthropic"
-                and not current.get("llm_api_key") else "api-key"
-            ),
-        )
-        if _kind == "bearer":
-            args.llm_auth_token = Prompt.ask(
-                "Bearer token (stored in plaintext config; blank = "
-                "use TESSERAE_LLM_AUTH_TOKEN env)",
-                default="", password=True,
-            ) or None
-        elif _kind == "api-key":
-            args.llm_api_key = Prompt.ask(
-                "API key (stored in plaintext config; blank = "
-                "use ANTHROPIC_API_KEY env)",
-                default="", password=True,
-            ) or None
-        args.llm_model = Prompt.ask(
-            "Model name (blank = provider default)",
-            default=current.get("llm_model") or "",
-        ) or None
+    answers = prompt_llm_backend(_lj._load_global_llm_config())
+    _apply_llm_answers(args, answers)
 
     installed = {d["name"]: d["installed"] for d in deps.status()}
     recommended = {"memex": True, "raganything": False}
@@ -4965,6 +4930,29 @@ def _setup_interactive_fill(args: argparse.Namespace) -> bool:
     args.install_all = False
     print()
     return Confirm.ask("Apply this setup?", default=True)
+
+
+def _apply_llm_answers(args: argparse.Namespace, answers) -> None:
+    """Copy wizard answers onto the parsed flags the handlers already read.
+
+    Only non-empty answers are copied: a blank prompt means "leave what is
+    configured", and writing None over an existing value would make re-running
+    the wizard a way to silently clear settings.
+    """
+    args.llm_provider = answers.provider or args.llm_provider
+    for attr, value in (
+        ("reasoning_effort", answers.reasoning_effort),
+        ("codex_home", answers.codex_home),
+        ("llm_api_style", answers.api_style),
+        ("llm_base_url", answers.base_url),
+        ("llm_api_key", answers.api_key),
+        ("llm_auth_token", answers.auth_token),
+        ("llm_model", answers.model),
+    ):
+        if value is not None:
+            setattr(args, attr, value)
+    if answers.claude_config_dirs:
+        args.claude_config_dir = list(answers.claude_config_dirs)
 
 
 def _handle_setup_machine(args: argparse.Namespace) -> int:

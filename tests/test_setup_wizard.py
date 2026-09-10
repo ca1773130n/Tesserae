@@ -66,7 +66,10 @@ def test_provider_choices_honor_credential_probe(tmp_path: Path, monkeypatch) ->
     report = detect(tmp_path)
     values = [value for value, _ in _provider_choices(report)]
     assert "claude" not in values
-    assert values == ["codex", "anthropic", "custom"]
+    # `openai` is offered unconditionally alongside anthropic/custom: it needs
+    # no local CLI, and leaving it out was how the interactive path could not
+    # reach the one provider whose point is a non-Anthropic wire.
+    assert values == ["codex", "anthropic", "openai", "custom"]
     assert report.recommended.llm_provider == "codex"
 
 
@@ -93,9 +96,13 @@ def test_wizard_custom_provider_records_all_llm_fields(
         if "Additional source" in text:
             return ""
         if "Pick a provider" in text:
-            return "2"  # choices are [anthropic, custom]
+            return "3"  # choices are [anthropic, openai, custom]
+        if "Wire protocol" in text:
+            return "openai"
         if "Base URL" in text:
             return "https://llm.internal.example/v1"
+        if "Credential" in text:
+            return "api-key"
         if "API key" in text:
             return "sk-custom-secret"
         if "Model name" in text:
@@ -114,6 +121,10 @@ def test_wizard_custom_provider_records_all_llm_fields(
     assert plan.llm_base_url == "https://llm.internal.example/v1"
     assert plan.llm_api_key == "sk-custom-secret"
     assert plan.llm_model == "claude-opus-4-6"
+    # The wire, which this wizard used to decide silently: `custom` defaults to
+    # the Anthropic protocol, so an OpenAI-compatible endpoint configured here
+    # could not answer and the user had to retype it as `tesserae config llm`.
+    assert plan.llm_api_style == "openai"
     assert "sk-custom-secret" not in render_review(plan)
 
 
@@ -137,7 +148,7 @@ def test_wizard_claude_provider_blank_config_dir_means_auto(
         text = str(prompt)
         if "Pick a provider" in text:
             return "1"  # claude is offered first when credentialed
-        if "CLAUDE_CONFIG_DIR" in text:
+        if "Claude config dirs" in text:
             return ""  # blank = auto-discovery, nothing persisted
         if "Toggle by number" in text or "Additional source" in text:
             return ""
@@ -178,10 +189,12 @@ def test_wizard_claude_provider_can_name_a_custom_endpoint(
         text = str(prompt)
         if "Pick a provider" in text:
             return "1"
-        if "CLAUDE_CONFIG_DIR" in text:
+        if "Claude config dirs" in text:
             return str(acct)
         if "Custom endpoint base URL" in text:
             return "https://gw.example/anthropic"
+        if "Credential" in text:
+            return "bearer"
         if "Bearer token" in text:
             return "tok-secret"
         if "Model name" in text:
