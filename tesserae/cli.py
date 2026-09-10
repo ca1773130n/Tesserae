@@ -4840,11 +4840,16 @@ def _setup_wants_interactive(args: argparse.Namespace) -> bool:
     the old `config setup` alias is a moved-command stub now."""
     if not getattr(args, "_interactive_default", False):
         return False
+    # Every knob the parser accepts, or the wizard overwrites a flag the user
+    # deliberately passed: `setup --llm-auth-token X` on a TTY used to open the
+    # wizard, which never asks for a bearer token and then wrote its own
+    # answers over it.
     explicit = bool(
         args.llm_provider or args.claude_config_dir or args.codex_home
         or args.reasoning_effort or args.install or getattr(args, "install_all", False)
         or getattr(args, "llm_model", None) or getattr(args, "llm_base_url", None)
-        or getattr(args, "llm_api_key", None)
+        or getattr(args, "llm_api_key", None) or getattr(args, "llm_auth_token", None)
+        or getattr(args, "llm_api_style", None)
     )
     return (
         sys.stdin.isatty() and sys.stdout.isatty()
@@ -4861,9 +4866,19 @@ def _setup_interactive_fill(args: argparse.Namespace) -> bool:
     from . import deps
 
     current = _lj._load_global_llm_config()
+
+    def _as_list(raw: object) -> List[str]:
+        """The stored value is a list, or the legacy singular string, or absent."""
+        if isinstance(raw, str):
+            return [raw] if raw else []
+        return [str(d) for d in (raw or []) if str(d)]
+
     print("Tesserae setup — machine-wide LLM defaults + optional dependencies.\n")
+    # Same choices the parser accepts. ``openai`` was missing here, so the one
+    # provider whose whole point is a non-Anthropic wire could not be picked
+    # interactively at all.
     args.llm_provider = Prompt.ask(
-        "LLM provider", choices=["codex", "claude", "anthropic", "custom"],
+        "LLM provider", choices=["codex", "claude", "anthropic", "openai", "custom"],
         default=current.get("llm_provider") or "codex",
     )
     if args.llm_provider == "codex":
@@ -4871,20 +4886,66 @@ def _setup_interactive_fill(args: argparse.Namespace) -> bool:
             "Codex reasoning effort", choices=["low", "medium", "high", "xhigh"],
             default=current.get("llm_codex_reasoning_effort") or "medium",
         )
-    if args.llm_provider == "custom":
-        args.llm_base_url = Prompt.ask(
-            "Base URL (claude-compatible endpoint)",
-            default=current.get("llm_base_url") or "",
+        args.codex_home = Prompt.ask(
+            "Codex home (blank = every credentialed ~/.codex*)",
+            default=current.get("llm_codex_home") or "",
         ) or None
-        args.llm_api_key = Prompt.ask(
-            "API key (stored in plaintext config; blank = use ANTHROPIC_API_KEY env)",
-            default="",
-            password=True,
-        ) or None
-        args.llm_model = Prompt.ask(
-            "Model name", default=current.get("llm_model") or "",
-        ) or None
-    elif args.llm_provider == "anthropic":
+    elif args.llm_provider == "claude":
+        # Comma-separated because the flag is repeatable and the list is a
+        # rotation order — asking for one dir is what produced a single-account
+        # pin that dies with that account's quota.
+        _dirs = Prompt.ask(
+            "Claude config dirs, in rotation order, comma-separated "
+            "(blank = every credentialed ~/.claude*)",
+            default=", ".join(
+                _as_list(current.get("llm_claude_config_dirs"))
+                or _as_list(current.get("llm_claude_config_dir"))
+            ),
+        )
+        args.claude_config_dir = [d.strip() for d in _dirs.split(",") if d.strip()]
+    if args.llm_provider in ("custom", "openai", "anthropic"):
+        # The wire is a different question from the backend, and it is the one
+        # the wizard used to decide silently: `custom` defaults to the Anthropic
+        # wire, so an OpenAI-compatible gateway configured here could not answer
+        # and the user had to fall back to `tesserae config llm`.
+        if args.llm_provider != "anthropic":
+            args.llm_api_style = Prompt.ask(
+                "Wire protocol — anthropic (POST {base}/v1/messages) or "
+                "openai (POST {base}/chat/completions: vLLM, LiteLLM, "
+                "OpenRouter, Ollama, LM Studio)",
+                choices=["anthropic", "openai"],
+                default=(
+                    current.get("llm_api_style")
+                    or ("openai" if args.llm_provider == "openai" else "anthropic")
+                ),
+            )
+            args.llm_base_url = Prompt.ask(
+                "Base URL", default=current.get("llm_base_url") or "",
+            ) or None
+        # Bearer vs api key: the gateway decides, and picking the wrong one
+        # sends the credential in a header the endpoint does not read.
+        _kind = Prompt.ask(
+            "Credential — bearer sends Authorization: Bearer, "
+            "api-key sends the provider's own key header",
+            choices=["bearer", "api-key", "none"],
+            default=(
+                "bearer" if current.get("llm_auth_token")
+                else "none" if args.llm_provider != "anthropic"
+                and not current.get("llm_api_key") else "api-key"
+            ),
+        )
+        if _kind == "bearer":
+            args.llm_auth_token = Prompt.ask(
+                "Bearer token (stored in plaintext config; blank = "
+                "use TESSERAE_LLM_AUTH_TOKEN env)",
+                default="", password=True,
+            ) or None
+        elif _kind == "api-key":
+            args.llm_api_key = Prompt.ask(
+                "API key (stored in plaintext config; blank = "
+                "use ANTHROPIC_API_KEY env)",
+                default="", password=True,
+            ) or None
         args.llm_model = Prompt.ask(
             "Model name (blank = provider default)",
             default=current.get("llm_model") or "",
