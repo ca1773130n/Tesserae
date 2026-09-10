@@ -123,6 +123,29 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 `llm_*` 键。写入任一文件的凭证以**明文**存储，所以那两个请优先使用 `TESSERAE_LLM_API_KEY` /
 `TESSERAE_LLM_AUTH_TOKEN`。
 
+### 你不必手敲这些
+
+上面的表格是参考，不是界面。把写这份配置的三个命令在终端里不带参数运行，它们会改为
+向你提问：
+
+```bash
+tesserae config llm   # the machine-wide defaults
+tesserae setup        # the same, plus optional dependencies
+tesserae init         # a project, including its backend
+```
+
+三者运行的是同一场对话，所以能在其中一个里配置好的端点，在另外两个里也能配好。它按
+彼此依赖的顺序，settle 那些必须互相吻合的东西：provider，然后是**线路协议**
+（`anthropic` POST 到 `{base}/v1/messages`，`openai` POST 到
+`{base}/chat/completions`），基础 URL，以及凭证是**bearer 令牌**还是 **api 密钥**
+——网关只读其中一个请求头，选错了看起来和密钥填错一模一样。
+
+按 Enter 会保留已经配置好的值，绝不会清除某项设置。只要传入任意一个选项就会完全
+跳过提问，所以脚本和 CI 不受影响。
+
+按次运行的命令——`compile`、`export`、`ingest`、`extract`——刻意**不**提问。它们的
+选项都有默认值，本就是每次调用时传的；每次都被问一遍会比直接敲出来更慢。
+
 ### 账号路径不会跨机器迁移
 
 账号列表保存的是绝对路径。把 `.tesserae/config.json` 复制到第二台机器，它列出的目录

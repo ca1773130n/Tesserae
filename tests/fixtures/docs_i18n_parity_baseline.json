@@ -2519,7 +2519,7 @@
     "true"
    ],
    "structure": {
-    "bold": -3,
+    "bold": -2,
     "bullets": 5,
     "fences": -1
    }
@@ -2569,7 +2569,7 @@
     "true"
    ],
    "structure": {
-    "bold": -2,
+    "bold": -1,
     "fences": -1
    },
    "untranslated_words": [
@@ -2591,7 +2591,7 @@
     "true"
    ],
    "structure": {
-    "bold": -2,
+    "bold": -1,
     "fences": -1
    },
    "untranslated_words": [
@@ -2642,7 +2642,7 @@
     "true"
    ],
    "structure": {
-    "bold": -3,
+    "bold": -2,
     "fences": -1
    }
   },
@@ -2658,7 +2658,7 @@
     "true"
    ],
    "structure": {
-    "bold": -3,
+    "bold": -2,
     "fences": -1
    }
   }

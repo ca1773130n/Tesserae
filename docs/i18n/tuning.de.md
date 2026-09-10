@@ -148,6 +148,34 @@ die gleichen `llm_*`-Schlüssel in sein `.tesserae/config.json`. Eine Authentifi
 die in einer Datei geschrieben ist, wird in **Klartext** gespeichert, daher bevorzugen
 Sie `TESSERAE_LLM_API_KEY` / `TESSERAE_LLM_AUTH_TOKEN` für diese zwei.
 
+### Nichts davon müssen Sie tippen
+
+Die Tabelle oben ist die Referenz, nicht die Bedienoberfläche. Rufen Sie eines der drei
+Kommandos, die diese Konfiguration schreiben, ohne Argumente in einem Terminal auf, und
+sie fragen stattdessen:
+
+```bash
+tesserae config llm   # the machine-wide defaults
+tesserae setup        # the same, plus optional dependencies
+tesserae init         # a project, including its backend
+```
+
+Alle drei führen dasselbe Gespräch, also lässt sich ein Endpunkt, den Sie in einem
+konfigurieren können, in allen konfigurieren. Es klärt die Dinge, die zueinander passen
+müssen, in der Reihenfolge, in der sie voneinander abhängen: den Provider, dann das
+**Übertragungsprotokoll** (`anthropic` postet an `{base}/v1/messages`, `openai` an
+`{base}/chat/completions`), die Basis-URL, und ob die Anmeldedaten ein
+**Bearer-Token** oder ein **API-Schlüssel** sind — ein Gateway liest den einen oder den
+anderen Header, und die falsche Wahl sieht genau aus wie ein falscher Schlüssel.
+
+Enter behält, was bereits konfiguriert ist; es löscht nie eine Einstellung. Ein
+einziges übergebenes Flag überspringt die Fragen vollständig, Skripte und CI bleiben
+also unberührt.
+
+Kommandos für den Einzellauf — `compile`, `export`, `ingest`, `extract` — fragen
+bewusst **nicht**. Ihre Flags haben Standardwerte und werden pro Aufruf übergeben; bei
+jedem Mal gefragt zu werden wäre langsamer, als sie zu tippen.
+
 ### Kontopfade reisen nicht zwischen Maschinen
 
 Eine Kontenliste enthält absolute Pfade. Kopieren Sie eine `.tesserae/config.json` auf

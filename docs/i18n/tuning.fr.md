@@ -151,6 +151,34 @@ clés `llm_*` dans son `.tesserae/config.json`. Une accréditation écrite dans 
 l'autre fichier est stockée en **texte clair**, donc préférez `TESSERAE_LLM_API_KEY` /
 `TESSERAE_LLM_AUTH_TOKEN` pour ces deux-là.
 
+### Vous n'avez rien de tout cela à taper
+
+Le tableau ci-dessus est la référence, pas l'interface. Lancez sans argument, dans un
+terminal, l'une des trois commandes qui écrivent cette configuration, et elles
+demandent à la place :
+
+```bash
+tesserae config llm   # the machine-wide defaults
+tesserae setup        # the same, plus optional dependencies
+tesserae init         # a project, including its backend
+```
+
+Toutes trois mènent la même conversation, si bien qu'un endpoint configurable dans
+l'une l'est dans les autres. Elle règle ce qui doit concorder, dans l'ordre où les
+choses dépendent les unes des autres : le provider, puis le **protocole de transport**
+(`anthropic` poste sur `{base}/v1/messages`, `openai` sur
+`{base}/chat/completions`), l'URL de base, et si l'accréditation est un **jeton
+bearer** ou une **clé api** — une passerelle lit l'un des deux en-têtes, et se tromper
+ressemble exactement à une clé erronée.
+
+Appuyer sur Entrée conserve ce qui est déjà configuré ; cela n'efface jamais un
+réglage. Passer un seul drapeau saute entièrement les questions, donc les scripts et la
+CI ne changent pas.
+
+Les commandes ponctuelles — `compile`, `export`, `ingest`, `extract` — ne demandent
+délibérément **rien**. Leurs drapeaux ont des valeurs par défaut et se passent à chaque
+invocation ; être interrogé à chaque fois serait plus lent que de les taper.
+
 ### Les chemins de comptes ne voyagent pas entre machines
 
 Une liste de comptes contient des chemins absolus. Copiez un `.tesserae/config.json`
