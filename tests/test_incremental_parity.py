@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List
 
@@ -231,6 +232,11 @@ def test_incremental_equals_full_compile(tmp_path: Path, k: int) -> None:
 
     # (3) incremental compile of exactly those K files.
     wiki.compile(changed_only=True, changed_paths=list(changed))
+    _row = _last_build_row(wiki)
+    assert _row.get("mode") == "incremental", (
+        f"the incremental arm was demoted to a full compile "
+        f"({_row.get('downgrade')!r}) — this gate would pass vacuously"
+    )
     incr_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
     incr_count = _node_count(wiki)
     incr_ids = _node_ids(wiki)
@@ -615,5 +621,117 @@ def test_incremental_equals_full_after_both_endpoint_move(tmp_path: Path) -> Non
     assert incr_tree == full_tree, (
         "BOTH-ENDPOINT-MOVE PARITY FAILED: incremental compile after both edge "
         "endpoints' sources moved is NOT byte-identical to a full compile.\n"
+        f"Differing files:{_diff_keys(full_tree, incr_tree)}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# 04.1-FOLLOWUP blocker #3 — producer layers must be tombstoned on incremental
+# --------------------------------------------------------------------------- #
+
+
+def _last_build_row(wiki: ProjectWiki) -> dict:
+    """The most recent `.build-history.jsonl` row — mode, duration, downgrade."""
+    path = wiki.root / ".build-history.jsonl"
+    lines = [l for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    return json.loads(lines[-1]) if lines else {}
+
+
+def _producer_owned_ids(wiki: ProjectWiki) -> set[str]:
+    """Node ids whose sidecar provenance is EXCLUSIVELY producer labels.
+
+    That is the project's own definition of producer-owned (STATE.md, Plan-03
+    contract): a node no real source file claims, regenerated from scratch by
+    its producer on every compile.
+    """
+    import sqlite3
+
+    db = wiki.root / "sqlite.db"
+    if not db.is_file():
+        return set()
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        rows = con.execute("SELECT node_id, source_path FROM node_provenance").fetchall()
+    finally:
+        con.close()
+    by_node: dict[str, set[str]] = {}
+    for node_id, source in rows:
+        by_node.setdefault(node_id, set()).add(source or "")
+    return {
+        node_id for node_id, sources in by_node.items()
+        if sources and all(s.startswith("__") for s in sources)
+    }
+
+
+def test_a_producer_that_stops_emitting_is_dropped_on_incremental(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """04.1-FOLLOWUP #3: producer-owned prior nodes survive an incremental
+    compile forever once their producer stops emitting them.
+
+    `_strip_generated_layer` removes SYNTHESIS and COMMUNITY_SUMMARY from the
+    prior graph before the merge, and nothing else. Every other producer layer
+    — session graph, code graph, RAG-Anything, vault overlay, entity resolution
+    — is regenerated from scratch on each compile, so carrying the prior copy
+    means a node the producer no longer emits is never removed. A full compile
+    drops it, which is the divergence.
+    """
+    root = tmp_path / "project"
+    papers = _build_corpus(root, n_papers=4)
+    wiki = _seed_wiki(root)
+
+    # A producer that emits one node on the seed compile and nothing after.
+    emitted = {"on": True}
+    marker = "MethodologicalConcept:producer-only-node"
+
+    def fake_merge(self, graph, cfg, **kwargs):
+        if not emitted["on"]:
+            return graph
+        from tesserae.research_graph import ResearchNode, ResearchNodeType
+
+        node = ResearchNode(
+            id=marker, name="Producer Only Node",
+            type=ResearchNodeType.METHODOLOGICAL_CONCEPT,
+        )
+        return replace(graph, nodes=list(graph.nodes) + [node])
+
+    monkeypatch.setattr(ProjectWiki, "_merge_session_graph", fake_merge, raising=True)
+
+    wiki.compile()  # seed: the producer emits its node
+    assert marker in _node_ids(wiki), "fixture is wrong: the producer never emitted"
+    assert marker in _producer_owned_ids(wiki), (
+        "fixture is wrong: the node is not recorded as producer-owned"
+    )
+
+    # The producer goes quiet (input removed / backend disabled) and one paper
+    # is edited, so the compile is genuinely incremental rather than a no-op.
+    emitted["on"] = False
+    _mutate(papers[0], "producer-removal")
+    wiki.compile(changed_only=True, changed_paths=[papers[0]])
+    # A test of incremental behaviour that silently ran a FULL compile proves
+    # nothing — it would pass against any code at all. The ledger records which
+    # one actually happened, and why when it was demoted.
+    _row = _last_build_row(wiki)
+    assert _row.get("mode") == "incremental", (
+        f"the incremental arm was demoted to a full compile "
+        f"({_row.get('downgrade')!r}) — this assertion would pass vacuously"
+    )
+    incr_ids = _node_ids(wiki)
+    incr_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+
+    # Ground truth: a full compile of the identical corpus, same root.
+    wiki.compile()
+    full_ids = _node_ids(wiki)
+    full_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+
+    assert marker not in full_ids, (
+        "ground truth is wrong: a full compile still carries the retired node"
+    )
+    assert marker not in incr_ids, (
+        "BLOCKER #3: the incremental compile kept a node whose producer stopped "
+        "emitting it; a full compile drops it"
+    )
+    assert incr_tree == full_tree, (
+        "GOLDEN PARITY FAILED after producer removal.\n"
         f"Differing files:{_diff_keys(full_tree, incr_tree)}"
     )
