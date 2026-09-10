@@ -142,6 +142,33 @@ value you set for Tesserae specifically, but they still beat both config files.
 is stored in **plaintext**, so prefer `TESSERAE_LLM_API_KEY` /
 `TESSERAE_LLM_AUTH_TOKEN` for those two.
 
+### You do not have to type any of this
+
+The table above is the reference, not the interface. Run any of the three
+commands that write this configuration with no arguments, on a terminal, and
+they ask instead:
+
+```bash
+tesserae config llm   # the machine-wide defaults
+tesserae setup        # the same, plus optional dependencies
+tesserae init         # a project, including its backend
+```
+
+All three run the same conversation, so an endpoint you can configure in one you
+can configure in all of them. It settles the things that have to agree with each
+other, in the order they depend on each other: the provider, then the **wire
+protocol** (`anthropic` posts to `{base}/v1/messages`, `openai` to
+`{base}/chat/completions`), the base URL, and whether the credential is a
+**bearer token** or an **api key** — a gateway reads one header or the other,
+and the wrong choice looks exactly like a wrong key.
+
+Pressing Enter keeps whatever is already configured; it never clears a setting.
+Passing any flag skips the prompts entirely, so scripts and CI are unaffected.
+
+Per-run commands — `compile`, `export`, `ingest`, `extract` — deliberately do
+**not** prompt. Their flags have defaults and you pass them per invocation;
+being asked every time would be slower than typing them.
+
 ### Account paths do not travel between machines
 
 An account list holds absolute paths. Copy a `.tesserae/config.json` to a second

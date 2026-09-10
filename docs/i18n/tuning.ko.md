@@ -127,6 +127,31 @@ export TESSERAE_LLM_CACHE=0   # 항상 re-ask
 키를 `.tesserae/config.json`에 놓으세요. 파일에 작성된 자격증은 **평문**으로 저장되므로
 그 둘에 대해 `TESSERAE_LLM_API_KEY` / `TESSERAE_LLM_AUTH_TOKEN`를 선호하세요.
 
+### 이것을 직접 입력할 필요는 없다
+
+위의 표는 레퍼런스이지 인터페이스가 아니다. 이 설정을 쓰는 세 명령을 터미널에서
+인자 없이 실행하면, 대신 물어본다:
+
+```bash
+tesserae config llm   # the machine-wide defaults
+tesserae setup        # the same, plus optional dependencies
+tesserae init         # a project, including its backend
+```
+
+셋 다 같은 대화를 실행하므로, 한 곳에서 설정할 수 있는 엔드포인트는 나머지에서도
+설정할 수 있다. 서로 맞아야 하는 것들을, 서로 의존하는 순서대로 정리한다: provider,
+그다음 **와이어 프로토콜**(`anthropic`은 `{base}/v1/messages`로, `openai`는
+`{base}/chat/completions`로 POST), 베이스 URL, 그리고 자격증명이 **베어러 토큰**인지
+**api 키**인지 — 게이트웨이는 둘 중 한 헤더만 읽고, 잘못 고르면 키가 틀린 것과
+똑같아 보인다.
+
+Enter를 누르면 이미 설정된 값이 유지된다. 설정을 지우는 일은 절대 없다. 플래그를
+하나라도 주면 프롬프트를 전부 건너뛰므로 스크립트와 CI는 영향을 받지 않는다.
+
+실행 단위 명령 — `compile`, `export`, `ingest`, `extract` — 은 의도적으로 묻지
+**않는다**. 그 플래그들에는 기본값이 있고 호출할 때마다 넘기는 것이라, 매번 질문받는
+편이 직접 입력하는 것보다 느리다.
+
 ### 계정 경로는 머신 사이를 이동하지 않는다
 
 계정 목록은 절대 경로를 담는다. `.tesserae/config.json`을 두 번째 머신으로 복사하면

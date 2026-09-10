@@ -45,6 +45,11 @@ class SetupPlan(BaseModel):
 
     extractor: Extractor = "deterministic"
     claude_config_dir: Optional[str] = None
+    #: The full rotation order, when the user gave one. ``claude_config_dir``
+    #: stays as the first entry so every existing reader keeps working; the
+    #: plural is what actually reaches config.json, because a one-dir plan is
+    #: the single-account pin that dies with that account's weekly quota.
+    claude_config_dirs: list[str] = Field(default_factory=list)
     claude_model: Optional[str] = None
     codex_model: Optional[str] = None
     codex_home: Optional[str] = None
@@ -213,10 +218,17 @@ def build_plan(
     # singular key read here found nothing. Take the first of the real list.
     _dirs = global_llm.get("llm_claude_config_dirs")
     _dirs_first = _dirs[0] if isinstance(_dirs, list) and _dirs else None
-    claude_config_dir = _dirs_first or _pick("claude_config_dir", "llm_claude_config_dir",
-                              detection.recommended.claude_config_dir)
+    claude_config_dirs = [
+        str(d) for d in (overrides.pop("claude_config_dirs", None) or []) if str(d)
+    ]
+    claude_config_dir = (
+        claude_config_dirs[0] if claude_config_dirs
+        else _dirs_first or _pick("claude_config_dir", "llm_claude_config_dir",
+                                  detection.recommended.claude_config_dir)
+    )
     if llm_provider and llm_provider != "claude":
         claude_config_dir = None
+        claude_config_dirs = []
     llm_base_url = overrides.pop("llm_base_url", None)
     llm_api_key = overrides.pop("llm_api_key", None)
     llm_auth_token = overrides.pop("llm_auth_token", None)
@@ -291,6 +303,7 @@ def build_plan(
             sources=sources,
             extractor=extractor,
             claude_config_dir=claude_config_dir,
+            claude_config_dirs=claude_config_dirs,
             claude_model=claude_model,
             codex_model=codex_model,
             codex_home=codex_home,

@@ -133,6 +133,33 @@ claves `llm_*` en su `.tesserae/config.json`. Una credencial escrita en cualquie
 se almacena en **texto plano**, así que prefiere `TESSERAE_LLM_API_KEY` /
 `TESSERAE_LLM_AUTH_TOKEN` para esas dos.
 
+### No tienes que escribir nada de esto
+
+La tabla de arriba es la referencia, no la interfaz. Ejecuta sin argumentos, en una
+terminal, cualquiera de los tres comandos que escriben esta configuración y preguntan
+ellos:
+
+```bash
+tesserae config llm   # the machine-wide defaults
+tesserae setup        # the same, plus optional dependencies
+tesserae init         # a project, including its backend
+```
+
+Los tres ejecutan la misma conversación, así que un endpoint que puedas configurar en
+uno lo puedes configurar en todos. Resuelve las cosas que tienen que concordar entre
+sí, en el orden en que dependen unas de otras: el provider, luego el **protocolo de
+transporte** (`anthropic` hace POST a `{base}/v1/messages`, `openai` a
+`{base}/chat/completions`), la URL base, y si la credencial es un **token bearer** o
+una **api key** — una pasarela lee una cabecera o la otra, y elegir mal se ve
+exactamente igual que una clave equivocada.
+
+Pulsar Enter conserva lo ya configurado; nunca borra un ajuste. Pasar cualquier flag
+salta las preguntas por completo, así que scripts y CI no se ven afectados.
+
+Los comandos de una sola ejecución — `compile`, `export`, `ingest`, `extract` — a
+propósito **no** preguntan. Sus flags tienen valores por defecto y se pasan en cada
+invocación; que te pregunten cada vez sería más lento que escribirlos.
+
 ### Las rutas de cuenta no viajan entre máquinas
 
 Una lista de cuentas guarda rutas absolutas. Copia un `.tesserae/config.json` a una

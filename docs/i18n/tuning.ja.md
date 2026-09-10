@@ -139,6 +139,32 @@ export TESSERAE_LLM_CACHE=0   # 常に再度質問
 `tesserae config llm` はマシン全体のファイルを書き込みます。1 つのプロジェクトの場合は、その `.tesserae/config.json` に同じ `llm_*` キーを入れてください。いずれかのファイルに書き込まれた認証情報は**平文**で保存されるため、これらの 2 つについては `TESSERAE_LLM_API_KEY` /
 `TESSERAE_LLM_AUTH_TOKEN` を優先してください。
 
+### これを手で打つ必要はない
+
+上の表はリファレンスであってインターフェースではない。この設定を書く 3 つのコマンドを
+端末で引数なしに実行すれば、代わりに尋ねてくる:
+
+```bash
+tesserae config llm   # the machine-wide defaults
+tesserae setup        # the same, plus optional dependencies
+tesserae init         # a project, including its backend
+```
+
+3 つとも同じ会話を実行するので、片方で設定できるエンドポイントはどれでも設定できる。
+互いに一致していなければならないものを、互いに依存する順に決めていく: provider、
+次に**ワイヤプロトコル**（`anthropic` は `{base}/v1/messages` へ、`openai` は
+`{base}/chat/completions` へ POST）、ベース URL、そして認証情報が**ベアラトークン**
+なのか **api キー**なのか — ゲートウェイはどちらか一方のヘッダしか読まず、選び間違え
+るとキーを間違えたときと見分けがつかない。
+
+Enter を押すとすでに設定されている値がそのまま残る。設定が消えることは決してない。
+フラグを 1 つでも渡せばプロンプトは完全にスキップされるので、スクリプトと CI は影響を
+受けない。
+
+実行ごとのコマンド — `compile`、`export`、`ingest`、`extract` — は意図的に尋ね
+**ない**。それらのフラグには既定値があり、呼び出しごとに渡すものなので、毎回訊かれる
+ほうが打つより遅い。
+
 ### アカウントのパスはマシン間を移動しません
 
 アカウントリストは絶対パスを保持します。`.tesserae/config.json` を 2 台目のマシンに

@@ -13,6 +13,7 @@ from rich.table import Table
 
 from .detection import DetectionReport
 from .plan import SetupPlan, build_plan
+from .llm_prompts import prompt_llm_backend
 
 
 def _provider_choices(report: DetectionReport) -> list[tuple[str, str]]:
@@ -30,7 +31,11 @@ def _provider_choices(report: DetectionReport) -> list[tuple[str, str]]:
             ("codex", f"codex — Codex CLI, logged in ({codex.version or codex.binary})")
         )
     choices.append(("anthropic", "anthropic — Anthropic API key"))
-    choices.append(("custom", "custom — claude-compatible endpoint (base URL + API key)"))
+    # ``openai`` was absent, so the one provider whose point is a non-Anthropic
+    # wire could not be picked here at all; and calling ``custom``
+    # "claude-compatible" stopped being true when llm_api_style arrived.
+    choices.append(("openai", "openai — OpenAI-compatible endpoint (vLLM, LiteLLM, OpenRouter, Ollama, LM Studio)"))
+    choices.append(("custom", "custom — your own endpoint (base URL + wire protocol + credential)"))
     return choices
 
 
@@ -202,50 +207,42 @@ def run_wizard(
     except (ValueError, IndexError):
         llm_provider = recommended_provider
 
-    # Persisted only when the user types one: blank = auto-discovery at
-    # runtime (a pinned dir would restrict multi-account ~/.claude* scans).
-    claude_config_dir: Optional[str] = None
+    # Everything AFTER the provider is shared with `tesserae setup` and
+    # `tesserae config llm` — see setup.llm_prompts. This wizard used to carry
+    # its own copy, which asked a `custom` provider for a base URL, an API key
+    # and a model and never for the wire protocol or a bearer token, so an
+    # OpenAI-compatible endpoint configured here could not answer.
+    answers = prompt_llm_backend(
+        {
+            "llm_model": base_plan.llm_model,
+            "llm_base_url": base_plan.llm_base_url,
+            "llm_api_key": base_plan.llm_api_key,
+            "llm_auth_token": getattr(base_plan, "llm_auth_token", None),
+            "llm_api_style": getattr(base_plan, "llm_api_style", None),
+            # Deliberately NOT seeded from the machine-wide config: in this
+            # wizard Enter on the dirs prompt means "auto-discover at runtime",
+            # and pre-filling the global list would turn that into "copy the
+            # global pin into this project" without the user asking.
+            "llm_claude_config_dirs": getattr(base_plan, "claude_config_dirs", None),
+            "llm_codex_home": base_plan.codex_home,
+        },
+        provider=llm_provider,
+        ask=Prompt.ask,
+        echo=console.print,
+    )
+    claude_config_dirs = answers.claude_config_dirs
+    # Persisted only when the user types one: blank means auto-discovery at
+    # runtime, and a pinned dir restricts the multi-account ~/.claude* scan.
+    claude_config_dir = claude_config_dirs[0] if claude_config_dirs else None
+    codex_home = answers.codex_home or base_plan.codex_home
+    llm_model = answers.model or base_plan.llm_model
+    llm_base_url = answers.base_url or base_plan.llm_base_url
+    llm_api_key = answers.api_key or base_plan.llm_api_key
+    llm_auth_token = answers.auth_token or getattr(base_plan, "llm_auth_token", None)
+    llm_api_style = answers.api_style or getattr(base_plan, "llm_api_style", None)
     codex_model = base_plan.codex_model
-    llm_model = base_plan.llm_model
-    llm_base_url = base_plan.llm_base_url
-    llm_api_key = base_plan.llm_api_key
-    llm_auth_token = getattr(base_plan, "llm_auth_token", None)
-    llm_api_style = getattr(base_plan, "llm_api_style", None)
-    if llm_provider == "claude":
-        raw_dir = Prompt.ask(
-            "CLAUDE_CONFIG_DIR (blank = auto; set only for multi-account)",
-            default="",
-        )
-        claude_config_dir = raw_dir.strip() or None
-        # The claude CLI can be pointed at a claude-compatible gateway
-        # (ANTHROPIC_BASE_URL + bearer token) without logging in. The wizard
-        # only offered that under `custom`, so a claude-CLI harness on a
-        # gateway had no way to record its endpoint here.
-        llm_base_url = Prompt.ask(
-            "Custom endpoint base URL for the claude CLI (blank = Anthropic via the CLI's own login)",
-            default=llm_base_url or "",
-        ).strip() or None
-        if llm_base_url:
-            llm_auth_token = Prompt.ask(
-                "Bearer token for that endpoint (blank = none; stored in plaintext config)",
-                default=llm_auth_token or "",
-                password=True,
-            ).strip() or None
-            llm_model = Prompt.ask(
-                "Model name (blank = provider default)", default=llm_model or ""
-            ).strip() or None
     if llm_provider == "codex":
         codex_model = Prompt.ask("Codex model", default=codex_model or "gpt-5.4")
-    if llm_provider == "custom":
-        llm_base_url = Prompt.ask(
-            "Base URL (claude-compatible endpoint)", default=llm_base_url or ""
-        )
-        llm_api_key = Prompt.ask(
-            "API key (stored in plaintext config)",
-            default=llm_api_key or "",
-            password=True,
-        )
-        llm_model = Prompt.ask("Model name", default=llm_model or "")
 
     companion_items = [
         ("raganything", False),
@@ -273,6 +270,10 @@ def run_wizard(
             "source_kind": source_kind,
             "sources": sources,
             "claude_config_dir": claude_config_dir,
+            "claude_config_dirs": claude_config_dirs,
+            # codex_home was collected and then dropped on the floor here, so
+            # picking a home in the wizard changed nothing.
+            "codex_home": codex_home,
             "codex_model": codex_model,
             "llm_provider": llm_provider,
             "llm_model": llm_model,
