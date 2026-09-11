@@ -212,7 +212,7 @@ def test_refresh_parity_with_manual_sequence(tmp_path: Path, monkeypatch: pytest
     manual_root = tmp_path / "manual"
     manual_wiki = _seed_project(manual_root)
     manual_sessions = hs.discover_harness_sessions(manual_wiki.project_root)
-    manual_store_result = hs.HarnessSessionStore(manual_wiki.paths.harness_sessions).write_sessions(manual_sessions)
+    manual_store_result = hs.HarnessSessionStore(manual_wiki.paths.harness_sessions).write_sessions(manual_sessions, producer="")
     manual_compile = manual_wiki.compile()
     # (The no-vault skip path itself is asserted by
     # test_refresh_vault_guard_skips_when_no_vault; here we only need the graph
@@ -234,5 +234,5 @@ def test_refresh_parity_with_manual_sequence(tmp_path: Path, monkeypatch: pytest
     # harness_sessions manifest 'sessions' count parity
     refresh_manifest = hs.HarnessSessionStore(refresh_wiki.paths.harness_sessions).write_sessions(
         hs.discover_harness_sessions(refresh_wiki.project_root)
-    )
+    , producer="")
     assert refresh_manifest["sessions"] == manual_store_result["sessions"]

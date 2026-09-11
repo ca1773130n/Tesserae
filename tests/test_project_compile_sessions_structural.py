@@ -67,7 +67,7 @@ def _seed_session(wiki: ProjectWiki, *, files_touched, decisions=()):
         files_touched=list(files_touched),
         decisions=list(decisions),
     )
-    HarnessSessionStore(wiki.paths.harness_sessions).write_sessions([session])
+    HarnessSessionStore(wiki.paths.harness_sessions).write_sessions([session], producer="")
 
 
 def _graph(wiki: ProjectWiki) -> dict:
@@ -174,7 +174,7 @@ def _seed_session_with_turns(wiki: ProjectWiki, *, files_touched) -> None:
             ]
         },
     )
-    HarnessSessionStore(wiki.paths.harness_sessions).write_sessions([session])
+    HarnessSessionStore(wiki.paths.harness_sessions).write_sessions([session], producer="")
 
 
 def test_compile_mints_session_events_without_switching_on_the_llm_distillation(

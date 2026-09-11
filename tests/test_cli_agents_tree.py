@@ -75,7 +75,7 @@ def _seed_sessions_project(tmp_path: Path) -> Path:
                 metadata={"config_root": str(tmp_path / "codex-home")},
             ),
         ]
-    )
+    , producer="")
     return proj
 
 

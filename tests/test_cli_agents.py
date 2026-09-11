@@ -57,7 +57,7 @@ def _seed_project(tmp_path):
                 metadata={"config_root": str(tmp_path / "codex-home")},
             ),
         ]
-    )
+    , producer="")
     return proj
 
 
@@ -326,7 +326,7 @@ def _seed_flat_project(tmp_path):
                 metadata={"config_root": str(tmp_path / "claude-home")},
             ),
         ]
-    )
+    , producer="")
     return proj
 
 
