@@ -402,7 +402,6 @@ _STUB_PAPER = (
 )
 
 
-@pytest.mark.xfail(strict=True, reason="04.1-FOLLOWUP blocker 1/3 (subtractive): incremental keeps what a full compile drops. Passed vacuously until the remap fix let the incremental path actually run — before that both arms were full compiles. strict=True so closing the blocker fails here and forces this marker off.")
 def test_incremental_equals_full_after_content_reduction(tmp_path: Path) -> None:
     """Rewriting a paper to DROP its authors + shared-field references must
     remove the now-unasserted authored_by / field edges (their endpoints
@@ -432,7 +431,6 @@ def test_incremental_equals_full_after_content_reduction(tmp_path: Path) -> None
     )
 
 
-@pytest.mark.xfail(strict=True, reason="04.1-FOLLOWUP blocker 1/3 (subtractive): incremental keeps what a full compile drops. Passed vacuously until the remap fix let the incremental path actually run — before that both arms were full compiles. strict=True so closing the blocker fails here and forces this marker off.")
 def test_incremental_equals_full_after_file_deletion(tmp_path: Path) -> None:
     """Deleting a paper file entirely must remove its source node and all its
     incident edges on the incremental path — byte-identical to a full compile
@@ -482,7 +480,6 @@ def test_incremental_equals_full_after_file_deletion(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(strict=True, reason="04.1-FOLLOWUP blocker 1/3 (subtractive): incremental keeps what a full compile drops. Passed vacuously until the remap fix let the incremental path actually run — before that both arms were full compiles. strict=True so closing the blocker fails here and forces this marker off.")
 def test_incremental_equals_full_after_rename(tmp_path: Path) -> None:
     """Renaming a paper file (delete old path + add new path with identical
     content) must yield incremental output byte-identical to a full compile of
@@ -666,7 +663,6 @@ def _producer_owned_ids(wiki: ProjectWiki) -> set[str]:
     }
 
 
-@pytest.mark.xfail(strict=True, reason="04.1-FOLLOWUP blocker 3 (producer layers): incremental keeps what a full compile drops. Passed vacuously until the remap fix let the incremental path actually run — before that both arms were full compiles. strict=True so closing the blocker fails here and forces this marker off.")
 def test_a_producer_that_stops_emitting_is_dropped_on_incremental(
     tmp_path: Path, monkeypatch
 ) -> None:

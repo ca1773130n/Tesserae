@@ -157,6 +157,13 @@ class _FullSurfaceStore:
     def provenance_covers_nodes(self, *a, **k):  # noqa: ANN001
         return self._covers_nodes
 
+    def producer_owned_rows(self, strippable=None):
+        # A fake gaining the surface readiness now requires. Empty is honest:
+        # this store has no producer rows. _NodeOnlyStore deliberately does NOT
+        # get it, so it keeps failing readiness.
+        return set(), set()
+
+
 
 class _NodeOnlyStore:
     """Missing record_edge_provenance_many + provenance_covers_edges +
