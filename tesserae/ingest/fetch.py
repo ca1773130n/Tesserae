@@ -184,6 +184,22 @@ def _load_url_deps() -> None:
         _html_to_markdown = lambda html: _md(html)
 
 
+def http_get_text(url: str, *, timeout: float = 30.0) -> str:
+    """GET ``url`` and return its body as text. Raises on non-2xx.
+
+    Split out for the proactive source, which needs the FEED document rather
+    than a source file, and must go through the same client and the same
+    optional-extra check as every other fetch in Tesserae.
+    """
+    if _http_get is None:
+        _load_url_deps()
+    response = _http_get(
+        url, timeout=timeout, follow_redirects=True, headers={"User-Agent": "tesserae-ingest"}
+    )
+    response.raise_for_status()
+    return response.text
+
+
 def fetch_to_source(url: str, dest_dir: Path, *, title: Optional[str] = None) -> Path:
     """Fetch ``url``, convert to markdown, persist under ``dest_dir`` with provenance.
 

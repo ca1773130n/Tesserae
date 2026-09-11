@@ -309,3 +309,59 @@ def test_serve_flags_reach_the_daemon(tmp_path, monkeypatch):
     assert seen["enable_serve"] is True
     assert seen["serve_host"] == "127.0.0.1"
     assert seen["serve_port"] == 0
+
+
+@pytest.mark.parametrize(
+    "argv, expected",
+    [
+        (["engine", "--proactive", "--once"], "drop --once"),
+        (["engine", "--proactive", "--harvest-only"], "mutually exclusive"),
+        (["engine", "--proactive", "--all"], "single-project only"),
+        (["engine", "--proactive-budget", "3"], "requires --proactive"),
+        (["engine", "--proactive-interval", "60"], "requires --proactive"),
+    ],
+)
+def test_proactive_rejects_the_combinations_that_cannot_work(argv, expected, capsys):
+    """--once starts no pollers; --harvest-only never compiles what it fetched;
+    --all would have every unit poll the same feeds and race for the files."""
+    rc = main(argv)
+    assert rc == 2
+    assert expected in capsys.readouterr().err
+
+
+def test_proactive_flags_reach_the_daemon(tmp_path, monkeypatch):
+    (tmp_path / ".tesserae").mkdir(parents=True, exist_ok=True)
+    seen: dict = {}
+
+    class _Spy:
+        def __init__(self, project_root, **kwargs):
+            seen.update(kwargs)
+
+        def run(self, *, once=False):
+            return 0
+
+    monkeypatch.setattr("tesserae.engine.daemon.Daemon", _Spy)
+    assert main(
+        ["engine", "--proactive", "--proactive-budget", "2",
+         "--proactive-interval", "30", "--project", str(tmp_path)]
+    ) == 0
+    assert seen["enable_proactive"] is True
+    assert seen["proactive_budget"] == 2
+    assert seen["proactive_interval"] == 30.0
+
+
+def test_proactive_is_off_when_not_asked_for(tmp_path, monkeypatch):
+    """The default must never fetch or spend."""
+    (tmp_path / ".tesserae").mkdir(parents=True, exist_ok=True)
+    seen: dict = {}
+
+    class _Spy:
+        def __init__(self, project_root, **kwargs):
+            seen.update(kwargs)
+
+        def run(self, *, once=False):
+            return 0
+
+    monkeypatch.setattr("tesserae.engine.daemon.Daemon", _Spy)
+    assert main(["engine", "--once", "--project", str(tmp_path)]) == 0
+    assert seen["enable_proactive"] is False
