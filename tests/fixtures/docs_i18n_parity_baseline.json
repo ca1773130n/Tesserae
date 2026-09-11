@@ -293,7 +293,7 @@
     "url_resolver"
    ],
    "structure": {
-    "table_cells": -10
+    "table_cells": -8
    }
   },
   "docs/i18n/context-engine-roadmap.ja.md": {
@@ -302,7 +302,7 @@
     "url_resolver"
    ],
    "structure": {
-    "bold": 2,
+    "bold": 1,
     "table_cells": -10
    }
   },
@@ -325,7 +325,6 @@
     "url_resolver"
    ],
    "structure": {
-    "bold": 1,
     "table_cells": -10
    }
   },
@@ -2596,7 +2595,6 @@
    },
    "untranslated_words": [
     "bad",
-    "blocking",
     "byte-identical",
     "calling",
     "claude-shaped",

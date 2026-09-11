@@ -159,7 +159,7 @@ procedimental". El código de lint `PROCEDURAL_POOLS` informa de esa diferencia.
 
 | Módulo | Responsabilidad |
 |---|---|
-| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: dirige extracción → grafo → pases de memoria → capa wiki → sitio. Posee `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Decide de antemano si una compilación incremental guiada por procedencia es elegible (condicionada a `incremental_compile`, OFF por defecto). |
+| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: dirige extracción → grafo → pases de memoria → capa wiki → sitio. Posee `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Decide de antemano si una compilación incremental guiada por procedencia es elegible (condicionada a `incremental_compile`, ON desde v0.40.0; `false` lo desactiva). |
 | [`tesserae/cli.py`](../../tesserae/cli.py) | Dispatch de CLI de verbos planos (~2.732 líneas tras borrar los grupos de subcomandos legacy `project`/`wiki`). Los verbos — `init`, `compile`, `ingest`, `context`, `ask`, `query`, `doctor`, `summary`, `decisions`, `refresh`, `serve`, `engine`, `export`, `vault`, `code`, `lab`, `setup`, `config`, `projects`, `sources`, `federation`, `integrations` — se declaran como metadatos en [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py) y se cablean desde ese árbol en lugar de registrarse a mano. |
 | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`: empuja `.tesserae/site/` a una rama `gh-pages` vía worktree, opcionalmente habilita Pages vía `gh`. |
 

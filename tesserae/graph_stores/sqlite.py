@@ -916,6 +916,83 @@ class SqliteGraphStore:
             con.commit()
         return removed_nodes, removed_edges
 
+    #: Producer labels whose layer is COMPLETELY regenerated every compile, so
+    #: carrying the prior copy into an incremental merge is always wrong. An
+    #: explicit allow-list rather than "any ``__`` sentinel": it fails safe when
+    #: a new producer is added without being audited for complete regeneration.
+    #: ``__entity_resolution__`` is deliberately absent — it runs BEFORE the
+    #: differ, so its rows are not re-derived after the merge.
+    #: ``__synthesis__`` is absent too: ``compute_extraction_provenance`` uses
+    #: it as the fallback source for a node with no source_path at all, so
+    #: stripping it would delete ordinary extracted nodes.
+    STRIPPABLE_PRODUCERS = frozenset({
+        "__session_graph__", "__code_graph__", "__raganything__",
+        "__vault_overlay__", "__agent_write__", "__understand_anything__",
+    })
+
+    def producer_owned_rows(self, strippable=None):
+        """``({node_id}, {(source, type, target)})`` owned ONLY by producers.
+
+        A row qualifies when its provenance source set is non-empty AND every
+        source is a strippable producer label. Non-empty is required because
+        ``all()`` over an empty set is vacuously True, which would sweep up
+        every row the sidecar happens not to cover — the 2400->1700 cross-file
+        collapse in one line.
+        """
+        allow = frozenset(strippable) if strippable is not None else self.STRIPPABLE_PRODUCERS
+        nodes: Dict[str, Set[str]] = {}
+        edges: Dict[Tuple[str, str, str], Set[str]] = {}
+        try:
+            with self._connect() as con:
+                for node_id, src in con.execute(
+                    "select node_id, source_path from node_provenance"
+                ):
+                    nodes.setdefault(node_id, set()).add(src or "")
+                for source, etype, target, src in con.execute(
+                    "select source, type, target, source_path from edge_provenance"
+                ):
+                    edges.setdefault((source, etype, target), set()).add(src or "")
+        except sqlite3.Error as exc:  # noqa: BLE001
+            _LOG.warning("producer_owned_rows: %s", exc)
+            return set(), set()
+        return (
+            {k for k, srcs in nodes.items() if srcs and srcs <= allow},
+            {k for k, srcs in edges.items() if srcs and srcs <= allow},
+        )
+
+    def surviving_source_paths_all(self, node_ids: Set[str]) -> Dict[str, List[str]]:
+        """``{node_id: [every surviving source_path]}``, each list sorted.
+
+        :meth:`surviving_source_paths` answers with ``min(source_path)`` — ONE
+        owner — which is all the incremental differ used to re-extract. A full
+        compile merges the fragments from EVERY surviving owner, and the winner
+        of ``_merge_same_type_aliased_duplicates`` is decided by the longest
+        display name across all of them. Re-running one owner therefore mints a
+        different canonical id than a full compile whenever the spelling that
+        wins lives in a file the differ did not re-read.
+
+        The ``sorted`` is load-bearing, not cosmetic: ``select distinct`` has no
+        defined row order and the downstream merge is order-sensitive
+        (``prefer_research_node`` is first-wins), so an unsorted union would let
+        the canonical winner vary run to run and break byte-idempotence.
+        """
+        if not node_ids:
+            return {}
+        ids = list(node_ids)
+        out: Dict[str, List[str]] = {}
+        with self._connect() as con:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start : start + 500]
+                ph = ",".join("?" for _ in chunk)
+                for node_id, src in con.execute(
+                    f"select distinct node_id, source_path from node_provenance"
+                    f" where node_id in ({ph})",
+                    chunk,
+                ).fetchall():
+                    if src is not None:
+                        out.setdefault(node_id, []).append(src)
+        return {k: sorted(v) for k, v in out.items()}
+
     def surviving_source_paths(self, node_ids: Set[str]) -> Dict[str, str]:
         """Return ``{node_id: canonical source_path}`` for the given surviving nodes.
 
@@ -1121,6 +1198,57 @@ class SqliteGraphStore:
             # reporting surface over opt-in state, and raising out of it would
             # make asking who read a node fail the caller's whole query.
             return []
+
+    def prune_orphaned_sidecars(
+        self,
+        live_node_ids: Iterable[str],
+        live_edge_triples: Iterable[Tuple[str, str, str]],
+    ) -> Dict[str, int]:
+        """Delete sidecar rows for nodes/edges the graph no longer contains.
+
+        ``node_provenance`` and ``edge_provenance`` are reconciled on every full
+        compile (:meth:`reconcile_provenance`); ``node_memory`` and
+        ``fact_observed`` never were, so they accumulate a row per id that has
+        ever existed. Measured on this project's own 1.19 GB store after 238
+        builds: ``node_memory`` held 371,943 rows for 16,869 live nodes —
+        **95.5% orphaned** — and ``fact_observed`` 158,205 rows for 40,687 live
+        edges, 74.3% orphaned. The two provenance tables were at 0%, which is
+        the difference reconciliation makes.
+
+        That bloat is not merely disk. Every read pages the dead rows in
+        alongside the live ones, which is what a reader blocked in
+        ``wait_on_page_bit_common`` is waiting for.
+
+        Only rows whose key is absent from the LIVE graph are removed, so this
+        can never drop state for a node that still exists. Returns the per-table
+        delete counts. Never raises: a sidecar problem must not sink a compile.
+        """
+        live_nodes = set(live_node_ids)
+        live_edges = {tuple(t) for t in live_edge_triples}
+        deleted: Dict[str, int] = {"node_memory": 0, "fact_observed": 0}
+        try:
+            with self._connect() as con:
+                rows = [r[0] for r in con.execute("select node_id from node_memory")]
+                dead = [(n,) for n in rows if n not in live_nodes]
+                if dead:
+                    con.executemany("delete from node_memory where node_id = ?", dead)
+                    deleted["node_memory"] = len(dead)
+                triples = con.execute(
+                    "select subject_id, predicate, object_id from fact_observed"
+                ).fetchall()
+                dead_f = [tuple(t) for t in triples if tuple(t) not in live_edges]
+                if dead_f:
+                    con.executemany(
+                        "delete from fact_observed where subject_id = ? "
+                        "and predicate = ? and object_id = ?",
+                        dead_f,
+                    )
+                    deleted["fact_observed"] = len(dead_f)
+                con.commit()
+        except sqlite3.Error as exc:  # noqa: BLE001
+            _LOG.warning("prune_orphaned_sidecars: %s", exc)
+            return {"node_memory": 0, "fact_observed": 0}
+        return deleted
 
     def has_node_memory_rows(self) -> bool:
         """True when ``node_memory`` has at least one row.

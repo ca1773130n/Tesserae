@@ -12,7 +12,7 @@ sessions, ingère le savoir de façon autonome, améliore sa base par lui-même 
 sert du contexte à la demande prêt pour les agents — remplaçant la CLI de
 compilation par lots manuelle d'aujourd'hui.
 
-> **Statut au moment de la v0.5.0 (2026-06-06) :** Les phases 0–6 ont été **livrées**. La colonne vertébrale du moteur (P0 orchestrateur de pipeline, P1 démon superviseur, P2 moniteur de sessions en direct) se trouve dans `tesserae/engine/` ; l'infrastructure de compilation incrémentale P3 a atterri mais reste **avec le flag OFF/expérimental** ; P4 l'auto-amélioration est persistée via le sidecar `node_memory` (confiance de récurrence numérique, supersede activé par défaut) ; P5 les vrais embeddings par défaut ont été livrés (Piste B) ; et **P6 — le Compilateur de Contexte à la Demande — est la fonctionnalité phare de la v0.5.0**. La phase 7 (unifier serve + watch + deploy + tests de cycle de vie) reste **ouverte**. Le statut par phase est indiqué en ligne ci-dessous. Voir les [notes de version v0.5.0](release-notes/v0.5.0.fr.md).
+> **Statut au moment de la v0.5.0 (2026-06-06) :** Les phases 0–6 ont été **livrées**. La colonne vertébrale du moteur (P0 orchestrateur de pipeline, P1 démon superviseur, P2 moniteur de sessions en direct) se trouve dans `tesserae/engine/` ; P3 la compilation incrémentale a atterri en tant qu'infrastructure dans v0.5.0 et est devenue **la valeur par défaut dans v0.40.0** ; P4 l'auto-amélioration est persistée via le sidecar `node_memory` (confiance de récurrence numérique, supersede activé par défaut) ; P5 les vrais embeddings par défaut ont été livrés (Piste B) ; et **P6 — le Compilateur de Contexte à la Demande — est la fonctionnalité phare de la v0.5.0**. La phase 7 (unifier serve + watch + deploy + tests de cycle de vie) a **été livrée dans v0.40.0** avec la publication laissée manuelle délibérément. Le statut par phase est indiqué en ligne ci-dessous. Voir les [notes de version v0.5.0](release-notes/v0.5.0.fr.md).
 
 ## Forme des dépendances
 
@@ -223,30 +223,48 @@ document sur mesure, cité et prêt pour les agents.
   n'existe pas », synthèse bornée par requête, harness statique, `node_context`
   non classé, exports de tout le corpus.
 
-## Phase 7 — Unifier serve + watch + deploy + tests de cycle de vie ⏳ Ouvert (post-v0.5.0)
+## Phase 7 — Unifier serve + watch + deploy + tests de cycle de vie ✅ Livré v0.40.0 (la publication reste manuelle)
 
-> **Ouvert au moment de la v0.5.0.** La phase de convergence reste le prochain jalon ; le démon (P1) et le côté sortie (P6) qu'elle réunit sont désormais tous deux en place.
+> **Livré dans v0.40.0, avec une bullet volontairement frappée.**
+> `tesserae engine --serve` sert `.tesserae/site` depuis le processus démon sur son propre thread,
+> la construction du site est devenue un échange atomique de répertoire pour qu'une
+> page servie ne fasse jamais 404 lors d'une recompilation, `frontend.py` est
+> supprimé, et le démon a obtenu la primitive d'arrêt qu'un serveur bloquant
+> nécessite. **La publication continue a été coupée**, non reportée :
+> `deploy.py` refuse un arbre sale, fabrique un commit vide par exécution, et
+> mute le propre `.git` de l'utilisateur avec `worktree add` ; et `gh-pages` est
+> lisible au monde tandis que rien dans Tesserae ne nettoie les secrets. La
+> publication reste un `tesserae export site --deploy` délibéré, ou CI à la
+> poussée.
 
 **Objectif :** Un processus supervisé sert le site, recompile au changement et
 publie en continu ; la couche de cycle de vie obtient une couverture de tests.
 
 - **Pourquoi maintenant :** Convergence. A besoin de P1 (démon) et du côté
-  sortie (P6) pour valoir la peine de publier en continu.
-- **Périmètre :** Plier `serve.py` (`TCPServer` bloquant) et `deploy.py` (git
-  push manuel) dans le démon pour que serve + watch + publish partagent un
-  superviseur. Publication continue/avec debounce. Ajouter les tests manquants
-  `test_watch`/`test_serve`/de cycle de vie du démon. Supprimer le module mort
-  déprécié `frontend.py`. Câbler la boucle TODO à typage chaîne de
-  `review_workflow.py` vers un vrai chemin d'application.
-- **Livrables :** `tesserae engine --serve --publish` exécute la boucle
-  complète ; suite de tests de cycle de vie ; code mort supprimé.
+  sortie (P6) pour valoir la peine de servir en direct.
+- **Périmètre, tel que livré :** `serve.py` est réutilisé par le démon, non
+  réécrit — même gestionnaire, même confinement de chemin, désormais sur un
+  `ThreadingHTTPServer` (le `tesserae serve` autonome était mono-thread, donc un
+  `/api/ask` LLM bloquait chaque ressource statique). Le démon a obtenu une liste
+  de fermeture : `serve_forever` ne re-vérifie jamais un événement d'arrêt, donc
+  un événement seul ne peut pas l'arrêter. `build_site` écrit dans un frère
+  intermédiaire et l'échange avec le site en direct en un seul appel système
+  (`renamex_np` sur macOS, `renameat2` sur Linux), se rabattant sur deux
+  renommages. Le chemin d'application de la boucle de revue existait déjà
+  (`--apply-review-decisions`).
+- **Livrables :** `tesserae engine --serve [--serve-host] [--serve-port]` ;
+  `tests/test_site_swap.py` (un lecteur martèle l'index servi lors de trois
+  reconstructions et ne doit voir zéro manques), tests de cycle de vie source
+  serve, un test de déploiement qu'une poussée échouée ne coince plus le repo ;
+  code mort supprimé.
 - **Acceptation :** Une édition de source se propage à une page servie en direct
-  et (optionnellement) à un déploiement publié sans commandes manuelles ; tests
-  de cycle de vie verts.
-- **Risque :** Faible–Moyen — surtout de l'intégration.
-- **Constats d'audit clos :** division serve/watch/deploy, deploy manuel,
-  `frontend.py` déprécié, stub de la boucle de revue, tests de cycle de vie
-  manquants.
+  sans commandes manuelles et sans que la page ne disparaisse jamais ; tests de
+  cycle de vie verts.
+- **Non fait :** `--publish`. Une flotte (`engine --all`) ne sert jamais ; utilisez
+  `tesserae serve --all` à côté.
+- **Constats d'audit clos :** division serve/watch, `frontend.py` déprécié, stub
+  de la boucle de revue, tests de cycle de vie manquants. Deploy manuel reste par
+  décision.
 
 ---
 
@@ -257,11 +275,11 @@ publie en continu ; la couche de cycle de vie obtient une couverture de tests.
 | P0 | Orchestrateur de pipeline | — | —  ✅ Livré en v0.5.0 |
 | P1 | Démon superviseur | P0 | —  ✅ Livré en v0.5.0 |
 | P2 | Moniteur de sessions en direct | P1 | P5  ✅ Livré en v0.5.0 |
-| P3 | Compilation incrémentale | P1 | P5  ⚙️ Infrastructure livrée en v0.5.0 (flag OFF/expérimental) |
+| P3 | Compilation incrémentale | P1 | P5 | ✅ Livré en v0.5.0, par défaut ON v0.40.0 |
 | P4 | Persistance de l'auto-amélioration | P3 | P5, P6  ✅ Livré en v0.5.0 |
 | P5 | Vrais embeddings | P0 | P2, P3, P4  ✅ Livré en v0.5.0 |
 | P6 | Compilateur de contexte à la demande | P5 | P2, P3, P4  ✅ Livré en v0.5.0 |
-| P7 | Unifier serve/watch/deploy | P1, P6 | —  ⏳ Ouvert (post-v0.5.0) |
+| P7 | Unifier serve/watch/deploy | P1, P6 | — | ✅ Livré v0.40.0 (publish manuel) |
 
 **Moteur minimal viable :** P0 + P1 + P2 + P3 — un démon en exécution qui
 surveille les sessions en direct et compile de façon incrémentale. **Produit

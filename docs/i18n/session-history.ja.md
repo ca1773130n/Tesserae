@@ -31,6 +31,7 @@ Tesserae はローカルの AI エージェントトランスクリプトをイ�
 
 ```bash
 tesserae engine        # watch sources, coalesce bursts, auto-recompile
+tesserae engine --serve # .tesserae/site を配信し、再コンパイルはサイトをアトミックに交換
 tesserae engine --once # single drain cycle then exit (deterministic)
 ```
 

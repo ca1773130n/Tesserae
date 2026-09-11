@@ -57,6 +57,13 @@ class _CoveringStore(_NoNodeCoverageStore):
     def provenance_covers_nodes(self, node_ids):  # noqa: ANN001
         return set(node_ids) <= self._covered
 
+    def producer_owned_rows(self, strippable=None):  # noqa: ANN001
+        # The control store is COMPLETE by construction, so it carries the
+        # surface readiness requires. Without it, an injected store passes
+        # readiness and then silently skips the producer strip — 04.1-FOLLOWUP
+        # #3 re-opening through the injected-store door (#4).
+        return set(), set()
+
 
 def test_store_without_node_coverage_api_is_not_ready() -> None:
     """No coverage API => not ready, even for a node it never recorded."""

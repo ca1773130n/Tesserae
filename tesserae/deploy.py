@@ -92,35 +92,40 @@ class GitHubPagesDeployer:
         # Stage in a temp clone via git worktree to avoid touching main tree.
         with tempfile.TemporaryDirectory(prefix="tesserae-pages-") as tmp:
             worktree = Path(tmp) / "worktree"
-            commit_sha, files_uploaded = self._stage_and_commit(
-                site_dir=site_dir,
-                worktree=worktree,
-                branch=branch,
-                remote=remote,
-                message=message,
-                cname=cname,
-            )
+            try:
+                commit_sha, files_uploaded = self._stage_and_commit(
+                    site_dir=site_dir,
+                    worktree=worktree,
+                    branch=branch,
+                    remote=remote,
+                    message=message,
+                    cname=cname,
+                )
 
-            push_argv = ["push"]
-            if force_push:
-                push_argv.append("--force")
-            else:
-                push_argv.append("-u")
-            push_argv.extend([remote, branch])
+                push_argv = ["push"]
+                if force_push:
+                    push_argv.append("--force")
+                else:
+                    push_argv.append("-u")
+                push_argv.extend([remote, branch])
 
-            if dry_run:
-                returned_sha: Optional[str] = None
-                print("Dry run: would run git " + " ".join(push_argv))
-            else:
-                self._git(push_argv, cwd=worktree)
-                returned_sha = commit_sha
-
-            # Always remove the worktree we created in tmp.
-            self._git(
-                ["worktree", "remove", "--force", str(worktree)],
-                cwd=self.project_root,
-                check=False,
-            )
+                if dry_run:
+                    returned_sha: Optional[str] = None
+                    print("Dry run: would run git " + " ".join(push_argv))
+                else:
+                    self._git(push_argv, cwd=worktree)
+                    returned_sha = commit_sha
+            finally:
+                # On EVERY exit path. A failed push used to skip this, then
+                # TemporaryDirectory deleted the directory and the repo kept a
+                # prunable registration that made every later
+                # `git worktree add <branch>` fail with "already used by
+                # worktree at /tmp/tesserae-pages-...".
+                self._git(
+                    ["worktree", "remove", "--force", str(worktree)],
+                    cwd=self.project_root,
+                    check=False,
+                )
 
         if enable_pages and not dry_run:
             self._enable_pages(info)
@@ -183,6 +188,8 @@ class GitHubPagesDeployer:
         cname: Optional[str],
     ) -> tuple[str, int]:
         worktree.parent.mkdir(parents=True, exist_ok=True)
+        # Self-heal a repo wedged by an earlier interrupted deploy.
+        self._git(["worktree", "prune"], cwd=self.project_root, check=False)
 
         if self._remote_branch_exists(remote, branch):
             # Make sure local has up-to-date refs without touching main tree.

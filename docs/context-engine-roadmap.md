@@ -13,13 +13,13 @@ agent-ready context — replacing today's manual batch-compile CLI.
 
 > **Status as of v0.5.0 (2026-06-06):** Phases 0–6 have **shipped**. The engine
 > spine (P0 pipeline orchestrator, P1 supervisor daemon, P2 live session
-> monitor) is in `tesserae/engine/`; P3 incremental-compile infrastructure
-> landed but stays **flag-OFF / experimental**; P4 self-improvement persists via
+> monitor) is in `tesserae/engine/`; P3 incremental compile landed as
+> infrastructure in v0.5.0 and became **the default in v0.40.0**; P4 self-improvement persists via
 > the `node_memory` sidecar (numeric recurrence confidence, supersede
 > default-on); P5 real default embeddings shipped (Track B); and **P6 — the
 > On-Demand Context Compiler — is the v0.5.0 headline feature**. Phase 7 (unify
-> serve + watch + deploy + lifecycle tests) remains **open**. Per-phase status
-> is noted inline below. See the [v0.5.0 release notes](./release-notes/v0.5.0.md).
+> serve + watch + deploy + lifecycle tests) **shipped in v0.40.0** with publish
+> deliberately left manual. Per-phase status is noted inline below. See the [v0.5.0 release notes](./release-notes/v0.5.0.md).
 
 ## Dependency shape
 
@@ -227,28 +227,41 @@ agent-ready doc.
   query-scoped synthesis, static harness, unranked `node_context`, whole-corpus
   exports.
 
-## Phase 7 — Unify serve + watch + deploy + lifecycle tests ⏳ Open (post-v0.5.0)
+## Phase 7 — Unify serve + watch + deploy + lifecycle tests ✅ Shipped v0.40.0 (publish stays manual)
 
 **Goal:** One supervised process serves the site, recompiles on change, and
 publishes continuously; the lifecycle layer gets test coverage.
 
-> **Open as of v0.5.0.** The convergence phase remains the next milestone; the
-> daemon (P1) and the output side (P6) it folds together are now both in place.
+> **Shipped in v0.40.0, with one bullet struck on purpose.**
+> `tesserae engine --serve` serves `.tesserae/site` from the daemon process on its own thread,
+> the site build became an atomic directory swap so a served page never 404s
+> during a recompile, `frontend.py` is deleted, and the daemon grew the stop
+> primitive a blocking server needs. **Continuous publish was cut**, not
+> deferred: `deploy.py` refuses a dirty tree, manufactures an empty commit per
+> run, and mutates the user's own `.git` with `worktree add`; and `gh-pages` is
+> world-readable while nothing in Tesserae scrubs secrets. Publish stays a
+> deliberate `tesserae export site --deploy`, or CI on push.
 
 - **Why now:** Convergence. Needs P1 (daemon) and the output side (P6) to be
-  worth continuously publishing.
-- **Scope:** Fold `serve.py` (blocking `TCPServer`) and `deploy.py` (manual git
-  push) into the daemon so serve + watch + publish share one supervisor.
-  Continuous/debounced publish. Add the missing `test_watch`/`test_serve`/
-  daemon-lifecycle tests. Delete the deprecated `frontend.py` dead module. Wire
-  `review_workflow.py`'s stringly-typed TODO loop into a real apply path.
-- **Deliverables:** `tesserae engine --serve --publish` runs the full loop;
-  lifecycle test suite; dead code removed.
-- **Acceptance:** A source edit propagates to a live-served page and (optionally)
-  a published deploy without manual commands; lifecycle tests green.
-- **Risk:** Low–Med — mostly integration.
-- **Audit findings closed:** serve/watch/deploy split, manual deploy, deprecated
-  `frontend.py`, review-loop stub, missing lifecycle tests.
+  worth serving live.
+- **Scope, as shipped:** `serve.py` is reused by the daemon, not rewritten —
+  same handler, same path containment, now on a `ThreadingHTTPServer` (the
+  standalone `tesserae serve` was single-threaded, so one LLM `/api/ask` blocked
+  every static asset). The daemon got a closer list: `serve_forever` never
+  re-checks a stop event, so an event alone cannot stop it. `build_site` writes
+  to a staging sibling and exchanges it with the live site in one syscall
+  (`renamex_np` on macOS, `renameat2` on Linux), falling back to two renames.
+  The review-loop apply path already existed (`--apply-review-decisions`).
+- **Deliverables:** `tesserae engine --serve [--serve-host] [--serve-port]`;
+  `tests/test_site_swap.py` (a reader hammers the served index during three
+  rebuilds and must see zero misses), serve-source lifecycle tests, a deploy
+  test that a failed push no longer wedges the repo; dead code removed.
+- **Acceptance:** A source edit propagates to a live-served page without manual
+  commands and without the page ever going missing; lifecycle tests green.
+- **Not done:** `--publish`. A fleet (`engine --all`) never serves; use
+  `tesserae serve --all` beside it.
+- **Audit findings closed:** serve/watch split, deprecated `frontend.py`,
+  review-loop stub, missing lifecycle tests. Manual deploy stays by decision.
 
 ---
 
@@ -259,11 +272,11 @@ publishes continuously; the lifecycle layer gets test coverage.
 | P0 | Pipeline orchestrator | — | — | ✅ Shipped v0.5.0 |
 | P1 | Supervisor daemon | P0 | — | ✅ Shipped v0.5.0 |
 | P2 | Live session monitor | P1 | P5 | ✅ Shipped v0.5.0 |
-| P3 | Incremental compile | P1 | P5 | ⚙️ Infra shipped v0.5.0 (flag-OFF) |
+| P3 | Incremental compile | P1 | P5 | ✅ Shipped v0.5.0, default ON v0.40.0 |
 | P4 | Self-improvement persistence | P3 | P5, P6 | ✅ Shipped v0.5.0 |
 | P5 | Real embeddings | P0 | P2, P3, P4 | ✅ Shipped v0.5.0 |
 | P6 | On-demand context compiler | P5 | P2, P3, P4 | ✅ Shipped v0.5.0 (headline) |
-| P7 | Unify serve/watch/deploy | P1, P6 | — | ⏳ Open |
+| P7 | Unify serve/watch/deploy | P1, P6 | — | ✅ Shipped v0.40.0 (publish manual) |
 
 **Minimum viable engine:** P0 + P1 + P2 + P3 — a running daemon that watches
 live sessions and incrementally compiles. **Differentiated product:** add P5 +

@@ -140,6 +140,35 @@ def test_deploy_advances_remote_on_subsequent_run(tmp_path):
     assert "page2.html" in files
 
 
+def test_failed_push_still_removes_the_worktree_registration(tmp_path):
+    """A push failure must not wedge the repo for every later deploy.
+
+    Before the try/finally, a DeployError from the push skipped
+    `git worktree remove`; TemporaryDirectory then deleted the directory and
+    the repo kept a prunable registration, so the NEXT `git worktree add
+    <branch>` failed with "already used by worktree at /tmp/tesserae-pages-...".
+    """
+    project, bare = _make_project_with_remote(tmp_path)
+    site = _make_site(project)
+    # Seed the branch so the second deploy takes the `worktree add <branch>` path.
+    GitHubPagesDeployer(project).deploy(site, branch="gh-pages", remote="origin")
+
+    # Point origin somewhere that cannot be pushed to.
+    _git("remote", "set-url", "origin", str(tmp_path / "does-not-exist.git"), cwd=project)
+    with pytest.raises(DeployError):
+        GitHubPagesDeployer(project).deploy(site, branch="gh-pages", remote="origin")
+
+    listed = _git("worktree", "list", "--porcelain", cwd=project).stdout
+    registrations = [ln for ln in listed.splitlines() if ln.startswith("worktree ")]
+    assert len(registrations) == 1, f"stale worktree registration left behind:\n{listed}"
+
+    # And a deploy against a working remote succeeds afterwards.
+    _git("remote", "set-url", "origin", str(bare), cwd=project)
+    (site / "index.html").write_text("<html>after failure</html>", encoding="utf-8")
+    result = GitHubPagesDeployer(project).deploy(site, branch="gh-pages", remote="origin")
+    assert _remote_sha(bare, "refs/heads/gh-pages") == result["commit_sha"]
+
+
 def test_dry_run_does_not_push(tmp_path):
     project, bare = _make_project_with_remote(tmp_path)
     site = _make_site(project)

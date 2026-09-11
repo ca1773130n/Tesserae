@@ -159,7 +159,7 @@ query / seeds
 
 | Модуль | Ответственность |
 |---|---|
-| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: ведёт извлечение → граф → проходы памяти → wiki-слой → сайт. Владеет `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site` и т.д.). Заранее решает, допустима ли provenance-управляемая инкрементальная компиляция (за флагом `incremental_compile`, по умолчанию OFF). |
+| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: ведёт извлечение → граф → проходы памяти → wiki-слой → сайт. Владеет `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site` и т.д.). Заранее решает, допустима ли provenance-управляемая инкрементальная компиляция (за флагом `incremental_compile`, по умолчанию ON с v0.40.0; `false` отключает). |
 | [`tesserae/cli.py`](../../tesserae/cli.py) | Диспетчеризация CLI с плоскими глаголами (~2 732 строки после удаления устаревших групп подкоманд `project`/`wiki`). Глаголы — `init`, `compile`, `ingest`, `context`, `ask`, `query`, `doctor`, `summary`, `decisions`, `refresh`, `serve`, `engine`, `export`, `vault`, `code`, `lab`, `setup`, `config`, `projects`, `sources`, `federation`, `integrations` — объявлены как метаданные в [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py) и подключаются из этого дерева, а не регистрируются вручную. |
 | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`: пушит `.tesserae/site/` в ветку `gh-pages` через worktree, опционально включает Pages через `gh`. |
 
@@ -414,7 +414,7 @@ site/
 - **Память самоулучшения** — `tests/test_memory_sidecar.py`, `tests/test_decay_supersede.py`, `tests/test_supersede_suppression.py`, `tests/test_mcp_supersede_suppression.py`, `tests/test_memory_contradiction_reinforce.py`.
 - **Retrieval + эмбеддинги** — `tests/test_hybrid_search.py`, `tests/test_ppr.py`, `tests/test_real_embeddings_phase6.py`.
 - **Компилятор контекста** — `tests/test_context_compiler.py` (форма, целостность цитирований, детерминизм, бюджет, PPR-fallback), `tests/test_cli_context.py`, `tests/test_mcp_server_context.py`.
-- **Инкрементальная компиляция (экспериментально)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
+- **Инкрементальная компиляция (default on)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
 - **Идемпотентность** — `tests/test_project_e2e_redesign.py` компилирует дважды и утверждает ноль диффов в `wiki/` и `site/`.
 - **Целостность ссылок** — `tests/test_frontend.py` парсит каждый эмитированный HTML на href-ы и утверждает, что каждая внутренняя ссылка разрешается в сгенерированный файл. `nodes/codeclass-*.html` не производится.
 - **AI-siblings** — для каждого `path/foo.html` набор тестов утверждает существование `path/foo.txt` и `path/foo.json`; JSON парсится и содержит `{title, kind, body, links}`.

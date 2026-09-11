@@ -155,7 +155,7 @@ LLM 会名正言顺地铸造出名为 "CVPR 2026" 的 `Event`。预留是*加性
 
 | 模块 | 职责 |
 |---|---|
-| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`：驱动提取 → 图谱 → 记忆 pass → wiki 层 → 站点。拥有 `ProjectPaths`（`config`、`graph`、`manifest`、`wiki`、`site` 等）。预先决定一次由 provenance 驱动的增量编译是否可行（由 `incremental_compile` 门控，默认 OFF）。 |
+| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`：驱动提取 → 图谱 → 记忆 pass → wiki 层 → 站点。拥有 `ProjectPaths`（`config`、`graph`、`manifest`、`wiki`、`site` 等）。预先决定一次由 provenance 驱动的增量编译是否可行（由 `incremental_compile` 门控，自 v0.40.0 起默认 ON；`false` 拒绝）。 |
 | [`tesserae/cli.py`](../../tesserae/cli.py) | 扁平动词式 CLI 分派（删除遗留的 `project`/`wiki` 子命令组后约 2,732 行）。动词——`init`、`compile`、`ingest`、`context`、`ask`、`query`、`doctor`、`summary`、`decisions`、`refresh`、`serve`、`engine`、`export`、`vault`、`code`、`lab`、`setup`、`config`、`projects`、`sources`、`federation`、`integrations`——以元数据的形式声明在 [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py) 中，并从这棵树接线，而不是手工注册。 |
 | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`：经由 worktree 把 `.tesserae/site/` 推送到 `gh-pages` 分支，可选地通过 `gh` 启用 Pages。 |
 
@@ -400,7 +400,7 @@ Tesserae 输出什么，以及每个值诚实地来自哪里：
 - **自我改进内存** —— `tests/test_memory_sidecar.py`、`tests/test_decay_supersede.py`、`tests/test_supersede_suppression.py`、`tests/test_mcp_supersede_suppression.py`、`tests/test_memory_contradiction_reinforce.py`。
 - **检索 + 嵌入** —— `tests/test_hybrid_search.py`、`tests/test_ppr.py`、`tests/test_real_embeddings_phase6.py`。
 - **上下文编译器** —— `tests/test_context_compiler.py`（形状、引用完整性、确定性、预算、PPR 回退）、`tests/test_cli_context.py`、`tests/test_mcp_server_context.py`。
-- **增量编译（实验性）** —— `tests/test_incremental_compile.py`、`tests/test_incremental_parity.py`、`tests/test_provenance_readiness.py`、`tests/test_sqlite_provenance.py`。
+- **增量编译（默认开启）** —— `tests/test_incremental_compile.py`、`tests/test_incremental_parity.py`、`tests/test_provenance_readiness.py`、`tests/test_sqlite_provenance.py`。
 - **幂等性** —— `tests/test_project_e2e_redesign.py` 编译两次并断言 `wiki/` 和 `site/` 中零 diff。
 - **链接完整性** —— `tests/test_frontend.py` 解析每个产出 HTML 的 href，并断言每个内部链接都解析到一个已生成的文件。不会产出 `nodes/codeclass-*.html`。
 - **AI sibling** —— 对每个 `path/foo.html`，测试套件断言 `path/foo.txt` 和 `path/foo.json` 存在；JSON 可解析且包含 `{title, kind, body, links}`。

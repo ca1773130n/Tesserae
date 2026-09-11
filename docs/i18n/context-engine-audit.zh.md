@@ -11,7 +11,7 @@
 本文档对照该使命审计当前代码库。它是四路并行评审（摄取/会话、自我改进、
 输出/面向智能体、编排/生命周期）的产物。
 
-> **截至 v0.5.0 的状态（2026-06-06）：** 本文档是一份**时间点审计**（2026-06-02 快照），为留档原样保留。其大多数横切发现现已**解决**：缺失的监督守护进程与进程内流水线编排器已发布（引擎骨架，`tesserae/engine/`），实时会话跟踪取代了事后扫描（支柱 1），自我改进各阶段经由 `node_memory` 边车被激活并持久化（supersede 默认开启并带抑制、数值化复现置信度 —— 支柱 2），哈希桶默认嵌入被一个失败即明确报错的真实后端取代（支柱 3），而**支柱 3 的按需上下文编译器如今已存在**（`compile_context`）。经 `GraphStore` 端口的设计型增量层作为基础设施落地，但保持**标志 OFF/实验性**，而 serve+watch+deploy 的统一（构建顺序第 7 步）仍然待办。逐阶段状态见[分阶段路线图](context-engine-roadmap.zh.md)，变更概览见 [v0.5.0 发布说明](release-notes/v0.5.0.zh.md)。下文发现保留为原始快照，未作编辑。
+> **截至 v0.5.0 的状态（2026-06-06）：** 本文档是一份**时间点审计**（2026-06-02 快照），为留档原样保留。其大多数横切发现现已**解决**：缺失的监督守护进程与进程内流水线编排器已发布（引擎骨架，`tesserae/engine/`），实时会话跟踪取代了事后扫描（支柱 1），自我改进各阶段经由 `node_memory` 边车被激活并持久化（supersede 默认开启并带抑制、数值化复现置信度 —— 支柱 2），哈希桶默认嵌入被一个失败即明确报错的真实后端取代（支柱 3），而**支柱 3 的按需上下文编译器如今已存在**（`compile_context`）。经 `GraphStore` 端口的设计型增量层在 v0.5.0 落地，在**v0.40.0 成为默认开启**；serve+watch 的统一（构建顺序第 7 步）在 v0.40.0 已发布，发布保持手动决策。逐阶段状态见[分阶段路线图](context-engine-roadmap.zh.md)，变更概览见 [v0.5.0 发布说明](release-notes/v0.5.0.zh.md)。下文发现保留为原始快照，未作编辑。
 
 ## 一句话结论
 
@@ -87,9 +87,9 @@
 | 粗糙 | `graph_stores/url_resolver.py` 每次调用都用 `asyncio.run` 包裹异步存储 —— 每次 upsert 一个全新事件循环。对流式处理是病态的。 | 引擎上线后采用持久异步运行时。 |
 | 粗糙 | `ports/` 六边形协议已定义，但独立流水线**绕过**它们直奔 JSON 制品。只有 HypePaper 使用端口。 | 让核心流水线一致地流经 `GraphStore`。 |
 | 粗糙 | 三种持久化格式（JSON 制品、SQLite 存储、Kuzu）没有单一真相来源；Kuzu 适配器把每个字段 base64 包裹以规避 0.16 损坏 bug。 | 收敛到一个真相来源。 |
-| 粗糙 | `serve`（`TCPServer.serve_forever`）和 `watch` 是**各自的阻塞进程** —— 无法同时 serve + 自动重编译。`deploy` 是手动 git push，解耦的。 | 把 serve + watch + deploy 统一到监督进程下以实现持续发布。 |
-| 缺失 | `frontend.py` 是一个**已弃用的死模块**仍在出货，与 `tesserae/site/` 重复。 | 删除或迁移调用者。 |
-| 粗糙 | `review_workflow.py` 人工评审循环发出供手工编辑的字符串型 `"action": "TODO: merge|keep_separate"` JSON；没有程序化应用路径。 | 接入编译的集成评审队列。 |
+| ~~粗糙~~ 已解决（v0.40） | `serve`（`TCPServer.serve_forever`）和 `watch` 曾是**各自的阻塞进程** —— 无法同时 serve + 自动重编译。`tesserae engine --serve` 如今从守护进程服务，站点在重编译时原子式交换。`deploy` 保持手动 git push **因决策**：需要干净树，而 `gh-pages` 是世界可读的。 | 已完成 —— 见 [context-engine-roadmap.md](context-engine-roadmap.zh.md)。 |
+| ~~缺失~~ 已解决（v0.40） | `frontend.py` 曾是一个**已弃用的死模块**仍在出货，与 `tesserae/site/` 重复。已删除；`tests/test_frontend.py` 断言它保持消失。 | 已完成。 |
+| ~~粗糙~~ 已解决 | `review_workflow.py` 人工评审循环发出供手工编辑的字符串型 `"action": "TODO: merge|keep_separate"` JSON。应用路径已存在：`--apply-review-decisions` 把编辑后的决策反馈给编译。 | 已完成。 |
 | 注 | TODO/FIXME 标记确实稀少 —— 真正的债务是**注释记录的权宜之计**（changed-only 合并、Kuzu base64、asyncio-per-call），而非零散的 TODO。 | — |
 
 ---
@@ -109,7 +109,7 @@
 6. **真正的默认嵌入**（或醒目的降级警告），使语义检索不再是开箱即用的
    哈希桩。
 7. **统一 serve + watch + deploy** 以实现持续发布；添加生命周期测试
-   （愿景最依赖的层目前覆盖最少）。
+   （在 v0.40.0 中作为 serve + watch 已发布；发布保持手动决策）。
 
 ## 值得保留的优势
 

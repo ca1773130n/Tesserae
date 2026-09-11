@@ -14,6 +14,7 @@ import re
 import secrets
 import shutil
 import sys
+import time
 from dataclasses import dataclass, field, replace as dataclasses_replace
 from datetime import date
 from pathlib import Path
@@ -288,6 +289,49 @@ class ProjectPaths:
     # metadata key would survive an incremental compile, vanish on a full one,
     # and land in ``graph.json`` bytes.
     merge_ledger: Path = Path(".tesserae/merge-ledger.json")
+
+
+
+def _exchange_directories(a: Path, b: Path) -> bool:
+    """Atomically swap two directories in place; ``False`` if the OS cannot.
+
+    macOS has ``renamex_np(RENAME_SWAP)`` (10.12+), Linux ``renameat2
+    (RENAME_EXCHANGE)`` (3.15+, glibc 2.28+ exports it; older glibc needs the
+    raw syscall). Both leave every path present at every instant, which is
+    what lets the daemon serve ``.tesserae/site`` while it rebuilds it.
+    """
+    import ctypes
+    import ctypes.util
+
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+    except OSError:
+        return False
+    src, dst = os.fsencode(str(a)), os.fsencode(str(b))
+    if sys.platform == "darwin":
+        fn = getattr(libc, "renamex_np", None)
+        if fn is None:
+            return False
+        fn.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        rc = fn(src, dst, 0x2)  # RENAME_SWAP
+    elif sys.platform.startswith("linux"):
+        at_fdcwd, rename_exchange = -100, 0x2
+        fn = getattr(libc, "renameat2", None)
+        if fn is not None:
+            fn.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+            rc = fn(at_fdcwd, src, at_fdcwd, dst, rename_exchange)
+        else:
+            nr = {"x86_64": 316, "aarch64": 276}.get(os.uname().machine)
+            if nr is None:
+                return False
+            libc.syscall.argtypes = [ctypes.c_long, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+            rc = libc.syscall(nr, at_fdcwd, src, at_fdcwd, dst, rename_exchange)
+    else:
+        return False
+    if rc != 0:
+        logger.debug("directory exchange unavailable (errno %d); falling back to two renames", ctypes.get_errno())
+        return False
+    return True
 
 
 class ProjectWiki:
@@ -720,33 +764,49 @@ class ProjectWiki:
         # to a TRUE full recompile: re-extract the WHOLE corpus with
         # changed_only=False, so the default path is byte-identical to a
         # from-scratch compile (Codex B4) — never a prior+delta merge.
+        # Wall-clock for the build-history row. 238 entries recorded node and
+        # edge counts and no duration at all, so "are compiles getting slower"
+        # — the question that decides whether incremental is worth its
+        # correctness cost — could not be answered from the ledger the project
+        # keeps for exactly that purpose. monotonic, so a clock adjustment
+        # mid-compile cannot produce a negative or absurd elapsed.
+        self._compile_started = time.monotonic()
+        #: ``downgrade`` answers the question the logs could not: you asked for
+        #: ``--changed-only`` and got a full recompile — why. Every demotion
+        #: site below already knows the reason and none of it reached either the
+        #: operator or the ledger, so "incremental does nothing for me" was
+        #: indistinguishable from "incremental is off".
+        self._compile_stats = {
+            "mode": "full", "sources_extracted": 0, "downgrade": None,
+        }
+        if changed_only and not bool(cfg.get("incremental_compile", True)) and (
+            incremental_override is not False
+        ):
+            self._compile_stats["downgrade"] = "incremental_compile flag is off"
+
         incremental_active = False
         prior_graph_for_diff: Optional[ResearchGraph] = None
         if changed_only and self.paths.graph.exists():
             incremental_enabled = (
                 incremental_override
                 if incremental_override is not None
-                else bool(cfg.get("incremental_compile", False))
+                else bool(cfg.get("incremental_compile", True))
             )
             if incremental_enabled:
-                # EXPERIMENTAL — incremental is byte-identical to a full compile
-                # for the parity-gated edit shapes (additive K=1/5/21,
-                # content-reduction, file-deletion, RENAME, alias-identity change,
-                # both-endpoints-move), but a Codex re-review found remaining
-                # divergence for MULTI-OWNER payload (re-extraction only re-runs
-                # the canonical co-owner, not the union), producer-layer removal
-                # (producer-owned nodes aren't tombstoned on incremental), the
-                # over-cap fallback (not a true full compile), and untracked
-                # post-pass edges. Tracked in 04.1-FOLLOWUP. The flag stays OFF
-                # by default (full recompile = correct); do not enable in
-                # production until those close.
-                logger.warning(
-                    "incremental_compile is ENABLED but EXPERIMENTAL: byte-parity "
-                    "with a full compile holds for the parity-gated edit shapes, "
-                    "but known gaps remain (multi-owner payload, producer-layer "
-                    "removal, over-cap fallback). The default (flag off) full "
-                    "recompile is the safe, supported path."
-                )
+                # DEFAULT ON since v0.40.0. Byte-parity with a full compile is
+                # proven by tests/test_incremental_parity.py for every gated
+                # edit shape — additive K=1/5/21, content reduction, file
+                # deletion, rename, alias-identity change, both-endpoint move,
+                # producer removal — plus the multi-owner payload cases in
+                # tests/test_reextraction_payload.py.
+                #
+                # Read that claim carefully, because it was false before: until
+                # the provenance remap landed, every one of those arms was
+                # silently demoted to a FULL compile, so the gate compared full
+                # against full and proved nothing. The gate now asserts
+                # `mode == "incremental"` from the build ledger, which is what
+                # makes "proven" mean anything. Set `incremental_compile: false`
+                # to opt back out.
                 _prior = _strip_generated_layer(load_graph_file(self.paths.graph))
                 if _prior.nodes or _prior.edges:
                     _prior_edge_triples = {
@@ -771,7 +831,19 @@ class ProjectWiki:
                             prior_edge_triples=_prior_edge_triples,
                         )
                     if incremental_active:
-                        prior_graph_for_diff = _prior
+                        # Strip AFTER readiness, never before: readiness must
+                        # still prove the sidecar covers every prior node and
+                        # edge INCLUDING the producer rows. Only what the differ
+                        # consumes is stripped.
+                        if store is not None and hasattr(store, "producer_owned_rows"):
+                            _prod_nodes, _prod_edges = store.producer_owned_rows()
+                        else:
+                            _prod_nodes, _prod_edges = self._sqlite_producer_owned(
+                                self.paths.sqlite
+                            )
+                        prior_graph_for_diff = _strip_producer_layer(
+                            _prior, _prod_nodes, _prod_edges
+                        )
         # Effective changed-only for the EXTRACTION batch: only re-extract a
         # subset when an incremental compile is genuinely active. Otherwise
         # re-extract everything (true full recompile, Codex B4) — UNLESS the
@@ -785,6 +857,13 @@ class ProjectWiki:
         # the manifest shows ``graph.json`` is not known to cover every tracked
         # document: the differ would reuse that partial graph as the corpus.
         effective_changed_only = changed_only and incremental_active
+        if incremental_active:
+            self._compile_stats["mode"] = "incremental"
+            self._compile_stats["downgrade"] = None
+        elif changed_only and self._compile_stats.get("downgrade") is None:
+            self._compile_stats["downgrade"] = (
+                "provenance sidecar missing or does not cover the prior graph"
+            )
         # ...with ONE narrow exception, decided below: ``--changed-only
         # --retry-fallbacks`` on a corpus that is byte-for-byte unchanged AND
         # whose prior ``graph.json`` is known-complete. That is the one shape
@@ -958,6 +1037,10 @@ class ProjectWiki:
                         prior_graph_for_diff = None
                         effective_changed_only = False
                         noop_blocked = ungraphed_reason
+                        self._compile_stats["mode"] = "full"
+                        self._compile_stats["downgrade"] = (
+                            f"graph does not cover the corpus ({ungraphed_reason})"
+                        )
                     # else: coverage is complete, so the differ's reuse is sound
                     # and the scoped run proceeds — no standing full-recompile
                     # tax on incremental workspaces.
@@ -1343,6 +1426,17 @@ class ProjectWiki:
         # batch actually processed — so a deferred doc on that path really did
         # lose its nodes and must not stay stamped.
         tombstoned_resolved: set[str] = set()
+        # Files the co-owner re-extraction actually processed. Initialised at
+        # this outer scope because the manifest stamp block below runs on EVERY
+        # filesystem compile, including full and no-op runs where the
+        # incremental branch never executes.
+        reextracted_paths: set[str] = set()
+        reextract_per_file: List[ResearchGraph] = []
+        # Manifest keys for changed_paths that no longer exist on disk, in the
+        # same string form ``candidate_keys`` uses. Outer scope for the same
+        # reason: the stamp block runs on EVERY filesystem compile, including
+        # full and no-op runs where the incremental branch never executes.
+        deleted_manifest_keys: set[str] = set()
         if incremental_active and prior_graph_for_diff is not None:
             prior_graph = prior_graph_for_diff
             # A DELETED changed_path no longer exists on disk, so the batch
@@ -1351,10 +1445,29 @@ class ProjectWiki:
             # idempotent no-op case — we must still tombstone what the deleted
             # file solely owned. Detect deletions explicitly so the no-op branch
             # only fires when nothing changed AND nothing was removed.
-            deleted_changed = bool(
-                changed_paths is not None
-                and any(not Path(p).exists() for p in changed_paths)
-            )
+            if changed_paths is not None:
+                _missing = [Path(p) for p in changed_paths if not Path(p).exists()]
+            else:
+                # Plain ``--changed-only`` (CLI, daemon, refresh): nobody NAMES
+                # the deletion, so read it off the manifest. Without this the
+                # differ's changed set was ``batch.processed_paths`` — files
+                # that exist and were re-extracted — and a deletion-only edit
+                # took the no-op branch below: the deleted document's nodes
+                # survived in graph.json and its manifest key survived too, so
+                # the NEXT run refused to reuse the graph and re-extracted the
+                # whole corpus. Measured on a 3-doc fixture before the fix:
+                # ``rm a.md`` + ``--changed-only`` left ``Paper:a`` live.
+                _missing = [
+                    Path(k) for k in self._load_manifest()
+                    if not k.startswith("source:") and not Path(k).exists()
+                ]
+            deleted_changed = bool(_missing)
+            # RESOLVED, like ``candidate_keys`` and ``changed_set``: on macOS
+            # ``/var`` is a symlink to ``/private/var``, so the unresolved form
+            # never matches a manifest key and the prune silently does nothing.
+            # ``resolve()`` is non-strict, so a path that no longer exists still
+            # normalises.
+            deleted_manifest_keys = {str(p.resolve()) for p in _missing}
             if processed == 0 and not graph.nodes and not deleted_changed:
                 # Nothing actually changed this run: the prior graph IS the
                 # corpus. (Empty incremental run — byte-idempotent no-op.)
@@ -1367,10 +1480,12 @@ class ProjectWiki:
                 if changed_paths is not None:
                     changed_set = {str(Path(p).resolve()) for p in changed_paths}
                 else:
+                    # The re-extracted files PLUS the manifest keys whose file is
+                    # gone: both lost their claim on the prior graph.
                     changed_set = {
                         str(Path(p).resolve())
                         for p in (batch.processed_paths if loader is None else [])
-                    }
+                    } | deleted_manifest_keys
                 inc_store = store if store is not None else SqliteGraphStore(self.paths.sqlite)
                 # Tombstone NODES whose provenance set became empty after
                 # removing the changed files (cross-file nodes co-owned by an
@@ -1417,14 +1532,49 @@ class ProjectWiki:
                     # edit, or the changed file still mentions it), the merge
                     # below carries the correct fresh ``source_path`` — leave it.
                     fresh_node_ids = {n.id for n in graph.nodes}
-                    stale_ids = {
+                    # IMPACTED: every prior node that lost provenance from a
+                    # changed file, whether or not it was also freshly
+                    # extracted. This is the set whose surviving co-owners must
+                    # be re-read, because a full compile merges all their
+                    # fragments and the payload that survives (aliases above
+                    # all) is decided across the whole set.
+                    impacted_ids = {
                         n.id
                         for n in kept_nodes
-                        if n.id not in fresh_node_ids
-                        and n.source_path
+                        if n.source_path
                         and str(Path(n.source_path).resolve()) in changed_set
                     }
-                    canonical = inc_store.surviving_source_paths(stale_ids)
+                    # STALE is the narrower question — which prior nodes are no
+                    # longer produced by anything fresh — and answers only
+                    # "drop this from the prior graph". A renamed file re-emits
+                    # the same ids, so those are impacted but NOT stale.
+                    stale_ids = {
+                        nid for nid in impacted_ids if nid not in fresh_node_ids
+                    }
+                    # EVERY surviving owner, not just min(). The canonical
+                    # winner of a cross-file entity is decided by the longest
+                    # display name across all of them, so re-extracting one
+                    # owner mints a different id than a full compile whenever
+                    # the winning spelling lives in a file we did not re-read.
+                    if hasattr(inc_store, "surviving_source_paths_all"):
+                        surviving_all = inc_store.surviving_source_paths_all(
+                            impacted_ids
+                        )
+                    else:
+                        surviving_all = {
+                            nid: [src]
+                            for nid, src in inc_store.surviving_source_paths(
+                                impacted_ids
+                            ).items()
+                        }
+                    # ``canonical`` stays min(): the producer-sentinel test just
+                    # below relies on min() preferring a real path over a
+                    # ``__``-prefixed sentinel (``/`` < ``_``), so a ``__`` value
+                    # here still means "no surviving file owner". Widening it
+                    # would silently re-extract producer-owned nodes.
+                    canonical = {
+                        nid: min(paths) for nid, paths in surviving_all.items() if paths
+                    }
                     # EXCLUDE producer-owned nodes (Plan 02 contract): a node
                     # whose only surviving provenance source is a ``__``-prefixed
                     # producer sentinel (``__code_graph__`` / ``__session_graph__``
@@ -1445,25 +1595,59 @@ class ProjectWiki:
                         for nid, src in canonical.items()
                         if nid not in producer_only
                     }
-                    if canonical:
-                        kept_nodes = [
-                            dataclasses_replace(n, source_path=canonical[n.id])
-                            if n.id in canonical
-                            else n
-                            for n in kept_nodes
-                        ]
                     # Surviving co-owner FILES to re-extract: the canonical
-                    # winner file per stale node (a real markdown path that
-                    # still exists on disk). The merge re-runs the dedup rule,
-                    # so the canonical-path set is sufficient — the changed
-                    # file's contribution is already in the fresh ``graph``.
+                    # the UNION of every surviving real owner (real markdown
+                    # paths that still exist on disk). Not the canonical winner
+                    # alone: that winner can only be re-derived by re-merging
+                    # every spelling variant, and the variant that wins may live
+                    # in a file this set would otherwise omit. ``sorted`` is
+                    # load-bearing — ``merge_graphs`` is first-wins, so an
+                    # unsorted union makes the winner vary run to run.
                     co_owner_files = sorted(
                         {
                             src
-                            for src in canonical.values()
+                            for nid, paths in surviving_all.items()
+                            if nid not in producer_only
+                            for src in paths
                             if not src.startswith("__") and Path(src).exists()
                         }
                     )
+                    # Re-point the surviving node's source_path ONLY when the
+                    # re-extraction will not cover it. co_owner_files is now the
+                    # full owner union, so any node it covers is re-minted with
+                    # the source_path a full compile gives it — and the prior
+                    # graph sorts FIRST in merge_inputs, so a re-point here
+                    # would beat that fresh value and diverge. Measured on the
+                    # rename case: the only remaining graph.json difference was
+                    # one canonical Person's source_path.
+                    _reextracted = set(co_owner_files)
+                    _covered = {
+                        nid
+                        for nid, paths in surviving_all.items()
+                        if any(src in _reextracted for src in paths)
+                    }
+                    if canonical:
+                        kept_nodes = [
+                            dataclasses_replace(n, source_path=canonical[n.id])
+                            if n.id in canonical and n.id not in _covered
+                            else n
+                            for n in kept_nodes
+                        ]
+                    if _covered:
+                        # For a covered node the re-extraction is AUTHORITATIVE:
+                        # co_owner_files is the full union of its surviving
+                        # owners, so the fresh graph reproduces its complete
+                        # merged payload. Keeping the prior copy as well means
+                        # prior wins (it sorts first in merge_inputs and
+                        # prefer_research_node keeps `existing`), which pins
+                        # stale payload — on a RENAME that is the old, deleted
+                        # source_path, the last graph.json difference in the
+                        # rename parity case.
+                        # Nodes only: the kept_edges comprehension further down
+                        # already filters incident edges against the surviving
+                        # node ids, so dropping them here would be a second,
+                        # divergent copy of that rule.
+                        kept_nodes = [n for n in kept_nodes if n.id not in _covered]
                     if co_owner_files:
                         # Safety CAP: bound re-extraction cost for dense-sharing
                         # corpora. Over the cap we cannot cheaply re-derive the
@@ -1488,6 +1672,13 @@ class ProjectWiki:
                                 changed_only=False,
                                 limit=limit,
                             )
+                            # Those files WERE extracted this run and their
+                            # nodes ARE in the final graph, so the manifest's
+                            # ``graphed`` stamp below must record them. The
+                            # nested BatchIngestRunner rewrites their manifest
+                            # entries WITHOUT it, so without this they silently
+                            # lose the stamp a full compile keeps.
+                            reextracted_paths = set(re_batch.processed_paths)
                             full_graphs = re_batch.graphs or [re_batch.graph]
                             graph = (
                                 ResearchCorpusAnalyzer().summarize_trends(
@@ -1513,10 +1704,23 @@ class ProjectWiki:
                                 source_kind=markdown_source_kind,
                                 changed_only=False,
                             )
+                            # Those files WERE extracted this run and their
+                            # nodes ARE in the final graph, so the manifest's
+                            # ``graphed`` stamp below must record them. The
+                            # nested BatchIngestRunner rewrites their manifest
+                            # entries WITHOUT it, so without this they silently
+                            # lose the stamp a full compile keeps.
+                            reextracted_paths = set(re_batch.processed_paths)
                             reextract_graph = (
                                 merge_graphs(re_batch.graphs)
                                 if re_batch.graphs
                                 else re_batch.graph
+                            )
+                            # Kept per-file so the final merge can order every
+                            # fresh graph by source path, the way a full compile
+                            # sees them.
+                            reextract_per_file = list(
+                                re_batch.graphs or [re_batch.graph]
                             )
                 if full_fallback:
                     # Full-compile fallback already replaced ``graph``.
@@ -1530,6 +1734,23 @@ class ProjectWiki:
                     # Extra non-stale nodes a co-owner re-extraction emits merge
                     # normally and must not corrupt other nodes (Pitfall 2).
                     kept_nodes = [n for n in kept_nodes if n.id not in stale_ids]
+                    # A prior node whose source_path no longer EXISTS cannot be
+                    # authoritative: a full compile never produces one, because
+                    # it only ever attributes a node to a file it just read.
+                    # Such a node is not necessarily stale — a RENAME re-extracts
+                    # the same id from the new path, so it is in fresh_node_ids
+                    # and ``stale_ids`` deliberately skips it — but the prior
+                    # copy sorts first in the merge and ``prefer_research_node``
+                    # keeps ``existing``, so without this it pins the OLD,
+                    # deleted path forever. Producer sentinels (``__``) and
+                    # nodes with no source_path are untouched: neither names a
+                    # file whose absence means anything.
+                    kept_nodes = [
+                        n for n in kept_nodes
+                        if not n.source_path
+                        or str(n.source_path).startswith("__")
+                        or Path(n.source_path).exists()
+                    ]
                     kept_ids = {n.id for n in kept_nodes}
                     kept_edges = [
                         e for e in prior_graph.edges
@@ -1538,11 +1759,19 @@ class ProjectWiki:
                         and (e.source, e.type, e.target) not in removed_edges
                     ]
                     prior_kept_graph = ResearchGraph(nodes=kept_nodes, edges=kept_edges)
-                    merge_inputs = [prior_kept_graph]
-                    if reextract_graph is not None:
-                        merge_inputs.append(reextract_graph)
-                    merge_inputs.append(graph)
-                    graph = merge_graphs(merge_inputs)
+                    # FRESH graphs merge in CORPUS PATH ORDER, exactly as a
+                    # full compile extracts them. merge_graphs is first-wins, so
+                    # the order decides which spelling variant of a cross-file
+                    # entity supplies the surviving payload (source_path above
+                    # all). Appending the re-extraction before the changed-file
+                    # batch put co-owners ahead of a renamed file that sorts
+                    # before them, and the node kept the OLD deleted path — the
+                    # last graph.json difference in the rename parity case.
+                    # The prior graph stays first: it is not a fresh extraction
+                    # and carries the nodes neither batch re-read.
+                    _fresh = list(reextract_per_file) + list(extracted_graphs)
+                    _fresh.sort(key=lambda g: _provenance_source_for(g))
+                    graph = merge_graphs([prior_kept_graph] + _fresh)
         # Bug A guard: after every merge — native FS extractor, code graph,
         # RAG-Anything, prior incremental graph — strip any concept-layer node
         # whose name is a filename or path; we don't want those duplicating
@@ -1606,7 +1835,14 @@ class ProjectWiki:
         # (e.g. 3 vs 2 COMMUNITY_SUMMARY nodes) — the CMP-03 community-drift
         # bug. It is an idempotent no-op for a full compile (the graph is
         # already canonical), so byte-idempotence is preserved.
-        graph = merge_graphs([graph])
+        # Capture the id map this canonicalization applies. Extraction
+        # provenance was computed against PRE-merge ids, so without it every
+        # cross-file edge whose endpoint got redirected loses its row — the
+        # defect that kept edge readiness false and silently demoted every
+        # incremental compile to a full one. See merge_graphs.
+        _canonical_remap: Dict[str, str] = {}
+        graph = merge_graphs([graph], redirect_out=_canonical_remap)
+        self._canonical_remap = _canonical_remap
         # Descent hierarchy sidecar (PR4): persist the full Louvain dendrogram
         # + hub list to ``.tesserae/hierarchy.json``. Runs on the canonical
         # graph (the same ordering CMP-03 requires) and BEFORE the community-
@@ -1661,7 +1897,20 @@ class ProjectWiki:
         # files. ``_write_artifacts`` records these rows (preserving
         # first_seen_at) and then reconciles the sidecar against the final
         # graph (Codex M5), so stale rows for dropped nodes/edges are purged.
-        extraction_prov = compute_extraction_provenance(extracted_graphs)
+        extraction_prov = _remap_provenance(
+            compute_extraction_provenance(extracted_graphs),
+            getattr(self, "_canonical_remap", None),
+        )
+        # The blast radius, stamped BEFORE the artifacts are written: it is
+        # ``_write_artifacts`` that appends the build-history row, so a stat
+        # recorded at result-assembly time (~150 lines below) lands after the
+        # ledger has already been written and never reaches it. An incremental
+        # run whose ``processed`` approaches the corpus size is a full compile
+        # paying incremental's correctness tax for nothing, and that comparison
+        # is the whole basis for keeping or dropping the feature.
+        if isinstance(getattr(self, "_compile_stats", None), dict):
+            self._compile_stats["sources_extracted"] = processed
+
         self._write_artifacts(
             graph,
             store=store,
@@ -1714,7 +1963,7 @@ class ProjectWiki:
         # additionally excludes the ``noop_skip`` short-circuit, which extracted
         # nothing and therefore has nothing to re-stamp.
         if loader is None and batch is not None:
-            processed_keys = set(batch.processed_paths)
+            processed_keys = set(batch.processed_paths) | reextracted_paths
             # Did graph.json get rebuilt from THIS run's extractions alone, or
             # was the prior graph merged into it? Both stamp decisions below
             # turn on that one difference, and so does the prune further down.
@@ -1798,6 +2047,23 @@ class ProjectWiki:
                 if key.startswith("source:"):
                     continue
                 if full_run and key not in candidate_keys:
+                    del stamped[key]
+                    continue
+                # A SCOPED run keeps every entry it did not look at, which is
+                # right for an unchanged file and wrong for a DELETED one: the
+                # caller named it in changed_paths, it is gone from disk, and a
+                # full compile drops its entry. Without this the incremental
+                # arm carries a manifest entry for a file that no longer
+                # exists — the sole remaining divergence in the file-deletion
+                # parity case once the graph itself converged.
+                #
+                # Scoped to keys the caller actually NAMED. A missing file that
+                # was not in changed_paths is not this run's business: it may
+                # simply be outside the scope it was asked to look at.
+                elif (
+                    not full_run
+                    and key in deleted_manifest_keys
+                ):
                     del stamped[key]
                     continue
                 entry = stamped[key]
@@ -2927,11 +3193,45 @@ class ProjectWiki:
             github_blob_base=github_blob_base_cfg if isinstance(github_blob_base_cfg, str) else None,
         )
         self.paths.wiki.mkdir(parents=True, exist_ok=True)
-        return StaticSiteBuilder(
+        builder = StaticSiteBuilder(
             site_title=site_title,
             show_sources=show_sources,
             github_blob_base=github_blob_base,
-        ).write_site(graph, self.paths.wiki, target)
+        )
+        if output is not None:
+            # An explicit --output is a one-shot export, not the served root.
+            # Keep the old behaviour verbatim so no CLI surface changes.
+            return builder.write_site(graph, self.paths.wiki, target)
+
+        # The DEFAULT site is what the daemon serves, so it must never be
+        # absent. ``write_site`` rmtree's its target before writing, which means
+        # a served directory disappears for the whole build — a source edit
+        # propagating to a live page delivered as "the site 404s for the length
+        # of a compile, then comes back changed".
+        #
+        # Build into a sibling staging dir on the SAME filesystem, then swap.
+        # Two renames rather than one because ``os.replace`` onto a non-empty
+        # directory raises ENOTEMPTY on POSIX; the window in which ``site`` does
+        # not exist is the gap between them, sub-millisecond instead of minutes.
+        staging = target.parent / ".site.staging"
+        retired = target.parent / ".site.retired"
+        for scratch in (staging, retired):
+            if scratch.exists():
+                shutil.rmtree(scratch, ignore_errors=True)
+        result = builder.write_site(graph, self.paths.wiki, staging)
+        if target.exists() and _exchange_directories(staging, target):
+            # One syscall: the old site is now under ``staging``. No window.
+            shutil.rmtree(staging, ignore_errors=True)
+            return result
+        # Two renames rather than one because ``os.replace`` onto a non-empty
+        # directory raises ENOTEMPTY on POSIX. A reader in a tight loop DOES
+        # hit the gap between them (measured: 20–300 misses per rebuild), which
+        # is why the exchange above is tried first and this is the fallback.
+        if target.exists():
+            os.replace(target, retired)
+        os.replace(staging, target)
+        shutil.rmtree(retired, ignore_errors=True)
+        return result
 
     def query(
         self,
@@ -3311,6 +3611,10 @@ class ProjectWiki:
             "record_edge_provenance_many",
             "provenance_covers_edges",
             "provenance_covers_nodes",
+            # Without this an injected store passes readiness and then silently
+            # skips the producer strip, re-opening 04.1-FOLLOWUP #3 (that is
+            # blocker #4's shape). Absent surface -> full fallback.
+            "producer_owned_rows",
         )
         for method in required:
             if not hasattr(store, method):
@@ -3322,6 +3626,44 @@ class ProjectWiki:
         if prior_edge_triples and not store.provenance_covers_edges(prior_edge_triples):
             return False
         return True
+
+    @staticmethod
+    def _sqlite_producer_owned(db_path: Path):
+        """``producer_owned_rows`` without constructing SqliteGraphStore.
+
+        Same discipline as :meth:`_sqlite_provenance_ready` and for the same
+        reason (Codex B3): that constructor's ``create table if not exists``
+        would mint an empty sidecar and make an old db look ready.
+        """
+        try:
+            import sqlite3 as _sq
+
+            from .graph_stores.sqlite import SqliteGraphStore as _S
+
+            allow = _S.STRIPPABLE_PRODUCERS
+            nodes: dict = {}
+            edges: dict = {}
+            with _sq.connect(str(db_path)) as con:
+                for name in ("node_provenance", "edge_provenance"):
+                    if con.execute(
+                        "select 1 from sqlite_master where type='table' and name=?",
+                        (name,),
+                    ).fetchone() is None:
+                        return set(), set()
+                for node_id, src in con.execute(
+                    "select node_id, source_path from node_provenance"
+                ):
+                    nodes.setdefault(node_id, set()).add(src or "")
+                for source, etype, target, src in con.execute(
+                    "select source, type, target, source_path from edge_provenance"
+                ):
+                    edges.setdefault((source, etype, target), set()).add(src or "")
+            return (
+                {k for k, v in nodes.items() if v and v <= allow},
+                {k for k, v in edges.items() if v and v <= allow},
+            )
+        except Exception:  # noqa: BLE001 — a sidecar read never fails a compile
+            return set(), set()
 
     @staticmethod
     def _sqlite_provenance_ready(
@@ -3541,9 +3883,12 @@ class ProjectWiki:
         # only sidecar source starts with ``"__"`` — these are regenerated by
         # their producer every compile and must NOT be tombstoned as stale
         # surviving cross-file nodes.
+        # Computed unconditionally: the producer filter below and the orphan
+        # prune further down both need them, and the prune runs on every full
+        # compile whether or not a producer contributed rows.
+        final_node_ids = {n.id for n in graph.nodes}
+        final_edge_keys = {(e.source, e.type, e.target) for e in graph.edges}
         if producer_prov is not None:
-            final_node_ids = {n.id for n in graph.nodes}
-            final_edge_keys = {(e.source, e.type, e.target) for e in graph.edges}
             prod_node_rows, prod_edge_rows = producer_prov
             for row in prod_node_rows:
                 if row[0] in final_node_ids:
@@ -3558,6 +3903,27 @@ class ProjectWiki:
             # incremental compile (Pitfall 4): there ``extraction_prov`` covers
             # only the changed files, so it would delete every unchanged-file row.
             store.reconcile_provenance(node_rows, edge_rows)
+            # The two sidecars reconcile_provenance does NOT own. They had no
+            # equivalent at all, so they accumulated one row per id that ever
+            # existed: 371,943 node_memory rows for 16,869 live nodes on this
+            # project (95.5% dead), 74.3% of fact_observed likewise, while the
+            # provenance tables it does own sat at 0%. Same trigger — a full
+            # compile, where the live graph is authoritative for the whole
+            # corpus — and never on an incremental one, where it is not.
+            if hasattr(store, "prune_orphaned_sidecars"):
+                try:
+                    pruned = store.prune_orphaned_sidecars(
+                        final_node_ids, final_edge_keys
+                    )
+                    if any(pruned.values()):
+                        logger.info(
+                            "pruned orphaned sidecar rows: %s",
+                            ", ".join(
+                                f"{k}={v}" for k, v in sorted(pruned.items()) if v
+                            ),
+                        )
+                except Exception:  # noqa: BLE001 — a sidecar never fails a compile
+                    logger.warning("orphan prune skipped", exc_info=True)
         else:
             store.record_provenance_many(node_rows)
             if hasattr(store, "record_edge_provenance_many"):
@@ -3833,8 +4199,12 @@ class ProjectWiki:
         # captures) do not survive as stale public pages.
         if self.paths.wiki.exists():
             shutil.rmtree(self.paths.wiki)
-        if self.paths.site.exists():
-            shutil.rmtree(self.paths.site)
+        # NOT the site: ``StaticSiteBuilder.write_site`` wipes its own target, so
+        # stale pages cannot survive either way, and removing it here only
+        # widened the window in which a SERVED directory does not exist from the
+        # duration of write_site to the whole artifact phase. A compile that
+        # crashes mid-phase now leaves the previous site intact instead of
+        # nothing at all.
         self.paths.wiki.mkdir(parents=True, exist_ok=True)
         wiki_store = WikiPageStore(self.paths.wiki)
         WikiLayerProjector(wiki_store).project(graph)
@@ -4078,6 +4448,21 @@ class ProjectWiki:
             "code_nodes": len(code_graph.nodes),
             "code_edges": len(code_graph.edges),
         }
+        # Duration and mode. Without these the ledger records what the graph
+        # became and nothing about what it cost, which is the half needed to
+        # judge incremental against the full recompile it is meant to replace.
+        # ``sources_extracted`` is the one that settles it: an incremental run
+        # that re-extracts most of the corpus is a full compile wearing a flag.
+        started = getattr(self, "_compile_started", None)
+        if started is not None:
+            entry["duration_seconds"] = round(time.monotonic() - started, 3)
+        stats = getattr(self, "_compile_stats", None) or {}
+        if stats.get("mode"):
+            entry["mode"] = stats["mode"]
+        if stats.get("sources_extracted"):
+            entry["sources_extracted"] = int(stats["sources_extracted"])
+        if stats.get("downgrade"):
+            entry["downgrade"] = str(stats["downgrade"])
         head = read_git_head(self.project_root)
         if head:
             entry["git_head"] = head
@@ -4153,6 +4538,50 @@ def _provenance_source_for(graph: ResearchGraph) -> str:
         if node.source_path:
             return node.source_path
     return "__synthesis__"
+
+
+def _remap_provenance(
+    rows: Tuple[List[Tuple[str, str, str]], List[Tuple[str, str, str, str, str]]],
+    remap: Optional[Dict[str, str]],
+) -> Tuple[List[Tuple[str, str, str]], List[Tuple[str, str, str, str, str]]]:
+    """Rewrite provenance rows onto the canonical node ids.
+
+    :func:`compute_extraction_provenance` keys every row on the id the file's
+    own extraction minted. Canonicalization then redirects those ids and their
+    incident edges, so a row that is not rewritten describes a node or edge the
+    final graph does not contain — and the node/edge the final graph DOES
+    contain has no row at all.
+
+    Rows are re-sorted and de-duplicated after rewriting: two files' rows can
+    collapse onto one canonical key, and the sidecar is compared byte-for-byte.
+    The deterministic timestamp is recomputed from the canonical key for the
+    same reason — a ``det:`` hash of a pre-merge id would be stable but wrong.
+    """
+    node_rows, edge_rows = rows
+    if not remap:
+        return node_rows, edge_rows
+
+    def _c(node_id: str) -> str:
+        return remap.get(node_id, node_id)
+
+    remapped_nodes = {
+        (_c(node_id), source_path)
+        for node_id, source_path, _ts in node_rows
+    }
+    remapped_edges = {
+        (_c(src), etype, _c(tgt), source_path)
+        for src, etype, tgt, source_path, _ts in edge_rows
+    }
+    out_nodes = [
+        (node_id, source_path, "det:" + sha256_text(f"{node_id}|{source_path}")[:16])
+        for node_id, source_path in sorted(remapped_nodes)
+    ]
+    out_edges = [
+        (src, etype, tgt, source_path,
+         "det:" + sha256_text(f"{src}|{etype}|{tgt}|{source_path}")[:16])
+        for src, etype, tgt, source_path in sorted(remapped_edges)
+    ]
+    return out_nodes, out_edges
 
 
 def compute_extraction_provenance(
@@ -4318,7 +4747,27 @@ def compute_mention_density(
     return rows
 
 
-def merge_graphs(graphs: Iterable[ResearchGraph]) -> ResearchGraph:
+def merge_graphs(
+    graphs: Iterable[ResearchGraph],
+    *,
+    redirect_out: Optional[Dict[str, str]] = None,
+) -> ResearchGraph:
+    """Merge and canonicalize. ``redirect_out`` receives the id map.
+
+    Canonicalization rewrites node ids and redirects every incident edge, so
+    ANYTHING keyed on a pre-merge id is orphaned by it. Edge provenance is
+    exactly that: ``compute_extraction_provenance`` records one row per
+    per-file extraction triple, and a cross-file entity is minted once per file
+    with a DIFFERENT id each time (``add_node`` folds ``source_path`` into the
+    stable id). Only the endpoint that wins canonicalization keeps its row;
+    every other file's edge to the same entity loses coverage.
+
+    Measured on a 4-paper fixture: 8 correct ``authored_by`` edges in the final
+    graph, 4 provenance rows. ``_sqlite_provenance_ready`` demands full edge
+    coverage, so it answered False and every incremental compile silently
+    degraded to a full recompile — including every arm of the byte-parity gate,
+    which was therefore comparing a full compile against a full compile.
+    """
     nodes = {}
     edges = {}
     for graph in graphs:
@@ -4337,14 +4786,63 @@ def merge_graphs(graphs: Iterable[ResearchGraph]) -> ResearchGraph:
         merge_cross_type_duplicates,
         merge_same_type_aliased_duplicates,
     )
+    _first: Dict[str, str] = {}
     same_type_nodes, same_type_edges = merge_same_type_aliased_duplicates(
-        list(nodes.values()), list(edges.values())
+        list(nodes.values()), list(edges.values()), redirect_out=_first
     )
+    _second: Dict[str, str] = {}
     merged_nodes, merged_edges = merge_cross_type_duplicates(
-        same_type_nodes, same_type_edges
+        same_type_nodes, same_type_edges, redirect_out=_second
     )
+    if redirect_out is not None:
+        # Compose the two passes: pass 1 may send A->B and pass 2 then B->C, so
+        # a caller resolving A must land on C. Chased rather than merged, and
+        # bounded by the number of distinct ids so a cycle cannot hang it.
+        composed: Dict[str, str] = {}
+        for start in set(_first) | set(_second):
+            seen = {start}
+            cur = start
+            while True:
+                nxt = _first.get(cur) or _second.get(cur)
+                if nxt is None or nxt in seen:
+                    break
+                seen.add(nxt)
+                cur = nxt
+            if cur != start:
+                composed[start] = cur
+        redirect_out.update(composed)
     merged = ResearchGraph(nodes=merged_nodes, edges=merged_edges)
     return link_paper_repo_pairs(merged)
+
+
+def _strip_producer_layer(
+    graph: ResearchGraph,
+    producer_node_ids: Set[str],
+    producer_edge_keys: Set[Tuple[str, str, str]],
+) -> ResearchGraph:
+    """Drop prior rows whose ONLY provenance sources are producer sentinels.
+
+    ``_strip_generated_layer`` selects by node TYPE, which can never reach these
+    — a producer-owned node is an ordinary ``MethodologicalConcept`` or
+    ``Event``. Their sentinel ``source_path`` is never in ``changed_set`` either,
+    so the tombstone cannot touch them. The result is that a producer which
+    stops emitting a node leaves it in the graph forever, while a full compile
+    drops it (04.1-FOLLOWUP #3).
+
+    List comprehensions, preserving the prior graph's node and edge ORDER: a
+    set-based rebuild reorders graph.json and flips ``prefer_research_node``'s
+    first-merged-wins rule, which is a byte-idempotence break.
+    """
+    if not producer_node_ids and not producer_edge_keys:
+        return graph
+    kept_nodes = [n for n in graph.nodes if n.id not in producer_node_ids]
+    kept_ids = {n.id for n in kept_nodes}
+    kept_edges = [
+        e for e in graph.edges
+        if e.source in kept_ids and e.target in kept_ids
+        and (e.source, e.type, e.target) not in producer_edge_keys
+    ]
+    return ResearchGraph(nodes=kept_nodes, edges=kept_edges)
 
 
 def _strip_generated_layer(graph: ResearchGraph) -> ResearchGraph:

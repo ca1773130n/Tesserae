@@ -311,3 +311,124 @@ def test_no_orphaned_threads_after_stop(
         if t.name in ("watch-source", "vault-source") and t.is_alive() and not t.daemon
     ]
     assert live == []
+
+
+# ------------------------------------------------- 4. serve source
+
+
+def _seed_site(root: Path) -> None:
+    from tesserae.project import ProjectWiki
+
+    (root / "docs").mkdir(parents=True, exist_ok=True)
+    (root / "docs" / "a.md").write_text("# Alpha\n\nA served page.\n", encoding="utf-8")
+    ProjectWiki.init(root, name="served").compile()
+
+
+def test_serve_source_is_off_unless_asked(tmp_path: Path) -> None:
+    """Binding a port is a side effect a library-style construction must not do."""
+    d, loop = _make_daemon_with_loop(
+        tmp_path, enable_watch=False, enable_vault=False, enable_session_tail=False
+    )
+    d._start_sources(loop)
+    assert all(t.name != "serve-source" for t in d._threads)
+    assert d.serve_port is None
+    assert d._closers == []
+
+
+def test_serve_source_serves_the_site_and_the_closer_releases_the_port(tmp_path: Path) -> None:
+    """The fourth starter: a real socket, served on its own thread, stopped by a closer.
+
+    `serve_forever` never re-checks the stop event, so an event alone cannot
+    stop it — the closer is what unblocks the thread the join then waits for.
+    """
+    import http.client
+    import socket
+
+    _seed_site(tmp_path)
+    d, loop = _make_daemon_with_loop(
+        tmp_path,
+        enable_watch=False,
+        enable_vault=False,
+        enable_session_tail=False,
+        enable_serve=True,
+        serve_port=0,
+    )
+    d._start_sources(loop)
+    try:
+        assert d.serve_port, "port-0 bind did not record the bound port"
+        threads = [t for t in d._threads if t.name == "serve-source"]
+        assert len(threads) == 1 and threads[0].daemon is True
+
+        conn = http.client.HTTPConnection("127.0.0.1", d.serve_port, timeout=5)
+        conn.request("GET", "/index.html")
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        assert resp.status == 200, resp.status
+        assert b"<html" in body.lower()
+    finally:
+        # Mirror run()'s finally: closers BEFORE the joins.
+        d._stop_event.set()
+        for close in d._closers:
+            close()
+        for t in d._threads:
+            t.join(timeout=5.0)
+
+    assert all(not t.is_alive() for t in d._threads)
+    with pytest.raises(OSError):
+        s = socket.create_connection(("127.0.0.1", d.serve_port), timeout=1)
+        s.close()
+
+
+def test_serve_source_bind_failure_is_logged_not_fatal(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """EADDRINUSE must never stop the engine from compiling."""
+    import socket
+
+    _seed_site(tmp_path)
+    taken = socket.socket()
+    taken.bind(("127.0.0.1", 0))
+    taken.listen(1)
+    port = taken.getsockname()[1]
+    try:
+        d, loop = _make_daemon_with_loop(
+            tmp_path,
+            enable_watch=False,
+            enable_vault=False,
+            enable_session_tail=False,
+            enable_serve=True,
+            serve_port=port,
+        )
+        with caplog.at_level(logging.WARNING, logger="tesserae.daemon"):
+            d._start_sources(loop)
+    finally:
+        taken.close()
+    assert d.serve_port is None
+    assert all(t.name != "serve-source" for t in d._threads)
+    assert d._closers == []
+    assert any("serve source not started" in r.getMessage() for r in caplog.records)
+
+
+def test_a_raising_closer_does_not_skip_the_others(tmp_path: Path) -> None:
+    """Closers are guarded one by one: a raise must not strand the pidfile."""
+    d = Daemon(
+        tmp_path,
+        queue_timeout=0.05,
+        enable_watch=False,
+        enable_vault=False,
+        enable_session_tail=False,
+        consolidate=False,
+        install_signal_handlers=False,
+        run_pipeline=lambda paths: None,
+    )
+    ran: list[str] = []
+
+    def bad() -> None:
+        raise RuntimeError("boom")
+
+    d._closers.extend([bad, lambda: ran.append("second")])
+    d.request_stop()
+    assert d.run() == 0
+    assert ran == ["second"]
+    assert not d._pidfile.exists()

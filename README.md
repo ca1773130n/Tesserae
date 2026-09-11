@@ -217,7 +217,7 @@ Run `tesserae --help` for the grouped list, `tesserae <cmd> --help` for flags.
 | `tesserae graph-map` | Budgeted Descent: walk the graph top-down by scope rather than by search term. `--scope org:root` for the agent org tree. |
 | `tesserae verify-claim` | Deterministic verdict on whether the graph licenses a triple. JSON out. |
 | `tesserae verify-attribution` | Is each figure in an answer attributed to the right system and benchmark? No graph, JSON out. |
-| `tesserae engine [--all]` | Supervised refresh daemon — watch, debounce, recompile, and consolidate agent memory on idle (the sleep cycle; `--no-consolidate` to disable). `--all` keeps every registered project fresh in one process. |
+| `tesserae engine [--all] [--serve]` | Supervised refresh daemon — watch, debounce, recompile, and consolidate agent memory on idle (the sleep cycle; `--no-consolidate` to disable). `--all` keeps every registered project fresh in one process. `--serve` also serves the site from the same process, and a recompile swaps the new site in without a moment of 404. |
 | `tesserae refresh` | One-shot: import new sessions → compile → sync vault. |
 | `tesserae agents …` | `init` (infer the org) · `tree` · `show` · `drill` — the layered-memory org tools. |
 | `tesserae distill` | Compact each agent's sessions into its bounded L1 memory layer. |

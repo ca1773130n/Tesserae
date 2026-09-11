@@ -14,7 +14,7 @@ Dieses Dokument prüft die aktuelle Codebasis an dieser Mission. Es ist das
 Ergebnis einer vierfach parallelen Begutachtung (Aufnahme/Sitzungen,
 Selbstverbesserung, Ausgabe/agentenseitig, Orchestrierung/Lebenszyklus).
 
-> **Status zum Zeitpunkt von v0.5.0 (2026-06-06):** Dieses Dokument ist ein **Stichtags-Audit** (Snapshot vom 2026-06-02) und wird für das Archiv unverändert beibehalten. Die meisten seiner übergreifenden Befunde sind nun **behoben**: der fehlende Supervisor-Daemon und der In-Process-Pipeline-Orchestrator wurden ausgeliefert (Engine-Rückgrat, `tesserae/engine/`), das Live-Tailing von Sitzungen ersetzt den nachträglichen Scan (Säule 1), die Selbstverbesserungs-Pässe sind über das `node_memory`-Sidecar aktiviert und persistiert (Supersede standardmäßig aktiv mit Unterdrückung, numerische Wiederholungs-Konfidenz — Säule 2), das Hash-Bucket-Standard-Embedding wird durch ein echtes, laut fehlschlagendes Backend ersetzt (Säule 3), und **der On-Demand-Kontext-Compiler der Säule 3 existiert nun** (`compile_context`). Eine konzipierte inkrementelle Schicht über den `GraphStore`-Port ist als Infrastruktur gelandet, bleibt aber **mit Flag OFF/experimentell**, und die Vereinheitlichung von serve+watch+deploy (Schritt 7 der Build-Reihenfolge) ist noch offen. Den Status je Phase siehe in der [Phasen-Roadmap](context-engine-roadmap.de.md), die Änderungsübersicht in den [v0.5.0-Release-Notes](release-notes/v0.5.0.de.md). Die Befunde unten bleiben unverändert als ursprünglicher Snapshot.
+> **Status zum Zeitpunkt von v0.5.0 (2026-06-06):** Dieses Dokument ist ein **Stichtags-Audit** (Snapshot vom 2026-06-02) und wird für das Archiv unverändert beibehalten. Die meisten seiner übergreifenden Befunde sind nun **behoben**: der fehlende Supervisor-Daemon und der In-Process-Pipeline-Orchestrator wurden ausgeliefert (Engine-Rückgrat, `tesserae/engine/`), das Live-Tailing von Sitzungen ersetzt den nachträglichen Scan (Säule 1), die Selbstverbesserungs-Pässe sind über das `node_memory`-Sidecar aktiviert und persistiert (Supersede standardmäßig aktiv mit Unterdrückung, numerische Wiederholungs-Konfidenz — Säule 2), das Hash-Bucket-Standard-Embedding wird durch ein echtes, laut fehlschlagendes Backend ersetzt (Säule 3), und **der On-Demand-Kontext-Compiler der Säule 3 existiert nun** (`compile_context`). Eine inkrementelle Schicht über den `GraphStore`-Port ist als Infrastruktur in v0.5.0 gelandet und ist **seit v0.40.0 der Standard**; die Vereinheitlichung von serve+watch (Schritt 7 der Build-Reihenfolge) wurde in v0.40.0 ausgeliefert, mit Veröffentlichung bewusst manuell gelassen. Den Status je Phase siehe in der [Phasen-Roadmap](context-engine-roadmap.de.md), die Änderungsübersicht in den [v0.5.0-Release-Notes](release-notes/v0.5.0.de.md). Die Befunde unten bleiben unverändert als ursprünglicher Snapshot.
 
 ## Urteil in einer Zeile
 
@@ -97,9 +97,9 @@ Primitive, es zu bauen, sind alle vorhanden, aber nie zusammengesetzt.
 | grob | `graph_stores/url_resolver.py` umhüllt einen Async-Speicher mit `asyncio.run` **pro Aufruf** — eine frische Ereignisschleife pro Upsert. Pathologisch für Streaming. | Persistente Async-Laufzeit, falls die Engine in Produktion geht. |
 | grob | Die hexagonalen Protokolle von `ports/` sind definiert, aber die eigenständige Pipeline **umgeht** sie und geht direkt zu JSON-Artefakten. Nur HypePaper nutzt den Port. | Die Kern-Pipeline konsistent durch `GraphStore` fließen lassen. |
 | grob | Drei Persistenzformate (JSON-Artefakt, SQLite-Speicher, Kuzu) ohne einzige Wahrheitsquelle; der Kuzu-Adapter umhüllt jedes Feld mit base64, um einen 0.16-Korruptionsbug zu umgehen. | Auf eine Wahrheitsquelle konvergieren. |
-| grob | `serve` (`TCPServer.serve_forever`) und `watch` sind **separate blockierende Prozesse** — man kann nicht serve + automatisches Neukompilieren zusammen. `deploy` ist ein manueller git push, entkoppelt. | serve + watch + deploy unter dem Supervisor für kontinuierliche Veröffentlichung vereinheitlichen. |
-| fehlend | `frontend.py` ist ein **veraltetes totes Modul**, das noch ausgeliefert wird und `tesserae/site/` dupliziert. | Löschen oder Aufrufer migrieren. |
-| grob | Die menschliche Review-Schleife von `review_workflow.py` gibt stringtypisiertes `"action": "TODO: merge|keep_separate"`-JSON zum Handbearbeiten aus; kein programmatischer Anwendungspfad. | Integrierte Review-Warteschlange, in die Kompilierung verdrahtet. |
+| ~~grob~~ resolved (v0.40) | `serve` (`TCPServer.serve_forever`) und `watch` waren **separate blockierende Prozesse** — man konnte nicht serve + automatisches Neukompilieren zusammen. `tesserae engine --serve` bedient jetzt vom Daemon aus und die Site wird bei Neukompilierung atomar ausgetauscht. `deploy` bleibt ein manueller git push **durch Entscheidung**: er braucht einen sauberen Baum, und `gh-pages` ist weltlesbar, während nichts Geheimnisse löscht. | Fertig — siehe [context-engine-roadmap.md](context-engine-roadmap.de.md). |
+| ~~fehlend~~ resolved (v0.40) | `frontend.py` war ein **veraltetes totes Modul**, das noch ausgeliefert wurde und `tesserae/site/` duplizierte. Gelöscht; `tests/test_frontend.py` prüft, dass es gelöscht bleibt. | Fertig. |
+| ~~grob~~ resolved | Die menschliche Review-Schleife von `review_workflow.py` gibt stringtypisiertes `"action": "TODO: merge|keep_separate"`-JSON zum Handbearbeiten aus. Der Anwendungspfad existiert: `--apply-review-decisions` speist die bearbeiteten Entscheidungen zurück in die Kompilierung. | Fertig. |
 | Hinweis | TODO/FIXME-Markierungen sind echt spärlich — die wahre Schuld sind die **in Kommentaren dokumentierten Behelfe** (changed-only-Merge, Kuzu-base64, asyncio-pro-Aufruf), nicht verstreute TODOs. | — |
 
 ---
@@ -124,8 +124,7 @@ Primitive, es zu bauen, sind alle vorhanden, aber nie zusammengesetzt.
 6. **Echte Standard-Embeddings** (oder eine laute Degradierungswarnung), damit
    semantische Abrufung kein Hash-Stub ab Werk ist.
 7. **serve + watch + deploy vereinheitlichen** für kontinuierliche
-   Veröffentlichung; Lebenszyklustests hinzufügen (die Schicht, von der die
-   Vision am meisten abhängt, ist derzeit am wenigsten abgedeckt).
+   Veröffentlichung; Lebenszyklustests hinzufügen (ausgeliefert v0.40.0 als serve + watch; Veröffentlichung bleibt durch Entscheidung manuell).
 
 ## Erhaltenswerte Stärken
 

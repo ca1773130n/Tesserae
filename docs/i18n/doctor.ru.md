@@ -57,6 +57,7 @@ tesserae doctor --project ~/src/other
 | `idempotence` | hygiene | «растяжка» `idempotence_suspect` в output-snapshot | только отчёт (это сигнал о баге, а не то, что нужно автопочинить) |
 | `orphan_worktrees` | hygiene | устаревшие регистрации `git worktree` | **SAFE**: `git worktree prune`; удаление каталогов — только отчёт |
 | `hook_log_bloat` | hygiene | рост `.tesserae/.session-*-hook.log` | **SAFE**: ротирует/усечает логи больше 10 МБ |
+| `sqlite_bloat` | hygiene | строки сайдкара для узлов/рёбер, которых больше нет в графе | **SAFE**: удаляет осиротевшие строки, затем VACUUM |
 | `sidecars` | hygiene | записи `.tesserae/` против реестра сайдкаров ([`tesserae/sidecars.py`](sidecars.ru.md)): осиротевшие `*.tmp.<pid>.<hex>`, ручные копии `graph.json.bak-*`, неклассифицированные записи | **SAFE**: удаляет только осиротевшие tmp-файлы, чей процесс-писатель мёртв и которым больше 24 ч; резервные копии и неклассифицированное — только отчёт |
 | `code_scope_leftovers` | hygiene | остатки выведенного из области кода слоя: `code-graph*.json`, строки кодовых типов в `sqlite.db` | только отчёт — очистка это массовое удаление, поэтому она вынесена в отдельную команду (см. ниже) |
 

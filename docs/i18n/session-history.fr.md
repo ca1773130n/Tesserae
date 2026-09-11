@@ -34,6 +34,7 @@ Lancez la boucle en direct avec :
 ```bash
 tesserae engine        # watch sources, coalesce bursts, auto-recompile
 tesserae engine --once # single drain cycle then exit (deterministic)
+tesserae engine --serve # also serve .tesserae/site; a recompile swaps the site in atomically
 ```
 
 `tesserae refresh` exécute le même pipeline ingest → compile → project

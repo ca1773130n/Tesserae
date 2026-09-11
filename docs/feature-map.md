@@ -132,7 +132,7 @@ The engine spine that drives the three pillars. See [`docs/architecture.md`](arc
 | Provenance sidecar (`node_provenance`, first-seen) | ✅ | [`tesserae/graph_stores/sqlite.py`](../tesserae/graph_stores/sqlite.py) | Foundation for changed-only deletes; always recorded. |
 | `GraphStore` delete surface | ✅ | [`tesserae/ports/graph_store.py`](../tesserae/ports/graph_store.py) | `delete_node`, `delete_nodes_by_source` (drops nodes whose provenance set empties; cross-file concepts survive). |
 | `url_resolver` runtime store dispatch | ✅ | [`tesserae/graph_stores/url_resolver.py`](../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`. |
-| `incremental_compile` flag | ⚠ | [`tesserae/project.py`](../tesserae/project.py) | **Default OFF / experimental.** Byte-parity proven for several edit shapes but multi-owner/producer-lifecycle gaps remain; full compile stays the default. |
+| `incremental_compile` flag | ✅ | [`tesserae/project.py`](../tesserae/project.py) | **Default ON since v0.40.0.** Byte-parity with a full compile is proven by `tests/test_incremental_parity.py` for every gated edit shape, and the gate asserts the incremental arm really ran; `incremental_compile: false` opts out. |
 
 ## Frontend redesign — April 2026
 
@@ -278,6 +278,7 @@ Document-first, hierarchical wiki replaces the old graph dump. See [`docs/fronte
 - ✅ `tesserae sessions discover/import/list` (explicit local agent-history import)
 - ✅ `tesserae export site --watch` (standalone polling watcher)
 - ✅ `tesserae engine` (supervisor loop — v0.5.0)
+- ✅ `tesserae engine --serve` (the daemon serves `.tesserae/site` itself; the site is swapped in atomically on every recompile — v0.40.0)
 - ✅ `tesserae refresh` (prose ingest → compile → project chain — v0.5.0)
 - ✅ `tesserae context` (on-demand context compiler — v0.5.0)
 - ✅ `tesserae export harness`

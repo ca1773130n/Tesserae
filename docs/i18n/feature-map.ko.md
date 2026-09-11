@@ -131,7 +131,7 @@ Neo4j의 agent-memory 설계를 읽고 Tesserae의 자체 제약을 견디는 �
 | 출처 사이드카 (`node_provenance`, first-seen) | ✅ | [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | changed-only 삭제의 토대; 항상 기록됨. |
 | `GraphStore` 삭제 표면 | ✅ | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `delete_node`, `delete_nodes_by_source` (출처 집합이 비는 노드를 제거; 여러 파일에 걸친 개념은 생존). |
 | `url_resolver` 런타임 저장소 디스패치 | ✅ | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`. |
-| `incremental_compile` 플래그 | ⚠ | [`tesserae/project.py`](../../tesserae/project.py) | **기본 OFF / 실험적.** 여러 편집 형태에서 바이트 패리티가 증명되었지만 다중 소유자/생산자 라이프사이클 공백이 남아 있음; 전체 compile이 여전히 기본. |
+| `incremental_compile` 플래그 | ✅ | [`tesserae/project.py`](../../tesserae/project.py) | **v0.40.0 이후 기본 ON.** 게이팅된 모든 편집 형태에서 `tests/test_incremental_parity.py`로 전체 compile과의 바이트 패리티가 증명되었으며, 게이트는 증분 경로가 실제로 실행되었음을 단언; `incremental_compile: false`로 옵트 아웃. |
 
 ## 프론트엔드 리디자인 — 2026년 4월
 
@@ -277,6 +277,7 @@ Neo4j의 agent-memory 설계를 읽고 Tesserae의 자체 제약을 견디는 �
 - ✅ `tesserae sessions discover/import/list` (명시적 로컬 에이전트 이력 가져오기)
 - ✅ `tesserae export site --watch` (독립 폴링 감시자)
 - ✅ `tesserae engine` (슈퍼바이저 루프 — v0.5.0)
+- ✅ `tesserae engine --serve` (데몬이 `.tesserae/site`를 제공; 모든 재컴파일 시 사이트가 원자적으로 교체됨 — v0.40.0)
 - ✅ `tesserae refresh` (prose ingest → compile → project 체인 — v0.5.0)
 - ✅ `tesserae context` (온디맨드 컨텍스트 컴파일러 — v0.5.0)
 - ✅ `tesserae export harness`

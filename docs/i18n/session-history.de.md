@@ -32,6 +32,7 @@ Starte die Live-Schleife mit:
 ```bash
 tesserae engine        # watch sources, coalesce bursts, auto-recompile
 tesserae engine --once # single drain cycle then exit (deterministic)
+tesserae engine --serve # bedient auch .tesserae/site; eine Neukompilierung tauscht die Site atomar aus
 ```
 
 `tesserae refresh` führt dieselbe Ingest- → Compile- → Projekt-Pipeline

@@ -133,7 +133,7 @@ La espina dorsal del engine que impulsa los tres pilares. Ver [`docs/architectur
 | Sidecar de procedencia (`node_provenance`, first-seen) | ✅ | [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | Cimiento de los deletes changed-only; siempre registrado. |
 | Superficie de delete de `GraphStore` | ✅ | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `delete_node`, `delete_nodes_by_source` (elimina nodos cuyo conjunto de procedencia queda vacío; los conceptos multi-archivo sobreviven). |
 | Dispatch de store en runtime por `url_resolver` | ✅ | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`. |
-| Flag `incremental_compile` | ⚠ | [`tesserae/project.py`](../../tesserae/project.py) | **OFF por defecto / experimental.** Paridad de bytes demostrada para varias formas de edición pero quedan huecos multi-owner/ciclo de vida de productores; la compilación completa sigue siendo el default. |
+| Flag `incremental_compile` | ✅ | [`tesserae/project.py`](../../tesserae/project.py) | **ON por defecto desde v0.40.0.** Paridad de bytes con una compilación completa se demuestra por `tests/test_incremental_parity.py` para cada forma de edición gated, y la compuerta aserta que el brazo incremental realmente corrió; `incremental_compile: false` lo desactiva. |
 
 ## Rediseño del frontend — abril 2026
 
@@ -279,6 +279,7 @@ Una wiki document-first y jerárquica reemplaza al viejo volcado del grafo. Ver 
 - ✅ `tesserae sessions discover/import/list` (importación explícita de historial local de agentes)
 - ✅ `tesserae export site --watch` (watcher de sondeo standalone)
 - ✅ `tesserae engine` (bucle supervisor — v0.5.0)
+- ✅ `tesserae engine --serve` (el demonio sirve `.tesserae/site` a sí mismo; el sitio se intercambia atomically en cada recompilación — v0.40.0)
 - ✅ `tesserae refresh` (cadena en prosa ingest → compile → project — v0.5.0)
 - ✅ `tesserae context` (compilador de contexto bajo demanda — v0.5.0)
 - ✅ `tesserae export harness`

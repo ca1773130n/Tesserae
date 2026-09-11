@@ -23,9 +23,9 @@ output/agent-facing, orchestration/lifecycle).
 > confidence (Pillar 2), the hash-bucket default embedding is replaced by a
 > real fail-loud backend (Pillar 3), and the **Pillar-3 on-demand context
 > compiler now exists** (`compile_context`). A designed incremental layer
-> through the `GraphStore` port landed as infrastructure but stays
-> **flag-OFF / experimental**, and the serve+watch+deploy unification
-> (build-order step 7) is still open. See the
+> through the `GraphStore` port landed as infrastructure and is
+> **the default since v0.40.0**; the serve+watch unification (build-order step 7)
+> shipped in v0.40.0 with publish left manual by decision. See the
 > [phased roadmap](./context-engine-roadmap.md) for per-phase status and the
 > [v0.5.0 release notes](./release-notes/v0.5.0.md). Findings below are left
 > unedited as the original snapshot.
@@ -109,9 +109,9 @@ but never composed.
 | rough | `graph_stores/url_resolver.py` wraps an async store with `asyncio.run` **per call** — a fresh event loop per upsert. Pathological for streaming. | Persistent async runtime if the engine goes live. |
 | rough | `ports/` hexagonal protocols are defined but the standalone pipeline **bypasses them**, going straight to JSON artifacts. Only HypePaper uses the port. | Flow the core pipeline through `GraphStore` consistently. |
 | ~~rough~~ resolved (v0.32) | Three persistence formats (JSON artifact, SQLite store, Kuzu) with no single source of truth. Kuzu was ruled an **export**, not a store, and moved to `kuzu_adapter.py` beside OKF and Graphiti — `graph.json` is the source of truth, SQLite is the only store Tesserae reads back. The base64 field-wrapping stays; it dodges a real Kuzu 0.16 STRING corruption bug on read. | Done — see [architecture.md](architecture.md#kuzu-export). |
-| rough | `serve` (`TCPServer.serve_forever`) and `watch` are **separate blocking processes** — can't serve + auto-recompile together. `deploy` is a manual git push, decoupled. | Unify serve + watch + deploy under the supervisor for continuous publish. |
-| missing | `frontend.py` is a **deprecated dead module** still shipped, duplicating `tesserae/site/`. | Delete or migrate callers. |
-| rough | `review_workflow.py` human-review loop emits stringly-typed `"action": "TODO: merge|keep_separate"` JSON for hand-editing; no programmatic apply path. | Integrated review queue wired into compile. |
+| ~~rough~~ resolved (v0.40) | `serve` (`TCPServer.serve_forever`) and `watch` were **separate blocking processes** — couldn't serve + auto-recompile together. `tesserae engine --serve` now serves from the daemon and the site is swapped in atomically on recompile. `deploy` stays a manual git push **by decision**: it needs a clean tree, and `gh-pages` is world-readable while nothing scrubs secrets. | Done — see [context-engine-roadmap.md](context-engine-roadmap.md). |
+| ~~missing~~ resolved (v0.40) | `frontend.py` was a **deprecated dead module** still shipped, duplicating `tesserae/site/`. Deleted; `tests/test_frontend.py` asserts it stays gone. | Done. |
+| ~~rough~~ resolved | `review_workflow.py` human-review loop emits stringly-typed `"action": "TODO: merge|keep_separate"` JSON for hand-editing. The apply path exists: `--apply-review-decisions` feeds the edited decisions back into compile. | Done. |
 | note | TODO/FIXME markers are genuinely sparse — the real debt is **comment-documented workarounds** (changed-only merge, Kuzu base64, asyncio-per-call), not stray TODOs. | — |
 
 ---
@@ -133,7 +133,7 @@ but never composed.
 6. **Real default embeddings** (or a loud degradation warning) so semantic
    retrieval isn't a hash stub out of the box.
 7. **Unify serve + watch + deploy** for continuous publish; add lifecycle tests
-   (the layer the vision most depends on is currently the least covered).
+   (shipped v0.40.0 as serve + watch; publish stays manual by decision).
 
 ## Strengths worth preserving
 

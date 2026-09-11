@@ -22,6 +22,7 @@ Tesserae 可以导入本地 AI-agent 转录，并把它们作为项目记忆渲�
 ```bash
 tesserae engine        # watch sources, coalesce bursts, auto-recompile
 tesserae engine --once # single drain cycle then exit (deterministic)
+tesserae engine --serve # also serve .tesserae/site; a recompile swaps the site in atomically
 ```
 
 `tesserae refresh` 在进程内一次性运行同样的 ingest → compile → project 流水线，而不启动长驻的监视器（传入 `--no-sessions` 可跳过 harness 会话发现扫描）。

@@ -157,7 +157,7 @@ query / seeds
 
 | 모듈 | 책임 |
 |---|---|
-| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: 추출 → 그래프 → 메모리 패스 → 위키 레이어 → 사이트를 구동. `ProjectPaths`(`config`, `graph`, `manifest`, `wiki`, `site` 등)를 소유. 출처 기반 증분 compile이 가능한지 선제 판단(`incremental_compile`로 게이팅, 기본 OFF). |
+| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: 추출 → 그래프 → 메모리 패스 → 위키 레이어 → 사이트를 구동. `ProjectPaths`(`config`, `graph`, `manifest`, `wiki`, `site` 등)를 소유. 출처 기반 증분 compile이 가능한지 선제 판단(`incremental_compile`로 게이팅, v0.40.0 이후 기본 ON; `false`로 옵트 아웃). |
 | [`tesserae/cli.py`](../../tesserae/cli.py) | 평평한 동사 CLI 디스패치(레거시 `project`/`wiki` 하위 명령 그룹 삭제 후 ~2,732줄). 동사들 — `init`, `compile`, `ingest`, `context`, `ask`, `query`, `doctor`, `summary`, `decisions`, `refresh`, `serve`, `engine`, `export`, `vault`, `code`, `lab`, `setup`, `config`, `projects`, `sources`, `federation`, `integrations` — 은 [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py)에 메타데이터로 선언되고 손으로 등록되는 대신 그 트리로부터 연결됨. |
 | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`: worktree를 통해 `.tesserae/site/`를 `gh-pages` 브랜치로 푸시하고, 선택적으로 `gh`를 통해 Pages를 활성화. |
 
@@ -406,7 +406,7 @@ Tesserae가 무엇을 내보내고, 각 값이 정직하게 어디서 오는지:
 - **자기 개선 메모리** — `tests/test_memory_sidecar.py`, `tests/test_decay_supersede.py`, `tests/test_supersede_suppression.py`, `tests/test_mcp_supersede_suppression.py`, `tests/test_memory_contradiction_reinforce.py`.
 - **Retrieval + embedding** — `tests/test_hybrid_search.py`, `tests/test_ppr.py`, `tests/test_real_embeddings_phase6.py`.
 - **컨텍스트 컴파일러** — `tests/test_context_compiler.py`(형태, citation 무결성, 결정성, 예산, PPR 폴백), `tests/test_cli_context.py`, `tests/test_mcp_server_context.py`.
-- **증분 compile (실험적)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
+- **증분 compile (기본 ON)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
 - **멱등성** — `tests/test_project_e2e_redesign.py`가 두 번 compile하고 `wiki/`와 `site/`의 diff가 0임을 단언.
 - **링크 무결성** — `tests/test_frontend.py`가 방출된 모든 HTML의 href를 파싱하고 모든 내부 링크가 생성된 파일로 해석됨을 단언. `nodes/codeclass-*.html`은 생산되지 않음.
 - **AI 시블링** — 모든 `path/foo.html`에 대해 테스트 스위트는 `path/foo.txt`와 `path/foo.json`이 존재함을 단언; JSON은 파싱되고 `{title, kind, body, links}`를 포함.

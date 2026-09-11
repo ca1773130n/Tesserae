@@ -232,7 +232,7 @@ Optionen.
 | `tesserae graph-map` | Budgeted Descent: von oben nach unten nach Bereich statt nach Suchbegriff. `--scope org:root` für den Agenten-Organisationsbaum. |
 | `tesserae verify-claim` | Deterministisches Urteil, ob der Graph ein Tripel zulässt. JSON-Ausgabe. |
 | `tesserae verify-attribution` | Ist jede Zahl in einer Antwort dem richtigen System und Benchmark zugeordnet? Ohne Graph, JSON-Ausgabe. |
-| `tesserae engine [--all]` | Überwachter Refresh-Daemon — beobachten, entprellen, neu kompilieren und im Leerlauf das Agent-Gedächtnis konsolidieren (der Schlafzyklus; `--no-consolidate` schaltet ihn ab). `--all` hält jedes registrierte Projekt in einem Prozess aktuell. |
+| `tesserae engine [--all] [--serve]` | Überwachter Refresh-Daemon — beobachten, entprellen, neu kompilieren und im Leerlauf das Agent-Gedächtnis konsolidieren (der Schlafzyklus; `--no-consolidate` schaltet ihn ab). `--all` hält jedes registrierte Projekt in einem Prozess aktuell. `--serve` dient die Site vom selben Prozess aus, und eine Neukompilierung tauscht die neue Site aus, ohne einen Augenblick 404 zu zeigen. |
 | `tesserae refresh` | Einmalig: neue Sitzungen importieren → kompilieren → Vault synchronisieren. |
 | `tesserae agents …` | `init` (Organisation ableiten) · `tree` · `show` · `drill` — die Werkzeuge des geschichteten Gedächtnisses. |
 | `tesserae distill` | Verdichtet die Sitzungen jedes Agenten in seine begrenzte L1-Gedächtnisschicht. |

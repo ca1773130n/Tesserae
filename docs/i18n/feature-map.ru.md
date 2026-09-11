@@ -128,7 +128,7 @@ Tesserae — это **контекстный движок**, работающи�
 | Sidecar provenance (`node_provenance`, first-seen) | ✅ | [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | Фундамент для changed-only удалений; записывается всегда. |
 | Поверхность удаления `GraphStore` | ✅ | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `delete_node`, `delete_nodes_by_source` (сбрасывает узлы, чей набор provenance опустел; межфайловые концепты выживают). |
 | Диспетчеризация рантайм-хранилища `url_resolver` | ✅ | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`. |
-| Флаг `incremental_compile` | ⚠ | [`tesserae/project.py`](../../tesserae/project.py) | **По умолчанию ВЫКЛ / экспериментально.** Байтовый паритет доказан для нескольких форм правок, но остаются пробелы multi-owner/producer-lifecycle; полная компиляция остаётся дефолтом. |
+| Флаг `incremental_compile` | ✅ | [`tesserae/project.py`](../../tesserae/project.py) | **По умолчанию ON с v0.40.0.** Байтовый паритет с полной компиляцией доказан `tests/test_incremental_parity.py` для каждой гейтовой формы правки, и гейт гарантирует, что инкрементная рука действительно запустилась; `incremental_compile: false` отключает. |
 
 ## Редизайн фронтенда — апрель 2026
 
@@ -274,6 +274,7 @@ Tesserae — это **контекстный движок**, работающи�
 - ✅ `tesserae sessions discover/import/list` (явный импорт локальной истории агентов)
 - ✅ `tesserae export site --watch` (автономный опросный наблюдатель)
 - ✅ `tesserae engine` (цикл супервизора — v0.5.0)
+- ✅ `tesserae engine --serve` (демон служит `.tesserae/site` сам; сайт меняется на месте атомарно при каждой пересборке — v0.40.0)
 - ✅ `tesserae refresh` (прозаичная цепочка ingest → compile → project — v0.5.0)
 - ✅ `tesserae context` (компилятор контекста по требованию — v0.5.0)
 - ✅ `tesserae export harness`

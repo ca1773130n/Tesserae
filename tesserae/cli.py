@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import http.server
 import json
 import sys
 from collections import Counter
@@ -2626,8 +2627,19 @@ def _handle_serve_legacy(args: argparse.Namespace) -> int:
         handler_cls = build_ask_aware_handler(project_root=Path(args.project).resolve())
         handler = partial(handler_cls, directory=str(wiki.paths.site))
 
-        class ReusableTCPServer(socketserver.TCPServer):
+        class ReusableTCPServer(http.server.ThreadingHTTPServer):
+            # ThreadingHTTPServer, not TCPServer: single-threaded, one
+            # POST /api/ask with llm=true blocked every other request
+            # including static assets. serve.py already assumes threads —
+            # _run_clip backgrounds ingest so "the single-threaded server stays
+            # responsive", and handle_one_request guards BrokenPipeError "out of
+            # the worker thread". The test harness uses ThreadingTCPServer, so
+            # production was weaker than what the tests exercised.
             allow_reuse_address = True
+            daemon_threads = True
+            # server_close() would otherwise join request threads, so a
+            # stuck /api/ask hangs shutdown.
+            block_on_close = False
 
         try:
             with ReusableTCPServer((args.host, args.port), handler) as httpd:
@@ -2675,6 +2687,21 @@ def _handle_engine(args: argparse.Namespace) -> int:
     if not getattr(args, "all", False) and getattr(args, "compile_slots", None) is not None:
         print("tesserae engine: --compile-slots requires --all (fleet mode)", file=sys.stderr)
         return 2
+    serve = bool(getattr(args, "serve", False))
+    if getattr(args, "serve_port", None) is not None and not serve:
+        print("tesserae engine: --serve-port requires --serve", file=sys.stderr)
+        return 2
+    if serve and getattr(args, "all", False):
+        # N fleet units racing one port is the failure this refuses by construction.
+        print("tesserae engine: --serve is single-project only; use `tesserae serve --all` for a fleet", file=sys.stderr)
+        return 2
+    if serve and args.once:
+        print("tesserae engine: --serve needs a long-running engine; drop --once", file=sys.stderr)
+        return 2
+    if serve and getattr(args, "harvest_only", False):
+        # A harvester never compiles, so it would serve a permanently stale page.
+        print("tesserae engine: --serve and --harvest-only are mutually exclusive", file=sys.stderr)
+        return 2
     if getattr(args, "all", False):
         if args.project is not None:
             print("tesserae engine: --all and --project are mutually exclusive", file=sys.stderr)
@@ -2719,6 +2746,9 @@ def _handle_engine(args: argparse.Namespace) -> int:
         enable_watch=not harvest_only,
         enable_vault=not harvest_only,
         enable_session_tail=True,
+        enable_serve=serve,
+        serve_host=getattr(args, "serve_host", "127.0.0.1"),
+        serve_port=args.serve_port if getattr(args, "serve_port", None) is not None else 8765,
         enable_compile=not harvest_only,
         consolidate=False if harvest_only else getattr(args, "consolidate", True),
         consolidate_idle_seconds=getattr(args, "consolidate_idle", 300.0),
@@ -2970,6 +3000,18 @@ def _build_engine_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Fleet mode: run every project in ~/.tesserae/registry.json from one process.",
     )
+    parser.add_argument(
+        "--serve",
+        action="store_true",
+        help=(
+            "Also serve .tesserae/site from this process (same handler as "
+            "`tesserae serve`, including /api/ask). The served site never goes "
+            "missing during a recompile: the build lands in a staging directory "
+            "and is swapped in. Single-project mode only."
+        ),
+    )
+    parser.add_argument("--serve-host", default="127.0.0.1", help="Bind address for --serve (default: 127.0.0.1)")
+    parser.add_argument("--serve-port", type=int, default=None, help="Port for --serve (default: 8765, same as `tesserae serve`)")
     parser.add_argument(
         "--compile-slots",
         type=int,
@@ -3378,8 +3420,19 @@ def _serve_fleet(args: argparse.Namespace) -> int:
     (served_root / "projects.json").write_text(json.dumps(nav_projects), encoding="utf-8")
     (served_root / "index.html").write_text(_fleet_landing_html(nav_projects), encoding="utf-8")
 
-    class ReusableTCPServer(socketserver.TCPServer):
+    class ReusableTCPServer(http.server.ThreadingHTTPServer):
+        # ThreadingHTTPServer, not TCPServer: single-threaded, one
+        # POST /api/ask with llm=true blocked every other request
+        # including static assets. serve.py already assumes threads —
+        # _run_clip backgrounds ingest so "the single-threaded server stays
+        # responsive", and handle_one_request guards BrokenPipeError "out of
+        # the worker thread". The test harness uses ThreadingTCPServer, so
+        # production was weaker than what the tests exercised.
         allow_reuse_address = True
+        daemon_threads = True
+        # server_close() would otherwise join request threads, so a
+        # stuck /api/ask hangs shutdown.
+        block_on_close = False
 
     handler = build_fleet_handler(
         served_root=served_root, project_sites=project_sites, project_roots=project_roots

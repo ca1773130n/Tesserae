@@ -1063,6 +1063,8 @@ def is_source_anchor(node: "ResearchNode") -> bool:
 def merge_cross_type_duplicates(
     nodes: List[ResearchNode],
     edges: List[ResearchEdge],
+    *,
+    redirect_out: Optional[Dict[str, str]] = None,
 ) -> Tuple[List[ResearchNode], List[ResearchEdge]]:
     """Public alias of :func:`_merge_cross_type_duplicates`.
 
@@ -1074,12 +1076,14 @@ def merge_cross_type_duplicates(
     Paper / Repository, leaving dangling ``[[slug-N]]`` wikilinks in the
     vault projection.
     """
-    return _merge_cross_type_duplicates(nodes, edges)
+    return _merge_cross_type_duplicates(nodes, edges, redirect_out=redirect_out)
 
 
 def merge_same_type_aliased_duplicates(
     nodes: List[ResearchNode],
     edges: List[ResearchEdge],
+    *,
+    redirect_out: Optional[Dict[str, str]] = None,
 ) -> Tuple[List[ResearchNode], List[ResearchEdge]]:
     """Public alias of :func:`_merge_same_type_aliased_duplicates`.
 
@@ -1087,7 +1091,7 @@ def merge_same_type_aliased_duplicates(
     morally-equivalent-name same-type case (e.g. ``pre-training`` vs
     ``pretraining`` as two distinct MethodologicalConcept nodes).
     """
-    return _merge_same_type_aliased_duplicates(nodes, edges)
+    return _merge_same_type_aliased_duplicates(nodes, edges, redirect_out=redirect_out)
 
 
 def _aggressive_dedup_key(name: str) -> str:
@@ -1112,6 +1116,8 @@ def _aggressive_dedup_key(name: str) -> str:
 def _merge_same_type_aliased_duplicates(
     nodes: List[ResearchNode],
     edges: List[ResearchEdge],
+    *,
+    redirect_out: Optional[Dict[str, str]] = None,
 ) -> Tuple[List[ResearchNode], List[ResearchEdge]]:
     """Collapse nodes of the same type whose names match under
     :func:`_aggressive_dedup_key`.
@@ -1211,6 +1217,11 @@ def _merge_same_type_aliased_duplicates(
                 if a and a != canonical.name:
                     aliases_to_add.setdefault(canonical.id, []).append(a)
 
+    if redirect_out is not None:
+        # The caller needs this map: anything keyed on a PRE-merge node id —
+        # edge provenance above all — is orphaned the moment an id is
+        # redirected, and nothing downstream can reconstruct the pairing.
+        redirect_out.update(redirect)
     if not redirect:
         return nodes, edges
 
@@ -1265,6 +1276,8 @@ def _merge_same_type_aliased_duplicates(
 def _merge_cross_type_duplicates(
     nodes: List[ResearchNode],
     edges: List[ResearchEdge],
+    *,
+    redirect_out: Optional[Dict[str, str]] = None,
 ) -> Tuple[List[ResearchNode], List[ResearchEdge]]:
     """Merge same-casefolded-name nodes of different types into one canonical.
 
@@ -1336,6 +1349,11 @@ def _merge_cross_type_duplicates(
             # an ApproachFamily" without the duplicate node existing.
             merged_types_buf.setdefault(canonical.id, []).append(loser.type.value)
 
+    if redirect_out is not None:
+        # The caller needs this map: anything keyed on a PRE-merge node id —
+        # edge provenance above all — is orphaned the moment an id is
+        # redirected, and nothing downstream can reconstruct the pairing.
+        redirect_out.update(redirect)
     if not redirect:
         return nodes, edges
 
