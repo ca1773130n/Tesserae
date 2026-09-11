@@ -232,9 +232,11 @@ Optionen.
 | `tesserae graph-map` | Budgeted Descent: von oben nach unten nach Bereich statt nach Suchbegriff. `--scope org:root` für den Agenten-Organisationsbaum. |
 | `tesserae verify-claim` | Deterministisches Urteil, ob der Graph ein Tripel zulässt. JSON-Ausgabe. |
 | `tesserae verify-attribution` | Ist jede Zahl in einer Antwort dem richtigen System und Benchmark zugeordnet? Ohne Graph, JSON-Ausgabe. |
-| `tesserae engine [--all] [--serve]` | Überwachter Refresh-Daemon — beobachten, entprellen, neu kompilieren und im Leerlauf das Agent-Gedächtnis konsolidieren (der Schlafzyklus; `--no-consolidate` schaltet ihn ab). `--all` hält jedes registrierte Projekt in einem Prozess aktuell. `--serve` dient die Site vom selben Prozess aus, und eine Neukompilierung tauscht die neue Site aus, ohne einen Augenblick 404 zu zeigen. |
+| `tesserae engine [--all] [--serve] [--proactive]` | Überwachter Refresh-Daemon — beobachten, entprellen, neu kompilieren und im Leerlauf das Agent-Gedächtnis konsolidieren (der Schlafzyklus; `--no-consolidate` schaltet ihn ab). `--all` hält jedes registrierte Projekt in einem Prozess aktuell. `--serve` dient die Site vom selben Prozess aus, und eine Neukompilierung tauscht die neue Site aus, ohne einen Augenblick 404 zu zeigen. `--proactive` fragt die Feeds in `proactive_sources` ab und zieht Dokumente herein, die das Projekt noch nie gesehen hat; standardmäßig aus, weil es von selbst abruft und kompiliert. |
 | `tesserae refresh` | Einmalig: neue Sitzungen importieren → kompilieren → Vault synchronisieren. |
 | `tesserae agents …` | `init` (Organisation ableiten) · `tree` · `show` · `drill` — die Werkzeuge des geschichteten Gedächtnisses. |
+| `tesserae sources add <path-or-url>` | Woher dieser Graph seine Erkenntnisse bezieht. Ein Verzeichnis wird in den Compile-Bereich aufgenommen; eine http(s)-URL wird zu einem Feed für `engine --proactive`. |
+| `tesserae completion bash\|zsh\|fish` | Gibt ein Shell-Completion-Skript aus. Generiert aus dem echten Befehlsbaum, daher kann es nicht abdriften. |
 | `tesserae distill` | Verdichtet die Sitzungen jedes Agenten in seine begrenzte L1-Gedächtnisschicht. |
 | `tesserae doctor` | Gesundheitsprüfungen; `--fix` wendet sichere Reparaturen an. Exit-Codes `0/1/2` = gesund/Warnungen/Fehler. |
 | `tesserae lint` | Graph-Lint — Waisen, veraltete Zitate, Drift zum Wiki, dünne Intervallabdeckung, nicht verdiente prozedurale Pools. `--fix-trivial` für die sicheren Fälle. |

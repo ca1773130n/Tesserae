@@ -280,6 +280,8 @@ Una wiki document-first y jerárquica reemplaza al viejo volcado del grafo. Ver 
 - ✅ `tesserae export site --watch` (watcher de sondeo standalone)
 - ✅ `tesserae engine` (bucle supervisor — v0.5.0)
 - ✅ `tesserae engine --serve` (el demonio sirve `.tesserae/site` a sí mismo; el sitio se intercambia atomically en cada recompilación — v0.40.0)
+- ✅ `tesserae engine --proactive` (la quinta fuente de disparo, y la primera que no espera una edición local: sondea `proactive_sources`, ingiere lo que no ha visto, presupuestado por tick)
+- ✅ `tesserae completion bash|zsh|fish` (completación de shell generada desde el árbol real de analizadores)
 - ✅ `tesserae refresh` (cadena en prosa ingest → compile → project — v0.5.0)
 - ✅ `tesserae context` (compilador de contexto bajo demanda — v0.5.0)
 - ✅ `tesserae export harness`

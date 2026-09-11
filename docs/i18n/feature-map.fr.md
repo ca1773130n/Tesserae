@@ -280,6 +280,8 @@ Un wiki hiérarchique orienté documents remplace l’ancien déversement de gra
 - ✅ `tesserae export site --watch` (watcher autonome par sondage)
 - ✅ `tesserae engine` (boucle superviseur — v0.5.0)
 - ✅ `tesserae engine --serve` (le démon sert `.tesserae/site` lui-même ; le site est remplacé atomiquement à chaque recompilation — v0.40.0)
+- ✅ `tesserae engine --proactive` (la cinquième source de déclenchement, et la première qui n'attend pas une édition locale : sonde `proactive_sources`, ingère ce qu'il n'a pas vu, budgété par cycle)
+- ✅ `tesserae completion bash|zsh|fish` (complétion shell générée d'après l'arbre réel du parseur)
 - ✅ `tesserae refresh` (chaîne en prose ingest → compile → project — v0.5.0)
 - ✅ `tesserae context` (compilateur de contexte à la demande — v0.5.0)
 - ✅ `tesserae export harness`

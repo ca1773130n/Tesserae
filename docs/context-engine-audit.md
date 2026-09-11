@@ -13,6 +13,12 @@ This document audits the current codebase against that mission. It is the
 output of a four-way parallel review (ingestion/sessions, self-improvement,
 output/agent-facing, orchestration/lifecycle).
 
+**Every heading below carries its original 2026-06-02 verdict struck through, followed by where that pillar stands now.**
+The findings under each heading are left unedited as the snapshot they are; the
+Status note above is what is current. A reader who skims only the headings
+should not come away believing Tesserae still has no engine and no on-demand
+docs.
+
 > **Status as of v0.5.0 (2026-06-06):** This is a **point-in-time audit** (the
 > 2026-06-02 snapshot) and is kept as-is for the record. Most of its
 > cross-cutting findings are now **resolved**: the missing supervisor daemon and
@@ -45,7 +51,7 @@ incremental on top of that.
 
 ---
 
-## Pillar 1 — Session monitoring → **post-hoc, not live**
+## Pillar 1 — Session monitoring → ~~**post-hoc, not live**~~ → **live** (v0.5.0)
 
 | Status | Finding | What's needed |
 |---|---|---|
@@ -56,7 +62,7 @@ incremental on top of that.
 | rough | `harness_sessions` store is a flat glob with full-rescan on every list/write. | Indexed/append store for a continuously growing capture set. |
 | missing | No per-node freshness/provenance timestamps; currency tracked only at artifact level (git HEAD). | Per-fact freshness for "how fresh is this?" |
 
-## Pillar 2 — Self-improving knowledge base → **one-shot re-extract, bolt-on evolution**
+## Pillar 2 — Self-improving knowledge base → ~~**one-shot re-extract, bolt-on evolution**~~ → **persisted, and it now fetches**
 
 The "evolving" passes exist but run **only inside a single `compile`** (a
 re-extract from scratch), and most are **opt-in via env flag or manual CLI**.
@@ -72,10 +78,11 @@ Facts are recomputed each compile, not revised in place.
 | gap | **Canonicalization** auto-merges only high-confidence aliases; the rest queue for human CLI approval. | Automatic LLM-arbitrated merge over time. |
 | gap | **Feedback loop half-closed**: the deterministic baseline extractor *ignores guidance entirely* (`selective_extractor.py:43`); only the optional LLM path consumes corrections. With LLM off, human corrections never re-enter extraction. | Deterministic-path guidance honoring, or LLM-by-default. |
 | gap | No **recurring-insight reinforcement**: nothing strengthens confidence when an insight reappears across sessions. `temporal.infer_confidence` is a coarse string heuristic. | Cross-session frequency → numeric confidence. |
+| ~~missing~~ resolved | Nothing **pulled knowledge in on its own**. Every trigger source waited for a local file to change, so the engine only ever reconstructed what somebody had already put on disk — the "autonomous, proactive" half of this pillar was the mission statement, not the code. `tesserae engine --proactive` now polls the feeds in `proactive_sources` and ingests what it has not seen. | Done — off by default, budgeted per tick, and a URL it cannot read is remembered rather than retried. |
 | rough | Supersede candidate pairing is **lexical Jaccard (0.55)**; semantic restatements with low lexical overlap never become candidates. | Embedding-based candidate generation. |
 | missing | The **entire self-improvement slice is untested** (no decay/supersede/feedback/drift/canonical/temporal tests). | Tests alongside any change here. |
 
-## Pillar 3 — On-demand docs → **does not exist yet**
+## Pillar 3 — On-demand docs → ~~**does not exist yet**~~ → **`compile_context`** (v0.5.0)
 
 Query/retrieval plumbing is mature (hybrid RRF, PPR, ~20 MCP tools, per-page
 ask, AI exports). But **every artifact is either a static full-corpus
@@ -96,7 +103,7 @@ but never composed.
 | rough | Static-host ask widget serves **canned `DEMO_QA`**; real ask only works under `serve`. The public Pages "ask" is theatre. | Acceptable for demo; not agent-consumable on the published site. |
 | rough | `ask` `auto` backend swallows exceptions and degrades invisibly to BM25. | Surface which backend answered and why fallbacks fired. |
 
-## Cross-cutting — Orchestration & lifecycle → **batch CLI, no engine**
+## Cross-cutting — Orchestration & lifecycle → ~~**batch CLI, no engine**~~ → **`tesserae engine`** (v0.5.0)
 
 | Status | Finding | What's needed |
 |---|---|---|

@@ -14,6 +14,13 @@ Ce document audite la base de code actuelle au regard de cette mission. C'est
 le résultat d'une revue parallèle à quatre voies (ingestion/sessions,
 auto-amélioration, sortie/face aux agents, orchestration/cycle de vie).
 
+**Chaque en-tête ci-dessous porte son verdict original du 2026-06-02 barré, suivi de l'état actuel du pilier.**
+Les constats sous chaque en-tête sont
+laissés sans modification, tels l'instantané qu'ils sont ; la note Statut
+ci-dessus indique la situation actuelle. Un lecteur qui ne lit que les
+en-têtes ne devrait pas repartir en croyant que Tesserae n'a ni moteur ni
+docs à la demande.
+
 > **Statut au moment de la v0.5.0 (2026-06-06) :** Ce document est un **audit ponctuel** (instantané du 2026-06-02) conservé tel quel pour archive. La plupart de ses constats transversaux sont désormais **résolus** : le démon superviseur et l'orchestrateur de pipeline in-process qui manquaient ont été livrés (colonne vertébrale du moteur, `tesserae/engine/`), le tailing de sessions en direct remplace le scan a posteriori (Pilier 1), les passes d'auto-amélioration sont activées et persistées via le sidecar `node_memory` (supersede activé par défaut avec suppression, confiance de récurrence numérique — Pilier 2), l'embedding par défaut à seaux de hachage est remplacé par un vrai backend qui échoue bruyamment (Pilier 3), et **le compilateur de contexte à la demande du Pilier 3 existe désormais** (`compile_context`). Une couche incrémentale conçue à travers le port `GraphStore` a atterri en tant qu'infrastructure et est **la valeur par défaut depuis v0.40.0** ; l'unification serve+watch (étape 7 de l'ordre de construction) a été livrée dans v0.40.0 avec la publication laissée manuelle par décision. Voir le statut par phase dans la [feuille de route par phases](context-engine-roadmap.fr.md) et le résumé des changements dans les [notes de version v0.5.0](release-notes/v0.5.0.fr.md). Les constats ci-dessous sont laissés sans modification, tels que l'instantané d'origine.
 
 ## Verdict en une ligne
@@ -32,7 +39,7 @@ publication. Tout le reste est incrémental par-dessus.
 
 ---
 
-## Pilier 1 — Surveillance des sessions → **a posteriori, pas en direct**
+## Pilier 1 — Surveillance des sessions → ~~**a posteriori, pas en direct**~~ → **en direct** (v0.5.0)
 
 | Statut | Constat | Ce qu'il faut |
 |---|---|---|
@@ -43,7 +50,7 @@ publication. Tout le reste est incrémental par-dessus.
 | rugueux | Le magasin `harness_sessions` est un glob plat avec re-balayage total à chaque list/write. | Magasin indexé/à ajout pour un ensemble de captures en croissance continue. |
 | absent | Pas d'horodatage de fraîcheur/provenance par nœud ; l'actualité n'est suivie qu'au niveau de l'artefact (git HEAD). | Fraîcheur par fait pour « quelle est sa fraîcheur ? ». |
 
-## Pilier 2 — Base de connaissances qui s'améliore d'elle-même → **ré-extraction one-shot, évolution rapportée**
+## Pilier 2 — Base de connaissances qui s'améliore d'elle-même → ~~**ré-extraction one-shot, évolution rapportée**~~ → **persistée, et elle récupère maintenant**
 
 Les passes « évolutives » existent, mais s'exécutent **uniquement à l'intérieur
 d'un seul `compile`** (une ré-extraction à partir de zéro), et la plupart sont
@@ -60,10 +67,11 @@ recalculés à chaque compilation, pas révisés sur place.
 | écart | La **canonicalisation (Canonicalization)** ne fusionne automatiquement que les alias à haute confiance ; le reste est mis en file d'attente pour approbation humaine par CLI. | Fusion automatique arbitrée par LLM au fil du temps. |
 | écart | **Boucle de rétroaction à moitié fermée** : l'extracteur de base déterministe *ignore totalement les directives* (`selective_extractor.py:43`) ; seul le chemin LLM optionnel consomme les corrections. LLM désactivé, les corrections humaines ne reviennent jamais dans l'extraction. | Respect des directives par le chemin déterministe, ou LLM par défaut. |
 | écart | Pas de **renforcement des insights récurrents** : rien ne renforce la confiance quand un insight réapparaît entre sessions. `temporal.infer_confidence` est une heuristique de chaînes grossière. | Fréquence inter-sessions → confiance numérique. |
+| ~~absent~~ résolu | Rien n'a **tiré les connaissances de lui-même**. Chaque source de déclenchement attendait un changement de fichier local, donc le moteur ne reconstruisait que ce que quelqu'un avait déjà mis sur disque — la moitié « autonome, proactive » de ce pilier était l'énoncé de mission, pas le code. `tesserae engine --proactive` sonde maintenant les flux dans `proactive_sources` et ingère ce qu'il n'a pas vu. | Fait — désactivé par défaut, budgété par cycle, et une URL qu'il ne peut lire est mémorisée plutôt que rencyclée. |
 | rugueux | L'appariement des candidats au remplacement est en **Jaccard lexical (0.55)** ; les reformulations sémantiques à faible recouvrement lexical ne deviennent jamais candidates. | Génération de candidats fondée sur les embeddings. |
 | absent | **Toute la tranche d'auto-amélioration est non testée** (pas de tests decay/supersede/feedback/drift/canonical/temporal). | Des tests avec tout changement ici. |
 
-## Pilier 3 — Documents à la demande → **n'existe pas encore**
+## Pilier 3 — Documents à la demande → ~~**n'existe pas encore**~~ → **`compile_context`** (v0.5.0)
 
 La plomberie requête/récupération est mature (RRF hybride, PPR, ~20 outils MCP,
 ask par page, exports pour IA). Mais **chaque artefact est soit une projection
@@ -85,7 +93,7 @@ composées.
 | rugueux | Le widget ask de l'hôte statique sert un **`DEMO_QA` en conserve** ; le vrai ask ne fonctionne que sous `serve`. Le « ask » public sur Pages est du théâtre. | Acceptable en démo ; non consommable par un agent sur le site publié. |
 | rugueux | Le backend `auto` de `ask` avale les exceptions et rétrograde de manière invisible vers BM25. | Exposer quel backend a répondu et pourquoi les replis se sont déclenchés. |
 
-## Transversal — Orchestration & cycle de vie → **CLI par lots, pas de moteur**
+## Transversal — Orchestration & cycle de vie → ~~**CLI par lots, pas de moteur**~~ → **`tesserae engine`** (v0.5.0)
 
 | Statut | Constat | Ce qu'il faut |
 |---|---|---|

@@ -14,6 +14,12 @@ Este documento audita la base de código actual frente a esa misión. Es el
 resultado de una revisión paralela de cuatro vías (ingesta/sesiones,
 automejora, salida/de cara al agente, orquestación/ciclo de vida).
 
+**Cada encabezado de abajo lleva su veredicto original del 2026-06-02 tachado, seguido de dónde está ese pilar ahora.**
+Los hallazgos bajo cada encabezado se
+dejan sin editar como la instantánea que son; la nota de Estado de arriba es lo
+que es actual. Un lector que solo hojee los encabezados no debe llegar a creer
+que Tesserae aún no tiene motor ni documentos bajo demanda.
+
 > **Estado a fecha de v0.5.0 (2026-06-06):** Este documento es una **auditoría puntual** (instantánea del 2026-06-02) y se conserva tal cual para el registro. La mayoría de sus hallazgos transversales están ahora **resueltos**: el demonio supervisor y el orquestador de pipeline en proceso que faltaban se entregaron (columna vertebral del motor, `tesserae/engine/`), el seguimiento de sesiones en vivo sustituye el escaneo a posteriori (Pilar 1), las pasadas de automejora están activadas y persistidas mediante el sidecar `node_memory` (supersede por defecto con supresión, confianza de recurrencia numérica — Pilar 2), el embedding por defecto de hash-bucket se reemplaza por un backend real que falla de forma ruidosa (Pilar 3), y **el compilador de contexto bajo demanda del Pilar 3 ya existe** (`compile_context`). Una capa incremental diseñada a través del puerto `GraphStore` aterrizó como infraestructura y es **el default desde v0.40.0**; la unificación de serve+watch (paso 7 del orden de construcción) se entregó en v0.40.0 con publish dejado manual por decisión. Véase el estado por fase en la [hoja de ruta por fases](context-engine-roadmap.es.md) y el resumen de cambios en las [notas de la versión v0.5.0](release-notes/v0.5.0.es.md). Los hallazgos de abajo se dejan sin editar como la instantánea original.
 
 ## Veredicto en una línea
@@ -31,7 +37,7 @@ publicación. Todo lo demás es incremental sobre eso.
 
 ---
 
-## Pilar 1 — Monitoreo de sesiones → **a posteriori, no en vivo**
+## Pilar 1 — Monitoreo de sesiones → ~~**a posteriori, no en vivo**~~ → **en vivo** (v0.5.0)
 
 | Estado | Hallazgo | Lo que se necesita |
 |---|---|---|
@@ -42,7 +48,7 @@ publicación. Todo lo demás es incremental sobre eso.
 | tosco | El almacén `harness_sessions` es un glob plano con reescaneo total en cada list/write. | Almacén indexado/anexable para un conjunto de capturas en crecimiento continuo. |
 | ausente | No hay marcas de tiempo de frescura/procedencia por nodo; la vigencia se rastrea solo a nivel de artefacto (git HEAD). | Frescura por hecho para «¿qué tan fresco es esto?». |
 
-## Pilar 2 — Base de conocimiento que se mejora a sí misma → **reextracción de un disparo, evolución acoplada**
+## Pilar 2 — Base de conocimiento que se mejora a sí misma → ~~**reextracción de un disparo, evolución acoplada**~~ → **persistida, y ahora obtiene**
 
 Los pases «en evolución» existen, pero corren **solo dentro de un único
 `compile`** (una reextracción desde cero), y la mayoría son **opt-in vía flag
@@ -59,10 +65,11 @@ revisan en su lugar.
 | brecha | La **canonicalización (Canonicalization)** solo autofusiona alias de alta confianza; el resto se encola para aprobación humana por CLI. | Fusión automática arbitrada por LLM con el tiempo. |
 | brecha | **Bucle de retroalimentación medio cerrado**: el extractor base determinista *ignora la guía por completo* (`selective_extractor.py:43`); solo la ruta LLM opcional consume correcciones. Con LLM apagado, las correcciones humanas nunca vuelven a la extracción. | Que la ruta determinista honre la guía, o LLM por defecto. |
 | brecha | Sin **refuerzo de insights recurrentes**: nada refuerza la confianza cuando un insight reaparece entre sesiones. `temporal.infer_confidence` es una heurística de cadenas burda. | Frecuencia entre sesiones → confianza numérica. |
+| ~~ausente~~ resuelto | Nada **obtenía conocimiento por su cuenta**. Cada fuente de disparo esperaba a un cambio de archivo local, así que el motor solo reconstruía lo que alguien ya había puesto en disco — la mitad «autónoma, proactiva» de este pilar era la declaración de misión, no el código. `tesserae engine --proactive` ahora sondea las fuentes en `proactive_sources` e ingiere lo que no ha visto. | Hecho — desactivado por defecto, presupuestado por tick, y una URL que no puede leer se recuerda en lugar de reintentarse. |
 | tosco | El emparejamiento de candidatos a sustitución es **Jaccard léxico (0.55)**; las reformulaciones semánticas con poco solape léxico nunca llegan a candidatas. | Generación de candidatos basada en embeddings. |
 | ausente | **Todo el corte de automejora está sin probar** (sin tests de decay/supersede/feedback/drift/canonical/temporal). | Tests junto a cualquier cambio aquí. |
 
-## Pilar 3 — Documentos bajo demanda → **aún no existe**
+## Pilar 3 — Documentos bajo demanda → ~~**aún no existe**~~ → **`compile_context`** (v0.5.0)
 
 La fontanería de consulta/recuperación es madura (RRF híbrido, PPR, ~20
 herramientas MCP, ask por página, exportaciones para IA). Pero **cada
@@ -84,7 +91,7 @@ nunca se componen.
 | tosco | El widget ask del host estático sirve **`DEMO_QA` enlatado**; el ask real solo funciona bajo `serve`. El «ask» público de Pages es teatro. | Aceptable para demo; no consumible por agentes en el sitio publicado. |
 | tosco | El backend `auto` de `ask` se traga las excepciones y degrada de forma invisible a BM25. | Exponer qué backend respondió y por qué se dispararon los fallbacks. |
 
-## Transversal — Orquestación y ciclo de vida → **CLI por lotes, sin motor**
+## Transversal — Orquestación y ciclo de vida → ~~**CLI por lotes, sin motor**~~ → **`tesserae engine`** (v0.5.0)
 
 | Estado | Hallazgo | Lo que se necesita |
 |---|---|---|

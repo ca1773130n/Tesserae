@@ -229,9 +229,11 @@ opciones.
 | `tesserae graph-map` | Budgeted Descent: recorrer de arriba abajo por ámbito, no por término de búsqueda. `--scope org:root` para el árbol organizativo de agentes. |
 | `tesserae verify-claim` | Veredicto determinista sobre si el grafo autoriza una tripleta. Salida JSON. |
 | `tesserae verify-attribution` | ¿Cada cifra de una respuesta se atribuye al sistema y benchmark correctos? Sin grafo, salida JSON. |
-| `tesserae engine [--all] [--serve]` | Demonio de refresco supervisado: observar, amortiguar, recompilar y consolidar memoria de agentes en reposo (el ciclo de sueño; `--no-consolidate` lo desactiva). `--all` mantiene al día todos los proyectos registrados en un solo proceso. `--serve` además sirve el sitio desde el mismo proceso, y una recompilación intercambia el sitio nuevo sin un momento de 404. |
+| `tesserae engine [--all] [--serve] [--proactive]` | Demonio de refresco supervisado: observar, amortiguar, recompilar y consolidar memoria de agentes en reposo (el ciclo de sueño; `--no-consolidate` lo desactiva). `--all` mantiene al día todos los proyectos registrados en un solo proceso. `--serve` además sirve el sitio desde el mismo proceso, y una recompilación intercambia el sitio nuevo sin un momento de 404. `--proactive` sondea las fuentes en `proactive_sources` e ingiere documentos que el proyecto nunca ha visto, desactivado por defecto porque obtiene y compila por su cuenta. |
 | `tesserae refresh` | De una vez: importar sesiones nuevas → compilar → sincronizar bóveda. |
 | `tesserae agents …` | `init` (inferir la organización) · `tree` · `show` · `drill`: las herramientas de memoria por capas. |
+| `tesserae sources add <path-or-url>` | De dónde viene el conocimiento de este grafo. Un directorio se une al ámbito de compilación; una URL http(s) se convierte en una fuente para `engine --proactive`. |
+| `tesserae completion bash\|zsh\|fish` | Imprime un script de completación de shell. Generado desde el árbol de comandos real, así que no puede desincronizarse. |
 | `tesserae distill` | Compacta las sesiones de cada agente en su capa de memoria L1 acotada. |
 | `tesserae doctor` | Comprobaciones de salud; `--fix` aplica reparaciones seguras. Código de salida `0/1/2` = sano/avisos/errores. |
 | `tesserae lint` | Lint del grafo: huérfanos, citas obsoletas, deriva con el wiki, cobertura de intervalos escasa, pools procedimentales no merecidos. `--fix-trivial` para los seguros. |

@@ -14,6 +14,12 @@ Dieses Dokument prüft die aktuelle Codebasis an dieser Mission. Es ist das
 Ergebnis einer vierfach parallelen Begutachtung (Aufnahme/Sitzungen,
 Selbstverbesserung, Ausgabe/agentenseitig, Orchestrierung/Lebenszyklus).
 
+**Jede Überschrift unten trägt ihr ursprüngliches Urteil vom 2026-06-02 durchgestrichen,
+gefolgt davon, wo diese Säule jetzt steht.** Die Befunde unter jeder Überschrift
+bleiben unbearbeitet als Snapshot; die Statusnotiz oben ist, was aktuell ist.
+Ein Leser, der nur die Überschriften überfliegt, sollte nicht den Eindruck bekommen,
+Tesserae hätte immer noch keine Engine und keine Dokumente auf Abruf.
+
 > **Status zum Zeitpunkt von v0.5.0 (2026-06-06):** Dieses Dokument ist ein **Stichtags-Audit** (Snapshot vom 2026-06-02) und wird für das Archiv unverändert beibehalten. Die meisten seiner übergreifenden Befunde sind nun **behoben**: der fehlende Supervisor-Daemon und der In-Process-Pipeline-Orchestrator wurden ausgeliefert (Engine-Rückgrat, `tesserae/engine/`), das Live-Tailing von Sitzungen ersetzt den nachträglichen Scan (Säule 1), die Selbstverbesserungs-Pässe sind über das `node_memory`-Sidecar aktiviert und persistiert (Supersede standardmäßig aktiv mit Unterdrückung, numerische Wiederholungs-Konfidenz — Säule 2), das Hash-Bucket-Standard-Embedding wird durch ein echtes, laut fehlschlagendes Backend ersetzt (Säule 3), und **der On-Demand-Kontext-Compiler der Säule 3 existiert nun** (`compile_context`). Eine inkrementelle Schicht über den `GraphStore`-Port ist als Infrastruktur in v0.5.0 gelandet und ist **seit v0.40.0 der Standard**; die Vereinheitlichung von serve+watch (Schritt 7 der Build-Reihenfolge) wurde in v0.40.0 ausgeliefert, mit Veröffentlichung bewusst manuell gelassen. Den Status je Phase siehe in der [Phasen-Roadmap](context-engine-roadmap.de.md), die Änderungsübersicht in den [v0.5.0-Release-Notes](release-notes/v0.5.0.de.md). Die Befunde unten bleiben unverändert als ursprünglicher Snapshot.
 
 ## Urteil in einer Zeile
@@ -32,7 +38,7 @@ autonom antreibt. Alles andere ist inkrementell darauf.
 
 ---
 
-## Säule 1 — Sitzungsüberwachung → **nachträglich, nicht live**
+## Säule 1 — Sitzungsüberwachung → ~~**nachträglich, nicht live**~~ → **live** (v0.5.0)
 
 | Status | Befund | Was nötig ist |
 |---|---|---|
@@ -43,7 +49,7 @@ autonom antreibt. Alles andere ist inkrementell darauf.
 | grob | Der `harness_sessions`-Speicher ist ein flacher Glob mit Vollscan bei jedem list/write. | Indizierter/anhängender Speicher für eine kontinuierlich wachsende Erfassungsmenge. |
 | fehlend | Keine knotenweisen Frische-/Herkunfts-Zeitstempel; Aktualität wird nur auf Artefaktebene (git HEAD) verfolgt. | Faktweise Frische für „wie frisch ist das?". |
 
-## Säule 2 — Sich selbst verbessernde Wissensbasis → **Einmal-Neuextraktion, angeflanschte Evolution**
+## Säule 2 — Sich selbst verbessernde Wissensbasis → ~~**Einmal-Neuextraktion, angeflanschte Evolution**~~ → **persistiert, und es fetched jetzt**
 
 Die „evolvierenden" Durchläufe existieren, laufen aber **nur innerhalb eines
 einzigen `compile`** (eine Neuextraktion von Grund auf), und die meisten sind
@@ -60,10 +66,11 @@ Kompilierung neu berechnet, nicht an Ort und Stelle revidiert.
 | Lücke | **Kanonisierung (Canonicalization)** führt nur hochkonfidente Aliase automatisch zusammen; der Rest wird zur menschlichen CLI-Freigabe in die Warteschlange gestellt. | Automatische, mit der Zeit LLM-geschlichtete Zusammenführung. |
 | Lücke | **Rückkopplungsschleife halb geschlossen**: Der deterministische Basis-Extraktor *ignoriert Vorgaben vollständig* (`selective_extractor.py:43`); nur der optionale LLM-Pfad konsumiert Korrekturen. Mit ausgeschaltetem LLM gelangen menschliche Korrekturen nie zurück in die Extraktion. | Vorgabenbeachtung im deterministischen Pfad oder LLM standardmäßig. |
 | Lücke | Keine **Verstärkung wiederkehrender Erkenntnisse**: nichts verstärkt die Konfidenz, wenn eine Erkenntnis über Sitzungen hinweg wiederkehrt. `temporal.infer_confidence` ist eine grobe String-Heuristik. | Sitzungsübergreifende Häufigkeit → numerische Konfidenz. |
+| ~~fehlend~~ resolved | Nichts **zog Erkenntnisse von selbst herein**. Jede Trigger-Quelle wartete darauf, dass sich eine lokale Datei ändert, daher rekonstruierte die Engine nur, was jemand bereits auf die Platte gelegt hatte — die „autonome, proaktive" Hälfte dieser Säule war die Missionsaussage, nicht der Code. `tesserae engine --proactive` fragt jetzt die Feeds in `proactive_sources` ab und nimmt auf, was es nicht gesehen hat. | Fertig — standardmäßig aus, budgetiert pro Tick, und eine URL, die es nicht lesen kann, wird erinnert statt erneut versucht. |
 | grob | Die Ersetzungs-Kandidatenpaarung ist **lexikalischer Jaccard (0,55)**; semantische Umformulierungen mit geringer lexikalischer Überlappung werden nie Kandidaten. | Embedding-basierte Kandidatengenerierung. |
 | fehlend | **Der gesamte Selbstverbesserungs-Querschnitt ist ungetestet** (keine decay/supersede/feedback/drift/canonical/temporal-Tests). | Tests neben jeder Änderung hier. |
 
-## Säule 3 — Dokumente auf Abruf → **existiert noch nicht**
+## Säule 3 — Dokumente auf Abruf → ~~**existiert noch nicht**~~ → **`compile_context`** (v0.5.0)
 
 Die Abfrage-/Abrufverrohrung ist ausgereift (hybrides RRF, PPR, ~20 MCP-Tools,
 ask pro Seite, KI-Exporte). Aber **jedes Artefakt ist entweder eine statische
@@ -84,7 +91,7 @@ Primitive, es zu bauen, sind alle vorhanden, aber nie zusammengesetzt.
 | grob | Das ask-Widget des statischen Hosts liefert **konservierte `DEMO_QA`**; echtes ask funktioniert nur unter `serve`. Das öffentliche „ask" auf Pages ist Theater. | Für Demo akzeptabel; aber auf der veröffentlichten Seite nicht agentenkonsumierbar. |
 | grob | Das `auto`-Backend von `ask` schluckt Ausnahmen und stuft unsichtbar auf BM25 herab. | Offenlegen, welches Backend geantwortet hat und warum Fallbacks ausgelöst wurden. |
 
-## Querschnitt — Orchestrierung & Lebenszyklus → **Batch-CLI, keine Engine**
+## Querschnitt — Orchestrierung & Lebenszyklus → ~~**Batch-CLI, keine Engine**~~ → **`tesserae engine`** (v0.5.0)
 
 | Status | Befund | Was nötig ist |
 |---|---|---|

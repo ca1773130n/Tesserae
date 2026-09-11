@@ -217,9 +217,11 @@ Run `tesserae --help` for the grouped list, `tesserae <cmd> --help` for flags.
 | `tesserae graph-map` | Budgeted Descent: walk the graph top-down by scope rather than by search term. `--scope org:root` for the agent org tree. |
 | `tesserae verify-claim` | Deterministic verdict on whether the graph licenses a triple. JSON out. |
 | `tesserae verify-attribution` | Is each figure in an answer attributed to the right system and benchmark? No graph, JSON out. |
-| `tesserae engine [--all] [--serve]` | Supervised refresh daemon — watch, debounce, recompile, and consolidate agent memory on idle (the sleep cycle; `--no-consolidate` to disable). `--all` keeps every registered project fresh in one process. `--serve` also serves the site from the same process, and a recompile swaps the new site in without a moment of 404. |
+| `tesserae engine [--all] [--serve] [--proactive]` | Supervised refresh daemon — watch, debounce, recompile, and consolidate agent memory on idle (the sleep cycle; `--no-consolidate` to disable). `--all` keeps every registered project fresh in one process. `--serve` also serves the site from the same process, and a recompile swaps the new site in without a moment of 404. `--proactive` polls the feeds in `proactive_sources` and pulls in documents the project has never seen, off by default because it fetches and compiles on its own. |
 | `tesserae refresh` | One-shot: import new sessions → compile → sync vault. |
 | `tesserae agents …` | `init` (infer the org) · `tree` · `show` · `drill` — the layered-memory org tools. |
+| `tesserae sources add <path-or-url>` | Where this graph's knowledge comes from. A directory joins the compile scope; an http(s) URL becomes a feed for `engine --proactive`. |
+| `tesserae completion bash\|zsh\|fish` | Print a shell completion script. Generated from the real command tree, so it cannot drift. |
 | `tesserae distill` | Compact each agent's sessions into its bounded L1 memory layer. |
 | `tesserae doctor` | Health checks; `--fix` applies safe repairs. Exit `0/1/2` = healthy/warnings/errors. |
 | `tesserae lint` | Graph lint — orphans, stale citations, wiki drift, thin interval coverage, unearned procedural pools. `--fix-trivial` for the safe ones. |

@@ -279,6 +279,8 @@ Document-first, hierarchical wiki replaces the old graph dump. See [`docs/fronte
 - ✅ `tesserae export site --watch` (standalone polling watcher)
 - ✅ `tesserae engine` (supervisor loop — v0.5.0)
 - ✅ `tesserae engine --serve` (the daemon serves `.tesserae/site` itself; the site is swapped in atomically on every recompile — v0.40.0)
+- ✅ `tesserae engine --proactive` (the fifth trigger source, and the first that does not wait for a local edit: polls `proactive_sources`, ingests what it has not seen, budgeted per tick)
+- ✅ `tesserae completion bash|zsh|fish` (shell completion generated from the real parser tree)
 - ✅ `tesserae refresh` (prose ingest → compile → project chain — v0.5.0)
 - ✅ `tesserae context` (on-demand context compiler — v0.5.0)
 - ✅ `tesserae export harness`
