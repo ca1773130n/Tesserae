@@ -230,7 +230,7 @@ options.
 | `tesserae graph-map` | Budgeted Descent : parcourir de haut en bas par portée, pas par terme de recherche. `--scope org:root` pour l'arbre organisationnel des agents. |
 | `tesserae verify-claim` | Verdict déterministe : le graphe autorise-t-il ce triplet ? Sortie JSON. |
 | `tesserae verify-attribution` | Chaque chiffre d'une réponse est-il attribué au bon système et au bon benchmark ? Sans graphe, sortie JSON. |
-| `tesserae engine [--all]` | Démon de rafraîchissement supervisé — observer, amortir, recompiler et consolider la mémoire des agents au repos (le cycle de sommeil ; `--no-consolidate` le désactive). `--all` garde à jour tous les projets enregistrés dans un seul processus. |
+| `tesserae engine [--all] [--serve]` | Démon de rafraîchissement supervisé — observer, amortir, recompiler et consolider la mémoire des agents au repos (le cycle de sommeil ; `--no-consolidate` le désactive). `--all` garde à jour tous les projets enregistrés dans un seul processus. `--serve` sert aussi le site depuis le même processus, et une recompilation échange le nouveau site sans un instant de 404. |
 | `tesserae refresh` | En une passe : importer les nouvelles sessions → compiler → synchroniser le coffre. |
 | `tesserae agents …` | `init` (déduire l'organisation) · `tree` · `show` · `drill` — les outils de mémoire en couches. |
 | `tesserae distill` | Compacte les sessions de chaque agent dans sa couche de mémoire L1 bornée. |

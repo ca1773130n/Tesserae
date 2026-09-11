@@ -128,7 +128,7 @@ Das Engine-Rückgrat, das die drei Säulen antreibt. Siehe [`docs/architecture.m
 | Provenance-Sidecar (`node_provenance`, first-seen) | ✅ | [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | Fundament für Changed-only-Deletes; wird immer aufgezeichnet. |
 | `GraphStore`-Delete-Oberfläche | ✅ | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `delete_node`, `delete_nodes_by_source` (verwirft Knoten, deren Provenance-Menge sich leert; dateiübergreifende Konzepte überleben). |
 | `url_resolver`-Runtime-Store-Dispatch | ✅ | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`. |
-| `incremental_compile`-Flag | ⚠ | [`tesserae/project.py`](../../tesserae/project.py) | **Default OFF / experimentell.** Byte-Parität für mehrere Edit-Formen bewiesen, aber Multi-Owner-/Producer-Lifecycle-Lücken bleiben; Full-Compile bleibt der Default. |
+| `incremental_compile`-Flag | ✅ | [`tesserae/project.py`](../../tesserae/project.py) | **Standard AN seit v0.40.0.** Byte-Parität mit vollständiger Kompilierung ist durch `tests/test_incremental_parity.py` für jede kontrollierte Edit-Form bewiesen, und das Gate garantiert, dass der Inkrementalzweig wirklich lief; `incremental_compile: false` zum Abmelden. |
 
 ## Frontend-Redesign — April 2026
 
@@ -274,6 +274,7 @@ Ein dokument-orientiertes, hierarchisches Wiki ersetzt den alten Graph-Dump. Sie
 - ✅ `tesserae sessions discover/import/list` (expliziter lokaler Agent-Historie-Import)
 - ✅ `tesserae export site --watch` (eigenständiger Polling-Watcher)
 - ✅ `tesserae engine` (Supervisor-Schleife — v0.5.0)
+- ✅ `tesserae engine --serve` (der Daemon bedient `.tesserae/site` selbst; die Site wird bei jeder Neukompilierung atomar ausgetauscht — v0.40.0)
 - ✅ `tesserae refresh` (Prosa-Kette ingest → compile → project — v0.5.0)
 - ✅ `tesserae context` (On-Demand-Kontext-Compiler — v0.5.0)
 - ✅ `tesserae export harness`

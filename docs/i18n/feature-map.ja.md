@@ -131,7 +131,7 @@ Neo4j のエージェント-メモリ設計を読み、Tesserae 自身の制約�
 | 来歴サイドカー（`node_provenance`、first-seen） | ✅ | [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | changed-only 削除の基盤。常に記録されます。 |
 | `GraphStore` の削除サーフェス | ✅ | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `delete_node`、`delete_nodes_by_source`（来歴集合が空になったノードを削除。ファイル横断のコンセプトは生き残ります）。 |
 | `url_resolver` によるランタイムストアディスパッチ | ✅ | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`。 |
-| `incremental_compile` フラグ | ⚠ | [`tesserae/project.py`](../../tesserae/project.py) | **デフォルト OFF / 実験的。** いくつかの編集形状ではバイトパリティが証明済みですが、マルチオーナー/プロデューサーライフサイクルのギャップが残っています。完全コンパイルがデフォルトのままです。 |
+| `incremental_compile` フラグ | ✅ | [`tesserae/project.py`](../../tesserae/project.py) | **v0.40.0 から既定 ON。** `tests/test_incremental_parity.py` ですべてのゲーティングされた編集形状について完全コンパイルとのバイトパリティが証明されており、ゲートは増分アームが実際に走ったことをアサート。`incremental_compile: false` でオプトアウト。 |
 
 ## フロントエンド再設計 — 2026 年 4 月
 
@@ -277,6 +277,7 @@ Neo4j のエージェント-メモリ設計を読み、Tesserae 自身の制約�
 - ✅ `tesserae sessions discover/import/list`（明示的なローカルエージェント履歴のインポート）
 - ✅ `tesserae export site --watch`（スタンドアロンのポーリングウォッチャー）
 - ✅ `tesserae engine`（スーパーバイザーループ — v0.5.0）
+- ✅ `tesserae engine --serve` (デーモンが`.tesserae/site`を自身で配信。サイトはアトミックに入れ替わり、404 の瞬間がない。)
 - ✅ `tesserae refresh`（一連の ingest → compile → project チェーン — v0.5.0）
 - ✅ `tesserae context`（オンデマンドコンテキストコンパイラ — v0.5.0）
 - ✅ `tesserae export harness`

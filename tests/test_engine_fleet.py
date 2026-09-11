@@ -387,3 +387,19 @@ def test_remove_pidfile_only_when_owned(tmp_path):
     pidfile.write_text(str(os.getpid()))
     fleet._remove_pidfile()
     assert not pidfile.exists()
+
+
+def test_default_units_never_bind_a_port(tmp_path):
+    """N units racing one port is the failure this pins shut.
+
+    Fleet mode has no serve knob on purpose: `_default_daemon_factory` must
+    build units with the serve source OFF, whatever the Daemon default becomes.
+    """
+    registry = tmp_path / "registry.json"
+    root = _make_project(tmp_path, "alpha")
+    _write_registry(registry, {"alpha": root})
+    fleet = FleetDaemon(registry_path=registry, pidfile=tmp_path / "engine.pid")
+
+    unit = fleet._default_daemon_factory("alpha", root, fleet)
+
+    assert unit._enable_serve is False

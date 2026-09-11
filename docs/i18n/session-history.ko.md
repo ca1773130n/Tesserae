@@ -33,6 +33,7 @@ Tesserae는 로컬 AI 에이전트 트랜스크립트를 가져와 정적 사이
 ```bash
 tesserae engine        # watch sources, coalesce bursts, auto-recompile
 tesserae engine --once # single drain cycle then exit (deterministic)
+tesserae engine --serve # also serve .tesserae/site; a recompile swaps the site in atomically
 ```
 
 `tesserae refresh`는 장수 감시자를 시작하지 않고 동일한 ingest → compile →

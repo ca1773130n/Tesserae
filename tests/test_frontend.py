@@ -22,8 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from tesserae.frontend import StaticSiteBuilder  # legacy import path still works
-from tesserae.site import StaticSiteBuilder as NewStaticSiteBuilder
+from tesserae.site import StaticSiteBuilder
 from tesserae.research_graph import (
     ResearchEdge,
     ResearchGraph,
@@ -179,7 +178,6 @@ def test_static_site_builder_emits_redesigned_ia(tmp_path: Path) -> None:
     result = StaticSiteBuilder(site_title="Demo Wiki").write_site(_toy_graph(), wiki, out)
 
     # Same builder is re-exported from tesserae.site.
-    assert StaticSiteBuilder is NewStaticSiteBuilder
 
     assert result["site_path"] == str(out)
     assert result["page_count"] >= 12
@@ -360,3 +358,15 @@ def test_static_site_builder_handles_empty_wiki(tmp_path: Path) -> None:
         "about.html",
     ):
         assert (out / route).exists(), f"missing route under empty wiki: {route}"
+
+
+def test_the_deprecated_shim_is_gone() -> None:
+    """`tesserae.frontend` was 648 lines of dead code behind a one-line rebind.
+
+    Deleting it is only safe while nothing imports it, and this is the assertion
+    that keeps it that way.
+    """
+    import importlib
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("tesserae.frontend")

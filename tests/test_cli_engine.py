@@ -10,9 +10,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import pytest
+
 import tesserae.cli as cli
 import tesserae.engine.daemon as daemon_mod
-from tesserae.cli import _handle_engine
+from tesserae.cli import _handle_engine, main
 from tesserae.cli_tree import moved_replacement
 
 
@@ -270,3 +272,40 @@ def test_engine_without_harvest_only_still_compiles(tmp_path, monkeypatch):
     assert main(["engine", "--once", "--project", str(project)]) == 0
     assert seen["enable_compile"] is True
     assert seen["enable_watch"] is True
+
+
+@pytest.mark.parametrize(
+    "argv, expected",
+    [
+        (["engine", "--serve", "--once"], "drop --once"),
+        (["engine", "--serve", "--harvest-only"], "mutually exclusive"),
+        (["engine", "--serve", "--all"], "single-project only"),
+        (["engine", "--serve-port", "9000"], "requires --serve"),
+    ],
+)
+def test_serve_rejects_the_combinations_that_cannot_work(argv, expected, capsys):
+    """--serve with --once starts no threads; with --harvest-only it would pin a
+    permanently stale page; with --all N units would race one port."""
+    rc = main(argv)
+    assert rc == 2
+    assert expected in capsys.readouterr().err
+
+
+def test_serve_flags_reach_the_daemon(tmp_path, monkeypatch):
+    """Every knob is stated explicitly, the way --harvest-only already does."""
+    (tmp_path / ".tesserae").mkdir(parents=True, exist_ok=True)
+    seen: dict = {}
+
+    class _Spy:
+        def __init__(self, project_root, **kwargs):
+            seen.update(kwargs)
+
+        def run(self, *, once=False):
+            return 0
+
+    monkeypatch.setattr("tesserae.engine.daemon.Daemon", _Spy)
+    rc = main(["engine", "--serve", "--serve-port", "0", "--project", str(tmp_path)])
+    assert rc == 0
+    assert seen["enable_serve"] is True
+    assert seen["serve_host"] == "127.0.0.1"
+    assert seen["serve_port"] == 0

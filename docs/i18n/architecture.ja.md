@@ -157,7 +157,7 @@ query / seeds
 
 | モジュール | 責務 |
 |---|---|
-| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: 抽出 → グラフ → メモリパス → wiki レイヤー → サイトを駆動。`ProjectPaths`（`config`、`graph`、`manifest`、`wiki`、`site` など）を所有。来歴（provenance）駆動の増分コンパイルが適格かを事前に判断します（`incremental_compile` でゲート、既定 OFF）。 |
+| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: 抽出 → グラフ → メモリパス → wiki レイヤー → サイトを駆動。`ProjectPaths`（`config`、`graph`、`manifest`、`wiki`、`site` など）を所有。来歴（provenance）駆動の増分コンパイルが適格かを事前に判断します（`incremental_compile` でゲート、v0.40.0 から既定 ON。`false` でオプトアウト）。 |
 | [`tesserae/cli.py`](../../tesserae/cli.py) | フラット動詞の CLI ディスパッチ（レガシーの `project`/`wiki` サブコマンド群を削除した後で約 2,732 行）。動詞 — `init`、`compile`、`ingest`、`context`、`ask`、`query`、`doctor`、`summary`、`decisions`、`refresh`、`serve`、`engine`、`export`、`vault`、`code`、`lab`、`setup`、`config`、`projects`、`sources`、`federation`、`integrations` — は [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py) にメタデータとして宣言され、手動登録ではなくそのツリーから配線されます。 |
 | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`: ワークツリー経由で `.tesserae/site/` を `gh-pages` ブランチにプッシュし、オプションで `gh` 経由で Pages を有効化します。 |
 
@@ -409,7 +409,7 @@ Tesserae が何を出力し、それぞれの値が正直にどこから来る�
 - **自己改善メモリ** — `tests/test_memory_sidecar.py`、`tests/test_decay_supersede.py`、`tests/test_supersede_suppression.py`、`tests/test_mcp_supersede_suppression.py`、`tests/test_memory_contradiction_reinforce.py`。
 - **検索 + 埋め込み** — `tests/test_hybrid_search.py`、`tests/test_ppr.py`、`tests/test_real_embeddings_phase6.py`。
 - **コンテキストコンパイラ** — `tests/test_context_compiler.py`（形状、引用の整合性、決定性、予算、PPR フォールバック）、`tests/test_cli_context.py`、`tests/test_mcp_server_context.py`。
-- **増分コンパイル（実験的）** — `tests/test_incremental_compile.py`、`tests/test_incremental_parity.py`、`tests/test_provenance_readiness.py`、`tests/test_sqlite_provenance.py`。
+- **増分コンパイル（既定 ON）** — `tests/test_incremental_compile.py`、`tests/test_incremental_parity.py`、`tests/test_provenance_readiness.py`、`tests/test_sqlite_provenance.py`。
 - **冪等性** — `tests/test_project_e2e_redesign.py` は 2 回コンパイルし、`wiki/` と `site/` に差分ゼロであることをアサートします。
 - **リンクの整合性** — `tests/test_frontend.py` は出力されたすべての HTML の href をパースし、すべての内部リンクが生成済みファイルに解決されることをアサートします。`nodes/codeclass-*.html` は生成されません。
 - **AI シブリング** — すべての `path/foo.html` について、テストスイートは `path/foo.txt` と `path/foo.json` の存在をアサートします。JSON はパースでき、`{title, kind, body, links}` を含みます。

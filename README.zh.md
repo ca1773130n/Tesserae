@@ -200,7 +200,7 @@ MCP 客户端的服务器条目。每个读图工具都免费接受 `graph_path`
 | `tesserae graph-map` | Budgeted Descent：按作用域自顶向下遍历，而非按搜索词。智能体组织树用 `--scope org:root`。 |
 | `tesserae verify-claim` | 关于图谱是否认可某个三元组的确定性裁决。输出 JSON。 |
 | `tesserae verify-attribution` | 答案中的每个数字是否归属于正确的系统和基准？不需要图谱，输出 JSON。 |
-| `tesserae engine [--all]` | 受监督的刷新守护进程——监视、去抖、重编译，并在空闲时整合智能体记忆（睡眠周期；`--no-consolidate` 关闭）。`--all` 用一个进程让所有已注册项目保持新鲜。 |
+| `tesserae engine [--all] [--serve]` | 受监督的刷新守护进程——监视、去抖、重编译，并在空闲时整合智能体记忆（睡眠周期；`--no-consolidate` 关闭）。`--all` 用一个进程让所有已注册项目保持新鲜。`--serve` 还会从同一进程提供服务站点，且重编译时会原子式地交换新站点，不会有片刻的 404。 |
 | `tesserae refresh` | 一次性执行：导入新会话 → 编译 → 同步仓库。 |
 | `tesserae agents …` | `init`（推断组织） · `tree` · `show` · `drill` —— 分层记忆的组织工具。 |
 | `tesserae distill` | 把每个智能体的会话压缩成其有界的 L1 记忆层。 |

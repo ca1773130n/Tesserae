@@ -12,7 +12,7 @@ Wissen autonom aufnimmt, ihre Basis selbst verbessert und auf Abruf
 agentenfertigen Kontext liefert — und so die heutige manuelle
 Batch-Kompilierungs-CLI ersetzt.
 
-> **Status zum Zeitpunkt von v0.5.0 (2026-06-06):** Die Phasen 0–6 wurden **ausgeliefert**. Das Engine-Rückgrat (P0 Pipeline-Orchestrator, P1 Supervisor-Daemon, P2 Live-Sitzungsmonitor) liegt in `tesserae/engine/`; die Infrastruktur der inkrementellen Kompilierung P3 ist gelandet, bleibt aber **mit Flag OFF/experimentell**; P4 die Selbstverbesserung wird über das `node_memory`-Sidecar persistiert (numerisches Wiederholungs-Vertrauen, Supersede standardmäßig aktiv); P5 echte Standard-Embeddings wurden ausgeliefert (Spur B); und **P6 — der Kontext-Compiler auf Abruf — ist das Hauptfeature von v0.5.0**. Phase 7 (serve + watch + deploy + Lebenszyklustests vereinheitlichen) bleibt **offen**. Der Status je Phase ist unten inline vermerkt. Siehe die [v0.5.0-Release-Notes](release-notes/v0.5.0.de.md).
+> **Status zum Zeitpunkt von v0.5.0 (2026-06-06):** Die Phasen 0–6 wurden **ausgeliefert**. Das Engine-Rückgrat (P0 Pipeline-Orchestrator, P1 Supervisor-Daemon, P2 Live-Sitzungsmonitor) liegt in `tesserae/engine/`; die inkrementelle Kompilierung P3 ist als Infrastruktur in v0.5.0 gelandet und ist **seit v0.40.0 Standard**; P4 die Selbstverbesserung wird über das `node_memory`-Sidecar persistiert (numerisches Wiederholungs-Vertrauen, Supersede standardmäßig aktiv); P5 echte Standard-Embeddings wurden ausgeliefert (Spur B); und **P6 — der Kontext-Compiler auf Abruf — ist das Hauptfeature von v0.5.0**. Phase 7 (serve + watch + deploy + Lebenszyklustests vereinheitlichen) **wurde in v0.40.0 ausgeliefert** mit Veröffentlichung bewusst manuell gelassen. Der Status je Phase ist unten inline vermerkt. Siehe die [v0.5.0-Release-Notes](release-notes/v0.5.0.de.md).
 
 ## Form der Abhängigkeiten
 
@@ -220,30 +220,37 @@ zitiertes, agentenfertiges Dokument.
   abfragebegrenzte Synthese, statischer Harness, unrangiertes `node_context`,
   Gesamtkorpus-Exporte.
 
-## Phase 7 — serve + watch + deploy + Lebenszyklustests vereinheitlichen ⏳ Offen (nach v0.5.0)
-
-> **Offen zum Zeitpunkt von v0.5.0.** Die Konvergenzphase bleibt der nächste Meilenstein; der Daemon (P1) und die Ausgabeseite (P6), die sie zusammenführt, sind nun beide vorhanden.
+## Phase 7 — serve + watch + deploy + Lebenszyklustests vereinheitlichen ✅ Ausgeliefert in v0.40.0 (Veröffentlichung bleibt manuell)
 
 **Ziel:** Ein überwachter Prozess bedient die Seite, kompiliert bei Änderung neu
 und veröffentlicht kontinuierlich; die Lebenszyklusschicht erhält Testabdeckung.
 
+> **Ausgeliefert in v0.40.0, mit einer Kugel absichtlich durchgestrichen.** `tesserae engine --serve` bedient `.tesserae/site` vom Daemon-Prozess auf seinem eigenen Thread, der Site-Build wurde zu einem atomaren Verzeichnistausch, sodass eine bediente Seite während einer Neukompilierung nie 404 zeigt, `frontend.py` ist gelöscht, und der Daemon wuchs der Stopp-Primitive, die ein blockierender Server braucht. **Kontinuierliche Veröffentlichung wurde abgeschnitten**, nicht aufgeschoben: `deploy.py` verweigert einen unsauberen Baum, fabriziert einen leeren Commit pro Lauf und mutiert das eigene `.git` des Nutzers mit `worktree add`; und `gh-pages` ist weltlesbar, während nichts in Tesserae Geheimnisse löscht. Veröffentlichung bleibt ein bewusstes `tesserae export site --deploy` oder CI bei Push.
+
 - **Warum jetzt:** Konvergenz. Braucht P1 (Daemon) und die Ausgabeseite (P6),
-  damit es sich lohnt, kontinuierlich zu veröffentlichen.
-- **Umfang:** `serve.py` (blockierender `TCPServer`) und `deploy.py` (manueller
-  git push) in den Daemon einfalten, damit serve + watch + publish einen
-  Supervisor teilen. Kontinuierliche/debouncte Veröffentlichung. Die fehlenden
-  `test_watch`/`test_serve`/Daemon-Lebenszyklustests hinzufügen. Das veraltete
-  tote Modul `frontend.py` löschen. Die stringtypisierte TODO-Schleife von
-  `review_workflow.py` in einen echten Anwendungspfad verdrahten.
-- **Lieferungen:** `tesserae engine --serve --publish` fährt die volle Schleife;
-  Lebenszyklus-Testsuite; toter Code entfernt.
+  damit es sich lohnt zu dienen.
+- **Umfang, wie ausgeliefert:** `serve.py` wird vom Daemon wiederverwendet, nicht
+  neu geschrieben — derselbe Handler, dieselbe Pfad-Eindämmung, jetzt auf einem
+  `ThreadingHTTPServer` (das eigenständige `tesserae serve` war einreihig, sodass
+  ein LLM `/api/ask` jedes statische Gut blockierte). Der Daemon erhielt eine
+  nähere Stoppsliste: `serve_forever` kontrolliert nie ein Stop-Ereignis erneut,
+  sodass allein ein Ereignis ihn nicht stoppen kann. `build_site` schreibt auf
+  einen Staging-Geschwister und tauscht es mit der Live-Site in einem Syscall
+  aus (`renamex_np` auf macOS, `renameat2` auf Linux), fällt aber auf zwei
+  Umbenennungen zurück. Der Anwendungspfad der Review-Schleife existiert bereits
+  (`--apply-review-decisions`).
+- **Lieferungen:** `tesserae engine --serve [--serve-host] [--serve-port]`;
+  `tests/test_site_swap.py` (ein Leser hämmert den bediente Index während drei
+  Rebuilds und muss null Misses sehen), serve-source Lebenszyklustests, ein
+  Deploy-Test, dass ein fehlgeschlagener Push das Repo nicht mehr festlegt; toter
+  Code entfernt.
 - **Abnahme:** Eine Quellbearbeitung pflanzt sich ohne manuelle Befehle zu einer
-  live bedienten Seite und (optional) einem veröffentlichten Deploy fort;
-  Lebenszyklustests grün.
-- **Risiko:** Niedrig–Mittel — überwiegend Integration.
-- **Geschlossene Audit-Befunde:** serve/watch/deploy-Aufspaltung, manueller
-  Deploy, veraltetes `frontend.py`, Review-Schleifen-Stub, fehlende
-  Lebenszyklustests.
+  live bedienten Seite fort und die Seite ist nie vermisst; Lebenszyklustests grün.
+- **Nicht getan:** `--publish`. Eine Flotte (`engine --all`) bedient nie; nutze
+  `tesserae serve --all` daneben.
+- **Geschlossene Audit-Befunde:** serve/watch-Aufspaltung, veraltetes `frontend.py`,
+  Review-Schleifen-Stub, fehlende Lebenszyklustests. Manueller Deploy bleibt durch
+  Entscheidung.
 
 ---
 
@@ -254,11 +261,11 @@ und veröffentlicht kontinuierlich; die Lebenszyklusschicht erhält Testabdeckun
 | P0 | Pipeline-Orchestrator | — | —  ✅ Ausgeliefert in v0.5.0 |
 | P1 | Supervisor-Daemon | P0 | —  ✅ Ausgeliefert in v0.5.0 |
 | P2 | Live-Sitzungsmonitor | P1 | P5  ✅ Ausgeliefert in v0.5.0 |
-| P3 | Inkrementelle Kompilierung | P1 | P5  ⚙️ Infrastruktur ausgeliefert in v0.5.0 (Flag OFF/experimentell) |
+| P3 | Inkrementelle Kompilierung | P1 | P5  ✅ Ausgeliefert in v0.5.0, Standard AN seit v0.40.0 |
 | P4 | Persistenz der Selbstverbesserung | P3 | P5, P6  ✅ Ausgeliefert in v0.5.0 |
 | P5 | Echte Embeddings | P0 | P2, P3, P4  ✅ Ausgeliefert in v0.5.0 |
 | P6 | Kontext-Compiler auf Abruf | P5 | P2, P3, P4  ✅ Ausgeliefert in v0.5.0 |
-| P7 | serve/watch/deploy vereinheitlichen | P1, P6 | —  ⏳ Offen (nach v0.5.0) |
+| P7 | serve/watch/deploy vereinheitlichen | P1, P6 | —  ✅ Ausgeliefert in v0.40.0 (Veröffentlichung manuell) |
 
 **Minimal funktionsfähige Engine:** P0 + P1 + P2 + P3 — ein laufender Daemon,
 der Live-Sitzungen beobachtet und inkrementell kompiliert. **Differenziertes

@@ -32,6 +32,7 @@ Ejecuta el bucle en vivo con:
 ```bash
 tesserae engine        # watch sources, coalesce bursts, auto-recompile
 tesserae engine --once # single drain cycle then exit (deterministic)
+tesserae engine --serve # también sirve .tesserae/site; una recompilación intercambia el sitio atomically
 ```
 
 `tesserae refresh` ejecuta el mismo pipeline ingest → compile → project

@@ -158,7 +158,7 @@ one — `delivered` is settled after the budget walk, so the caller can tell
 
 | Module | Responsibility |
 |---|---|
-| [`tesserae/project.py`](../tesserae/project.py) | `ProjectWiki.compile`: drives extraction → graph → memory passes → wiki layer → site. Owns `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Decides up front whether a provenance-driven incremental compile is eligible (gated on `incremental_compile`, default OFF). |
+| [`tesserae/project.py`](../tesserae/project.py) | `ProjectWiki.compile`: drives extraction → graph → memory passes → wiki layer → site. Owns `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Decides up front whether a provenance-driven incremental compile is eligible (gated on `incremental_compile`, default ON since v0.40.0; `false` opts out). |
 | [`tesserae/cli.py`](../tesserae/cli.py) | Flat-verb CLI dispatch (~2,732 lines after the legacy `project`/`wiki` subcommand groups were deleted). Verbs — `init`, `compile`, `ingest`, `context`, `ask`, `query`, `doctor`, `summary`, `decisions`, `refresh`, `serve`, `engine`, `export`, `vault`, `code`, `lab`, `setup`, `config`, `projects`, `sources`, `federation`, `integrations` — are declared as metadata in [`tesserae/cli_tree.py`](../tesserae/cli_tree.py) and wired up from that tree rather than hand-registered. |
 | [`tesserae/deploy.py`](../tesserae/deploy.py) | `export site --deploy`: pushes `.tesserae/site/` to a `gh-pages` branch via worktree, optionally enables Pages via `gh`. |
 
@@ -423,7 +423,7 @@ This is verified by `tests/test_site_pages.py` and the end-to-end smoke in `test
 - **Self-improvement memory** — `tests/test_memory_sidecar.py`, `tests/test_decay_supersede.py`, `tests/test_supersede_suppression.py`, `tests/test_mcp_supersede_suppression.py`, `tests/test_memory_contradiction_reinforce.py`.
 - **Retrieval + embeddings** — `tests/test_hybrid_search.py`, `tests/test_ppr.py`, `tests/test_real_embeddings_phase6.py`.
 - **Context compiler** — `tests/test_context_compiler.py` (shape, citation integrity, determinism, budget, PPR fallback), `tests/test_cli_context.py`, `tests/test_mcp_server_context.py`.
-- **Incremental compile (experimental)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
+- **Incremental compile (default on)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
 - **Idempotence** — `tests/test_project_e2e_redesign.py` compiles twice and asserts zero diffs in `wiki/` and `site/`.
 - **Link integrity** — `tests/test_frontend.py` parses every emitted HTML for hrefs and asserts every internal link resolves to a generated file. No `nodes/codeclass-*.html` is produced.
 - **AI siblings** — for every `path/foo.html`, the test suite asserts `path/foo.txt` and `path/foo.json` exist; the JSON parses and contains `{title, kind, body, links}`.

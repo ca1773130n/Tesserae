@@ -291,6 +291,49 @@ class ProjectPaths:
     merge_ledger: Path = Path(".tesserae/merge-ledger.json")
 
 
+
+def _exchange_directories(a: Path, b: Path) -> bool:
+    """Atomically swap two directories in place; ``False`` if the OS cannot.
+
+    macOS has ``renamex_np(RENAME_SWAP)`` (10.12+), Linux ``renameat2
+    (RENAME_EXCHANGE)`` (3.15+, glibc 2.28+ exports it; older glibc needs the
+    raw syscall). Both leave every path present at every instant, which is
+    what lets the daemon serve ``.tesserae/site`` while it rebuilds it.
+    """
+    import ctypes
+    import ctypes.util
+
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+    except OSError:
+        return False
+    src, dst = os.fsencode(str(a)), os.fsencode(str(b))
+    if sys.platform == "darwin":
+        fn = getattr(libc, "renamex_np", None)
+        if fn is None:
+            return False
+        fn.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        rc = fn(src, dst, 0x2)  # RENAME_SWAP
+    elif sys.platform.startswith("linux"):
+        at_fdcwd, rename_exchange = -100, 0x2
+        fn = getattr(libc, "renameat2", None)
+        if fn is not None:
+            fn.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+            rc = fn(at_fdcwd, src, at_fdcwd, dst, rename_exchange)
+        else:
+            nr = {"x86_64": 316, "aarch64": 276}.get(os.uname().machine)
+            if nr is None:
+                return False
+            libc.syscall.argtypes = [ctypes.c_long, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+            rc = libc.syscall(nr, at_fdcwd, src, at_fdcwd, dst, rename_exchange)
+    else:
+        return False
+    if rc != 0:
+        logger.debug("directory exchange unavailable (errno %d); falling back to two renames", ctypes.get_errno())
+        return False
+    return True
+
+
 class ProjectWiki:
     """Manage a self-contained ``.tesserae`` workspace inside a project."""
 
@@ -736,7 +779,7 @@ class ProjectWiki:
         self._compile_stats = {
             "mode": "full", "sources_extracted": 0, "downgrade": None,
         }
-        if changed_only and not bool(cfg.get("incremental_compile", False)) and (
+        if changed_only and not bool(cfg.get("incremental_compile", True)) and (
             incremental_override is not False
         ):
             self._compile_stats["downgrade"] = "incremental_compile flag is off"
@@ -747,27 +790,23 @@ class ProjectWiki:
             incremental_enabled = (
                 incremental_override
                 if incremental_override is not None
-                else bool(cfg.get("incremental_compile", False))
+                else bool(cfg.get("incremental_compile", True))
             )
             if incremental_enabled:
-                # EXPERIMENTAL — incremental is byte-identical to a full compile
-                # for the parity-gated edit shapes (additive K=1/5/21,
-                # content-reduction, file-deletion, RENAME, alias-identity change,
-                # both-endpoints-move), but a Codex re-review found remaining
-                # divergence for MULTI-OWNER payload (re-extraction only re-runs
-                # the canonical co-owner, not the union), producer-layer removal
-                # (producer-owned nodes aren't tombstoned on incremental), the
-                # over-cap fallback (not a true full compile), and untracked
-                # post-pass edges. Tracked in 04.1-FOLLOWUP. The flag stays OFF
-                # by default (full recompile = correct); do not enable in
-                # production until those close.
-                logger.warning(
-                    "incremental_compile is ENABLED but EXPERIMENTAL: byte-parity "
-                    "with a full compile holds for the parity-gated edit shapes, "
-                    "but known gaps remain (multi-owner payload, producer-layer "
-                    "removal, over-cap fallback). The default (flag off) full "
-                    "recompile is the safe, supported path."
-                )
+                # DEFAULT ON since v0.40.0. Byte-parity with a full compile is
+                # proven by tests/test_incremental_parity.py for every gated
+                # edit shape — additive K=1/5/21, content reduction, file
+                # deletion, rename, alias-identity change, both-endpoint move,
+                # producer removal — plus the multi-owner payload cases in
+                # tests/test_reextraction_payload.py.
+                #
+                # Read that claim carefully, because it was false before: until
+                # the provenance remap landed, every one of those arms was
+                # silently demoted to a FULL compile, so the gate compared full
+                # against full and proved nothing. The gate now asserts
+                # `mode == "incremental"` from the build ledger, which is what
+                # makes "proven" mean anything. Set `incremental_compile: false`
+                # to opt back out.
                 _prior = _strip_generated_layer(load_graph_file(self.paths.graph))
                 if _prior.nodes or _prior.edges:
                     _prior_edge_triples = {
@@ -3142,11 +3181,45 @@ class ProjectWiki:
             github_blob_base=github_blob_base_cfg if isinstance(github_blob_base_cfg, str) else None,
         )
         self.paths.wiki.mkdir(parents=True, exist_ok=True)
-        return StaticSiteBuilder(
+        builder = StaticSiteBuilder(
             site_title=site_title,
             show_sources=show_sources,
             github_blob_base=github_blob_base,
-        ).write_site(graph, self.paths.wiki, target)
+        )
+        if output is not None:
+            # An explicit --output is a one-shot export, not the served root.
+            # Keep the old behaviour verbatim so no CLI surface changes.
+            return builder.write_site(graph, self.paths.wiki, target)
+
+        # The DEFAULT site is what the daemon serves, so it must never be
+        # absent. ``write_site`` rmtree's its target before writing, which means
+        # a served directory disappears for the whole build — a source edit
+        # propagating to a live page delivered as "the site 404s for the length
+        # of a compile, then comes back changed".
+        #
+        # Build into a sibling staging dir on the SAME filesystem, then swap.
+        # Two renames rather than one because ``os.replace`` onto a non-empty
+        # directory raises ENOTEMPTY on POSIX; the window in which ``site`` does
+        # not exist is the gap between them, sub-millisecond instead of minutes.
+        staging = target.parent / ".site.staging"
+        retired = target.parent / ".site.retired"
+        for scratch in (staging, retired):
+            if scratch.exists():
+                shutil.rmtree(scratch, ignore_errors=True)
+        result = builder.write_site(graph, self.paths.wiki, staging)
+        if target.exists() and _exchange_directories(staging, target):
+            # One syscall: the old site is now under ``staging``. No window.
+            shutil.rmtree(staging, ignore_errors=True)
+            return result
+        # Two renames rather than one because ``os.replace`` onto a non-empty
+        # directory raises ENOTEMPTY on POSIX. A reader in a tight loop DOES
+        # hit the gap between them (measured: 20–300 misses per rebuild), which
+        # is why the exchange above is tried first and this is the fallback.
+        if target.exists():
+            os.replace(target, retired)
+        os.replace(staging, target)
+        shutil.rmtree(retired, ignore_errors=True)
+        return result
 
     def query(
         self,
@@ -4114,8 +4187,12 @@ class ProjectWiki:
         # captures) do not survive as stale public pages.
         if self.paths.wiki.exists():
             shutil.rmtree(self.paths.wiki)
-        if self.paths.site.exists():
-            shutil.rmtree(self.paths.site)
+        # NOT the site: ``StaticSiteBuilder.write_site`` wipes its own target, so
+        # stale pages cannot survive either way, and removing it here only
+        # widened the window in which a SERVED directory does not exist from the
+        # duration of write_site to the whole artifact phase. A compile that
+        # crashes mid-phase now leaves the previous site intact instead of
+        # nothing at all.
         self.paths.wiki.mkdir(parents=True, exist_ok=True)
         wiki_store = WikiPageStore(self.paths.wiki)
         WikiLayerProjector(wiki_store).project(graph)

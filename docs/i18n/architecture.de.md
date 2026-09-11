@@ -160,7 +160,7 @@ Lint-Code `PROCEDURAL_POOLS` meldet die Lücke.
 
 | Modul | Verantwortung |
 |---|---|
-| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: treibt Extraktion → Graph → Memory-Pässe → Wiki-Layer → Site. Besitzt `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Entscheidet vorab, ob eine herkunftsbasierte (provenance) inkrementelle Kompilierung infrage kommt (durch `incremental_compile` gesteuert, Standard OFF). |
+| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: treibt Extraktion → Graph → Memory-Pässe → Wiki-Layer → Site. Besitzt `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Entscheidet vorab, ob eine herkunftsbasierte (provenance) inkrementelle Kompilierung infrage kommt (durch `incremental_compile` gesteuert, Standard ON seit v0.40.0; `false` zum Abmelden). |
 | [`tesserae/cli.py`](../../tesserae/cli.py) | Flache verb-basierte CLI-Dispatch (~2.732 Zeilen nach dem Löschen der veralteten `project`/`wiki`-Subcommand-Gruppen). Die Verben – `init`, `compile`, `ingest`, `context`, `ask`, `query`, `doctor`, `summary`, `decisions`, `refresh`, `serve`, `engine`, `export`, `vault`, `code`, `lab`, `setup`, `config`, `projects`, `sources`, `federation`, `integrations` – werden als Metadaten in [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py) deklariert und aus diesem Baum verdrahtet, statt von Hand registriert zu werden. |
 | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`: pusht `.tesserae/site/` auf einen `gh-pages`-Branch via Worktree, aktiviert optional Pages via `gh`. |
 
@@ -416,7 +416,7 @@ Das wird durch `tests/test_site_pages.py` und den End-to-End-Smoke in `tests/tes
 - **Selbstverbesserungs-Speicher** — `tests/test_memory_sidecar.py`, `tests/test_decay_supersede.py`, `tests/test_supersede_suppression.py`, `tests/test_mcp_supersede_suppression.py`, `tests/test_memory_contradiction_reinforce.py`.
 - **Retrieval + Embeddings** — `tests/test_hybrid_search.py`, `tests/test_ppr.py`, `tests/test_real_embeddings_phase6.py`.
 - **Kontext-Compiler** — `tests/test_context_compiler.py` (Form, Zitat-Integrität, Determinismus, Budget, PPR-Rückfall), `tests/test_cli_context.py`, `tests/test_mcp_server_context.py`.
-- **Inkrementelle Kompilierung (experimentell)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
+- **Inkrementelle Kompilierung (Standard AN)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
 - **Idempotenz** — `tests/test_project_e2e_redesign.py` compilet zweimal und prüft auf null Diffs in `wiki/` und `site/`.
 - **Link-Integrität** — `tests/test_frontend.py` parst jedes emittierte HTML nach hrefs und prüft, dass jeder interne Link auf eine erzeugte Datei zeigt. Es wird kein `nodes/codeclass-*.html` produziert.
 - **AI-Siblings** — für jedes `path/foo.html` prüft die Test-Suite, dass `path/foo.txt` und `path/foo.json` existieren; das JSON parst und enthält `{title, kind, body, links}`.

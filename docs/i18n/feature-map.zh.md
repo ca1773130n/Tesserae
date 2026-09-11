@@ -126,7 +126,7 @@ Tesserae 是一个运行在三大支柱上的**上下文引擎**：(1) 会话监
 | 溯源边车（`node_provenance`，首次出现） | ✅ | [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | changed-only 删除的基础；始终记录。 |
 | `GraphStore` 删除接口 | ✅ | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `delete_node`、`delete_nodes_by_source`（删除溯源集合变空的节点；跨文件概念得以保留）。 |
 | `url_resolver` 运行时存储分发 | ✅ | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`。 |
-| `incremental_compile` 标志 | ⚠ | [`tesserae/project.py`](../../tesserae/project.py) | **默认 OFF / 实验性。** 若干编辑形态已证明字节一致，但多所有者/生产者生命周期仍有缺口；完整编译仍是默认。 |
+| `incremental_compile` 标志 | ✅ | [`tesserae/project.py`](../../tesserae/project.py) | **自 v0.40.0 起默认 ON。** 通过 `tests/test_incremental_parity.py` 对每个受限编辑形态证明了与完整编译的字节奇偶性，且该门控断言增量分支确实运行了；`incremental_compile: false` 选择退出。 |
 
 ## 前端重新设计 — 2026 年 4 月
 
@@ -272,6 +272,7 @@ Tesserae 是一个运行在三大支柱上的**上下文引擎**：(1) 会话监
 - ✅ `tesserae sessions discover/import/list`（显式的本地 agent 历史导入）
 - ✅ `tesserae export site --watch`（独立的轮询监视器）
 - ✅ `tesserae engine`（监督器循环 — v0.5.0）
+- ✅ `tesserae engine --serve`（守护进程自身提供 `.tesserae/site` 服务；站点在每次重编译时原子式交换 — v0.40.0）
 - ✅ `tesserae refresh`（文字化的 ingest → compile → project 链 — v0.5.0）
 - ✅ `tesserae context`（按需上下文编译器 — v0.5.0）
 - ✅ `tesserae export harness`

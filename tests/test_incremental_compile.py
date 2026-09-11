@@ -40,11 +40,12 @@ def _seed_project(project_root: Path, *, incremental: bool) -> ProjectWiki:
     return wiki
 
 
-def test_default_config_does_not_enable_incremental(tmp_path: Path) -> None:
-    """DESCOPE GUARD: incremental compile is EXPERIMENTAL and must stay OFF by
-    default. A freshly-initialised project's config must NOT enable it, and a
-    changed_only compile on a default project must equal a full compile (the
-    safe path). If a future change flips the default ON, this fails loudly.
+def test_default_config_runs_incremental_and_can_opt_out(tmp_path: Path) -> None:
+    """Incremental compile is ON by default since v0.40.0.
+
+    A freshly-initialised project writes no flag, a changed_only compile on it
+    runs incrementally (the build ledger says so), and `incremental_compile:
+    false` still opts back out to the full recompile.
     """
     project_root = tmp_path / "project"
     project_root.mkdir(parents=True, exist_ok=True)
@@ -53,25 +54,31 @@ def test_default_config_does_not_enable_incremental(tmp_path: Path) -> None:
     wiki = ProjectWiki.init(project_root, name="default_cfg_test")
 
     cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
-    assert not cfg.get("incremental_compile", False), (
-        "incremental_compile must be OFF in the default project config "
-        "(experimental; byte-parity incomplete until the follow-up phase)"
-    )
+    assert "incremental_compile" not in cfg, "init must not pin the flag either way"
 
-    wiki.compile()  # seed (default config → full compile)
+    wiki.compile()  # seed
     seed_count = _node_count(wiki)
     assert seed_count > 0, "seed full compile produced no nodes"
-    # A changed_only compile with the default (flag-off) config must fall back
-    # to a full recompile — no incremental divergence / collapse.
-    next(iter((project_root / "docs").glob("*.md"))).write_text(
-        "# Edited\n\nDefault-config changed_only must still full-recompile.\n",
-        encoding="utf-8",
-    )
-    wiki.compile(changed_only=True, changed_paths=None)
-    assert _node_count(wiki) >= seed_count, (
-        "default (flag-off) changed_only compile collapsed the graph instead of "
-        "falling back to a full recompile"
-    )
+    edited = next(iter((project_root / "docs").glob("*.md")))
+    edited.write_text("# Edited\n\nDefault config runs incrementally.\n", encoding="utf-8")
+    wiki.compile(changed_only=True, changed_paths=[edited])
+    assert _last_build_mode(wiki) == "incremental"
+    assert _node_count(wiki) >= seed_count
+
+    cfg["incremental_compile"] = False
+    wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    edited.write_text("# Edited again\n\nOpted out: full recompile.\n", encoding="utf-8")
+    wiki.compile(changed_only=True, changed_paths=[edited])
+    assert _last_build_mode(wiki) == "full"
+
+
+def _last_build_mode(wiki: ProjectWiki) -> str:
+    rows = [
+        json.loads(line)
+        for line in (wiki.root / ".build-history.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    return rows[-1]["mode"]
 
 
 def _node_count(wiki: ProjectWiki) -> int:

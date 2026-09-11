@@ -146,6 +146,9 @@ class Daemon:
         enable_watch: bool = True,
         enable_vault: bool = True,
         enable_session_tail: bool = True,
+        enable_serve: bool = False,
+        serve_host: str = "127.0.0.1",
+        serve_port: int = 8765,
         enable_compile: Optional[bool] = None,
         consolidate: bool = True,
         consolidate_idle_seconds: float = 300.0,
@@ -171,6 +174,14 @@ class Daemon:
         self._enable_watch = enable_watch
         self._enable_vault = enable_vault
         self._enable_session_tail = enable_session_tail
+        # OFF by default: binding a port is a side effect a library-style
+        # construction must not perform, and N fleet units racing one port is
+        # the failure that would otherwise arrive by default.
+        self._enable_serve = enable_serve
+        self._serve_host = serve_host
+        self._serve_port = serve_port
+        #: Filled in by _start_serve_source once the socket is bound.
+        self.serve_port: Optional[int] = None
         # Harvest-only mode. With both content watchers off there is nothing a
         # compile here could pick up that the compiling host will not see
         # anyway, and on a fleet of servers sharing one disk the per-project
@@ -243,6 +254,13 @@ class Daemon:
         self._defer_until = 0.0
         self._defer_delay = 0.0
         self._threads: List[threading.Thread] = []
+        #: Callables run at shutdown BEFORE the thread joins. The class models
+        #: only event-gated pollers, whose ``stop_event.wait()`` top makes them
+        #: stoppable for free. A blocking server has no such top —
+        #: ``serve_forever()`` never re-checks the event — so it needs an
+        #: explicit closer or the join just times out and the socket stays held
+        #: until process exit.
+        self._closers: List[Callable[[], None]] = []
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._queue: Optional[asyncio.Queue] = None
         self._run_pipeline_override = run_pipeline
@@ -342,6 +360,16 @@ class Daemon:
                 loop.run_until_complete(self._drain_loop())
         finally:
             self._stop_event.set()
+            # BEFORE the joins: the join is what waits for the thread a closer
+            # just unblocked. Each is guarded on its own, because an unguarded
+            # raise in this finally skips ``_remove_pidfile`` below and strands
+            # a pidfile whose owner is dead — which the next start reads as a
+            # live daemon and refuses to boot against.
+            for close in self._closers:
+                try:
+                    close()
+                except Exception:  # noqa: BLE001
+                    logger.exception("stop hook failed")
             for t in self._threads:
                 t.join(timeout=self._join_timeout)
             loop.close()
@@ -663,6 +691,76 @@ class Daemon:
             self._start_vault_source(loop)
         if self._enable_session_tail:
             self._start_session_source(loop)
+        if self._enable_serve:
+            self._start_serve_source(loop)
+
+    # ----- serve source ----------------------------------------------------
+    def _start_serve_source(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Serve ``.tesserae/site`` from THIS process, on its own thread.
+
+        Deliberately not ``await loop.create_server(...)``. ``_run_pipeline`` is
+        a synchronous blocking call made ON the loop thread, so the loop is dead
+        for the whole duration of every compile — no queue drain, no debounce,
+        and no signal delivery, since ``add_signal_handler`` delivers via the
+        loop. An asyncio-served site would go dark for exactly the minutes this
+        is meant to keep it alive.
+
+        ``serve.py`` is reused, not rewritten: same handler, same containment
+        checks. A bind failure (EADDRINUSE above all) logs and starts no thread
+        — the engine must keep compiling whether or not it can also serve.
+        """
+        import functools
+        import http.server
+
+        try:
+            from ..project import ProjectWiki
+            from ..serve import build_ask_aware_handler
+
+            wiki = ProjectWiki.load(self.project_root)
+            handler_cls = build_ask_aware_handler(project_root=self.project_root)
+
+            class _Server(http.server.ThreadingHTTPServer):
+                allow_reuse_address = True
+                daemon_threads = True
+                # server_close() would otherwise join request threads, so a
+                # stuck LLM /api/ask would hang shutdown.
+                block_on_close = False
+
+            httpd = _Server(
+                (self._serve_host, self._serve_port),
+                functools.partial(handler_cls, directory=str(wiki.paths.site)),
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "serve source not started (the engine still compiles)",
+                exc_info=True,
+            )
+            return
+
+        #: The bound port, so a port-0 caller (tests) can find it.
+        self.serve_port = httpd.server_address[1]
+        logger.info(
+            "serving %s at http://%s:%d",
+            wiki.paths.site, self._serve_host, self.serve_port,
+        )
+
+        def _close() -> None:
+            try:
+                httpd.shutdown()
+            finally:
+                httpd.server_close()
+
+        self._closers.append(_close)
+
+        def _run() -> None:
+            try:
+                httpd.serve_forever(poll_interval=0.5)
+            except Exception:  # noqa: BLE001
+                logger.exception("serve-source thread died")
+
+        t = threading.Thread(target=_run, daemon=True, name="serve-source")
+        t.start()
+        self._threads.append(t)
 
     # ----- watch source ----------------------------------------------------
 

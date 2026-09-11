@@ -217,7 +217,7 @@ LLM의 표현에 의존하지 않으며, 산출물은 결정적으로 유지됩�
 | `tesserae graph-map` | Budgeted Descent: 검색어가 아니라 스코프를 따라 위에서 아래로. 에이전트 조직 트리는 `--scope org:root`. |
 | `tesserae verify-claim` | 그래프가 트리플을 승인하는지에 대한 결정적 판정. JSON 출력. |
 | `tesserae verify-attribution` | 답변의 각 수치가 올바른 시스템과 벤치마크에 귀속되는지 검사. 그래프 불필요, JSON 출력. |
-| `tesserae engine [--all]` | 감독형 갱신 데몬 — 감시, 디바운스, 재컴파일, 유휴 시 에이전트 메모리 통합(수면 주기; `--no-consolidate`로 해제). `--all`은 등록된 모든 프로젝트를 한 프로세스로 유지. |
+| `tesserae engine [--all] [--serve]` | 감독형 갱신 데몬 — 감시, 디바운스, 재컴파일, 유휴 시 에이전트 메모리 통합(수면 주기; `--no-consolidate`로 해제). `--all`은 등록된 모든 프로젝트를 한 프로세스로 유지. `--serve`는 같은 프로세스에서 사이트도 제공하며, 재컴파일 시 새 사이트로 원자적으로 교체되어 404 없음. |
 | `tesserae refresh` | 원샷: 새 세션 가져오기 → 컴파일 → 보관소 동기화. |
 | `tesserae agents …` | `init`(조직 추론) · `tree` · `show` · `drill` — 계층형 메모리 조직 도구. |
 | `tesserae distill` | 각 에이전트의 세션을 크기 제한된 L1 메모리 계층으로 압축. |

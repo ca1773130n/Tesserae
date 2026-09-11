@@ -160,7 +160,7 @@ réservée » de « de la mémoire procédurale est arrivée ». Le code de lint
 
 | Module | Responsabilité |
 |---|---|
-| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile` : pilote extraction → graphe → passes mémoire → couche wiki → site. Possède `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Décide en amont si une compilation incrémentale pilotée par la provenance est éligible (barrée par `incremental_compile`, OFF par défaut). |
+| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile` : pilote extraction → graphe → passes mémoire → couche wiki → site. Possède `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Décide en amont si une compilation incrémentale pilotée par la provenance est éligible (barrée par `incremental_compile`, ON par défaut depuis v0.40.0 ; `false` la désactive). |
 | [`tesserae/cli.py`](../../tesserae/cli.py) | Dispatch CLI à verbes plats (~2 732 lignes après la suppression des groupes de sous-commandes hérités `project`/`wiki`). Les verbes — `init`, `compile`, `ingest`, `context`, `ask`, `query`, `doctor`, `summary`, `decisions`, `refresh`, `serve`, `engine`, `export`, `vault`, `code`, `lab`, `setup`, `config`, `projects`, `sources`, `federation`, `integrations` — sont déclarés comme métadonnées dans [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py) et câblés depuis cet arbre plutôt qu’enregistrés à la main. |
 | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy` : pousse `.tesserae/site/` vers une branche `gh-pages` via worktree, active éventuellement Pages via `gh`. |
 
@@ -415,7 +415,7 @@ C’est vérifié par `tests/test_site_pages.py` et le smoke de bout en bout de 
 - **Mémoire d’auto-amélioration** — `tests/test_memory_sidecar.py`, `tests/test_decay_supersede.py`, `tests/test_supersede_suppression.py`, `tests/test_mcp_supersede_suppression.py`, `tests/test_memory_contradiction_reinforce.py`.
 - **Récupération + embeddings** — `tests/test_hybrid_search.py`, `tests/test_ppr.py`, `tests/test_real_embeddings_phase6.py`.
 - **Compilateur de contexte** — `tests/test_context_compiler.py` (forme, intégrité des citations, déterminisme, budget, repli PPR), `tests/test_cli_context.py`, `tests/test_mcp_server_context.py`.
-- **Compilation incrémentale (expérimental)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
+- **Compilation incrémentale (par défaut activée)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
 - **Idempotence** — `tests/test_project_e2e_redesign.py` compile deux fois et vérifie zéro diff dans `wiki/` et `site/`.
 - **Intégrité des liens** — `tests/test_frontend.py` parse chaque HTML émis pour les hrefs et vérifie que chaque lien interne se résout vers un fichier généré. Aucun `nodes/codeclass-*.html` n’est produit.
 - **Siblings IA** — pour chaque `path/foo.html`, la suite de tests vérifie que `path/foo.txt` et `path/foo.json` existent ; le JSON parse et contient `{title, kind, body, links}`.

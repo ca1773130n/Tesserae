@@ -133,7 +133,7 @@ La colonne vertébrale du moteur qui anime les trois piliers. Voir [`docs/archit
 | Sidecar de provenance (`node_provenance`, first-seen) | ✅ | [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | Fondation des suppressions changed-only ; toujours enregistré. |
 | Surface de suppression `GraphStore` | ✅ | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `delete_node`, `delete_nodes_by_source` (supprime les nœuds dont l’ensemble de provenance se vide ; les concepts multi-fichiers survivent). |
 | Dispatch de store runtime `url_resolver` | ✅ | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`. |
-| Drapeau `incremental_compile` | ⚠ | [`tesserae/project.py`](../../tesserae/project.py) | **OFF par défaut / expérimental.** Parité octet prouvée pour plusieurs formes d’édition mais des lacunes multi-propriétaires/cycle de vie producteur demeurent ; la compilation complète reste le défaut. |
+| Drapeau `incremental_compile` | ✅ | [`tesserae/project.py`](../../tesserae/project.py) | **ON par défaut depuis v0.40.0.** Parité octet avec une compilation complète prouvée par `tests/test_incremental_parity.py` pour chaque forme d’édition barrée, et la barrière affirme que le bras incrémental a vraiment tourné ; `incremental_compile: false` la désactive. |
 
 ## Refonte du frontend — avril 2026
 
@@ -279,6 +279,7 @@ Un wiki hiérarchique orienté documents remplace l’ancien déversement de gra
 - ✅ `tesserae sessions discover/import/list` (import explicite d’historique d’agent local)
 - ✅ `tesserae export site --watch` (watcher autonome par sondage)
 - ✅ `tesserae engine` (boucle superviseur — v0.5.0)
+- ✅ `tesserae engine --serve` (le démon sert `.tesserae/site` lui-même ; le site est remplacé atomiquement à chaque recompilation — v0.40.0)
 - ✅ `tesserae refresh` (chaîne en prose ingest → compile → project — v0.5.0)
 - ✅ `tesserae context` (compilateur de contexte à la demande — v0.5.0)
 - ✅ `tesserae export harness`
