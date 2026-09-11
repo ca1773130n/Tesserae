@@ -465,6 +465,45 @@ def test_incremental_equals_full_after_file_deletion(tmp_path: Path) -> None:
     )
 
 
+def test_incremental_equals_full_after_an_unnamed_file_deletion(tmp_path: Path) -> None:
+    """The deletion nobody names: plain ``--changed-only`` with no changed_paths.
+
+    That is the shape the CLI, the daemon and ``refresh`` actually run. The
+    named-deletion test above passes the path in; here the differ has to read
+    the deletion off the manifest itself. Before the fix this run took the
+    no-op branch, kept the deleted paper's nodes AND its manifest key, and the
+    following run re-extracted the whole corpus.
+    """
+    root = tmp_path / "project"
+    papers = _build_corpus(root, n_papers=30)
+    wiki = _seed_wiki(root)
+    wiki.compile()  # seed
+    seed_ids = _node_ids(wiki)
+
+    deleted = papers[0]
+    deleted.unlink()
+
+    wiki.compile(changed_only=True)  # nothing named
+    _row = _last_build_row(wiki)
+    assert _row.get("mode") == "incremental", (
+        f"the unnamed-deletion arm was demoted to a full compile ({_row.get('downgrade')!r})"
+    )
+    incr_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+    incr_ids = _node_ids(wiki)
+    field_ids = {nid for nid in seed_ids if nid.startswith("ResearchField:")}
+    assert field_ids <= incr_ids, "shared field wrongly dropped by a single-file deletion"
+    assert not any(nid.endswith(deleted.stem) for nid in incr_ids), "deleted paper's node survived"
+
+    wiki.compile()  # full recompile of the 29-paper corpus, same root
+    full_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+
+    assert incr_tree == full_tree, (
+        "SUBTRACTIVE PARITY FAILED (unnamed file deletion): the differ did not "
+        "read the deletion off the manifest.\n"
+        f"Differing files:{_diff_keys(full_tree, incr_tree)}"
+    )
+
+
 # --------------------------------------------------------------------------- #
 # HARD-EDIT-SHAPE parity (Plan 04.1-04): the decisive proof that incremental ==
 # full byte-for-byte across every edit shape, not just additive/reduction/

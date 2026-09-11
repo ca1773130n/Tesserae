@@ -1445,19 +1445,29 @@ class ProjectWiki:
             # idempotent no-op case — we must still tombstone what the deleted
             # file solely owned. Detect deletions explicitly so the no-op branch
             # only fires when nothing changed AND nothing was removed.
-            deleted_changed = bool(
-                changed_paths is not None
-                and any(not Path(p).exists() for p in changed_paths)
-            )
+            if changed_paths is not None:
+                _missing = [Path(p) for p in changed_paths if not Path(p).exists()]
+            else:
+                # Plain ``--changed-only`` (CLI, daemon, refresh): nobody NAMES
+                # the deletion, so read it off the manifest. Without this the
+                # differ's changed set was ``batch.processed_paths`` — files
+                # that exist and were re-extracted — and a deletion-only edit
+                # took the no-op branch below: the deleted document's nodes
+                # survived in graph.json and its manifest key survived too, so
+                # the NEXT run refused to reuse the graph and re-extracted the
+                # whole corpus. Measured on a 3-doc fixture before the fix:
+                # ``rm a.md`` + ``--changed-only`` left ``Paper:a`` live.
+                _missing = [
+                    Path(k) for k in self._load_manifest()
+                    if not k.startswith("source:") and not Path(k).exists()
+                ]
+            deleted_changed = bool(_missing)
             # RESOLVED, like ``candidate_keys`` and ``changed_set``: on macOS
             # ``/var`` is a symlink to ``/private/var``, so the unresolved form
             # never matches a manifest key and the prune silently does nothing.
             # ``resolve()`` is non-strict, so a path that no longer exists still
             # normalises.
-            deleted_manifest_keys = {
-                str(Path(p).resolve()) for p in (changed_paths or [])
-                if not Path(p).exists()
-            }
+            deleted_manifest_keys = {str(p.resolve()) for p in _missing}
             if processed == 0 and not graph.nodes and not deleted_changed:
                 # Nothing actually changed this run: the prior graph IS the
                 # corpus. (Empty incremental run — byte-idempotent no-op.)
@@ -1470,10 +1480,12 @@ class ProjectWiki:
                 if changed_paths is not None:
                     changed_set = {str(Path(p).resolve()) for p in changed_paths}
                 else:
+                    # The re-extracted files PLUS the manifest keys whose file is
+                    # gone: both lost their claim on the prior graph.
                     changed_set = {
                         str(Path(p).resolve())
                         for p in (batch.processed_paths if loader is None else [])
-                    }
+                    } | deleted_manifest_keys
                 inc_store = store if store is not None else SqliteGraphStore(self.paths.sqlite)
                 # Tombstone NODES whose provenance set became empty after
                 # removing the changed files (cross-file nodes co-owned by an

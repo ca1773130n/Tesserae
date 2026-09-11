@@ -303,9 +303,45 @@ def test_a_full_recompile_still_drops_a_stale_row_for_a_still_live_node(tmp_path
     assert {"a.md", "c.md"} == owners
 
 
-def test_retry_fallbacks_falls_back_to_full_recompile_when_corpus_changed(tmp_path):
-    """A deleted file breaks ``corpus_unchanged``, so the subtractive guard holds."""
+def _opt_out_of_incremental(wiki):
+    """Pin the pre-v0.40 behaviour: a plain changed-only run never scopes."""
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["incremental_compile"] = False
+    wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+
+
+def test_retry_after_a_deletion_scopes_to_the_marked_doc_and_drops_the_deleted_one(tmp_path):
+    """Incremental default: the retry re-extracts c.md only, and a.md still leaves.
+
+    The deletion is not named (no changed_paths) — the differ reads it off the
+    manifest, tombstones a.md's nodes, and prunes its key, so the next run is a
+    no-op instead of a whole-corpus re-extract.
+    """
     project, wiki = _make_project(tmp_path, "retry-deleted", ["a", "b", "c"])
+
+    degraded = FlakyExtractor(failing={"c.md"})
+    wiki.compile(changed_only=True, doc_extractor=degraded)
+    assert "Paper:a" in _graph_node_ids(project)
+
+    (project / "docs" / "a.md").unlink()  # delete an UNMARKED doc
+
+    recovered = FlakyExtractor(failing=set())
+    result = wiki.compile(changed_only=True, retry_fallbacks=True, doc_extractor=recovered)
+
+    assert sorted(Path(c).name for c in recovered.calls) == ["c.md"]
+    assert result["processed_files"] == 1
+    assert "Paper:a" not in _graph_node_ids(project)
+    assert {Path(k).name for k in _manifest(project)} == {"b.md", "c.md"}
+    again = FlakyExtractor()
+    assert wiki.compile(changed_only=True, doc_extractor=again)["processed_files"] == 0
+    assert again.calls == []
+
+
+def test_retry_fallbacks_falls_back_to_full_recompile_when_corpus_changed(tmp_path):
+    """Opted out of incremental: a deleted file breaks ``corpus_unchanged``, so
+    the subtractive guard holds and the survivors are fully recompiled."""
+    project, wiki = _make_project(tmp_path, "retry-deleted-full", ["a", "b", "c"])
+    _opt_out_of_incremental(wiki)
 
     degraded = FlakyExtractor(failing={"c.md"})
     wiki.compile(changed_only=True, doc_extractor=degraded)
@@ -372,8 +408,36 @@ def test_changed_only_noop_with_trends_keeps_the_prior_graph(tmp_path):
     assert _graph_node_ids(project) == seeded
 
 
+def test_deleting_a_doc_is_applied_by_a_plain_changed_only_run(tmp_path):
+    """Incremental default: ``rm a.md`` + ``--changed-only`` re-extracts nothing,
+    drops a.md's nodes, prunes its manifest key, and the next run is a no-op.
+
+    This was the silent failure the default flip exposed: the differ's changed
+    set was the re-extracted files, so a deletion-only edit took the no-op
+    branch and the deleted document lived on in graph.json.
+    """
+    project, wiki = _make_project(tmp_path, "manifest-prune", ["a", "b", "c"])
+    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
+    assert wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())["processed_files"] == 0
+
+    (project / "docs" / "a.md").unlink()
+
+    recompile = FlakyExtractor()
+    first = wiki.compile(changed_only=True, doc_extractor=recompile)
+    assert recompile.calls == []
+    assert first["processed_files"] == 0
+    assert "Paper:a" not in _graph_node_ids(project)
+    assert {Path(k).name for k in _manifest(project)} == {"b.md", "c.md"}
+
+    rerun = FlakyExtractor()
+    second = wiki.compile(changed_only=True, doc_extractor=rerun)
+    assert second["processed_files"] == 0
+    assert rerun.calls == []
+
+
 def test_deleting_a_doc_does_not_disable_changed_only_forever(tmp_path):
-    """The stale manifest key of a deleted doc must be pruned by the recompile.
+    """Opted out of incremental: the stale manifest key of a deleted doc must be
+    pruned by the full recompile.
 
     ``BatchIngestRunner`` only merges into the manifest, so a deleted document
     left its key behind for good — and ``corpus_unchanged`` (manifest keys ==
@@ -383,7 +447,8 @@ def test_deleting_a_doc_does_not_disable_changed_only_forever(tmp_path):
     that re-extracted every candidate: graph.json was rebuilt without the
     deleted doc, so the key has done its subtractive job.
     """
-    project, wiki = _make_project(tmp_path, "manifest-prune", ["a", "b", "c"])
+    project, wiki = _make_project(tmp_path, "manifest-prune-full", ["a", "b", "c"])
+    _opt_out_of_incremental(wiki)
     wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
     assert wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())["processed_files"] == 0
 
@@ -407,34 +472,6 @@ def test_deleting_a_doc_does_not_disable_changed_only_forever(tmp_path):
     assert "Paper:a" not in _graph_node_ids(project)
 
 
-def test_a_scoped_incremental_run_keeps_the_stale_key_the_guard_needs(tmp_path):
-    """Pruning is only safe on the run that rebuilt graph.json from scratch.
-
-    With the experimental differ active the batch re-extracts a SUBSET and the
-    PRIOR graph is merged back in, so a document deleted without an explicit
-    ``changed_paths`` keeps its nodes in graph.json (a known differ gap). Prune
-    its manifest key there and the next plain ``--changed-only`` would see a
-    matching key-set, no-op, and reuse a graph that still carries the deleted
-    doc — the resurrection the subtractive guard exists to prevent.
-    """
-    project, wiki = _make_project(tmp_path, "manifest-prune-incremental", ["a", "b", "c"])
-    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
-    cfg["incremental_compile"] = True  # EXPERIMENTAL — off by default
-    wiki.paths.config.write_text(json.dumps(cfg) + "\n", encoding="utf-8")
-
-    wiki.compile(doc_extractor=FlakyExtractor())
-    (project / "docs" / "a.md").unlink()
-
-    result = wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
-
-    # The differ ran (a scoped run: nothing re-extracted, the prior graph
-    # reused) and left the deleted doc's nodes behind...
-    assert result["processed_files"] == 0
-    assert "Paper:a" in _graph_node_ids(project)
-    # ...so its manifest key MUST survive to keep the no-op refused.
-    assert {Path(k).name for k in _manifest(project)} == {"a.md", "b.md", "c.md"}
-
-
 def test_a_deferred_doc_loses_its_stamp_when_changed_paths_gutted_it(tmp_path):
     """Deferred-keeps-its-stamp holds only while nothing tombstoned its nodes.
 
@@ -446,7 +483,7 @@ def test_a_deferred_doc_loses_its_stamp_when_changed_paths_gutted_it(tmp_path):
     """
     project, wiki = _make_project(tmp_path, "deferred-but-gutted", ["a", "b", "c", "d"])
     cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
-    cfg["incremental_compile"] = True  # EXPERIMENTAL — off by default
+    cfg["incremental_compile"] = True  # explicit; the default is on since v0.40.0
     wiki.paths.config.write_text(json.dumps(cfg) + "\n", encoding="utf-8")
 
     wiki.compile(doc_extractor=FlakyExtractor())
@@ -783,14 +820,38 @@ def test_retry_falls_back_when_the_provenance_sidecar_cannot_tombstone(
     assert "provenance sidecar does not cover the prior graph" in capsys.readouterr().err
 
 
+def test_retry_scopes_to_the_marked_and_the_new_doc_when_the_corpus_moved(tmp_path, capsys):
+    """Incremental default: ``refresh`` appends a session doc, then retry.
+
+    The differ re-extracts exactly the marked doc and the new one; the other
+    N-2 are reused. That is the 137->35 bound this mode exists to deliver, and
+    it needs no warning because nothing was refused.
+    """
+    project, wiki = _make_project(tmp_path, "retry-moved", ["a", "b", "c"])
+    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor(failing={"c.md"}))
+
+    (project / "docs" / "today.md").write_text("# today\nnew session", encoding="utf-8")
+    capsys.readouterr()
+
+    recovered = FlakyExtractor(failing=set())
+    wiki.compile(changed_only=True, retry_fallbacks=True, doc_extractor=recovered)
+
+    assert sorted(Path(c).name for c in recovered.calls) == ["c.md", "today.md"]
+    ids = _graph_node_ids(project)
+    assert {"Paper:a", "Paper:b", "Paper:c", "Paper:today"} <= ids
+    assert not any(nid.endswith(FlakyExtractor.JUNK_SUFFIX) for nid in ids), "degraded nodes survived"
+    assert "--retry-fallbacks could not scope this run" not in capsys.readouterr().err
+
+
 def test_retry_warns_when_the_corpus_moved_under_it(tmp_path, capsys):
-    """The realistic workflow: ``refresh`` appends a session doc, then retry.
+    """Opted out of incremental: ``refresh`` appends a session doc, then retry.
 
     ``corpus_unchanged`` goes False, the scoped path is refused, and all N docs
     are re-extracted. That is CORRECT — but it must not be silent, or the
     operator just watches a "35-doc retry" run for hours over 137 documents.
     """
-    project, wiki = _make_project(tmp_path, "retry-moved", ["a", "b", "c"])
+    project, wiki = _make_project(tmp_path, "retry-moved-full", ["a", "b", "c"])
+    _opt_out_of_incremental(wiki)
     wiki.compile(changed_only=True, doc_extractor=FlakyExtractor(failing={"c.md"}))
 
     (project / "docs" / "today.md").write_text("# today\nnew session", encoding="utf-8")
@@ -941,16 +1002,16 @@ def test_limit_defers_a_doc_without_forfeiting_its_graph_coverage(tmp_path):
 def test_a_scoped_run_unstamps_the_departed_doc_but_not_the_deferred_one(tmp_path):
     """The two reasons a doc is absent from the batch get OPPOSITE answers.
 
-    One scoped run, both directions: ``a.md`` left the corpus (nothing vouches
-    for its coverage any more — the stamp must go, which is what keeps the
-    completeness guard honest) while ``c.md`` and ``d.md`` were merely deferred
-    past ``--limit`` (their prior nodes are still in graph.json — the stamp
-    stays). Widening the keep-set to every manifest key would pass the deferred
-    half and silently lose this one.
+    One scoped run, both directions: ``a.md`` left the corpus — the differ
+    reads the deletion off the manifest, tombstones its nodes and PRUNES its
+    key — while ``c.md`` and ``d.md`` were merely deferred past ``--limit``
+    (their prior nodes are still in graph.json — the stamp stays). Widening the
+    keep-set to every manifest key would pass the deferred half and silently
+    lose this one.
     """
     project, wiki = _make_project(tmp_path, "scoped-limit-mixed", ["a", "b", "c", "d"])
     cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
-    cfg["incremental_compile"] = True  # EXPERIMENTAL — off by default
+    cfg["incremental_compile"] = True  # explicit; the default is on since v0.40.0
     wiki.paths.config.write_text(json.dumps(cfg) + "\n", encoding="utf-8")
 
     wiki.compile(doc_extractor=FlakyExtractor())
@@ -964,10 +1025,12 @@ def test_a_scoped_run_unstamps_the_departed_doc_but_not_the_deferred_one(tmp_pat
     wiki.compile(changed_only=True, limit=1, doc_extractor=scoped)
     assert [Path(c).name for c in scoped.calls] == ["b.md"]
 
+    assert "Paper:a" not in _graph_node_ids(project), "the departed doc's nodes survived"
     files = _manifest(project)
-    # The stale key survives a scoped run (the subtractive guard needs it)...
-    assert {Path(k).name for k in files} == {"a.md", "b.md", "c.md", "d.md"}
-    # ...but only as an UNSTAMPED key, so the completeness guard refuses reuse.
+    # The departed doc's key is pruned: its nodes are gone, so the key has
+    # done its subtractive job and keeping it would only refuse the next no-op.
+    assert {Path(k).name for k in files} == {"b.md", "c.md", "d.md"}
+    # The deferred doc keeps its stamp: nothing touched its nodes.
     assert {Path(k).name for k, v in files.items() if v.get("graphed") is True} == {
         "b.md",
         "c.md",
@@ -991,7 +1054,7 @@ def test_incremental_reuse_refuses_a_prior_graph_a_kill_left_partial(
     """
     project, wiki = _make_project(tmp_path, "incremental-killed", ["a", "b"])
     cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
-    cfg["incremental_compile"] = True  # EXPERIMENTAL — off by default
+    cfg["incremental_compile"] = True  # explicit; the default is on since v0.40.0
     wiki.paths.config.write_text(json.dumps(cfg) + "\n", encoding="utf-8")
 
     wiki.compile(doc_extractor=FlakyExtractor())
