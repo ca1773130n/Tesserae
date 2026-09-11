@@ -278,6 +278,8 @@ Neo4j의 agent-memory 설계를 읽고 Tesserae의 자체 제약을 견디는 �
 - ✅ `tesserae export site --watch` (독립 폴링 감시자)
 - ✅ `tesserae engine` (슈퍼바이저 루프 — v0.5.0)
 - ✅ `tesserae engine --serve` (데몬이 `.tesserae/site`를 제공; 모든 재컴파일 시 사이트가 원자적으로 교체됨 — v0.40.0)
+- ✅ `tesserae engine --proactive` (다섯 번째 트리거 출처, 그리고 로컬 편집을 기다리지 않는 첫 번째: `proactive_sources`를 폴링하고, 본 적 없는 것을 섭취하며, 틱당 예산 한정)
+- ✅ `tesserae completion bash|zsh|fish` (실제 파서 트리에서 생성되는 셸 완성 스크립트)
 - ✅ `tesserae refresh` (prose ingest → compile → project 체인 — v0.5.0)
 - ✅ `tesserae context` (온디맨드 컨텍스트 컴파일러 — v0.5.0)
 - ✅ `tesserae export harness`

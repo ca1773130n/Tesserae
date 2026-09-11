@@ -219,7 +219,9 @@ tesserae ask   "私のチームはデプロイについて何を知っている�
 | `tesserae graph-map` | Budgeted Descent: 検索語ではなくスコープで上から下へ。エージェント組織ツリーは `--scope org:root`。 |
 | `tesserae verify-claim` | グラフがトリプルを是認するかの決定的判定。JSON 出力。 |
 | `tesserae verify-attribution` | 回答中の各数値が正しいシステムとベンチマークに帰属しているかを検査。グラフ不要、JSON 出力。 |
-| `tesserae engine [--all] [--serve]` | 監督付きリフレッシュデーモン — 監視、デバウンス、再コンパイル、アイドル時のエージェントメモリ統合（睡眠サイクル。`--no-consolidate` で無効）。`--all` は登録済みの全プロジェクトを一つのプロセスで最新に保ちます。`--serve` はサイトを同じプロセスから配信し、再コンパイルは 404 の瞬間を避けながらサイトを交換します。 |
+| `tesserae engine [--all] [--serve] [--proactive]` | 監督付きリフレッシュデーモン — 監視、デバウンス、再コンパイル、アイドル時のエージェントメモリ統合（睡眠サイクル。`--no-consolidate` で無効）。`--all` は登録済みの全プロジェクトを一つのプロセスで最新に保ちます。`--serve` はサイトを同じプロセスから配信し、再コンパイルは 404 の瞬間を避けながらサイトを交換します。`--proactive` は `proactive_sources` のフィードをポーリングし、プロジェクトが見たことのないドキュメントを引き込みます。既定はオフで、それ自体にフェッチとコンパイルをさせる理由は予算制限されたティックごと、そしてそれが読めないURLは再試行されるのではなく記憶されます。 |
+| `tesserae sources add <path-or-url>` | このグラフのナレッジはどこから来るか。ディレクトリはコンパイルスコープに加わり、http(s) の URL は `engine --proactive` 用のフィードになります。 |
+| `tesserae completion bash\|zsh\|fish` | シェル補完スクリプトを出力。実際のコマンドツリーから生成されるため、ドリフトできません。 |
 | `tesserae refresh` | ワンショット: 新しいセッションの取り込み → コンパイル → ボールト同期。 |
 | `tesserae agents …` | `init`（組織を推論） · `tree` · `show` · `drill` — 階層型メモリの組織ツール。 |
 | `tesserae distill` | 各エージェントのセッションを有界の L1 メモリ層へ圧縮。 |

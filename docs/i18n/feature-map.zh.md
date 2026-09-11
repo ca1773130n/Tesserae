@@ -273,6 +273,8 @@ Tesserae 是一个运行在三大支柱上的**上下文引擎**：(1) 会话监
 - ✅ `tesserae export site --watch`（独立的轮询监视器）
 - ✅ `tesserae engine`（监督器循环 — v0.5.0）
 - ✅ `tesserae engine --serve`（守护进程自身提供 `.tesserae/site` 服务；站点在每次重编译时原子式交换 — v0.40.0）
+- ✅ `tesserae engine --proactive`（第五个触发源，也是第一个不等待本地编辑的：轮询 `proactive_sources`、摄取它未见过的东西、每 tick 有预算）
+- ✅ `tesserae completion bash|zsh|fish`（从真实解析树生成的 shell 完成）
 - ✅ `tesserae refresh`（文字化的 ingest → compile → project 链 — v0.5.0）
 - ✅ `tesserae context`（按需上下文编译器 — v0.5.0）
 - ✅ `tesserae export harness`

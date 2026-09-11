@@ -81,7 +81,7 @@ def test_harness_session_store_writes_manifest_and_json(tmp_path):
     store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
     session = sample_session(project)
 
-    written = store.write_sessions([session])
+    written = store.write_sessions([session], producer="")
 
     assert written["sessions"] == 1
     manifest = json.loads((store.root / "manifest.json").read_text(encoding="utf-8"))
@@ -97,7 +97,7 @@ def test_static_site_renders_harness_sessions_and_search_entries(tmp_path):
     project = tmp_path / "demo-project"
     project.mkdir()
     wiki = ProjectWiki.init(project, name="demo_project", source_kind="Repository")
-    HarnessSessionStore(project / ".tesserae" / "harness_sessions").write_sessions([sample_session(project)])
+    HarnessSessionStore(project / ".tesserae" / "harness_sessions").write_sessions([sample_session(project)], producer="")
 
     result = StaticSiteBuilder(site_title="Tesserae").write_site(
         ResearchGraph(), wiki.paths.wiki, wiki.paths.site
@@ -205,7 +205,7 @@ def test_static_site_renders_subagent_history_collapsed_under_parent(tmp_path):
             ]
         },
     })
-    HarnessSessionStore(project / ".tesserae" / "harness_sessions").write_sessions([parent])
+    HarnessSessionStore(project / ".tesserae" / "harness_sessions").write_sessions([parent], producer="")
 
     StaticSiteBuilder(site_title="Tesserae").write_site(
         ResearchGraph(), wiki.paths.wiki, wiki.paths.site
@@ -228,7 +228,7 @@ def test_harness_sessions_with_same_date_and_title_get_distinct_pages(tmp_path):
     wiki = ProjectWiki.init(project, name="demo_project", source_kind="Repository")
     base = sample_session(project)
     other = HarnessSession.from_dict({**base.to_dict(), "id": "claude-code:other", "raw_transcript_path": "/tmp/other.jsonl"})
-    HarnessSessionStore(project / ".tesserae" / "harness_sessions").write_sessions([base, other])
+    HarnessSessionStore(project / ".tesserae" / "harness_sessions").write_sessions([base, other], producer="")
 
     StaticSiteBuilder(site_title="Tesserae").write_site(
         ResearchGraph(), wiki.paths.wiki, wiki.paths.site
@@ -278,7 +278,7 @@ def test_write_sessions_merges_by_default(tmp_path):
     project.mkdir()
     store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
     first = sample_session(project)
-    store.write_sessions([first])
+    store.write_sessions([first], producer="")
 
     second = HarnessSession.from_dict({
         **sample_session(project).to_dict(),
@@ -287,7 +287,7 @@ def test_write_sessions_merges_by_default(tmp_path):
         "title": "Second session",
         "started_at": "2026-05-06T10:00:00Z",
     })
-    result = store.write_sessions([second])
+    result = store.write_sessions([second], producer="")
 
     # Both records survive: merge added the new one without deleting the old.
     assert result["sessions"] == 1
@@ -302,9 +302,9 @@ def test_write_sessions_empty_write_is_a_noop_not_a_wipe(tmp_path):
     project = tmp_path / "demo-project"
     project.mkdir()
     store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
-    store.write_sessions([sample_session(project)])
+    store.write_sessions([sample_session(project)], producer="")
 
-    result = store.write_sessions([])  # empty import/discover
+    result = store.write_sessions([], producer="")  # empty import/discover
 
     assert result["sessions"] == 0
     assert result["total"] == 1
@@ -315,7 +315,7 @@ def test_write_sessions_replace_prunes_stale_records(tmp_path):
     project = tmp_path / "demo-project"
     project.mkdir()
     store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
-    store.write_sessions([sample_session(project)])
+    store.write_sessions([sample_session(project)], producer="")
 
     replacement = HarnessSession.from_dict({
         **sample_session(project).to_dict(),
@@ -323,7 +323,7 @@ def test_write_sessions_replace_prunes_stale_records(tmp_path):
         "slug": "replacement-session",
         "title": "Replacement session",
     })
-    result = store.write_sessions([replacement], replace=True)
+    result = store.write_sessions([replacement], replace=True, producer="")
 
     assert result["sessions"] == 1
     listed = store.list_sessions()
@@ -350,7 +350,7 @@ def test_write_sessions_replace_spares_records_outside_prune_roots(tmp_path):
         "title": "Externally imported session",
         "raw_transcript_path": "",
     })
-    store.write_sessions([external])  # `tesserae sessions import <path>` semantics
+    store.write_sessions([external], producer="")  # `tesserae sessions import <path>` semantics
 
     stale = HarnessSession.from_dict({
         **sample_session(project).to_dict(),
@@ -359,7 +359,7 @@ def test_write_sessions_replace_spares_records_outside_prune_roots(tmp_path):
         "title": "Stale local session",
         "raw_transcript_path": str(harness_root / "projects" / "demo" / "stale.jsonl"),
     })
-    store.write_sessions([stale], replace=True, prune_roots=[harness_root])
+    store.write_sessions([stale], replace=True, prune_roots=[harness_root], producer="")
 
     discovered = HarnessSession.from_dict({
         **sample_session(project).to_dict(),
@@ -368,7 +368,7 @@ def test_write_sessions_replace_spares_records_outside_prune_roots(tmp_path):
         "title": "Fresh local session",
         "raw_transcript_path": str(harness_root / "projects" / "demo" / "fresh.jsonl"),
     })
-    result = store.write_sessions([discovered], replace=True, prune_roots=[harness_root])
+    result = store.write_sessions([discovered], replace=True, prune_roots=[harness_root], producer="")
 
     titles = {s.title for s in store.list_sessions()}
     assert titles == {"Externally imported session", "Fresh local session"}
@@ -401,13 +401,13 @@ def test_replace_spares_a_harness_the_scan_filtered_out(tmp_path):
     store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
 
     store.write_sessions([_record(project, "claude-code", "claude-one", "Claude record",
-                                  str(claude_root / "projects" / "p" / "a.jsonl"))])
+                                  str(claude_root / "projects" / "p" / "a.jsonl"))], producer="")
 
     codex = _record(project, "codex", "codex-one", "Codex record",
                     str(codex_root / "sessions" / "b.jsonl"))
     result = store.write_sessions([codex], replace=True,
                                   prune_roots=[claude_root, codex_root],
-                                  prune_harnesses=["codex"])
+                                  prune_harnesses=["codex"], producer="")
 
     assert {s.title for s in store.list_sessions()} == {"Claude record", "Codex record"}
     assert result["removed"] == 0
@@ -423,7 +423,7 @@ def test_replace_spares_a_record_it_cannot_read(tmp_path):
     (root / "projects").mkdir(parents=True)
     store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
     store.write_sessions([_record(project, "claude-code", "corrupt-one", "Corrupt record",
-                                  str(root / "projects" / "p" / "c.jsonl"))])
+                                  str(root / "projects" / "p" / "c.jsonl"))], producer="")
 
     corrupt = next(store.root.glob("*/*.json"))
     corrupt.write_text("{ this is not json", encoding="utf-8")
@@ -432,7 +432,7 @@ def test_replace_spares_a_record_it_cannot_read(tmp_path):
 
     fresh = _record(project, "claude-code", "fresh-one", "Fresh record",
                     str(root / "projects" / "p" / "f.jsonl"))
-    store.write_sessions([fresh], replace=True, prune_roots=[root])
+    store.write_sessions([fresh], replace=True, prune_roots=[root], producer="")
 
     assert corrupt.exists(), "unparseable record was deleted; owner was unknown"
     assert not orphan.exists(), "page with no record behind it should be swept"
@@ -448,11 +448,11 @@ def test_replace_survives_a_transcript_path_that_cannot_resolve(tmp_path):
     (root / "projects").mkdir(parents=True)
     store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
     store.write_sessions([_record(project, "claude-code", "bad-path", "Unresolvable record",
-                                  "/tmp/a\x00b.jsonl")])
+                                  "/tmp/a\x00b.jsonl")], producer="")
 
     fresh = _record(project, "claude-code", "fresh-one", "Fresh record",
                     str(root / "projects" / "p" / "f.jsonl"))
-    result = store.write_sessions([fresh], replace=True, prune_roots=[root])
+    result = store.write_sessions([fresh], replace=True, prune_roots=[root], producer="")
 
     assert {s.title for s in store.list_sessions()} == {"Unresolvable record", "Fresh record"}
     manifest = json.loads((store.root / "manifest.json").read_text(encoding="utf-8"))
@@ -465,7 +465,7 @@ def test_cli_sessions_import_with_no_paths_leaves_existing_sessions_intact(tmp_p
     project.mkdir()
     ProjectWiki.init(project, name="demo_project", source_kind="Repository")
     store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
-    store.write_sessions([sample_session(project)])
+    store.write_sessions([sample_session(project)], producer="")
 
     assert main(["sessions", "import", "--project", str(project)]) == 0
     capsys.readouterr()
@@ -607,7 +607,7 @@ def test_records_predating_provenance_are_nobodys_until_adopted(tmp_path):
     store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
     legacy = _same_transcript_record(project, str(root / "projects" / "p" / "run.jsonl"),
                                      title="Written before provenance existed")
-    store.write_sessions([legacy])                      # no producer: unstamped
+    store.write_sessions([legacy], producer="")                      # no producer: unstamped
     assert store.list_sessions()[0].producer == ""
 
     fresh = _same_transcript_record(project, str(root / "projects" / "p" / "run.jsonl"),
@@ -1516,3 +1516,30 @@ def test_the_self_capture_window_does_not_reach_past_the_first_reply():
         metadata={"turns": turns},
     )
     assert is_tesserae_internal_session(session) is False
+
+
+def test_write_sessions_refuses_to_infer_ownership(tmp_path):
+    """#116: an omitted ``producer`` used to mean whole-store authority.
+
+    Empty means opposite things on the two sides of this call — a RECORD with
+    an empty producer is unowned and nobody's to delete, a WRITER with one owns
+    everything — so the destructive reading was the one you got for free. It
+    now costs a keystroke.
+    """
+    import inspect
+
+    import pytest
+
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    ProjectWiki.init(project, name="demo_project", source_kind="Repository")
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+    with pytest.raises(TypeError):
+        store.write_sessions([sample_session(project)])  # type: ignore[call-arg]
+
+    producer = inspect.signature(store.write_sessions).parameters["producer"]
+    assert producer.default is inspect.Parameter.empty, "producer must have no default"
+    assert producer.kind is inspect.Parameter.KEYWORD_ONLY
+
+    # ...and the whole-store writer still exists, spelled out.
+    assert store.write_sessions([sample_session(project)], producer="")["sessions"] == 1

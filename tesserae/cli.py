@@ -2702,6 +2702,25 @@ def _handle_engine(args: argparse.Namespace) -> int:
         # A harvester never compiles, so it would serve a permanently stale page.
         print("tesserae engine: --serve and --harvest-only are mutually exclusive", file=sys.stderr)
         return 2
+    proactive = bool(getattr(args, "proactive", False))
+    for flag in ("proactive_interval", "proactive_budget"):
+        if getattr(args, flag, None) is not None and not proactive:
+            print(f"tesserae engine: --{flag.replace('_', '-')} requires --proactive", file=sys.stderr)
+            return 2
+    if proactive and args.once:
+        # A single drain starts no poller threads, so --proactive --once would
+        # report success having fetched nothing at all.
+        print("tesserae engine: --proactive needs a long-running engine; drop --once", file=sys.stderr)
+        return 2
+    if proactive and getattr(args, "harvest_only", False):
+        # A harvester never compiles, so the documents would land on disk and
+        # stay out of the graph.
+        print("tesserae engine: --proactive and --harvest-only are mutually exclusive", file=sys.stderr)
+        return 2
+    if proactive and getattr(args, "all", False):
+        # Every unit would poll the same feeds and race for the same files.
+        print("tesserae engine: --proactive is single-project only", file=sys.stderr)
+        return 2
     if getattr(args, "all", False):
         if args.project is not None:
             print("tesserae engine: --all and --project are mutually exclusive", file=sys.stderr)
@@ -2749,6 +2768,13 @@ def _handle_engine(args: argparse.Namespace) -> int:
         enable_serve=serve,
         serve_host=getattr(args, "serve_host", "127.0.0.1"),
         serve_port=args.serve_port if getattr(args, "serve_port", None) is not None else 8765,
+        enable_proactive=proactive,
+        proactive_interval=(
+            args.proactive_interval if getattr(args, "proactive_interval", None) is not None else 3600.0
+        ),
+        proactive_budget=(
+            args.proactive_budget if getattr(args, "proactive_budget", None) is not None else 5
+        ),
         enable_compile=not harvest_only,
         consolidate=False if harvest_only else getattr(args, "consolidate", True),
         consolidate_idle_seconds=getattr(args, "consolidate_idle", 300.0),
@@ -2795,11 +2821,34 @@ def main(argv: List[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+        from .cli_completion import command_tree, suggest
+
+        near = suggest(argv[0], command_tree())
+        hint = ""
+        if near:
+            hint = "\n" + "\n".join(f"       did you mean `tesserae {n}`?" for n in near)
         print(
-            f"tesserae: unknown command {argv[0]!r} — see `tesserae --help`",
+            f"tesserae: unknown command {argv[0]!r} — see `tesserae --help`{hint}",
             file=sys.stderr,
         )
         return 2
+    if len(argv) == 1:
+        # A bare GROUP name is a request to see what the group can do, not an
+        # error about a missing positional. argparse disagrees, so intercept it
+        # and hand the router `--help`, which prints the group's own help and
+        # exits 0; the exit code stays 2 because no command actually ran.
+        #
+        # Only for groups that HAVE subcommands. `setup` and `extract` print
+        # under GROUPS in the root help but take flags, so a bare invocation of
+        # either is a real command and must reach its handler untouched.
+        from .cli_completion import command_tree
+
+        if command_tree().get(argv[0]):
+            try:
+                _dispatch_command(argv[0], ["--help"])
+            except SystemExit:
+                pass
+            return 2
     try:
         return _dispatch_command(argv[0], argv[1:])
     except NotImplementedError:
@@ -3012,6 +3061,18 @@ def _build_engine_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--serve-host", default="127.0.0.1", help="Bind address for --serve (default: 127.0.0.1)")
     parser.add_argument("--serve-port", type=int, default=None, help="Port for --serve (default: 8765, same as `tesserae serve`)")
+    parser.add_argument(
+        "--proactive",
+        action="store_true",
+        help=(
+            "Pull new documents from the feeds in this project's "
+            "`proactive_sources` on a timer, instead of only reacting to local "
+            "edits. Off by default because it fetches and compiles on its own, "
+            "which spends. Add a feed with `tesserae sources add <url>`."
+        ),
+    )
+    parser.add_argument("--proactive-interval", type=float, default=None, help="Seconds between proactive polls (default: 3600).")
+    parser.add_argument("--proactive-budget", type=int, default=None, help="Max NEW documents one proactive poll may fetch (default: 5).")
     parser.add_argument(
         "--compile-slots",
         type=int,
@@ -5949,8 +6010,30 @@ def _write_sources(wiki, sources: List[str]) -> None:
     wiki.paths.config.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _write_proactive_sources(wiki, feeds: List[str]) -> None:
+    cfg = wiki.config()
+    cfg["proactive_sources"] = feeds
+    wiki.paths.config.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def _handle_sources_add(args: argparse.Namespace) -> int:
+    from .ingest.fetch import is_url
+
     wiki = ProjectWiki.load(args.project)
+    if is_url(args.path):
+        # A URL is not a directory to walk, so it goes in the feed list rather
+        # than the compile scope. Same verb on purpose: "where does knowledge
+        # come from" is one question, and making the user learn which of two
+        # commands to type is exactly the friction worth removing.
+        feeds = list(wiki.config().get("proactive_sources") or [])
+        if args.path in feeds:
+            print(f"already a feed: {args.path}")
+            return 0
+        feeds.append(args.path)
+        _write_proactive_sources(wiki, feeds)
+        print(f"Added feed: {args.path}  ({len(feeds)} total)")
+        print("Run `tesserae engine --proactive` to start pulling from it.")
+        return 0
     root = wiki.project_root
     sources = list(wiki.config().get("sources") or [])
     stored, abs_resolved, is_global = _normalize_source(root, args.path)
@@ -5969,18 +6052,43 @@ def _handle_sources_add(args: argparse.Namespace) -> int:
 def _handle_sources_list(args: argparse.Namespace) -> int:
     wiki = ProjectWiki.load(args.project)
     root = wiki.project_root
-    sources = list(wiki.config().get("sources") or [])
-    if not sources:
-        print("No sources configured. Add one: tesserae sources add <path>")
+    cfg = wiki.config()
+    sources = list(cfg.get("sources") or [])
+    feeds = list(cfg.get("proactive_sources") or [])
+    if not sources and not feeds:
+        print("No sources configured. Add one: tesserae sources add <path-or-url>")
         return 0
     for s in sources:
         kind = "global" if Path(s).is_absolute() else "local"
         exists = "" if resolve_project_input(root, s).resolve().exists() else "  (MISSING)"
         print(f"  [{kind:6}] {s}{exists}")
+    # Feeds are listed here rather than behind their own verb because they
+    # answer the same question the directories do: where this graph's
+    # knowledge comes from. The label says which kind polls and which is walked.
+    for f in feeds:
+        print(f"  [feed  ] {f}")
+    if feeds:
+        print("\nFeeds are pulled by `tesserae engine --proactive` (off by default).")
     return 0
 
 
 def _handle_sources_remove(args: argparse.Namespace) -> int:
+    from .ingest.fetch import is_url
+
+    if is_url(args.path):
+        wiki = ProjectWiki.load(args.project)
+        feeds = list(wiki.config().get("proactive_sources") or [])
+        kept = [f for f in feeds if f != args.path]
+        if len(kept) == len(feeds):
+            print(f"not a feed: {args.path}", file=sys.stderr)
+            return 1
+        _write_proactive_sources(wiki, kept)
+        print(f"Removed feed: {args.path}  ({len(kept)} total)")
+        return 0
+    return _handle_sources_remove_path(args)
+
+
+def _handle_sources_remove_path(args: argparse.Namespace) -> int:
     wiki = ProjectWiki.load(args.project)
     root = wiki.project_root
     sources = list(wiki.config().get("sources") or [])
@@ -5997,21 +6105,22 @@ def _handle_sources_remove(args: argparse.Namespace) -> int:
 def _build_sources_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae sources",
-        description="Manage the project's compile source directories (local & global).",
+        description="Manage where this graph's knowledge comes from: compile directories (local & global) and http(s) feeds.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
             "  tesserae sources add docs                 # local (project-relative)\n"
             "  tesserae sources add /data/shared-notes   # global (absolute)\n"
             "  tesserae sources add ../sibling-project   # global (escapes the root)\n"
+            "  tesserae sources add https://x.org/rss    # feed (pulled by engine --proactive)\n"
             "  tesserae sources list\n"
             "  tesserae sources remove docs\n"
         ),
     )
     sub = parser.add_subparsers(dest="sources_command", required=True)
 
-    p_add = sub.add_parser("add", help="Add a directory/file to the compile scope (inside the project = local, outside = global).")
-    p_add.add_argument("path", help="Directory or file to compile. Inside the project → stored project-relative (local); outside → stored absolute (global).")
+    p_add = sub.add_parser("add", help="Add a directory/file to the compile scope, or an http(s) feed to pull from.")
+    p_add.add_argument("path", help="Directory or file to compile (inside the project → local, outside → global), or an http(s) URL → a feed for `engine --proactive`.")
     p_add.add_argument("--project", default=".", help="Project root; defaults to the current directory.")
     p_add.set_defaults(_handler="_handle_sources_add")
 
@@ -7450,7 +7559,28 @@ def _resolve_handler(name: str) -> Callable[[argparse.Namespace], int]:
     return getattr(_sys.modules[__name__], name)
 
 
+def _route_completion(rest: List[str]) -> int:
+    from .cli_completion import SHELLS, render_completion
+
+    parser = argparse.ArgumentParser(
+        prog="tesserae completion",
+        description="Print a shell completion script for tesserae.",
+        epilog=(
+            "install:\n"
+            "  bash   tesserae completion bash > /usr/local/etc/bash_completion.d/tesserae\n"
+            "  zsh    tesserae completion zsh > \"${fpath[1]}/_tesserae\"\n"
+            "  fish   tesserae completion fish > ~/.config/fish/completions/tesserae.fish\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("shell", choices=SHELLS, help="Which shell to emit a script for")
+    args = parser.parse_args(rest)
+    print(render_completion(args.shell), end="")
+    return 0
+
+
 _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
+    "completion": _route_completion,
     "ask": _route_ask,
     "init": _route_init,
     "compile": _route_compile,

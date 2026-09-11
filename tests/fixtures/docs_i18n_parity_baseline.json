@@ -211,10 +211,7 @@
    "missing_spans": [
     "graph.json",
     "kuzu_adapter.py"
-   ],
-   "structure": {
-    "bold": 1
-   }
+   ]
   },
   "docs/i18n/context-engine-audit.es.md": {
    "missing_spans": [
@@ -246,7 +243,7 @@
     "kuzu_adapter.py"
    ],
    "structure": {
-    "bold": 2
+    "bold": 1
    },
    "untranslated_words": [
     "cross-cutting"
@@ -264,7 +261,7 @@
     "kuzu_adapter.py"
    ],
    "structure": {
-    "bold": 2
+    "bold": 1
    }
   },
   "docs/i18n/context-engine-roadmap.de.md": {

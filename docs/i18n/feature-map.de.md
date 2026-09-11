@@ -275,6 +275,8 @@ Ein dokument-orientiertes, hierarchisches Wiki ersetzt den alten Graph-Dump. Sie
 - ✅ `tesserae export site --watch` (eigenständiger Polling-Watcher)
 - ✅ `tesserae engine` (Supervisor-Schleife — v0.5.0)
 - ✅ `tesserae engine --serve` (der Daemon bedient `.tesserae/site` selbst; die Site wird bei jeder Neukompilierung atomar ausgetauscht — v0.40.0)
+- ✅ `tesserae engine --proactive` (die fünfte Trigger-Quelle und die erste, die nicht auf lokale Bearbeitung wartet: fragt `proactive_sources` ab, nimmt auf, was nicht gesehen wurde, budgetiert pro Tick)
+- ✅ `tesserae completion bash|zsh|fish` (Shell-Completion aus dem echten Parser-Baum generiert)
 - ✅ `tesserae refresh` (Prosa-Kette ingest → compile → project — v0.5.0)
 - ✅ `tesserae context` (On-Demand-Kontext-Compiler — v0.5.0)
 - ✅ `tesserae export harness`

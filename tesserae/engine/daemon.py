@@ -149,6 +149,9 @@ class Daemon:
         enable_serve: bool = False,
         serve_host: str = "127.0.0.1",
         serve_port: int = 8765,
+        enable_proactive: bool = False,
+        proactive_interval: float = 3600.0,
+        proactive_budget: int = 5,
         enable_compile: Optional[bool] = None,
         consolidate: bool = True,
         consolidate_idle_seconds: float = 300.0,
@@ -182,6 +185,13 @@ class Daemon:
         self._serve_port = serve_port
         #: Filled in by _start_serve_source once the socket is bound.
         self.serve_port: Optional[int] = None
+        # OFF by default for a harder reason than the server's: this is the
+        # only source that SPENDS on its own. A tick fetches documents and the
+        # compile behind it runs LLM extraction over them, so a default-on
+        # proactive engine would bill a user who never asked for it.
+        self._enable_proactive = enable_proactive
+        self._proactive_interval = proactive_interval
+        self._proactive_budget = proactive_budget
         # Harvest-only mode. With both content watchers off there is nothing a
         # compile here could pick up that the compiling host will not see
         # anyway, and on a fleet of servers sharing one disk the per-project
@@ -693,6 +703,76 @@ class Daemon:
             self._start_session_source(loop)
         if self._enable_serve:
             self._start_serve_source(loop)
+        if self._enable_proactive:
+            self._start_proactive_source(loop)
+
+    # ----- proactive source -------------------------------------------------
+    def _start_proactive_source(self, loop: asyncio.AbstractEventLoop) -> None:
+        """The fifth trigger source, and the first that does not wait.
+
+        Watch, vault and session-tail all fire when a local file changes; they
+        reconstruct what is already on disk. This one polls the feeds named in
+        ``proactive_sources`` and pulls documents the project has never seen
+        into ``data/ingested/``, then enqueues a normal trigger so the existing
+        debounce and compile path handles them like any other new file.
+
+        Unavailable prerequisites are NOT fatal, matching every other source: a
+        project that will not load, or a missing ``[ingest-url]`` extra, logs
+        once and starts no thread. The engine must keep compiling either way.
+        """
+        try:
+            from ..project import ProjectWiki
+            from ..proactive import configured_feeds
+
+            wiki = ProjectWiki.load(self.project_root)
+            feeds = configured_feeds(wiki.config())
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "proactive source not started (the engine still compiles)", exc_info=True
+            )
+            return
+
+        if not feeds:
+            logger.info(
+                "proactive source idle: no `proactive_sources` in this project's config "
+                "(add one with `tesserae sources add <url>`)"
+            )
+            return
+
+        t = threading.Thread(
+            target=self._run_proactive_source,
+            args=(wiki,),
+            daemon=True,
+            name="proactive-source",
+        )
+        t.start()
+        self._threads.append(t)
+
+    def _run_proactive_source(self, wiki) -> None:
+        """Poll body: tick, enqueue if anything arrived, sleep, repeat."""
+        from ..proactive import LEDGER_NAME, FetchLedger, configured_feeds, run_tick
+
+        try:
+            while not self._stop_event.is_set():
+                # Waits FIRST, like every other poller here: a daemon that
+                # fetched the moment it booted would spend before the operator
+                # could read the log line saying it was going to.
+                if self._stop_event.wait(self._proactive_interval):
+                    break
+                try:
+                    result = run_tick(
+                        feeds=configured_feeds(wiki.config()),
+                        ledger=FetchLedger(wiki.root / LEDGER_NAME),
+                        dest_dir=Path(wiki.project_root) / "data" / "ingested",
+                        budget=self._proactive_budget,
+                    )
+                except Exception:  # noqa: BLE001 - a bad tick is not a dead source
+                    logger.exception("proactive tick failed; retrying next interval")
+                    continue
+                if result.changed and not self._stop_event.is_set():
+                    self.enqueue(TriggerEvent(source="proactive", changed_only=True))
+        except Exception:  # noqa: BLE001 - daemon survives a dead source
+            logger.exception("proactive-source thread died")
 
     # ----- serve source ----------------------------------------------------
     def _start_serve_source(self, loop: asyncio.AbstractEventLoop) -> None:

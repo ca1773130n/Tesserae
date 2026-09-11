@@ -204,7 +204,7 @@ def test_file_store_prune_removes_only_internal_records(tmp_path: Path):
         "You extract a typed research-intelligence graph as ONE JSON object (nodes + edges).",
     )
     real = [_session(f"real{i}", t) for i, t in enumerate(_REAL)]
-    store.write_sessions(internal + [extraction] + real)
+    store.write_sessions(internal + [extraction] + real, producer="")
     assert len(store.list_sessions()) == len(internal) + 1 + len(real)
 
     preview = store.prune_internal(dry_run=True)
@@ -227,7 +227,7 @@ def test_file_store_prune_keeps_unreadable_records(tmp_path: Path):
     from tesserae.harness_sessions import HarnessSessionStore
 
     store = HarnessSessionStore(tmp_path / "harness_sessions")
-    store.write_sessions([_session("real0", _REAL[0])])
+    store.write_sessions([_session("real0", _REAL[0])], producer="")
     corrupt = store.root / "claude-code" / "corrupt.json"
     corrupt.write_text("{not json", encoding="utf-8")
 

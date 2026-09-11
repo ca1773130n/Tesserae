@@ -278,6 +278,8 @@ Neo4j のエージェント-メモリ設計を読み、Tesserae 自身の制約�
 - ✅ `tesserae export site --watch`（スタンドアロンのポーリングウォッチャー）
 - ✅ `tesserae engine`（スーパーバイザーループ — v0.5.0）
 - ✅ `tesserae engine --serve` (デーモンが`.tesserae/site`を自身で配信。サイトはアトミックに入れ替わり、404 の瞬間がない。)
+- ✅ `tesserae engine --proactive` (五番目のトリガーソース、ローカル編集を待たない最初のもの: `proactive_sources` をポーリングし、見たことのないものを取り込み、ティックごとに予算制限される)
+- ✅ `tesserae completion bash|zsh|fish` (実際のパーサツリーから生成されたシェル補完)
 - ✅ `tesserae refresh`（一連の ingest → compile → project チェーン — v0.5.0）
 - ✅ `tesserae context`（オンデマンドコンテキストコンパイラ — v0.5.0）
 - ✅ `tesserae export harness`

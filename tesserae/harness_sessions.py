@@ -272,7 +272,7 @@ class HarnessSessionStore:
         replace: bool = False,
         prune_roots: Optional[Sequence[str | Path]] = None,
         prune_harnesses: Optional[Sequence[str]] = None,
-        producer: str = "",
+        producer: str,
         host: str = "",
         adopt_unowned: bool = False,
     ) -> Dict[str, object]:
@@ -324,9 +324,17 @@ class HarnessSessionStore:
         machine's records in place with no way to reclaim them.
 
         **Omitting ``prune_roots`` with ``replace=True`` deletes every record
-        this producer owns**, and with no ``producer`` either, the whole store.
+        this producer owns**, and with ``producer=""`` too, the whole store.
         That is the pre-#104 behaviour, kept only for a caller that genuinely
         owns everything in it. There is no such caller in Tesserae.
+
+        Which is why ``producer`` is REQUIRED and has no default (#116). An
+        empty producer means opposite things on the two sides of this call — a
+        *record* with one is unowned and therefore nobody's to delete, while a
+        *writer* with one owns the whole store — and the destructive reading
+        was the one you got for free by not thinking about it. It now costs a
+        keystroke: pass ``producer=""`` to mean whole-store authority, and it
+        reads as a decision at the call site instead of an omission.
         """
         ordered = sorted(list(sessions), key=lambda s: (s.started_at or "", s.harness, s.slug))
         self.root.mkdir(parents=True, exist_ok=True)

@@ -275,6 +275,8 @@ Tesserae — это **контекстный движок**, работающи�
 - ✅ `tesserae export site --watch` (автономный опросный наблюдатель)
 - ✅ `tesserae engine` (цикл супервизора — v0.5.0)
 - ✅ `tesserae engine --serve` (демон служит `.tesserae/site` сам; сайт меняется на месте атомарно при каждой пересборке — v0.40.0)
+- ✅ `tesserae engine --proactive` (пятый источник триггера и первый, который не ждёт локального редактирования: опрашивает `proactive_sources`, поглощает то, что не видел, рассчитано на такт)
+- ✅ `tesserae completion bash|zsh|fish` (дополнение оболочки, сгенерированное из реального дерева парсера)
 - ✅ `tesserae refresh` (прозаичная цепочка ingest → compile → project — v0.5.0)
 - ✅ `tesserae context` (компилятор контекста по требованию — v0.5.0)
 - ✅ `tesserae export harness`
