@@ -2795,11 +2795,34 @@ def main(argv: List[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+        from .cli_completion import command_tree, suggest
+
+        near = suggest(argv[0], command_tree())
+        hint = ""
+        if near:
+            hint = "\n" + "\n".join(f"       did you mean `tesserae {n}`?" for n in near)
         print(
-            f"tesserae: unknown command {argv[0]!r} — see `tesserae --help`",
+            f"tesserae: unknown command {argv[0]!r} — see `tesserae --help`{hint}",
             file=sys.stderr,
         )
         return 2
+    if len(argv) == 1:
+        # A bare GROUP name is a request to see what the group can do, not an
+        # error about a missing positional. argparse disagrees, so intercept it
+        # and hand the router `--help`, which prints the group's own help and
+        # exits 0; the exit code stays 2 because no command actually ran.
+        #
+        # Only for groups that HAVE subcommands. `setup` and `extract` print
+        # under GROUPS in the root help but take flags, so a bare invocation of
+        # either is a real command and must reach its handler untouched.
+        from .cli_completion import command_tree
+
+        if command_tree().get(argv[0]):
+            try:
+                _dispatch_command(argv[0], ["--help"])
+            except SystemExit:
+                pass
+            return 2
     try:
         return _dispatch_command(argv[0], argv[1:])
     except NotImplementedError:
@@ -7450,7 +7473,28 @@ def _resolve_handler(name: str) -> Callable[[argparse.Namespace], int]:
     return getattr(_sys.modules[__name__], name)
 
 
+def _route_completion(rest: List[str]) -> int:
+    from .cli_completion import SHELLS, render_completion
+
+    parser = argparse.ArgumentParser(
+        prog="tesserae completion",
+        description="Print a shell completion script for tesserae.",
+        epilog=(
+            "install:\n"
+            "  bash   tesserae completion bash > /usr/local/etc/bash_completion.d/tesserae\n"
+            "  zsh    tesserae completion zsh > \"${fpath[1]}/_tesserae\"\n"
+            "  fish   tesserae completion fish > ~/.config/fish/completions/tesserae.fish\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("shell", choices=SHELLS, help="Which shell to emit a script for")
+    args = parser.parse_args(rest)
+    print(render_completion(args.shell), end="")
+    return 0
+
+
 _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
+    "completion": _route_completion,
     "ask": _route_ask,
     "init": _route_init,
     "compile": _route_compile,

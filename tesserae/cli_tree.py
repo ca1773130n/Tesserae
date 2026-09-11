@@ -37,7 +37,7 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("decisions", "Decisions across projects + time (human AskUserQuestion + agent)"),
     ]),
     ("GROUPS", [
-        ("sessions", "import | discover | list — agent session history"),
+        ("sessions", "import | discover | list | prune-internal | chunk-backfill — agent session history"),
         ("vault", "sync | sync-all | set-root | export | prune — Obsidian projection"),
         ("export", "harness | graphiti | site | okf | kuzu — artifact exports"),
         ("code", "ingest | sync — CodeGraph ⇄ project graph (hook-invoked)"),
@@ -53,6 +53,9 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
     ]),
     ("LAB", [
         ("lab", "evolve — experimental LLM ops"),
+    ]),
+    ("SHELL", [
+        ("completion", "Print a bash/zsh/fish completion script (tesserae completion zsh)"),
     ]),
 ]
 
