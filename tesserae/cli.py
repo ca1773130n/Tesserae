@@ -1437,8 +1437,43 @@ def _merge_global_llm_config(existing: dict, *, llm_provider=None, claude_config
     return merged
 
 
+class ConfigUnreadableError(RuntimeError):
+    """The config we were about to overwrite could not be parsed.
+
+    Its own type so the CLI answers with a sentence and exit 2 instead of a
+    traceback, and so the refusal cannot be mistaken for a write that worked.
+    """
+
+
 def _write_global_config(path, merged: dict) -> None:
+    """Replace the machine-wide config, refusing to clobber one we cannot read.
+
+    Every writer here merges onto ``_load_global_llm_config()``, which answers
+    ``{}`` for a corrupt file — deliberately, so one bad character cannot break
+    every command that only READS config. But that empty dict then became the
+    merge base for a WRITE, and the result replaced the file: a single stray
+    comma in ~/.tesserae/config.json meant `tesserae config clip-token
+    --generate` silently destroyed the stored clip token, llm_api_key,
+    llm_auth_token and everything else, then exited 0.
+
+    Reading past a corrupt file is right. Writing over one is not: we cannot
+    merge with content we never parsed, so the only honest options are to stop,
+    or to overwrite knowingly.
+    """
     import json as _json
+
+    if path.is_file():
+        try:
+            _json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            backup = path.with_suffix(".corrupt")
+            raise ConfigUnreadableError(
+                f"{path} exists but is not valid JSON ({exc}).\n"
+                "  Writing here would replace it wholesale, losing every setting "
+                "it holds — including any stored token.\n"
+                f"  - fix the file, or move it aside (`mv {path} {backup}`) and "
+                "re-run to start a fresh one."
+            ) from exc
 
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -2814,6 +2849,7 @@ def _handle_engine(args: argparse.Namespace) -> int:
             consolidate_check_interval=getattr(args, "consolidate_check", 30.0),
             summarize_budget=getattr(args, "summarize_budget", 25),
             brief_budget=getattr(args, "brief_budget", 8),
+            harvest_only=bool(getattr(args, "harvest_only", False)),
         )
         try:
             return fleet.run(once=args.once)
@@ -2931,6 +2967,9 @@ def main(argv: List[str] | None = None) -> int:
         )
         return 2
     except CompileLockHeldError as exc:
+        print(f"tesserae {argv[0]}: {exc}", file=sys.stderr)
+        return 2
+    except ConfigUnreadableError as exc:
         print(f"tesserae {argv[0]}: {exc}", file=sys.stderr)
         return 2
     except OutputRefused as exc:

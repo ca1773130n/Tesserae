@@ -403,3 +403,67 @@ def test_default_units_never_bind_a_port(tmp_path):
     unit = fleet._default_daemon_factory("alpha", root, fleet)
 
     assert unit._enable_serve is False
+
+
+def test_a_fleet_unit_whose_pipeline_failed_is_not_counted_ok(tmp_path, caplog):
+    """The fleet reads each unit's rc, so "2/2 units ok" was a lie downstream.
+
+    Nothing was wrong with the counting — `Daemon.run(once=True)` answered 0
+    for a failed compile, so every unit looked fine.
+    """
+    import logging
+
+    registry = tmp_path / "registry.json"
+    roots = {name: _make_project(tmp_path, name) for name in ("alpha", "beta")}
+    _write_registry(registry, roots)
+
+    def factory(name, root, fleet):
+        from tesserae.engine.daemon import Daemon
+
+        d = Daemon(
+            root, debounce=0.0, enable_watch=False, enable_vault=False,
+            enable_session_tail=False, install_signal_handlers=False,
+            compile_gate=fleet.compile_gate,
+        )
+
+        def pipeline(paths, _name=name, _d=d):
+            if _name == "beta":
+                _d._pipeline_failed = True  # what a failed step does
+            return True
+
+        d._run_pipeline = pipeline
+        return d
+
+    fleet = FleetDaemon(
+        registry_path=registry, pidfile=tmp_path / "engine.pid", daemon_factory=factory
+    )
+    with caplog.at_level(logging.ERROR):
+        rc = fleet.run(once=True)
+
+    assert rc == 1, "a fleet with a failed unit must not exit 0"
+    assert any("beta" in r.getMessage() for r in caplog.records)
+
+
+def test_harvest_only_reaches_every_fleet_unit(tmp_path):
+    """`engine --all --harvest-only` compiled every project — the one thing the
+    flag promises never to do. The fleet dropped the flag on the floor.
+
+    A fleet is the shape this flag was written for: N hosts sharing a project
+    directory, each tailing what only it can see, one host compiling.
+    """
+    registry = tmp_path / "registry.json"
+    root = _make_project(tmp_path, "alpha")
+    _write_registry(registry, {"alpha": root})
+
+    fleet = FleetDaemon(
+        registry_path=registry, pidfile=tmp_path / "engine.pid", harvest_only=True
+    )
+    unit = fleet._default_daemon_factory("alpha", root, fleet)
+    assert unit._enable_compile is False
+    assert unit._enable_watch is False
+    assert unit._enable_vault is False
+    assert unit._enable_session_tail is True, "a harvester must still tail sessions"
+    assert unit._consolidate is False, "a harvester did not ask for LLM spend"
+
+    plain = FleetDaemon(registry_path=registry, pidfile=tmp_path / "e2.pid")
+    assert plain._default_daemon_factory("alpha", root, plain)._enable_compile is True

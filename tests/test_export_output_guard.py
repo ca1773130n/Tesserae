@@ -308,3 +308,95 @@ def test_an_okf_bundle_is_recognised_by_the_files_it_really_writes(tmp_path):
     assert _looks_like_an_okf_bundle(d) is False  # a stray markdown file is not a bundle
     (d / "index.md").write_text("x", encoding="utf-8")
     assert _looks_like_an_okf_bundle(d) is True
+
+
+# -------------------------------------------- compile / code ingest / query
+
+
+def test_compile_over_paths_with_no_markdown_refuses_before_writing(tmp_path, monkeypatch, capsys):
+    """`compile README.txt` rebuilt graph.json from nothing and exited 0."""
+    wiki = _project(tmp_path)
+    (tmp_path / "README.txt").write_text("plain text, not markdown", encoding="utf-8")
+    before = wiki.paths.graph.read_bytes()
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["compile", "README.txt", "--extractor", "deterministic"]) == 2
+    err = capsys.readouterr().err
+    assert "nothing to compile" in err
+    assert "Traceback" not in err
+    assert wiki.paths.graph.read_bytes() == before, "the graph was touched anyway"
+
+
+def test_compile_resolves_its_paths_against_the_project_not_the_cwd(tmp_path, monkeypatch):
+    """`compile --project X note.md` names a file inside X."""
+    _project(tmp_path)
+    (tmp_path / "note.md").write_text("# Note\n\nbody\n", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert main(["compile", "--project", str(tmp_path), "note.md",
+                 "--extractor", "deterministic"]) == 0
+
+
+def test_compile_over_a_missing_path_says_so(tmp_path, monkeypatch, capsys):
+    _project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert main(["compile", "nope.md", "--extractor", "deterministic"]) == 2
+    assert "no such path" in capsys.readouterr().err
+
+
+def test_query_on_something_that_is_not_a_project_is_an_error(tmp_path, capsys):
+    """A typo'd --project answered "No matches" with exit 0."""
+    not_a_project = tmp_path / "elsewhere"
+    not_a_project.mkdir()
+    assert main(["query", "anything", "--project", str(not_a_project)]) == 2
+    assert "No Tesserae project" in capsys.readouterr().err
+
+
+def test_code_ingest_refuses_a_missing_path_instead_of_emptying_the_graph(tmp_path, monkeypatch, capsys):
+    """It exited 0 and wrote an empty code-graph.json over a real one."""
+    _project(tmp_path)
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert main(["code", "ingest", "src"]) == 0
+    graph = tmp_path / ".tesserae" / "code-graph.json"
+    before = graph.read_bytes()
+
+    assert main(["code", "ingest", "srcc"]) == 2
+    assert "no such path" in capsys.readouterr().err
+    assert graph.read_bytes() == before, "the code graph was emptied anyway"
+
+
+def test_lint_reports_an_unreadable_graph_instead_of_calling_it_clean(tmp_path, monkeypatch, capsys):
+    """It swallowed the JSONDecodeError and printed "Wiki is clean." with exit 0."""
+    wiki = _project(tmp_path)
+    wiki.paths.graph.write_text("{ not json", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["lint"]) != 0
+    out = capsys.readouterr().out + capsys.readouterr().err
+    report = json.loads((tmp_path / ".tesserae" / "lint-report.json").read_text())
+    codes = {f["code"] for f in report["findings"]}
+    assert "GRAPH_UNREADABLE" in codes
+
+
+def test_an_unparseable_global_config_is_not_overwritten(tmp_path, monkeypatch, capsys):
+    """One stray comma used to cost the stored clip token and every API key."""
+    home = tmp_path / "home"
+    (home / ".tesserae").mkdir(parents=True)
+    cfg = home / ".tesserae" / "config.json"
+    cfg.write_text('{"clip_token": "SECRET", "llm_api_key": "KEY",\n', encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+
+    import tesserae.llm_json as lj
+
+    # `cli` imports the module as `_lj`, so patching the attribute on the module
+    # object reaches both names — there is no `tesserae.cli._lj` import path.
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", cfg)
+
+    assert main(["config", "clip-token", "--generate"]) == 2
+    err = capsys.readouterr().err
+    assert "not valid JSON" in err and "Traceback" not in err
+    assert "SECRET" in cfg.read_text(encoding="utf-8")

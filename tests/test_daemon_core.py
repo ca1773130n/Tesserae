@@ -622,3 +622,43 @@ def test_raise_fd_limit_returns_nondecreasing_soft_limit():
     before_soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
     result = raise_fd_limit(target=before_soft)  # never lowers; idempotent at current
     assert result >= before_soft
+
+
+def test_once_mode_exits_nonzero_when_the_pipeline_failed(tmp_path):
+    """`--once` returned 0 whatever happened to the compile.
+
+    `_run_pipeline` answers ``False`` for DEFERRED and ``True`` for everything
+    else — including a step that failed — because a long-running daemon has to
+    survive a bad compile and keep going. That is right for the loop and wrong
+    for a one-shot run: CI saw green for a pipeline that raised, and the fleet,
+    which reads each unit's rc, printed "2/2 units ok" for a batch where a
+    project failed to compile.
+
+    The failure is recorded on the instance instead, exactly as the real
+    failure branch does, so the deferral contract is untouched.
+    """
+    d = Daemon(tmp_path, debounce=0.0, install_signal_handlers=False)
+
+    def failing_pipeline(paths):
+        d._pipeline_failed = True   # what the `step FAILED` branch does
+        return True                 # ...and it still returns True
+
+    d._run_pipeline = failing_pipeline
+    assert d.run(once=True) == 1
+
+
+def test_once_mode_still_exits_zero_on_success(tmp_path):
+    d = Daemon(tmp_path, debounce=0.0, install_signal_handlers=False,
+               run_pipeline=lambda paths: None)
+    assert d.run(once=True) == 0
+
+
+def test_a_long_running_daemon_that_survived_a_failure_still_exits_zero(tmp_path):
+    """Surviving a bad compile is the daemon doing its job, not a failed run."""
+    d = Daemon(tmp_path, queue_timeout=0.01, debounce=0.0,
+               install_signal_handlers=False, consolidate=False,
+               enable_watch=False, enable_vault=False, enable_session_tail=False,
+               run_pipeline=lambda paths: None)
+    d._pipeline_failed = True
+    d.request_stop()
+    assert d.run() == 0
