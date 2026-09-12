@@ -30,6 +30,7 @@ from .report import GraphReporter
 from .raganything_refresh import main as _raganything_refresh_main
 from .research_graph import ResearchCorpusAnalyzer, ResearchGraph, ResearchGraphExtractor
 from .review_workflow import ReviewQueueExporter
+from .output_guard import OutputRefused
 from .selective_extractor import SelectiveClaudeResearchExtractor
 
 
@@ -2583,7 +2584,9 @@ def _handle_sessions(args: argparse.Namespace) -> int:
 
 def _handle_build_site(args: argparse.Namespace) -> int:
     wiki = ProjectWiki.load(args.project)
-    result = wiki.build_site(output=args.output)
+    # ``overwrite``, never ``force`` — ``force`` on this parser means "deploy a
+    # dirty tree" and reading it here would let a deploy flag authorise a delete.
+    result = wiki.build_site(output=args.output, force=bool(getattr(args, "overwrite", False)))
     print(f"Built frontend site: nodes={result['nodes']} edges={result['edges']} path={result['site_path']}")
     return 0
 
@@ -2858,6 +2861,9 @@ def main(argv: List[str] | None = None) -> int:
         )
         return 2
     except CompileLockHeldError as exc:
+        print(f"tesserae {argv[0]}: {exc}", file=sys.stderr)
+        return 2
+    except OutputRefused as exc:
         print(f"tesserae {argv[0]}: {exc}", file=sys.stderr)
         return 2
     except UnsupportedSourceError as exc:
@@ -4305,7 +4311,7 @@ def _handle_export_okf(args: argparse.Namespace) -> int:
         return 0
     graph = _load_graph_file(wiki.paths.graph)
     out = args.output or str(graph_dir / "okf")
-    written = write_okf_bundle(graph, out)
+    written = write_okf_bundle(graph, out, force=bool(getattr(args, "overwrite", False)))
     print(f"Exported OKF v{OKF_VERSION} bundle: files={len(written)} path={out}")
     return 0
 
@@ -4329,7 +4335,9 @@ def _handle_export_kuzu(args: argparse.Namespace) -> int:
     graph = _load_graph_file(source)
     out = Path(args.output) if args.output else default_out
     try:
-        KuzuResearchGraphAdapter(out).write_graph(graph, replace=True)
+        KuzuResearchGraphAdapter(out).write_graph(
+            graph, replace=True, force=bool(getattr(args, "overwrite", False))
+        )
     except KuzuExportUnavailableError as exc:
         print(f"export kuzu: {exc}", file=sys.stderr)
         return 2
@@ -4384,6 +4392,18 @@ def _build_export_parser() -> argparse.ArgumentParser:
     )
     p_site.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     p_site.add_argument("--output", help="Site output directory; defaults to .tesserae/site")
+    # NOT --force: this parser already has one, for deploying a dirty tree.
+    # Two meanings on one flag is how a user deletes a directory while trying
+    # to push a site.
+    p_site.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=(
+            "Allow --output to replace a directory that is not a previously-built "
+            "site. Writing a site DELETES the output directory first, so without "
+            "this an --output holding anything else is refused."
+        ),
+    )
     p_site.add_argument("--deploy", action="store_true", help="Deploy the compiled site to GitHub Pages (old `project deploy`)")
     p_site.add_argument("--watch", action="store_true", help="Auto-recompile when files change (old `project watch`)")
     # deploy flags
@@ -4416,6 +4436,15 @@ def _build_export_parser() -> argparse.ArgumentParser:
     )
     p_okf.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     p_okf.add_argument("--output", help="Export: bundle dir (default .tesserae/okf). Import: graph.json path (default .tesserae/okf-imported.graph.json)")
+    p_okf.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=(
+            "Allow --output to replace a directory that is not a previous OKF "
+            "bundle. Exporting DELETES every .md under the output directory, "
+            "recursively, so without this an --output holding anything else is refused."
+        ),
+    )
     p_okf.add_argument("--import", dest="import_dir", metavar="DIR", help="Read an OKF bundle DIR into a graph.json instead of exporting")
     p_okf.set_defaults(_handler="_handle_export_okf")
 
@@ -4432,6 +4461,15 @@ def _build_export_parser() -> argparse.ArgumentParser:
     )
     p_kuzu.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     p_kuzu.add_argument("--output", help="Kuzu database path; defaults to .tesserae/graph.kuzu")
+    p_kuzu.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=(
+            "Allow --output to replace something that is not a Kuzu database. "
+            "Exporting DELETES the output path first, so without this an "
+            "--output holding anything else is refused."
+        ),
+    )
     # --graph is what the removed `extract --kuzu-output` was for: exporting a
     # bare graph.json that was never compiled into a project.
     p_kuzu.add_argument("--graph", help="Export this graph.json instead of the project's compiled graph")
@@ -7370,6 +7408,19 @@ def _build_distill_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--dry-run", action="store_true", help="Print clusters + estimated LLM calls per agent; write nothing, call nothing.")
+    parser.add_argument(
+        "--artifact-chars",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Raise the one-read bound (default 48000) for this run. A "
+            "heavily-used agent's notes can exceed it, and index truncation "
+            "only sheds index entries, so distill refuses rather than emit an "
+            "artifact nothing can read in one go. An explicit value here is a "
+            "declared input; the env var deliberately is not."
+        ),
+    )
     parser.add_argument("--max-llm-calls", type=int, default=None, metavar="N", help="Cap provider calls for this run (the shared cache makes capped runs converge over several invocations).")
     parser.add_argument("--jobs", type=int, default=1, metavar="N", help="Accepted for CLI parity with the spec; execution is sequential in this release (validated >= 1).")
     parser.add_argument("--full", action="store_true", help="Ignore per-agent watermarks (still uses the shared distill cache) — converges a fresh clone to byte-identical artifacts.")
@@ -7431,6 +7482,7 @@ def _handle_distill(args: argparse.Namespace) -> int:
         recheck=args.recheck,
         as_of=args.as_of,
         jobs=args.jobs,
+        artifact_char_budget=getattr(args, "artifact_chars", None),
     )
     # Resolved through build_llm_summarizer so the set_agent_distill_test_client
     # seam intercepts; None means no LLM backend — the pass still runs, every

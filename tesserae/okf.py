@@ -51,6 +51,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import yaml
 
 from .markdown_projection import directory_for_node, slugify, unique_slugs
+from .output_guard import guard_output, is_empty_dir
 from .research_graph import (
     ALLOWED_EDGE_TYPES,
     ResearchEdge,
@@ -250,9 +251,33 @@ def _sources_block(
     return [entry], window
 
 
-def write_okf_bundle(graph: ResearchGraph, out_dir: str | Path) -> List[Path]:
+#: Written at the root of every bundle this function emits (see the index and
+#: log writers below). Their presence is how a re-export tells its own output
+#: apart from somebody's notes directory — and they are exactly the two names
+#: ``_RESERVED_FILENAMES`` already refuses to let a concept claim, so no
+#: concept file can impersonate one.
+OKF_MARKERS = ("index.md", "log.md")
+
+
+def _looks_like_an_okf_bundle(path: Path) -> bool:
+    """True for an empty directory or one holding a previous bundle."""
+    if is_empty_dir(path):
+        return True
+    return any((path / marker).exists() for marker in OKF_MARKERS)
+
+
+def write_okf_bundle(
+    graph: ResearchGraph, out_dir: str | Path, *, force: bool = False
+) -> List[Path]:
     """Write ``graph`` as an OKF v0.2 bundle under ``out_dir``. Deterministic."""
     root = Path(out_dir)
+    # The sweep below deletes EVERY .md under ``out_dir``, recursively, and
+    # ``out_dir`` is a user-supplied --output. Pointed at a notes folder it
+    # removed hand-written documents that were never part of any bundle — and
+    # unlike the site exporter it does not even stop at the top level.
+    guard_output(
+        root, is_ours=_looks_like_an_okf_bundle, kind="an OKF bundle", force=force
+    )
     root.mkdir(parents=True, exist_ok=True)
     # Clear prior *.md so a re-export is a deterministic projection of the
     # CURRENT graph (a deleted node must not linger as a stale concept file).

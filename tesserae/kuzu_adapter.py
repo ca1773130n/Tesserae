@@ -37,6 +37,7 @@ import shutil
 from pathlib import Path
 from typing import List
 
+from .output_guard import guard_output, is_empty_dir
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 
 
@@ -89,6 +90,27 @@ def import_kuzu():
     return kuzu
 
 
+#: Every Kuzu database file opens with these four bytes (checked against
+#: kuzu 0.11.3, which writes one file rather than a directory).
+_KUZU_MAGIC = b"KUZU"
+
+
+def _looks_like_a_kuzu_database(path: Path) -> bool:
+    """True for an empty directory or a file carrying Kuzu's magic.
+
+    The magic rather than the ``.kuzu`` suffix, so that re-exporting over a
+    database the user named ``mydb`` stays silent while a plain file called
+    ``notes.kuzu`` is still refused.
+    """
+    if is_empty_dir(path):
+        return True
+    if path.is_dir():
+        # Older Kuzu wrote a directory; treat one holding its files as ours.
+        return any(child.suffix in (".kz", ".wal") for child in path.iterdir())
+    with open(path, "rb") as handle:
+        return handle.read(len(_KUZU_MAGIC)) == _KUZU_MAGIC
+
+
 class KuzuResearchGraphAdapter:
     """Project a validated :class:`ResearchGraph` into a Kuzu database.
 
@@ -101,10 +123,23 @@ class KuzuResearchGraphAdapter:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
 
-    def write_graph(self, graph: ResearchGraph, replace: bool = False) -> None:
+    def write_graph(
+        self, graph: ResearchGraph, replace: bool = False, *, force: bool = False
+    ) -> None:
         kuzu = import_kuzu()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if replace and self.path.exists():
+            # ``self.path`` is a user-supplied ``--output``. Removing it without
+            # looking is how `export kuzu --output ~/notes` deleted a directory
+            # of somebody's work: this version of Kuzu writes a single FILE, so
+            # a directory here is never a database we wrote, and the unlink
+            # branch below would happily take a plain text file too.
+            guard_output(
+                self.path,
+                is_ours=_looks_like_a_kuzu_database,
+                kind="a Kuzu database",
+                force=force,
+            )
             if self.path.is_dir():
                 shutil.rmtree(self.path)
             else:
