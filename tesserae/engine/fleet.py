@@ -65,6 +65,7 @@ class FleetDaemon:
         consolidate_check_interval: float = 30.0,
         summarize_budget: int = 25,
         brief_budget: int = 8,
+        harvest_only: bool = False,
         pidfile: Optional[Path] = None,
         daemon_factory: Optional[DaemonFactory] = None,
     ) -> None:
@@ -73,6 +74,12 @@ class FleetDaemon:
         self._registry = ProjectRegistry(registry_path)
         self.compile_gate = threading.Semaphore(max(1, int(compile_slots)))
         self._registry_poll = registry_poll
+        # A fleet is the shape --harvest-only was WRITTEN for: N hosts sharing a
+        # project directory, each tailing the transcripts only it can see, one
+        # host compiling. The flag reached the single-project Daemon and was
+        # dropped on the floor here, so `engine --all --harvest-only` compiled
+        # every registered project — the one thing it promises never to do.
+        self._unit_harvest_only = bool(harvest_only)
         self._unit_debounce = debounce
         self._unit_watch_interval = watch_interval
         self._unit_consolidate = consolidate
@@ -93,7 +100,7 @@ class FleetDaemon:
             root,
             debounce=fleet._unit_debounce,
             watch_interval=fleet._unit_watch_interval,
-            consolidate=fleet._unit_consolidate,
+            consolidate=False if fleet._unit_harvest_only else fleet._unit_consolidate,
             consolidate_idle_seconds=fleet._unit_consolidate_idle_seconds,
             consolidate_max_interval_seconds=fleet._unit_consolidate_max_interval_seconds,
             consolidate_check_interval=fleet._unit_consolidate_check_interval,
@@ -101,6 +108,13 @@ class FleetDaemon:
             brief_budget=fleet._unit_brief_budget,
             install_signal_handlers=False,
             compile_gate=fleet.compile_gate,
+            # Every knob stated, the way the single-project host states them: a
+            # flag whose whole promise is "this process never takes the compile
+            # lock" must not depend on a default elsewhere continuing to imply it.
+            enable_watch=not fleet._unit_harvest_only,
+            enable_vault=not fleet._unit_harvest_only,
+            enable_session_tail=True,
+            enable_compile=not fleet._unit_harvest_only,
         )
 
     def _desired_projects(self) -> Dict[str, Path]:

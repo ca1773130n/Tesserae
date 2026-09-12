@@ -74,6 +74,14 @@ _REASONING_EDGE_TYPES: FrozenSet[str] = frozenset(
 _REASONING_EDGE_FLOOR_PCT: float = 7.5
 
 
+class GraphUnreadableError(RuntimeError):
+    """graph.json exists but cannot be parsed.
+
+    Its own type so the CLI reports a one-line refusal and a non-zero exit
+    rather than a traceback — and, critically, rather than "clean".
+    """
+
+
 @dataclass(frozen=True)
 class LintFinding:
     severity: str  # "info" | "warning" | "error"
@@ -300,6 +308,19 @@ class WikiLinter:
         site_html_paths = list(sorted(self.site_dir.rglob("*.html"))) if self.site_dir.exists() else []
 
         findings: List[LintFinding] = []
+        if getattr(self, "_graph_unreadable", ""):
+            findings.append(
+                LintFinding(
+                    severity="error",
+                    code="GRAPH_UNREADABLE",
+                    message=(
+                        f"{self.graph_path} {self._graph_unreadable}. Every check below "
+                        "ran over an EMPTY graph, so a clean result here means nothing. "
+                        "Restore graph.json from version control, or recompile."
+                    ),
+                    path=str(self.graph_path),
+                )
+            )
         findings.extend(self._check_orphan_papers(nodes_by_id, edges))
         findings.extend(self._check_missing_implemented_in(nodes_by_id, edges))
         findings.extend(self._check_stale_citations(wiki_md_paths))
@@ -2178,12 +2199,32 @@ class WikiLinter:
     # ------------------------------------------------------------------
 
     def _load_graph(self) -> Dict[str, object]:
+        """The graph under lint. A MISSING graph is empty; a BROKEN one is fatal.
+
+        Swallowing a JSONDecodeError here made every check run over an empty
+        graph and the command print "No findings. Wiki is clean." with exit 0 —
+        for a corpus whose graph.json could not be read at all. That is the one
+        answer lint must never give about a broken graph, because it is the
+        command people run to find out whether the graph is broken.
+        """
+        self._graph_unreadable = ""
         if not self.graph_path.exists():
             return {"nodes": [], "edges": []}
         try:
             return json.loads(self.graph_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {"nodes": [], "edges": []}
+        except json.JSONDecodeError as exc:
+            self._graph_unreadable = (
+                f"not valid JSON ({exc.msg} at line {exc.lineno}, column {exc.colno})"
+            )
+        except OSError as exc:
+            self._graph_unreadable = f"could not be read ({exc})"
+        # Deliberately still an EMPTY graph rather than a raise: the per-probe
+        # guards (CHARTER_PARTITION and friends) are built on this and report
+        # their own "did not run" findings from it. What was missing is a
+        # finding for the unreadable graph ITSELF — without one, a project with
+        # no charter got "No findings. Wiki is clean." and exit 0 for a
+        # graph.json that cannot be parsed at all.
+        return {"nodes": [], "edges": []}
 
     def _print_summary(self, report: LintReport, *, severity_floor: str) -> None:
         floor_rank = _SEVERITY_RANK[severity_floor]

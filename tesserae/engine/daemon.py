@@ -263,6 +263,7 @@ class Daemon:
         # flock syscall once per debounce for the whole compile, on every host.
         self._defer_until = 0.0
         self._defer_delay = 0.0
+        self._pipeline_failed = False
         self._threads: List[threading.Thread] = []
         #: Callables run at shutdown BEFORE the thread joins. The class models
         #: only event-gated pollers, whose ``stop_event.wait()`` top makes them
@@ -350,6 +351,11 @@ class Daemon:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self._loop = loop
+        # A one-shot run that FAILED must say so. `engine --once` returned 0
+        # whatever happened to the compile, so CI saw green for a pipeline that
+        # raised — and the fleet, which reads each unit's rc, reported
+        # "2/2 units ok" for a batch in which a project failed to compile.
+        self._pipeline_failed = False
         try:
             if once:
                 loop.run_until_complete(self._drain_once())
@@ -385,7 +391,9 @@ class Daemon:
             loop.close()
             self._loop = None
             self._remove_pidfile()
-        return 0
+        # Only a once-run reports failure through the exit code: a long-running
+        # daemon that survived a bad compile and kept going has not failed.
+        return 1 if (once and self._pipeline_failed) else 0
 
     def _handle_signal(self) -> None:
         """Signal callback: request graceful drain+exit (no abrupt loop.stop)."""
@@ -559,6 +567,12 @@ class Daemon:
         # A pipeline run is activity: reset the idle clock so idle-triggered
         # consolidation does not fire immediately after a compile.
         self._last_activity = self._monotonic()
+        # Distinct from the return value. ``False`` here means DEFERRED and the
+        # long-running daemon must survive a failed step, so a failure cannot be
+        # signalled by returning False without making every deferral look like
+        # one. ``--once`` still has to exit non-zero when the compile failed, so
+        # the failure is recorded on the instance instead.
+        self._pipeline_failed = False
         if not self._enable_compile and self._run_pipeline_override is None:
             # Harvest-only: this host tails transcripts into the shared sessions
             # store and leaves compiling to the host that owns it, so it must
@@ -604,6 +618,7 @@ class Daemon:
                 results = Pipeline(steps).run()
             except Exception as exc:  # noqa: BLE001 - daemon must survive
                 logger.error("pipeline raised outside StepResult (daemon survives): %s", exc)
+                self._pipeline_failed = True
                 return True
             for r in results:
                 if r.ok:
@@ -619,6 +634,7 @@ class Daemon:
                     return False
                 else:
                     logger.error("step %s: FAILED: %s", r.name, r.error)
+                    self._pipeline_failed = True
             # A pipeline that got the lock clears the backoff, so the next
             # contended run starts from DEFER_BACKOFF_START rather than
             # inheriting a minute-long wait earned hours ago.

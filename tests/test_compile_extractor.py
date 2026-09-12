@@ -76,7 +76,7 @@ def test_selective_extract_text_routes_by_absolute_path_and_limit():
     ]
 
 
-def test_compile_paths_threads_extractor_into_ingest(monkeypatch):
+def test_compile_paths_threads_extractor_into_ingest(monkeypatch, tmp_path):
     import tesserae.llm_json as lj
     from tesserae import cli
     from tesserae.llm_extractor import LLMResearchExtractor
@@ -84,7 +84,16 @@ def test_compile_paths_threads_extractor_into_ingest(monkeypatch):
 
     captured = {}
 
+    # A REAL markdown file under a real root: `compile <paths>` now refuses a
+    # corpus that holds no markdown, because rebuilding graph.json from nothing
+    # used to wipe it and exit 0. A stub whose path does not exist would be
+    # refused for the right reason and test the wrong thing.
+    doc = tmp_path / "doc.md"
+    doc.write_text("# Doc\n\nbody\n", encoding="utf-8")
+
     class _FakeWiki:
+        project_root = tmp_path
+
         def config(self):
             return {}
 
@@ -95,7 +104,7 @@ def test_compile_paths_threads_extractor_into_ingest(monkeypatch):
 
     monkeypatch.setattr("tesserae.cli.ProjectWiki.load", lambda p: _FakeWiki())
     monkeypatch.setattr(lj, "build_default_json_client", lambda **k: object())  # a backend is available
-    args = cli._build_compile_parser().parse_args(["--extractor", "llm", "doc.md"])
+    args = cli._build_compile_parser().parse_args(["--extractor", "llm", str(doc)])
     assert cli._handle_compile(args) == 0  # dispatches to the paths-ingest branch
     doc_ex = captured.get("doc_extractor")
     assert isinstance(doc_ex, SelectiveClaudeResearchExtractor)  # per-doc fallback router

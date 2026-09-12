@@ -12,6 +12,7 @@ Two defects, both reachable from one command:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -308,3 +309,239 @@ def test_an_okf_bundle_is_recognised_by_the_files_it_really_writes(tmp_path):
     assert _looks_like_an_okf_bundle(d) is False  # a stray markdown file is not a bundle
     (d / "index.md").write_text("x", encoding="utf-8")
     assert _looks_like_an_okf_bundle(d) is True
+
+
+# -------------------------------------------- compile / code ingest / query
+
+
+def test_compile_over_paths_with_no_markdown_refuses_before_writing(tmp_path, monkeypatch, capsys):
+    """`compile README.txt` rebuilt graph.json from nothing and exited 0."""
+    wiki = _project(tmp_path)
+    (tmp_path / "README.txt").write_text("plain text, not markdown", encoding="utf-8")
+    before = wiki.paths.graph.read_bytes()
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["compile", "README.txt", "--extractor", "deterministic"]) == 2
+    err = capsys.readouterr().err
+    assert "nothing to compile" in err
+    assert "Traceback" not in err
+    assert wiki.paths.graph.read_bytes() == before, "the graph was touched anyway"
+
+
+def test_compile_resolves_its_paths_against_the_project_not_the_cwd(tmp_path, monkeypatch):
+    """`compile --project X note.md` names a file inside X."""
+    _project(tmp_path)
+    (tmp_path / "note.md").write_text("# Note\n\nbody\n", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert main(["compile", "--project", str(tmp_path), "note.md",
+                 "--extractor", "deterministic"]) == 0
+
+
+def test_compile_over_a_missing_path_says_so(tmp_path, monkeypatch, capsys):
+    _project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert main(["compile", "nope.md", "--extractor", "deterministic"]) == 2
+    assert "no such path" in capsys.readouterr().err
+
+
+def test_query_on_something_that_is_not_a_project_is_an_error(tmp_path, capsys):
+    """A typo'd --project answered "No matches" with exit 0."""
+    not_a_project = tmp_path / "elsewhere"
+    not_a_project.mkdir()
+    assert main(["query", "anything", "--project", str(not_a_project)]) == 2
+    assert "No Tesserae project" in capsys.readouterr().err
+
+
+def test_code_ingest_refuses_a_missing_path_instead_of_emptying_the_graph(tmp_path, monkeypatch, capsys):
+    """It exited 0 and wrote an empty code-graph.json over a real one."""
+    _project(tmp_path)
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert main(["code", "ingest", "src"]) == 0
+    graph = tmp_path / ".tesserae" / "code-graph.json"
+    before = graph.read_bytes()
+
+    assert main(["code", "ingest", "srcc"]) == 2
+    assert "no such path" in capsys.readouterr().err
+    assert graph.read_bytes() == before, "the code graph was emptied anyway"
+
+
+def test_lint_reports_an_unreadable_graph_instead_of_calling_it_clean(tmp_path, monkeypatch, capsys):
+    """It swallowed the JSONDecodeError and printed "Wiki is clean." with exit 0."""
+    wiki = _project(tmp_path)
+    wiki.paths.graph.write_text("{ not json", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["lint"]) != 0
+    out = capsys.readouterr().out + capsys.readouterr().err
+    report = json.loads((tmp_path / ".tesserae" / "lint-report.json").read_text())
+    codes = {f["code"] for f in report["findings"]}
+    assert "GRAPH_UNREADABLE" in codes
+
+
+def test_an_unparseable_global_config_is_not_overwritten(tmp_path, monkeypatch, capsys):
+    """One stray comma used to cost the stored clip token and every API key."""
+    home = tmp_path / "home"
+    (home / ".tesserae").mkdir(parents=True)
+    cfg = home / ".tesserae" / "config.json"
+    cfg.write_text('{"clip_token": "SECRET", "llm_api_key": "KEY",\n', encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+
+    import tesserae.llm_json as lj
+
+    # `cli` imports the module as `_lj`, so patching the attribute on the module
+    # object reaches both names — there is no `tesserae.cli._lj` import path.
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", cfg)
+
+    assert main(["config", "clip-token", "--generate"]) == 2
+    err = capsys.readouterr().err
+    assert "not valid JSON" in err and "Traceback" not in err
+    assert "SECRET" in cfg.read_text(encoding="utf-8")
+
+
+# ------------------------------------------------ registry / sessions scope
+
+
+def test_register_does_not_reinitialise_an_uncompiled_project(tmp_path, monkeypatch, capsys):
+    """The convenience branch tested for graph.json and re-ran init over a real
+    project, replacing config.json and losing sources, name and provider.
+
+    The comment above it already promised "an already-initialized project is
+    left untouched (no config overwrite)". The condition just did not match.
+    """
+    project = tmp_path / "proj"
+    (project / "docs").mkdir(parents=True)
+    (project / "docs" / "a.md").write_text("# A\n", encoding="utf-8")
+    wiki = ProjectWiki.init(project, name="myname")
+    cfg_path = project / ".tesserae" / "config.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["sources"] = ["docs"]
+    cfg_path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    (project / ".tesserae" / "graph.json").unlink()  # initialised, never compiled
+
+    monkeypatch.setenv("TESSERAE_REGISTRY", str(tmp_path / "registry.json"))
+    assert main(["projects", "register", str(project)]) == 1
+    err = capsys.readouterr().err
+    assert "no compiled graph yet" in err
+
+    after = json.loads(cfg_path.read_text(encoding="utf-8"))
+    assert after.get("name") == "myname"
+    assert after.get("sources") == ["docs"]
+
+
+def test_register_still_initialises_a_plain_directory(tmp_path, monkeypatch, capsys):
+    """The convenience the guard must not remove."""
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    monkeypatch.setenv("TESSERAE_REGISTRY", str(tmp_path / "registry.json"))
+    assert main(["projects", "register", str(fresh)]) == 0
+    assert (fresh / ".tesserae" / "config.json").is_file()
+
+
+def test_discover_does_not_prune_records_from_a_root_it_never_scanned(tmp_path, monkeypatch, capsys):
+    """`--import` deleted records harvested from a --root that is not on disk.
+
+    Discovery skipped the root entirely and learned nothing about it; absence of
+    a directory is not evidence its sessions are gone. An unmounted disk was
+    enough to lose the records.
+    """
+    project = tmp_path / "proj"
+    project.mkdir()
+    ProjectWiki.init(project, name="p")
+    monkeypatch.chdir(project)
+
+    assert main(["sessions", "discover", "--root", str(tmp_path / "absent")]) == 0
+    out = capsys.readouterr().out
+    assert "not scanned (missing)" in out
+    assert "kept, not pruned" in out
+
+
+def test_vault_sync_persists_the_override_it_says_it_applied(tmp_path):
+    """`vault sync` reported "applied: N override(s)" and wrote only the vault.
+
+    The overlay was applied to the in-memory graph, re-projected, and dropped:
+    graph.json still held the old value, so the next run — which re-projects
+    from disk — put the user's edit back the way it was. Reporting an edit as
+    applied and then reverting it is worse than refusing it.
+
+    The vault is pinned INSIDE tmp_path: `effective_obsidian_vault()` otherwise
+    resolves to the machine's real Obsidian vault, and a test must not write
+    there.
+    """
+    wiki = _project(tmp_path)
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    wiki.set_vault_override(vault)
+    wiki.export_obsidian()
+    wiki.reproject_after_vault_change()  # settle the snapshot baseline
+    before = wiki.paths.graph.read_text(encoding="utf-8")
+
+    pages = [p for p in vault.rglob("*.md") if "node_id:" in p.read_text(encoding="utf-8")]
+    assert pages, "fixture produced no node-bearing vault pages"
+    page = sorted(pages)[0]
+    body = page.read_text(encoding="utf-8")
+    assert "\ntitle: " in body, f"no title field to override in {page.name}"
+    page.write_text(
+        re.sub(r"\ntitle: .*", "\ntitle: EDITED BY HAND", body, count=1), encoding="utf-8"
+    )
+
+    wiki.reproject_after_vault_change()
+    assert wiki.paths.graph.read_text(encoding="utf-8") != before, (
+        "the overlay was reported as applied but never reached graph.json"
+    )
+
+
+def test_a_vault_sync_that_changes_nothing_does_not_rewrite_the_graph(tmp_path):
+    """Byte-idempotence: an empty overlay must leave graph.json untouched."""
+    wiki = _project(tmp_path)
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    wiki.set_vault_override(vault)
+    wiki.export_obsidian()
+    wiki.reproject_after_vault_change()
+    before = wiki.paths.graph.read_bytes()
+    wiki.reproject_after_vault_change()
+    assert wiki.paths.graph.read_bytes() == before
+
+
+def test_vault_export_keeps_an_orphan_that_holds_user_notes(tmp_path):
+    """`vault export` deleted exactly what `vault prune` refuses to delete.
+
+    A projected page can hold hand-written content — the
+    `<!-- user-notes -->` block is the whole point of a bidirectional vault.
+    `prune_orphan_pages` keeps those and surfaces them for review;
+    `_prune_orphaned_vault_pages`, which runs on every export, unlinked them
+    without looking. A stale page is recoverable; a deleted note is not.
+    """
+    wiki = _project(tmp_path)
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    wiki.set_vault_override(vault)
+    wiki.export_obsidian()
+
+    # An orphan: projector-shaped (node_id frontmatter) for a node that no
+    # longer projects here, carrying the user's own notes.
+    orphan = vault / "concepts" / "renamed-away.md"
+    orphan.parent.mkdir(parents=True, exist_ok=True)
+    orphan.write_text(
+        "---\nnode_id: Concept:gone:deadbeef\ntitle: Gone\n---\n\n"
+        "<!-- user-notes:start -->\nmy hand-written analysis, months of it\n"
+        "<!-- user-notes:end -->\n",
+        encoding="utf-8",
+    )
+    bare_orphan = vault / "concepts" / "also-gone.md"
+    bare_orphan.write_text(
+        "---\nnode_id: Concept:alsogone:cafe\ntitle: Also Gone\n---\n\n"
+        "<!-- user-notes:start -->\n\n<!-- user-notes:end -->\n",
+        encoding="utf-8",
+    )
+
+    wiki.export_obsidian()
+
+    assert orphan.is_file(), "an orphan carrying user notes was deleted"
+    assert "months of it" in orphan.read_text(encoding="utf-8")
+    assert not bare_orphan.exists(), "an orphan with an EMPTY notes block should still go"

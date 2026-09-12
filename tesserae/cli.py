@@ -139,6 +139,16 @@ def _project_query_handler(args) -> int:
     from .query import QueryResult, WikiQuery, env_enabled
 
     project_root = args.project
+    # A typo'd --project used to read as an empty corpus: WikiQuery just finds no
+    # search index under it and reports "No matches" with exit 0, which is
+    # indistinguishable from a real search that matched nothing. Refuse a path
+    # that is not a Tesserae project, the way every other verb does.
+    if not (Path(project_root) / ".tesserae").is_dir():
+        print(
+            f"No Tesserae project at {project_root}. Did you run `tesserae init`?",
+            file=sys.stderr,
+        )
+        return 2
     top_k = args.top_k
     kind_filter = args.kind
     json_output = bool(args.json_output)
@@ -1427,8 +1437,43 @@ def _merge_global_llm_config(existing: dict, *, llm_provider=None, claude_config
     return merged
 
 
+class ConfigUnreadableError(RuntimeError):
+    """The config we were about to overwrite could not be parsed.
+
+    Its own type so the CLI answers with a sentence and exit 2 instead of a
+    traceback, and so the refusal cannot be mistaken for a write that worked.
+    """
+
+
 def _write_global_config(path, merged: dict) -> None:
+    """Replace the machine-wide config, refusing to clobber one we cannot read.
+
+    Every writer here merges onto ``_load_global_llm_config()``, which answers
+    ``{}`` for a corrupt file — deliberately, so one bad character cannot break
+    every command that only READS config. But that empty dict then became the
+    merge base for a WRITE, and the result replaced the file: a single stray
+    comma in ~/.tesserae/config.json meant `tesserae config clip-token
+    --generate` silently destroyed the stored clip token, llm_api_key,
+    llm_auth_token and everything else, then exited 0.
+
+    Reading past a corrupt file is right. Writing over one is not: we cannot
+    merge with content we never parsed, so the only honest options are to stop,
+    or to overwrite knowingly.
+    """
     import json as _json
+
+    if path.is_file():
+        try:
+            _json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            backup = path.with_suffix(".corrupt")
+            raise ConfigUnreadableError(
+                f"{path} exists but is not valid JSON ({exc}).\n"
+                "  Writing here would replace it wholesale, losing every setting "
+                "it holds — including any stored token.\n"
+                f"  - fix the file, or move it aside (`mv {path} {backup}`) and "
+                "re-run to start a fresh one."
+            ) from exc
 
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -1580,9 +1625,49 @@ def _handle_setup(args: argparse.Namespace) -> int:
         return 0
 
 
+def _refuse_corpus_with_no_markdown(wiki, inputs) -> None:
+    """Stop a compile whose inputs contain nothing it can read.
+
+    ``compile <paths>`` rebuilds graph.json from what it extracted, so a path
+    that yields zero markdown rebuilt it from nothing: the graph was replaced
+    with an empty one and the command exited 0. `tesserae compile README.txt`
+    — a real file, wrong suffix — silently destroyed the knowledge base and
+    reported success.
+
+    Raising here rather than deep in the pipeline keeps the refusal ahead of
+    every write, so the existing graph is still on disk when the user reads the
+    message.
+    """
+    from .ingest.fetch import is_url
+
+    paths = [str(i) for i in (inputs or [])]
+    if not paths or any(is_url(p) for p in paths):
+        return  # no explicit corpus, or a URL fetch that mints its own markdown
+    # Against the PROJECT root, not the cwd: `compile --project X note.md`
+    # names a file inside X, and resolving it against the caller's directory
+    # made this guard refuse a perfectly good compile.
+    resolved = [resolve_project_input(wiki.project_root, p) for p in paths]
+    missing = [p for p in resolved if not p.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "no such path: " + ", ".join(str(p) for p in missing)
+        )
+    if any(md for p in resolved for md in iter_markdown_files(p)):
+        return
+    raise UnsupportedSourceError(
+        "nothing to compile — none of these paths contain markdown:\n"
+        + "".join(f"  - {p}\n" for p in resolved)
+        + "  A compile rebuilds graph.json from what it reads, so running this "
+        "would have replaced your graph with an empty one.\n"
+        "  Point it at a directory of .md files, or run `tesserae compile` with "
+        "no paths to recompile the configured sources."
+    )
+
+
 def _handle_ingest(args: argparse.Namespace) -> int:
     if True:
         wiki = ProjectWiki.load(args.project)
+        _refuse_corpus_with_no_markdown(wiki, args.inputs)
         result = wiki.ingest(
             args.inputs,
             source_kind=args.source_kind,
@@ -1648,7 +1733,27 @@ def _handle_ingest_code(args: argparse.Namespace) -> int:
         project_root = Path(args.project).resolve()
         excludes = set(DEFAULT_EXCLUDES) | set(args.exclude or [])
         extractor = CodeGraphExtractor(project_root, excludes=excludes)
+        # An explicitly named path that is not there is a typo, not an empty
+        # repository. Without this the walk found nothing, the empty result was
+        # written over code-graph.json, and the command reported success.
+        missing = [p for p in (args.paths or []) if not Path(p).exists()]
+        if missing:
+            print(
+                "tesserae code ingest: no such path: " + ", ".join(missing),
+                file=sys.stderr,
+            )
+            return 2
         result = extractor.extract(args.paths or None)
+        if args.paths and result.processed_files == 0:
+            # Named paths that exist but hold nothing this extractor reads. The
+            # write below would replace a real code graph with an empty one.
+            print(
+                "tesserae code ingest: none of these paths contain source files "
+                "this extractor reads: " + ", ".join(str(p) for p in args.paths)
+                + "\n  Refusing to overwrite the code graph with an empty one.",
+                file=sys.stderr,
+            )
+            return 2
         output = Path(args.output) if args.output else (project_root / ".tesserae" / "code-graph.json")
         write_code_graph(result.graph, output)
         _warn_if_code_layer_disabled(project_root, output)
@@ -2514,6 +2619,20 @@ def _handle_sessions(args: argparse.Namespace) -> int:
             return 0
         if args.sessions_command == "discover":
             roots = [Path(r).expanduser() for r in args.root] if args.root else discover_harness_roots()
+            # A named --root that is not on disk was still handed to the prune
+            # scope below, so `--import` deleted every stored record harvested
+            # from it — while discovery had skipped the root entirely and
+            # learned nothing about it. Absence of a directory is not evidence
+            # that its sessions are gone; the disk it lives on may simply not be
+            # mounted right now.
+            missing_roots = [r for r in roots if not r.exists()]
+            roots = [r for r in roots if r.exists()]
+            if missing_roots:
+                print(
+                    "  not scanned (missing): "
+                    + ", ".join(str(r) for r in missing_roots)
+                    + " — records harvested from these are kept, not pruned"
+                )
             sessions = discover_harness_sessions(
                 wiki.project_root,
                 roots=roots,
@@ -2744,6 +2863,7 @@ def _handle_engine(args: argparse.Namespace) -> int:
             consolidate_check_interval=getattr(args, "consolidate_check", 30.0),
             summarize_budget=getattr(args, "summarize_budget", 25),
             brief_budget=getattr(args, "brief_budget", 8),
+            harvest_only=bool(getattr(args, "harvest_only", False)),
         )
         try:
             return fleet.run(once=args.once)
@@ -2861,6 +2981,9 @@ def main(argv: List[str] | None = None) -> int:
         )
         return 2
     except CompileLockHeldError as exc:
+        print(f"tesserae {argv[0]}: {exc}", file=sys.stderr)
+        return 2
+    except ConfigUnreadableError as exc:
         print(f"tesserae {argv[0]}: {exc}", file=sys.stderr)
         return 2
     except OutputRefused as exc:
@@ -5238,10 +5361,16 @@ def _handle_projects_register(args: argparse.Namespace) -> int:
     # A missing/typo'd path is NOT created (it stays a register error), and
     # an already-initialized project is left untouched (no config overwrite).
     candidate = Path(args.path).expanduser()
+    # The marker is config.json, NOT graph.json. A project that was initialised
+    # but never compiled has no graph yet, so the old test called it "not a
+    # Tesserae project" and re-ran init over it — silently replacing its
+    # config.json and losing sources, name, source_kind and llm_provider. The
+    # comment above already promised this would not happen; the condition just
+    # did not match the promise.
     if (
         candidate.is_dir()
         and candidate.name != ".tesserae"
-        and not (candidate / ".tesserae" / "graph.json").is_file()
+        and not (candidate / ".tesserae" / "config.json").is_file()
     ):
         from .project import ProjectWiki
 
@@ -5250,6 +5379,22 @@ def _handle_projects_register(args: argparse.Namespace) -> int:
             f"{candidate} was not a Tesserae project — initialized .tesserae/ "
             f"(run `tesserae compile --project {candidate}` to populate the graph)."
         )
+    elif (
+        candidate.is_dir()
+        and (candidate / ".tesserae" / "config.json").is_file()
+        and not (candidate / ".tesserae" / "graph.json").is_file()
+    ):
+        # Initialised but never compiled. The registry needs a graph, and the
+        # old convenience branch reached this case and re-ran init over it —
+        # replacing config.json and losing the sources, name and provider
+        # already configured. Say what is missing instead of "fixing" it.
+        print(
+            f"register failed: {candidate} is already a Tesserae project but has "
+            f"no compiled graph yet.\n"
+            f"  Run `tesserae compile --project {candidate}` first.",
+            file=sys.stderr,
+        )
+        return 1
     args.wiki_command = "register"
     return _wiki_command_handler(args)
 
