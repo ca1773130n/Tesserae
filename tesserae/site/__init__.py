@@ -31,6 +31,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
+from ..output_guard import OutputRefused, guard_output, is_empty_dir  # noqa: F401 (re-exported)
+
 from ..harness_sessions import HarnessSessionStore
 from ..research_graph import ResearchGraph, ResearchNodeType
 from ..wiki_store import WikiPage, WikiPageStore
@@ -165,6 +167,22 @@ def _safe_datetime(value: object) -> Optional[datetime]:
         return None
 
 
+#: Files this builder always emits. A directory holding one is a site.
+_SITE_MARKERS = ("index.html", "graph.json", "search-index.json", "llms.txt")
+
+
+def _looks_like_a_built_site(path: Path) -> bool:
+    """True for an empty directory or one this builder previously wrote.
+
+    Empty counts: there is nothing to lose. Otherwise at least one marker file
+    must be present, so re-exporting over a previous site stays silent while an
+    arbitrary folder full of somebody's work is refused.
+    """
+    if is_empty_dir(path):
+        return True
+    return any((path / marker).exists() for marker in _SITE_MARKERS)
+
+
 @dataclass
 class StaticSiteBuilder:
     """Render a static Tesserae site from a graph + markdown wiki layer."""
@@ -194,6 +212,7 @@ class StaticSiteBuilder:
         graph: ResearchGraph,
         wiki_root: Union[str, Path, None] = None,
         output_dir: Union[str, Path, None] = None,
+        force: bool = False,
     ) -> Dict[str, object]:
         """Render the full site.
 
@@ -226,6 +245,19 @@ class StaticSiteBuilder:
         # written by :meth:`ProjectWiki._append_build_history` *outside* this
         # builder. ``site/`` itself is content-stable and timestamp-free.
         if out.exists():
+            # ``out`` is about to be deleted wholesale, and on the ``export site
+            # --output <dir>`` path it is a directory the USER named. Pointing
+            # that at an existing folder destroyed everything in it with no
+            # prompt and no way back — the most destructive thing this CLI could
+            # do, reachable by one mistyped argument.
+            #
+            # Re-exporting over a previous site must stay silent, so the guard
+            # is not "is it empty" but "is it ours": a directory carrying the
+            # artifacts this builder emits is a site being rebuilt. Anything
+            # else is somebody's data and needs ``force``.
+            guard_output(
+                out, is_ours=_looks_like_a_built_site, kind="a Tesserae site", force=force
+            )
             shutil.rmtree(out)
         out.mkdir(parents=True)
 

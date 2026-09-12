@@ -3158,7 +3158,7 @@ class ProjectWiki:
             if md.resolve() not in canonical_paths:
                 md.unlink(missing_ok=True)
 
-    def build_site(self, output: Optional[str | Path] = None) -> dict:
+    def build_site(self, output: Optional[str | Path] = None, *, force: bool = False) -> dict:
         cfg = self.config()
         graph = load_graph_file(self.paths.graph)
         target = Path(output) if output else self.paths.site
@@ -3200,8 +3200,9 @@ class ProjectWiki:
         )
         if output is not None:
             # An explicit --output is a one-shot export, not the served root.
-            # Keep the old behaviour verbatim so no CLI surface changes.
-            return builder.write_site(graph, self.paths.wiki, target)
+            # ``force`` reaches the builder's overwrite guard: only a user who
+            # typed --force may have an arbitrary directory deleted.
+            return builder.write_site(graph, self.paths.wiki, target, force=force)
 
         # The DEFAULT site is what the daemon serves, so it must never be
         # absent. ``write_site`` rmtree's its target before writing, which means
@@ -3219,6 +3220,12 @@ class ProjectWiki:
             if scratch.exists():
                 shutil.rmtree(scratch, ignore_errors=True)
         result = builder.write_site(graph, self.paths.wiki, staging)
+        # ``write_site`` reports the directory it WROTE, which on this path is
+        # the staging sibling — a directory the swap below renames away and
+        # deletes. Returning that verbatim made `tesserae export site` print a
+        # path that does not exist by the time the user reads it. The caller
+        # asked for the site; tell them where the site is.
+        result["site_path"] = str(target)
         if target.exists() and _exchange_directories(staging, target):
             # One syscall: the old site is now under ``staging``. No window.
             shutil.rmtree(staging, ignore_errors=True)

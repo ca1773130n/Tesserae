@@ -4443,6 +4443,14 @@ class LLMWikiMCPServer:
         parent_of = {key: registry.effective_parent(key) for key in known}
         children_of: Dict[str, List[str]] = {}
         for key in known:  # known is sorted → children lists stay key-sorted
+            # ``_known_agent_keys`` includes ORG_ROOT, and ``effective_parent``
+            # answers ORG_ROOT for anything undeclared — including ORG_ROOT
+            # itself. Root therefore landed in its own child list and
+            # ``subtree_keys`` recursed until the interpreter gave up, so
+            # `graph_map --scope org:root` — the one entry point into the agent
+            # org — died with a RecursionError instead of printing the tree.
+            if parent_of[key] == key:
+                continue
             children_of.setdefault(parent_of[key], []).append(key)
         declared = registry.load().get("agents")
         labels = declared if isinstance(declared, dict) else {}
@@ -4452,9 +4460,23 @@ class LLMWikiMCPServer:
             return str(entry.get("label") or "") if isinstance(entry, dict) else ""
 
         def subtree_keys(key: str) -> List[str]:
-            out = [key]
-            for child in children_of.get(key, []):
-                out.extend(subtree_keys(child))
+            """Every key at or below ``key``, cycle-safe.
+
+            Iterative with a seen-set rather than plain recursion: the parent
+            map is built from user-editable data (`agents set-parent`), and a
+            cycle there must degrade to a short answer, never take down the
+            MCP server with a RecursionError.
+            """
+            out: List[str] = []
+            seen = set()
+            stack = [key]
+            while stack:
+                current = stack.pop()
+                if current in seen:
+                    continue
+                seen.add(current)
+                out.append(current)
+                stack.extend(reversed(children_of.get(current, [])))
             return out
 
         def note_count(key: str) -> int:
