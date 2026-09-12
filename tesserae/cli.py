@@ -139,6 +139,16 @@ def _project_query_handler(args) -> int:
     from .query import QueryResult, WikiQuery, env_enabled
 
     project_root = args.project
+    # A typo'd --project used to read as an empty corpus: WikiQuery just finds no
+    # search index under it and reports "No matches" with exit 0, which is
+    # indistinguishable from a real search that matched nothing. Refuse a path
+    # that is not a Tesserae project, the way every other verb does.
+    if not (Path(project_root) / ".tesserae").is_dir():
+        print(
+            f"No Tesserae project at {project_root}. Did you run `tesserae init`?",
+            file=sys.stderr,
+        )
+        return 2
     top_k = args.top_k
     kind_filter = args.kind
     json_output = bool(args.json_output)
@@ -1580,9 +1590,49 @@ def _handle_setup(args: argparse.Namespace) -> int:
         return 0
 
 
+def _refuse_corpus_with_no_markdown(wiki, inputs) -> None:
+    """Stop a compile whose inputs contain nothing it can read.
+
+    ``compile <paths>`` rebuilds graph.json from what it extracted, so a path
+    that yields zero markdown rebuilt it from nothing: the graph was replaced
+    with an empty one and the command exited 0. `tesserae compile README.txt`
+    — a real file, wrong suffix — silently destroyed the knowledge base and
+    reported success.
+
+    Raising here rather than deep in the pipeline keeps the refusal ahead of
+    every write, so the existing graph is still on disk when the user reads the
+    message.
+    """
+    from .ingest.fetch import is_url
+
+    paths = [str(i) for i in (inputs or [])]
+    if not paths or any(is_url(p) for p in paths):
+        return  # no explicit corpus, or a URL fetch that mints its own markdown
+    # Against the PROJECT root, not the cwd: `compile --project X note.md`
+    # names a file inside X, and resolving it against the caller's directory
+    # made this guard refuse a perfectly good compile.
+    resolved = [resolve_project_input(wiki.project_root, p) for p in paths]
+    missing = [p for p in resolved if not p.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "no such path: " + ", ".join(str(p) for p in missing)
+        )
+    if any(md for p in resolved for md in iter_markdown_files(p)):
+        return
+    raise UnsupportedSourceError(
+        "nothing to compile — none of these paths contain markdown:\n"
+        + "".join(f"  - {p}\n" for p in resolved)
+        + "  A compile rebuilds graph.json from what it reads, so running this "
+        "would have replaced your graph with an empty one.\n"
+        "  Point it at a directory of .md files, or run `tesserae compile` with "
+        "no paths to recompile the configured sources."
+    )
+
+
 def _handle_ingest(args: argparse.Namespace) -> int:
     if True:
         wiki = ProjectWiki.load(args.project)
+        _refuse_corpus_with_no_markdown(wiki, args.inputs)
         result = wiki.ingest(
             args.inputs,
             source_kind=args.source_kind,
@@ -1648,7 +1698,27 @@ def _handle_ingest_code(args: argparse.Namespace) -> int:
         project_root = Path(args.project).resolve()
         excludes = set(DEFAULT_EXCLUDES) | set(args.exclude or [])
         extractor = CodeGraphExtractor(project_root, excludes=excludes)
+        # An explicitly named path that is not there is a typo, not an empty
+        # repository. Without this the walk found nothing, the empty result was
+        # written over code-graph.json, and the command reported success.
+        missing = [p for p in (args.paths or []) if not Path(p).exists()]
+        if missing:
+            print(
+                "tesserae code ingest: no such path: " + ", ".join(missing),
+                file=sys.stderr,
+            )
+            return 2
         result = extractor.extract(args.paths or None)
+        if args.paths and result.processed_files == 0:
+            # Named paths that exist but hold nothing this extractor reads. The
+            # write below would replace a real code graph with an empty one.
+            print(
+                "tesserae code ingest: none of these paths contain source files "
+                "this extractor reads: " + ", ".join(str(p) for p in args.paths)
+                + "\n  Refusing to overwrite the code graph with an empty one.",
+                file=sys.stderr,
+            )
+            return 2
         output = Path(args.output) if args.output else (project_root / ".tesserae" / "code-graph.json")
         write_code_graph(result.graph, output)
         _warn_if_code_layer_disabled(project_root, output)
