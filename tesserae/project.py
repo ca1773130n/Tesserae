@@ -3146,17 +3146,33 @@ class ProjectWiki:
             canonical_paths.add(
                 (vault / directory_for_node(node) / f"{slug}.md").resolve()
             )
+        from .vault_pull import _split_body, extract_user_notes_block
+
         for md in vault.rglob("*.md"):
             try:
-                head = md.read_text(encoding="utf-8")[:512]
+                text = md.read_text(encoding="utf-8")
             except OSError:
                 continue
             # Only projector-generated pages carry a ``node_id:`` frontmatter
             # key (written first by ``render_node_page``); user notes never do.
-            if "\nnode_id:" not in ("\n" + head):
+            if "\nnode_id:" not in ("\n" + text[:512]):
                 continue
-            if md.resolve() not in canonical_paths:
-                md.unlink(missing_ok=True)
+            if md.resolve() in canonical_paths:
+                continue
+            # A projected page can still hold HAND-WRITTEN content: the
+            # ``<!-- user-notes -->`` block is the whole point of a
+            # bidirectional vault. `vault prune` refuses to delete those and
+            # surfaces them for review; this path deleted them silently, so
+            # `vault export` destroyed exactly what `vault prune` protects.
+            # The orphan is left in place — a stale page is recoverable, a
+            # deleted note is not — and `vault prune
+            # --force-prune-with-notes` remains the deliberate way to remove it.
+            try:
+                if extract_user_notes_block(_split_body(text)).strip():
+                    continue
+            except Exception:  # noqa: BLE001 - unparseable page: keep it
+                continue
+            md.unlink(missing_ok=True)
 
     def build_site(self, output: Optional[str | Path] = None, *, force: bool = False) -> dict:
         cfg = self.config()
@@ -3348,13 +3364,29 @@ class ProjectWiki:
 
         before_node_count = len(graph.nodes)
         before_edge_count = len(graph.edges)
+        before_json = graph.to_json(indent=2)
         graph = self._apply_vault_overlay(graph)
         new_stubs = sum(1 for n in graph.nodes[before_node_count:] if n.type == ResearchNodeType.STUB)
+        # Compare the rendered graph rather than counting: an override rewrites
+        # a field in place, so node and edge counts can both be unchanged while
+        # the graph genuinely differs.
+        overlay_changed = graph.to_json(indent=2) != before_json
 
         # Re-project: markdown + the obsidian vault itself. The
         # site, harness, etc. are intentionally NOT touched here — those are
         # compile-time concerns. The watcher exists to make vault edits
         # round-trip; everything else stays static between compiles.
+        # PERSIST before re-projecting. The overlay was applied to the
+        # in-memory graph only, so `vault sync` printed "applied: N override(s)"
+        # over a graph.json that still held the old values — and the next run,
+        # which re-projects from disk, quietly put the user's vault edit back
+        # the way it was. Reporting an edit as applied and then reverting it is
+        # worse than refusing it.
+        #
+        # The compile's own writer, byte for byte, and atomic for the same
+        # reason: the engine daemon may be publishing this file too.
+        if overlay_changed:
+            _publish_atomically(self.paths.graph, graph.to_json(indent=2) + "\n")
         GraphMarkdownProjector().write_projection(graph, self.paths.markdown_projection)
         self.export_obsidian()
         write_snapshot(graph.nodes, self.paths.vault_snapshot)
