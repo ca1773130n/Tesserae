@@ -2236,7 +2236,14 @@ def distill_agent(
         raise DistillSizeError(
             f"Distilled artifact for {canonical_key} is {len(rendered)} chars — "
             f"exceeds the one-read bound of {budget} chars even after index "
-            "truncation (spec §2/§7.2)."
+            "truncation (spec §2/§7.2).\n"
+            "  Index truncation sheds only the oldest INDEX entries; what "
+            "overflows here is the notes themselves, which is what a "
+            "heavily-used agent looks like.\n"
+            f"  - raise the bound for this run: tesserae distill --agent "
+            f"{canonical_key} --artifact-chars {((len(rendered) // 8000) + 1) * 8000}\n"
+            "  - an artifact above the bound no longer fits one read, which "
+            "is the contract the default protects."
         )
     result.size_level = size_level
 
@@ -2753,7 +2760,14 @@ def _distill_manager(
         raise DistillSizeError(
             f"Distilled artifact for {manager_key} is {len(rendered)} chars — "
             f"exceeds the one-read bound of {budget} chars even after index "
-            "truncation (spec §2/§7.2)."
+            "truncation (spec §2/§7.2).\n"
+            "  Index truncation sheds only the oldest INDEX entries; what "
+            "overflows here is the notes themselves, which is what a "
+            "heavily-used agent looks like.\n"
+            f"  - raise the bound for this run: tesserae distill --agent "
+            f"{manager_key} --artifact-chars {((len(rendered) // 8000) + 1) * 8000}\n"
+            "  - an artifact above the bound no longer fits one read, which "
+            "is the contract the default protects."
         )
     result.size_level = size_level
 

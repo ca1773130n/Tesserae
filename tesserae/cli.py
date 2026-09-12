@@ -7408,6 +7408,19 @@ def _build_distill_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--dry-run", action="store_true", help="Print clusters + estimated LLM calls per agent; write nothing, call nothing.")
+    parser.add_argument(
+        "--artifact-chars",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Raise the one-read bound (default 48000) for this run. A "
+            "heavily-used agent's notes can exceed it, and index truncation "
+            "only sheds index entries, so distill refuses rather than emit an "
+            "artifact nothing can read in one go. An explicit value here is a "
+            "declared input; the env var deliberately is not."
+        ),
+    )
     parser.add_argument("--max-llm-calls", type=int, default=None, metavar="N", help="Cap provider calls for this run (the shared cache makes capped runs converge over several invocations).")
     parser.add_argument("--jobs", type=int, default=1, metavar="N", help="Accepted for CLI parity with the spec; execution is sequential in this release (validated >= 1).")
     parser.add_argument("--full", action="store_true", help="Ignore per-agent watermarks (still uses the shared distill cache) — converges a fresh clone to byte-identical artifacts.")
@@ -7469,6 +7482,7 @@ def _handle_distill(args: argparse.Namespace) -> int:
         recheck=args.recheck,
         as_of=args.as_of,
         jobs=args.jobs,
+        artifact_char_budget=getattr(args, "artifact_chars", None),
     )
     # Resolved through build_llm_summarizer so the set_agent_distill_test_client
     # seam intercepts; None means no LLM backend — the pass still runs, every
