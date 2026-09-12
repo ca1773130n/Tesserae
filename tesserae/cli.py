@@ -2619,6 +2619,20 @@ def _handle_sessions(args: argparse.Namespace) -> int:
             return 0
         if args.sessions_command == "discover":
             roots = [Path(r).expanduser() for r in args.root] if args.root else discover_harness_roots()
+            # A named --root that is not on disk was still handed to the prune
+            # scope below, so `--import` deleted every stored record harvested
+            # from it — while discovery had skipped the root entirely and
+            # learned nothing about it. Absence of a directory is not evidence
+            # that its sessions are gone; the disk it lives on may simply not be
+            # mounted right now.
+            missing_roots = [r for r in roots if not r.exists()]
+            roots = [r for r in roots if r.exists()]
+            if missing_roots:
+                print(
+                    "  not scanned (missing): "
+                    + ", ".join(str(r) for r in missing_roots)
+                    + " — records harvested from these are kept, not pruned"
+                )
             sessions = discover_harness_sessions(
                 wiki.project_root,
                 roots=roots,
@@ -5347,10 +5361,16 @@ def _handle_projects_register(args: argparse.Namespace) -> int:
     # A missing/typo'd path is NOT created (it stays a register error), and
     # an already-initialized project is left untouched (no config overwrite).
     candidate = Path(args.path).expanduser()
+    # The marker is config.json, NOT graph.json. A project that was initialised
+    # but never compiled has no graph yet, so the old test called it "not a
+    # Tesserae project" and re-ran init over it — silently replacing its
+    # config.json and losing sources, name, source_kind and llm_provider. The
+    # comment above already promised this would not happen; the condition just
+    # did not match the promise.
     if (
         candidate.is_dir()
         and candidate.name != ".tesserae"
-        and not (candidate / ".tesserae" / "graph.json").is_file()
+        and not (candidate / ".tesserae" / "config.json").is_file()
     ):
         from .project import ProjectWiki
 
@@ -5359,6 +5379,22 @@ def _handle_projects_register(args: argparse.Namespace) -> int:
             f"{candidate} was not a Tesserae project — initialized .tesserae/ "
             f"(run `tesserae compile --project {candidate}` to populate the graph)."
         )
+    elif (
+        candidate.is_dir()
+        and (candidate / ".tesserae" / "config.json").is_file()
+        and not (candidate / ".tesserae" / "graph.json").is_file()
+    ):
+        # Initialised but never compiled. The registry needs a graph, and the
+        # old convenience branch reached this case and re-ran init over it —
+        # replacing config.json and losing the sources, name and provider
+        # already configured. Say what is missing instead of "fixing" it.
+        print(
+            f"register failed: {candidate} is already a Tesserae project but has "
+            f"no compiled graph yet.\n"
+            f"  Run `tesserae compile --project {candidate}` first.",
+            file=sys.stderr,
+        )
+        return 1
     args.wiki_command = "register"
     return _wiki_command_handler(args)
 

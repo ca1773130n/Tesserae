@@ -400,3 +400,60 @@ def test_an_unparseable_global_config_is_not_overwritten(tmp_path, monkeypatch, 
     err = capsys.readouterr().err
     assert "not valid JSON" in err and "Traceback" not in err
     assert "SECRET" in cfg.read_text(encoding="utf-8")
+
+
+# ------------------------------------------------ registry / sessions scope
+
+
+def test_register_does_not_reinitialise_an_uncompiled_project(tmp_path, monkeypatch, capsys):
+    """The convenience branch tested for graph.json and re-ran init over a real
+    project, replacing config.json and losing sources, name and provider.
+
+    The comment above it already promised "an already-initialized project is
+    left untouched (no config overwrite)". The condition just did not match.
+    """
+    project = tmp_path / "proj"
+    (project / "docs").mkdir(parents=True)
+    (project / "docs" / "a.md").write_text("# A\n", encoding="utf-8")
+    wiki = ProjectWiki.init(project, name="myname")
+    cfg_path = project / ".tesserae" / "config.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["sources"] = ["docs"]
+    cfg_path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    (project / ".tesserae" / "graph.json").unlink()  # initialised, never compiled
+
+    monkeypatch.setenv("TESSERAE_REGISTRY", str(tmp_path / "registry.json"))
+    assert main(["projects", "register", str(project)]) == 1
+    err = capsys.readouterr().err
+    assert "no compiled graph yet" in err
+
+    after = json.loads(cfg_path.read_text(encoding="utf-8"))
+    assert after.get("name") == "myname"
+    assert after.get("sources") == ["docs"]
+
+
+def test_register_still_initialises_a_plain_directory(tmp_path, monkeypatch, capsys):
+    """The convenience the guard must not remove."""
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    monkeypatch.setenv("TESSERAE_REGISTRY", str(tmp_path / "registry.json"))
+    assert main(["projects", "register", str(fresh)]) == 0
+    assert (fresh / ".tesserae" / "config.json").is_file()
+
+
+def test_discover_does_not_prune_records_from_a_root_it_never_scanned(tmp_path, monkeypatch, capsys):
+    """`--import` deleted records harvested from a --root that is not on disk.
+
+    Discovery skipped the root entirely and learned nothing about it; absence of
+    a directory is not evidence its sessions are gone. An unmounted disk was
+    enough to lose the records.
+    """
+    project = tmp_path / "proj"
+    project.mkdir()
+    ProjectWiki.init(project, name="p")
+    monkeypatch.chdir(project)
+
+    assert main(["sessions", "discover", "--root", str(tmp_path / "absent")]) == 0
+    out = capsys.readouterr().out
+    assert "not scanned (missing)" in out
+    assert "kept, not pruned" in out
