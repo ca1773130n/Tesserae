@@ -351,6 +351,20 @@ def drill_down(
     agent = str(agent or "")
     load_l1 = l1_loader or load_graph_file
 
+    if agent:
+        # A misspelled key used to mean "no artifact", which silently disabled
+        # the absorbed check — so a node that IS absorbed came back `alive`
+        # with exit 0, and the caller could not tell a typo from a real
+        # verdict. ``resolve_agent_view`` already refuses unknown keys; this
+        # path is the same question and must give the same answer.
+        from .agent_identity import AgentRegistry
+
+        known = _known_agent_keys(l0, AgentRegistry.for_project(root))
+        if agent not in known:
+            raise AgentViewError(
+                f"Unknown agent: {agent}. Known agents: {', '.join(known) or '(none)'}"
+            )
+
     node = next((n for n in l0.nodes if n.id == node_id), None)
     absorbed_by = ""
     if node is not None and agent:

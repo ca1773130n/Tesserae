@@ -2251,13 +2251,6 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     # Reasoning effort for Tesserae's own codex calls. Default ``medium`` —
     # extraction does not need the ``xhigh`` a user may set globally for
     # interactive codex, and xhigh makes compiles many times slower.
-    codex_reasoning_effort = (
-        os.environ.get("TESSERAE_CODEX_REASONING_EFFORT")
-        or cfg.get("llm_codex_reasoning_effort")
-        or global_cfg.get("llm_codex_reasoning_effort")
-        or "medium"
-    )
-
     # Custom claude-compatible endpoint knobs (also used to override the
     # model/base_url/key on the anthropic provider). Same precedence:
     # env → project config → global config → None.
@@ -2286,6 +2279,14 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     # ANTHROPIC_* stay in the chain one rung below the Tesserae-owned names:
     # they are ambient (any Claude session exports them) and must not outrank a
     # value the user set for Tesserae specifically.
+    # Resolved through ``_pick`` like every other knob, rather than by hand
+    # above: the hand-rolled chain produced the same VALUE but recorded no
+    # source, so `config status` had nothing to report and fell back to
+    # "[default]" — for an effort the user had set in a config file or an env
+    # var. Same precedence as before: env → project → global → "medium".
+    codex_reasoning_effort = _pick(
+        "codex_reasoning_effort", "TESSERAE_CODEX_REASONING_EFFORT", default="medium"
+    )
     model = _pick("model", "TESSERAE_LLM_MODEL")
     base_url = _pick("base_url", "TESSERAE_LLM_BASE_URL", "ANTHROPIC_BASE_URL")
     api_key = _pick("api_key", "TESSERAE_LLM_API_KEY", "ANTHROPIC_API_KEY")

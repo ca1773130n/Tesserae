@@ -854,12 +854,46 @@ def _wiki_command_handler(args) -> int:
         if not resolved.parent.is_dir():
             print(f"error: parent dir does not exist: {resolved.parent}", file=sys.stderr)
             return 2
-        resolved.mkdir(parents=True, exist_ok=True)
+        if resolved.exists() and not resolved.is_dir():
+            # mkdir raised FileExistsError as a traceback. The vault root is a
+            # directory by definition; a file there is a typo.
+            print(
+                f"error: vault root must be a directory, but {resolved} is a file",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            print(f"error: could not create {resolved}: {exc}", file=sys.stderr)
+            return 2
         registry.set_vault_root(str(resolved))
         print(f"Set registry obsidian.vault_root = {resolved}")
-        print("Each registered project now projects into:")
+        # A project that pins `obsidian.vault_path` in its OWN config ignores
+        # the registry root, so listing it under the new root was a claim the
+        # next sync would contradict. Say which projects actually follow.
+        pinned: list[tuple[str, str]] = []
+        following: list[str] = []
         for alias, root in registry.iter_registered_projects():
-            print(f"  {alias:<24} -> {resolved / alias}")
+            own = ""
+            cfg_path = Path(root) / ".tesserae" / "config.json"
+            try:
+                own = str(
+                    (json.loads(cfg_path.read_text(encoding="utf-8")).get("obsidian") or {})
+                    .get("vault_path")
+                    or ""
+                )
+            except (OSError, json.JSONDecodeError, AttributeError):
+                own = ""
+            (pinned.append((alias, own)) if own else following.append(alias))
+        if following:
+            print("Each of these now projects into:")
+            for alias in following:
+                print(f"  {alias:<24} -> {resolved / alias}")
+        if pinned:
+            print("Unaffected — these pin obsidian.vault_path in their own config:")
+            for alias, own in pinned:
+                print(f"  {alias:<24} -> {own}")
         return 0
 
     if sub == "obsidian-sync-all":
@@ -2528,7 +2562,22 @@ def _handle_context(args: argparse.Namespace) -> int:
         )
         print(f"multi-pool reservation — {_pool_report}", file=sys.stderr)
     if args.output:
-        Path(args.output).write_text(bundle.body, encoding="utf-8")
+        out_path = Path(args.output)
+        if out_path.is_dir():
+            # `--output` names the FILE to write. Handed a directory it raised
+            # IsADirectoryError as a traceback, after the bundle had already
+            # been compiled — so the work was done and thrown away.
+            print(
+                f"context: --output must be a file, but {out_path} is a directory.\n"
+                f"  Try --output {out_path / 'context.md'}",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            out_path.write_text(bundle.body, encoding="utf-8")
+        except OSError as exc:
+            print(f"context: could not write {out_path}: {exc}", file=sys.stderr)
+            return 2
         print(
             f"Written to {args.output} "
             f"({bundle.char_budget_used} chars, {len(bundle.citations)} citations)"
@@ -2600,11 +2649,32 @@ def _handle_sessions(args: argparse.Namespace) -> int:
             sessions = []
             skipped = 0
             for raw_path in args.paths:
-                payload = json.loads(Path(raw_path).read_text(encoding="utf-8"))
+                # A path the user typed: not JSON, or JSON of the wrong shape,
+                # is a mistake to report, not a traceback to print.
+                try:
+                    payload = json.loads(Path(raw_path).read_text(encoding="utf-8"))
+                except OSError as exc:
+                    print(f"sessions import: cannot read {raw_path}: {exc}", file=sys.stderr)
+                    return 2
+                except json.JSONDecodeError as exc:
+                    print(
+                        f"sessions import: {raw_path} is not valid JSON "
+                        f"({exc.msg} at line {exc.lineno}, column {exc.colno}).\n"
+                        "  Expected a session object, or a list of them, as written by "
+                        "`tesserae sessions discover`.",
+                        file=sys.stderr,
+                    )
+                    return 2
                 items = payload if isinstance(payload, list) else [payload]
                 for item in items:
                     if not isinstance(item, dict):
-                        raise ValueError(f"Session import item must be an object: {raw_path}")
+                        print(
+                            f"sessions import: {raw_path} holds "
+                            f"{type(item).__name__}, not a session object.\n"
+                            "  Expected a JSON object, or a list of them.",
+                            file=sys.stderr,
+                        )
+                        return 2
                     session = HarnessSession.from_dict(item)
                     if session_matches_project(session, wiki.project_root):
                         sessions.append(session)
@@ -3284,6 +3354,22 @@ def _build_refresh_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _has_compiled_once(wiki) -> bool:
+    """Has a compile ever run here, as opposed to an init?
+
+    "last compile" was the mtime of graph.json — but ``ProjectWiki.init``
+    writes an empty graph.json, so a project that had never been compiled
+    reported the moment it was created as its last compile. The build ledger is
+    the record of compiles actually performed, which is the question being
+    asked; an unreadable or absent ledger answers "never" rather than guessing.
+    """
+    ledger = wiki.paths.build_history
+    try:
+        return any(line.strip() for line in ledger.read_text(encoding="utf-8").splitlines())
+    except OSError:
+        return False
+
+
 def _build_status_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae status",
@@ -3330,7 +3416,7 @@ def _handle_status(args: argparse.Namespace) -> int:
     import datetime as _dt
     compiled = (
         _dt.datetime.fromtimestamp(wiki.paths.graph.stat().st_mtime).isoformat(timespec="seconds")
-        if wiki.paths.graph.exists() else "never"
+        if wiki.paths.graph.exists() and _has_compiled_once(wiki) else "never"
     )
     sessions_count = _count_imported_sessions(wiki)
     if getattr(args, "as_json", False):
@@ -4075,7 +4161,14 @@ def _handle_sessions_prune_internal(args: argparse.Namespace) -> int:
     db = HarnessSessionsDB(live_db_path)
     before = db.count_sessions()
     if dry_run:
-        print(f"Would also prune the sessions DB ({before} session(s)) at {live_db_path}")
+        # The number that would actually go, not the store's total — those are
+        # different numbers, and printing the total made the preview read as
+        # "this will wipe everything".
+        would = db.prune_internal_sessions(dry_run=True)
+        print(
+            f"Would also prune {would} self-captured session(s) from the sessions DB "
+            f"at {live_db_path} (keeping {before - would} of {before})"
+        )
         print("Re-run without --dry-run to apply. Then: tesserae compile")
         return 0
     removed = db.prune_internal_sessions()
@@ -4093,7 +4186,14 @@ def _handle_sessions_chunk_backfill(args: argparse.Namespace) -> int:
     from .session_chunks import backfill
 
     wiki = ProjectWiki.load(args.project)
-    result = backfill(wiki.project_root, since=args.since)
+    try:
+        result = backfill(wiki.project_root, since=args.since)
+    except ValueError as exc:
+        # `backfill` composes a precise message for an unparseable --since and
+        # raises it; nothing caught it, so the user saw a traceback instead of
+        # the sentence the code had already written for them.
+        print(f"chunk-backfill: {exc}", file=sys.stderr)
+        return 2
     if result.skipped:
         print(f"chunk-backfill skipped: {result.reason}")
         return 0
@@ -4797,7 +4897,19 @@ def _handle_config_status(args: argparse.Namespace) -> int:
             except (OSError, json.JSONDecodeError):
                 project_cfg = {}
     global_cfg = _load_global_llm_config()
-    settings = resolve_llm_client_settings(project_cfg)
+    try:
+        settings = resolve_llm_client_settings(project_cfg)
+    except LLMProviderConfigError as exc:
+        # This resolve happens BEFORE the liveness try/except below, so an
+        # invalid `llm_provider` killed `config status` with a traceback — the
+        # exact misconfiguration the command exists to diagnose. A diagnostic
+        # must report a bad configuration, not die of it.
+        print(f"  provider   : ✗ {exc}")
+        print(
+            "\n  Fix it with `tesserae config llm --llm-provider <name>`, or edit "
+            "the `llm_provider` key in ~/.tesserae/config.json."
+        )
+        return 1
 
     # The resolver now records which layer actually won each key, so ask it
     # instead of re-deriving the answer. The old local guess credited env vars
@@ -4806,8 +4918,15 @@ def _handle_config_status(args: argparse.Namespace) -> int:
     # on the run it was describing.
     _sources = settings.get("sources") or {}
 
+    #: Panel labels whose resolver key is spelled differently. ``codex_home``
+    #: is singular here and plural in the resolver, so the lookup missed and
+    #: every codex_home read as "[default]" — including one set in a config
+    #: file, which is the one thing this panel exists to reveal.
+    _SOURCE_ALIASES = {"codex_home": "codex_homes"}
+
     def _source(key: str, env_name: str = "") -> str:
-        return _sources.get(key.removeprefix("llm_"), "default")
+        name = key.removeprefix("llm_")
+        return _sources.get(_SOURCE_ALIASES.get(name, name), "default")
 
     provider = settings["provider"]
     print("Tesserae LLM backend (resolved" + (f" for {proj}" if proj else "") + "):")
@@ -5701,9 +5820,27 @@ def _handle_agents_set_parent(args: argparse.Namespace) -> int:
     if child == parent:
         print(f"Agent {child!r} cannot be its own parent", file=sys.stderr)
         return 1
+    # ORG_ROOT passes the ``known`` check above (it is a real scope) but
+    # ``set_parent`` rejects it as a CHILD — root reports to nobody. The two
+    # disagreed, so `agents set-parent org:root <agent>` got through
+    # validation, wrote the auto-registrations below, and only then failed with
+    # "Unknown agent: org:root" naming the key its own check had just accepted.
+    if child == ORG_ROOT:
+        print(
+            f"{ORG_ROOT} is the root of the org and cannot report to anyone. "
+            f"Did you mean `tesserae agents set-parent {parent} {ORG_ROOT}`?",
+            file=sys.stderr,
+        )
+        return 1
     # Observed-but-undeclared endpoints are registered on the fly (parented to
     # org:root) so reparenting an agent that only exists in session history
     # needs no manual registry ceremony first.
+    # Snapshot first: the auto-registrations below are a convenience, and a
+    # command that FAILS must not leave half of one behind — including the
+    # registry.json it may have created from nothing.
+    import copy
+
+    _before = copy.deepcopy(registry.load())
     for key in (child, parent):
         if key != ORG_ROOT and key not in declared:
             labels = stats.get(key, {}).get("labels") or set()
@@ -5711,6 +5848,7 @@ def _handle_agents_set_parent(args: argparse.Namespace) -> int:
     try:
         row = registry.set_parent(child, parent)
     except ValueError as exc:
+        registry.save(_before)
         print(str(exc), file=sys.stderr)
         return 1
     print(f"{child} now reports to {row['parent']}")
@@ -5815,7 +5953,15 @@ def _handle_agents_tree(args: argparse.Namespace) -> int:
         path = agent_artifact_path(wiki.project_root, key)
         if not path.is_file():
             return "(not distilled)"
-        graph = load_graph_file(path)
+        try:
+            graph = load_graph_file(path)
+        except Exception:  # noqa: BLE001
+            # One agent's artifact being empty or half-written took the whole
+            # tree down with a JSONDecodeError — after the header had already
+            # printed, so the operator saw a partial tree and a traceback. The
+            # org chart does not depend on any artifact's contents; a bad one
+            # is a fact to show in its row, not a reason to stop.
+            return "(unreadable artifact)"
         stamps = [
             str(node.metadata.get("distilled_through") or "")
             for node in graph.nodes
@@ -6062,6 +6208,18 @@ def _clock_suffix(entry: dict) -> str:
 def _handle_domains_status(args: argparse.Namespace) -> int:
     from .charter import CharterUnreadable, read_charter
 
+    # A path that is not a Tesserae project at all — a typo, or a directory
+    # that does not exist — used to get the reassuring "no charter yet ... Run
+    # `tesserae compile`" and exit 0, advice no compile there could satisfy.
+    # "Not a project" and "a project with no charter yet" are different
+    # answers and only one of them is good news.
+    if not (Path(args.project) / ".tesserae").is_dir():
+        print(
+            f"No Tesserae project at {args.project}. Did you run `tesserae init`?",
+            file=sys.stderr,
+        )
+        return 2
+
     try:
         charter = read_charter(args.project)
     except CharterUnreadable as exc:
@@ -6084,12 +6242,20 @@ def _handle_domains_status(args: argparse.Namespace) -> int:
         # forever. Now that ``_write_charter_sidecar`` runs on every compile,
         # the honest remaining causes are the bound and a project that has
         # not been compiled at all — so say those.
-        print(
+        message = (
             "no charter yet — the project is below the one-read bound (its "
             "research layer fits a single read, so there is nothing to route "
             "through), or it has not been compiled yet. Run `tesserae "
             "compile`."
         )
+        if getattr(args, "as_json", False):
+            # --json means stdout is JSON and nothing else. This branch printed
+            # English prose there, so a caller doing json.loads on the output
+            # got a decode error for the one case the flag exists to make
+            # machine-readable.
+            print(json.dumps({"charter": None, "reason": message}, ensure_ascii=False, indent=2))
+            return 0
+        print(message)
         return 0
     if getattr(args, "as_json", False):
         # --json must emit ONLY JSON on stdout: a caller does

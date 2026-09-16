@@ -151,11 +151,17 @@ class HarnessSessionsDB:
         with self._connect() as con:
             return int(con.execute("select count(*) from sessions").fetchone()[0])
 
-    def prune_internal_sessions(self) -> int:
+    def prune_internal_sessions(self, *, dry_run: bool = False) -> int:
         """Delete rows that are Tesserae's OWN captured LLM calls (self-capture).
 
         Retroactive cleanup for DBs polluted before the discovery/tailer filter
-        existed. Returns the number of session rows removed.
+        existed. Returns the number of session rows removed — or, with
+        ``dry_run``, the number that WOULD be removed, touching nothing.
+
+        The dry-run arm exists because the CLI used to answer "--dry-run" with
+        ``count_sessions()``, the store's TOTAL, which is a different and much
+        larger number than what the real run deletes. A preview that does not
+        preview the thing it is previewing is worse than no preview.
         """
         to_delete: List[str] = []
         with self._connect() as con:
@@ -167,6 +173,8 @@ class HarnessSessionsDB:
                     continue
                 if is_tesserae_internal_session(sess):
                     to_delete.append(sess.id)
+            if dry_run:
+                return len(to_delete)
             for sid in to_delete:
                 con.execute("delete from sessions where id = ?", (sid,))
         return len(to_delete)

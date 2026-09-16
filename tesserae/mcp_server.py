@@ -307,7 +307,18 @@ def _paginate_cards(
     result: JSONDict = {"header": header, "cards": kept}
     if continuation:
         dropped = len(remaining) - len(kept)
-        result["continuation"] = f"+{dropped} more, cursor={cursor + len(kept)}"
+        if not kept:
+            # Not one card fits the budget, so `cursor + len(kept)` is the
+            # cursor we were just called with. A caller following the paging
+            # protocol re-issued the identical request forever, always getting
+            # zero cards and exit 0. Emit no cursor at all and name the cause:
+            # there is no offset that makes progress, only a bigger budget.
+            result["continuation"] = (
+                f"+{dropped} more, but no card fits budget_chars={budget_chars} — "
+                "raise it (or pass 0 for uncapped); this cursor cannot advance"
+            )
+        else:
+            result["continuation"] = f"+{dropped} more, cursor={cursor + len(kept)}"
     return result
 
 
@@ -702,6 +713,19 @@ class ProjectRegistry:
         graph_path, project_root = _discover_graph_and_root(Path(path).expanduser())
         derived = _sanitize_project_name(name) if name else _sanitize_project_name(project_root.name)
         data = self.load()
+        # Two different directories can sanitize to the same alias (`my-notes`
+        # and `my_notes`, or the same basename under different parents). The
+        # assignment below is a plain overwrite, so the second registration
+        # silently DEREGISTERED the first project — it simply vanished from
+        # every federated query with nothing printed.
+        existing = data["projects"].get(derived)
+        if isinstance(existing, dict) and existing.get("root") not in (None, str(project_root)):
+            raise ValueError(
+                f"alias {derived!r} is already registered to {existing['root']}.\n"
+                f"  Registering {project_root} under it would deregister that project.\n"
+                f"  Pass a different one: tesserae projects register {project_root} "
+                f"--name <alias>"
+            )
         data["projects"][derived] = {
             "root": str(project_root),
             "graph_path": str(graph_path),

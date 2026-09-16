@@ -121,8 +121,22 @@ class BatchIngestRunner:
         # Decide the work-list FIRST, in path order, so concurrency below can
         # never change which documents are extracted — only how fast.
         todo: List[tuple[Path, str, str]] = []  # (path, key, digest)
+        unreadable: List[Path] = []
         for file_path in path_list:
-            content = read_markdown_text(file_path)
+            try:
+                content = read_markdown_text(file_path)
+            except OSError as exc:
+                # One file the process cannot read — a permission bit, a broken
+                # symlink, a half-synced cloud placeholder — aborted the entire
+                # compile with a traceback. A corpus is thousands of files and
+                # any of them can be momentarily unreadable; the run must name
+                # what it skipped and carry on with the rest.
+                print(
+                    f"warning: skipping unreadable file {file_path}: {exc}",
+                    file=sys.stderr,
+                )
+                unreadable.append(file_path)
+                continue
             digest = sha256_text(content)
             key = str(file_path)
             prior = manifest.get(key, {})
