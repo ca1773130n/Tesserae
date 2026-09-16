@@ -170,9 +170,16 @@ def run_llm_selftest(
         return out
     resolved_provider = (provider or settings.get("provider") or "claude").strip().lower()
     sources = settings.get("sources") or {}
+    # ``--provider`` outranks every configured layer for this run, so reporting
+    # the resolver's source alongside it was simply false: `tesserae test
+    # --provider codex` on a claude-configured machine printed
+    # "provider=codex [~/.tesserae/config.json]", crediting a file that says
+    # something else. The point of the label is to tell you where the value in
+    # front of you came from.
+    provider_source = "--provider (command line)" if provider else sources.get("provider", "default")
     summary = {
         "provider": resolved_provider,
-        "provider_source": sources.get("provider", "default"),
+        "provider_source": provider_source,
         "model": settings.get("model"),
         "claude_config_dirs": settings.get("claude_config_dirs"),
         "claude_config_dirs_source": sources.get("claude_config_dirs", "default"),

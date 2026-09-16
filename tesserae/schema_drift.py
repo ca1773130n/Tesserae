@@ -292,6 +292,9 @@ class HostTypeReport:
     host_type: str
     member_count: int
     clusters: List[Tuple[List[ResearchNode], List[dict]]] = field(default_factory=list)
+    #: Why this host produced no clusters, when the reason is not "clustering
+    #: ran and found none". Empty means clustering actually ran.
+    skipped_reason: str = ""
 
 
 def render_report(
@@ -319,8 +322,15 @@ def render_report(
         lines.append(f"## {report.host_type} ({report.member_count} members)")
         lines.append("")
         if not report.clusters:
+            # Distinguish "clustering ran and found nothing" from "clustering
+            # never ran". A host below --min-volume is skipped BEFORE
+            # clustering, and reporting it as "no clusters of size >= N found"
+            # was a statement about a computation that never happened — which
+            # the same run's own ledger then contradicted.
             lines.append(
-                f"_No clusters of size >= {min_cluster_size} found; skipping._"
+                f"_{report.skipped_reason}_"
+                if report.skipped_reason
+                else f"_No clusters of size >= {min_cluster_size} found; skipping._"
             )
             lines.append("")
             continue
@@ -580,6 +590,10 @@ def analyze_schema_drift(
         members = _nodes_of_type(graph, host)
         report = HostTypeReport(host_type=host.value, member_count=len(members))
         if len(members) < min_volume:
+            report.skipped_reason = (
+                f"Not clustered: {len(members)} member(s) is below --min-volume "
+                f"{min_volume}, so no clustering was attempted for this host type."
+            )
             reports.append(report)
             continue
         clusters = cluster_nodes_by_jaccard(

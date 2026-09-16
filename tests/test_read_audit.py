@@ -401,10 +401,22 @@ def test_read_audit_is_listed_as_a_tool() -> None:
 def test_drill_down_audit_rows_carry_the_writing_release(tmp_path: Path) -> None:
     """The drill-down ledger is the shape this audit generalizes; it gets the
     same stamp, so a bad release is attributable wherever it wrote."""
+    import json as _json
+
     from tesserae.agent_distill import DistillStateStore, _state_db_path
     from tesserae.agent_view import DRILL_DOWN_AUDIT_SCOPE, drill_down
 
     graph = _fixture_graph()
+    # `drill_down` now refuses an agent key nothing knows about: a misspelled
+    # one used to silently disable the absorbed check and report `alive`.
+    # Declare the fixture's agent so this test exercises the audit row rather
+    # than the validation.
+    registry = tmp_path / ".tesserae" / "agents" / "registry.json"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(
+        _json.dumps({"version": 1, "agents": {"agent-a": {"label": "Agent A"}}}, indent=2),
+        encoding="utf-8",
+    )
     result = drill_down(tmp_path, graph, PAPER_ID, agent="agent-a")
     assert result["audited"] is True
 
