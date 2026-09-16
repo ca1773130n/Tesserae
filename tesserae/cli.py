@@ -854,7 +854,19 @@ def _wiki_command_handler(args) -> int:
         if not resolved.parent.is_dir():
             print(f"error: parent dir does not exist: {resolved.parent}", file=sys.stderr)
             return 2
-        resolved.mkdir(parents=True, exist_ok=True)
+        if resolved.exists() and not resolved.is_dir():
+            # mkdir raised FileExistsError as a traceback. The vault root is a
+            # directory by definition; a file there is a typo.
+            print(
+                f"error: vault root must be a directory, but {resolved} is a file",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            print(f"error: could not create {resolved}: {exc}", file=sys.stderr)
+            return 2
         registry.set_vault_root(str(resolved))
         print(f"Set registry obsidian.vault_root = {resolved}")
         print("Each registered project now projects into:")
@@ -2528,7 +2540,22 @@ def _handle_context(args: argparse.Namespace) -> int:
         )
         print(f"multi-pool reservation — {_pool_report}", file=sys.stderr)
     if args.output:
-        Path(args.output).write_text(bundle.body, encoding="utf-8")
+        out_path = Path(args.output)
+        if out_path.is_dir():
+            # `--output` names the FILE to write. Handed a directory it raised
+            # IsADirectoryError as a traceback, after the bundle had already
+            # been compiled — so the work was done and thrown away.
+            print(
+                f"context: --output must be a file, but {out_path} is a directory.\n"
+                f"  Try --output {out_path / 'context.md'}",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            out_path.write_text(bundle.body, encoding="utf-8")
+        except OSError as exc:
+            print(f"context: could not write {out_path}: {exc}", file=sys.stderr)
+            return 2
         print(
             f"Written to {args.output} "
             f"({bundle.char_budget_used} chars, {len(bundle.citations)} citations)"
@@ -2600,11 +2627,32 @@ def _handle_sessions(args: argparse.Namespace) -> int:
             sessions = []
             skipped = 0
             for raw_path in args.paths:
-                payload = json.loads(Path(raw_path).read_text(encoding="utf-8"))
+                # A path the user typed: not JSON, or JSON of the wrong shape,
+                # is a mistake to report, not a traceback to print.
+                try:
+                    payload = json.loads(Path(raw_path).read_text(encoding="utf-8"))
+                except OSError as exc:
+                    print(f"sessions import: cannot read {raw_path}: {exc}", file=sys.stderr)
+                    return 2
+                except json.JSONDecodeError as exc:
+                    print(
+                        f"sessions import: {raw_path} is not valid JSON "
+                        f"({exc.msg} at line {exc.lineno}, column {exc.colno}).\n"
+                        "  Expected a session object, or a list of them, as written by "
+                        "`tesserae sessions discover`.",
+                        file=sys.stderr,
+                    )
+                    return 2
                 items = payload if isinstance(payload, list) else [payload]
                 for item in items:
                     if not isinstance(item, dict):
-                        raise ValueError(f"Session import item must be an object: {raw_path}")
+                        print(
+                            f"sessions import: {raw_path} holds "
+                            f"{type(item).__name__}, not a session object.\n"
+                            "  Expected a JSON object, or a list of them.",
+                            file=sys.stderr,
+                        )
+                        return 2
                     session = HarnessSession.from_dict(item)
                     if session_matches_project(session, wiki.project_root):
                         sessions.append(session)
@@ -4093,7 +4141,14 @@ def _handle_sessions_chunk_backfill(args: argparse.Namespace) -> int:
     from .session_chunks import backfill
 
     wiki = ProjectWiki.load(args.project)
-    result = backfill(wiki.project_root, since=args.since)
+    try:
+        result = backfill(wiki.project_root, since=args.since)
+    except ValueError as exc:
+        # `backfill` composes a precise message for an unparseable --since and
+        # raises it; nothing caught it, so the user saw a traceback instead of
+        # the sentence the code had already written for them.
+        print(f"chunk-backfill: {exc}", file=sys.stderr)
+        return 2
     if result.skipped:
         print(f"chunk-backfill skipped: {result.reason}")
         return 0
@@ -4797,7 +4852,19 @@ def _handle_config_status(args: argparse.Namespace) -> int:
             except (OSError, json.JSONDecodeError):
                 project_cfg = {}
     global_cfg = _load_global_llm_config()
-    settings = resolve_llm_client_settings(project_cfg)
+    try:
+        settings = resolve_llm_client_settings(project_cfg)
+    except LLMProviderConfigError as exc:
+        # This resolve happens BEFORE the liveness try/except below, so an
+        # invalid `llm_provider` killed `config status` with a traceback — the
+        # exact misconfiguration the command exists to diagnose. A diagnostic
+        # must report a bad configuration, not die of it.
+        print(f"  provider   : ✗ {exc}")
+        print(
+            "\n  Fix it with `tesserae config llm --llm-provider <name>`, or edit "
+            "the `llm_provider` key in ~/.tesserae/config.json."
+        )
+        return 1
 
     # The resolver now records which layer actually won each key, so ask it
     # instead of re-deriving the answer. The old local guess credited env vars
@@ -5815,7 +5882,15 @@ def _handle_agents_tree(args: argparse.Namespace) -> int:
         path = agent_artifact_path(wiki.project_root, key)
         if not path.is_file():
             return "(not distilled)"
-        graph = load_graph_file(path)
+        try:
+            graph = load_graph_file(path)
+        except Exception:  # noqa: BLE001
+            # One agent's artifact being empty or half-written took the whole
+            # tree down with a JSONDecodeError — after the header had already
+            # printed, so the operator saw a partial tree and a traceback. The
+            # org chart does not depend on any artifact's contents; a bad one
+            # is a fact to show in its row, not a reason to stop.
+            return "(unreadable artifact)"
         stamps = [
             str(node.metadata.get("distilled_through") or "")
             for node in graph.nodes
