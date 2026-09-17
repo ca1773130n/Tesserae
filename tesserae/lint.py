@@ -28,6 +28,7 @@ import os
 import re
 import subprocess
 import sys
+from bisect import bisect_right
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -602,12 +603,18 @@ class WikiLinter:
     ) -> Iterable[LintFinding]:
         """Pairs of performance/comparison claims with opposite directional language.
 
-        Precision-first heuristic: for every pair of ``PerformanceClaim`` /
+        Precision-first heuristic: for pairs of ``PerformanceClaim`` /
         ``ComparisonClaim`` nodes from *different* sources, we flag the pair
-        when one description contains ``outperforms`` and the other contains
-        ``is outperformed by`` and they share at least one trigram of
-        ``model+benchmark`` content. Tolerating false negatives is fine — the
-        check is a sanity probe, not an oracle.
+        when the claim whose id sorts first contains ``outperforms``, the
+        other contains ``is outperformed by``, and they share at least two
+        topic tokens. Tolerating false negatives is fine — the check is a
+        sanity probe, not an oracle.
+
+        Only claims carrying a marker take part, so each claim's text is built
+        once and the pairs walked are ``outperforms`` claims x later ``is
+        outperformed by`` claims; with no claim in either group nothing is
+        compared. Scanning every later claim for each ``outperforms`` claim
+        instead rebuilt claim text ``|outperforms claims| x |claims|`` times.
 
         KB-04: when the opt-in ``memory.contradiction`` pass has minted a
         ``resolved_by`` edge between a flagged pair (in either direction), the
@@ -634,24 +641,33 @@ class WikiLinter:
         ]
         # Sort for determinism.
         candidates.sort(key=lambda kv: kv[0])
-        seen: set[Tuple[str, str]] = set()
-        for i, (left_id, left) in enumerate(candidates):
-            left_text = _claim_text(left)
-            if "outperforms" not in left_text.lower():
-                continue
-            for j in range(i + 1, len(candidates)):
+        marked_texts: Dict[int, str] = {}
+        left_positions: List[int] = []
+        right_positions: List[int] = []
+        for pos, (_, node) in enumerate(candidates):
+            text = _claim_text(node)
+            lower = text.lower()
+            if "outperforms" in lower:
+                left_positions.append(pos)
+                marked_texts[pos] = text
+            if "is outperformed by" in lower:
+                right_positions.append(pos)
+                marked_texts[pos] = text
+        if not left_positions or not right_positions:
+            return
+        tokens = {pos: set(_topic_tokens(text)) for pos, text in marked_texts.items()}
+        # Ascending left positions, then ascending later right positions: the
+        # same order the findings came out in when every later claim was read.
+        for i in left_positions:
+            left_id, left = candidates[i]
+            for j in right_positions[bisect_right(right_positions, i) :]:
                 right_id, right = candidates[j]
                 if left.get("source_path") and left.get("source_path") == right.get("source_path"):
                     continue
-                right_text = _claim_text(right)
-                if "is outperformed by" not in right_text.lower():
+                if not _tokens_share_topic(tokens[i], tokens[j]):
                     continue
-                if not _share_topic(left_text, right_text):
-                    continue
+                # Ids are dict keys and i < j, so each pair is reached once.
                 pair = tuple(sorted([left_id, right_id]))
-                if pair in seen:
-                    continue
-                seen.add(pair)
                 winner_id = resolved_winner.get(pair)
                 if winner_id is not None:
                     winner_name = (nodes_by_id.get(winner_id) or {}).get("name")
@@ -2389,8 +2405,11 @@ def _share_topic(left: str, right: str) -> bool:
     finding has ``severity=info`` and the operator is expected to manually
     confirm.
     """
-    left_tokens = set(_topic_tokens(left))
-    right_tokens = set(_topic_tokens(right))
+    return _tokens_share_topic(set(_topic_tokens(left)), set(_topic_tokens(right)))
+
+
+def _tokens_share_topic(left_tokens: Set[str], right_tokens: Set[str]) -> bool:
+    """The shared-topic rule over already-tokenized text."""
     return len(left_tokens & right_tokens) >= 2
 
 

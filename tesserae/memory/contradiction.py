@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import secrets
+from bisect import bisect_right
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
@@ -92,9 +93,14 @@ def _topic_tokens(text: str) -> Set[str]:
     }
 
 
+def _tokens_share_topic(left_tokens: Set[str], right_tokens: Set[str]) -> bool:
+    """The shared-topic rule over already-tokenized text."""
+    return len(left_tokens & right_tokens) >= 2
+
+
 def _share_topic(left: str, right: str) -> bool:
     """At least two shared content tokens (matches lint's _share_topic)."""
-    return len(_topic_tokens(left) & _topic_tokens(right)) >= 2
+    return _tokens_share_topic(_topic_tokens(left), _topic_tokens(right))
 
 
 def _kind(node: ResearchNode) -> str:
@@ -108,42 +114,68 @@ def detect_contradicting_pairs(
 
     Roles are assigned by the CLAIM MARKERS, NOT by id sort order: ``left``
     is whichever node carries ``outperforms``; ``right`` is whichever
-    carries ``is outperformed by``. We compare every UNORDERED pair, so a
-    contradiction is detected regardless of how the two node ids sort
-    (codex MAJOR 2). They must share a topic and come from different
-    sources. The output list is sorted by ``(left.id, right.id)`` so the
-    pass stays byte-stable.
+    carries ``is outperformed by``. A contradiction is detected regardless
+    of how the two node ids sort (codex MAJOR 2). They must share a topic
+    and come from different sources. The output list is sorted by
+    ``(left.id, right.id)`` so the pass stays byte-stable.
+
+    A pair needs one claim carrying each marker, so each claim's text is
+    built once, claims are bucketed by marker, and only pairs taking one
+    claim from each bucket are walked; with either bucket empty nothing is
+    compared. Walking every unordered pair and rebuilding both texts per
+    pair meant 2.6 billion comparisons on a 71,783-claim graph whose answer
+    was no pairs, and it never finished.
+
+    The walk keeps the every-pair scan's order (earlier id-sorted claim
+    first, then each later claim), which decides the cases the markers
+    alone leave open: when either claim could be ``left``, the earlier one
+    is, and when several nodes share an id, the pair met first is the one
+    kept.
     """
     candidates = sorted(
         (n for n in graph.nodes if _kind(n) in _CLAIM_KINDS),
         key=lambda n: n.id,
     )
+    marked_texts: Dict[int, str] = {}
+    left_marked: List[int] = []
+    right_marked: List[int] = []
+    for pos, node in enumerate(candidates):
+        text = _node_text(node)
+        lower = text.lower()
+        if _LEFT_MARKER in lower:
+            left_marked.append(pos)
+            marked_texts[pos] = text
+        if _RIGHT_MARKER in lower:
+            right_marked.append(pos)
+            marked_texts[pos] = text
+    if not left_marked or not right_marked:
+        return []
+
+    left_set = set(left_marked)
+    right_set = set(right_marked)
+    tokens = {pos: _topic_tokens(text) for pos, text in marked_texts.items()}
     pairs: List[Tuple[ResearchNode, ResearchNode]] = []
     seen: Set[Tuple[str, str]] = set()
-    for i, first in enumerate(candidates):
-        first_text = first_lower = None  # lazy
-        for second in candidates[i + 1 :]:
+    for i in sorted(tokens):
+        first = candidates[i]
+        # Later claims carrying the marker opposite to one ``first`` carries.
+        # Any other later claim would fail the old scan's marker test.
+        later: Set[int] = set()
+        if i in left_set:
+            later.update(right_marked[bisect_right(right_marked, i) :])
+        if i in right_set:
+            later.update(left_marked[bisect_right(left_marked, i) :])
+        for j in sorted(later):
+            second = candidates[j]
             if first.source_path and first.source_path == second.source_path:
                 continue
-            if first_text is None:
-                first_text = _node_text(first)
-                first_lower = first_text.lower()
-            second_text = _node_text(second)
-            second_lower = second_text.lower()
-
-            # Assign left/right by marker, independent of id ordering. The
-            # contradicting pair needs one ``outperforms`` claim and one
-            # ``is outperformed by`` claim.
-            if _LEFT_MARKER in first_lower and _RIGHT_MARKER in second_lower:
-                left, right = first, second
-                left_text, right_text = first_text, second_text
-            elif _LEFT_MARKER in second_lower and _RIGHT_MARKER in first_lower:
-                left, right = second, first
-                left_text, right_text = second_text, first_text
+            # Assign left/right by marker, independent of id ordering. When
+            # either claim could be ``left``, the earlier one is.
+            if i in left_set and j in right_set:
+                left, right, left_pos, right_pos = first, second, i, j
             else:
-                continue
-
-            if not _share_topic(left_text, right_text):
+                left, right, left_pos, right_pos = second, first, j, i
+            if not _tokens_share_topic(tokens[left_pos], tokens[right_pos]):
                 continue
             key = tuple(sorted([left.id, right.id]))
             if key in seen:
