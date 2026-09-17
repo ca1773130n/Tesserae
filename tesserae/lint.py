@@ -641,18 +641,21 @@ class WikiLinter:
         ]
         # Sort for determinism.
         candidates.sort(key=lambda kv: kv[0])
-        texts = [_claim_text(node) for _, node in candidates]
-        lowered = [text.lower() for text in texts]
-        left_positions = [pos for pos, low in enumerate(lowered) if "outperforms" in low]
-        right_positions = [
-            pos for pos, low in enumerate(lowered) if "is outperformed by" in low
-        ]
+        marked_texts: Dict[int, str] = {}
+        left_positions: List[int] = []
+        right_positions: List[int] = []
+        for pos, (_, node) in enumerate(candidates):
+            text = _claim_text(node)
+            lower = text.lower()
+            if "outperforms" in lower:
+                left_positions.append(pos)
+                marked_texts[pos] = text
+            if "is outperformed by" in lower:
+                right_positions.append(pos)
+                marked_texts[pos] = text
         if not left_positions or not right_positions:
             return
-        tokens = {
-            pos: set(_topic_tokens(texts[pos]))
-            for pos in (*left_positions, *right_positions)
-        }
+        tokens = {pos: set(_topic_tokens(text)) for pos, text in marked_texts.items()}
         # Ascending left positions, then ascending later right positions: the
         # same order the findings came out in when every later claim was read.
         for i in left_positions:

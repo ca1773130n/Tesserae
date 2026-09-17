@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import secrets
+from bisect import bisect_right
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
@@ -118,22 +119,24 @@ def detect_contradicting_pairs(
     and come from different sources. The output list is sorted by
     ``(left.id, right.id)`` so the pass stays byte-stable.
 
-    Every pair needs one claim from each marker's bucket, so only those
-    pairs are compared: one text build per claim, then ``|left| x |right|``
-    comparisons, and nothing at all when either bucket is empty. Comparing
-    every unordered pair of claims instead meant 2.6 billion comparisons on
-    a 71,783-claim graph (where the answer was no pairs), and never finished.
+    A pair needs one claim carrying each marker, so each claim's text is
+    built once, claims are bucketed by marker, and only pairs taking one
+    claim from each bucket are walked; with either bucket empty nothing is
+    compared. Walking every unordered pair and rebuilding both texts per
+    pair meant 2.6 billion comparisons on a 71,783-claim graph whose answer
+    was no pairs, and it never finished.
 
-    The result is what an in-order scan of every pair of the id-sorted
-    claims returns. That scan decides the two cases the buckets leave open:
-    when both claims carry both markers, the one it meets first is ``left``;
-    and when several nodes share an id, the pair it meets first is kept.
+    The walk keeps the every-pair scan's order (earlier id-sorted claim
+    first, then each later claim), which decides the cases the markers
+    alone leave open: when both claims carry both markers the earlier one
+    is ``left``, and when several nodes share an id the pair met first is
+    the one kept.
     """
     candidates = sorted(
         (n for n in graph.nodes if _kind(n) in _CLAIM_KINDS),
         key=lambda n: n.id,
     )
-    texts: Dict[int, str] = {}
+    marked_texts: Dict[int, str] = {}
     left_marked: List[int] = []
     right_marked: List[int] = []
     for pos, node in enumerate(candidates):
@@ -141,43 +144,44 @@ def detect_contradicting_pairs(
         lower = text.lower()
         if _LEFT_MARKER in lower:
             left_marked.append(pos)
-            texts[pos] = text
+            marked_texts[pos] = text
         if _RIGHT_MARKER in lower:
             right_marked.append(pos)
-            texts[pos] = text
+            marked_texts[pos] = text
     if not left_marked or not right_marked:
         return []
 
     left_set = set(left_marked)
     right_set = set(right_marked)
-    tokens = {pos: _topic_tokens(text) for pos, text in texts.items()}
-    # Unordered id pair -> (scan position, (left, right)). The scan meets
-    # position pairs in (earlier, later) order, so the smallest one wins.
-    kept: Dict[
-        Tuple[str, str], Tuple[Tuple[int, int], Tuple[ResearchNode, ResearchNode]]
-    ] = {}
-    for lpos in left_marked:
-        left = candidates[lpos]
-        for rpos in right_marked:
-            if rpos == lpos:
+    tokens = {pos: _topic_tokens(text) for pos, text in marked_texts.items()}
+    pairs: List[Tuple[ResearchNode, ResearchNode]] = []
+    seen: Set[Tuple[str, str]] = set()
+    for i in sorted(tokens):
+        first = candidates[i]
+        # The later claims that carry the marker ``first`` lacks a partner
+        # for; every other later claim fails the marker test below.
+        later: Set[int] = set()
+        if i in left_set:
+            later.update(right_marked[bisect_right(right_marked, i) :])
+        if i in right_set:
+            later.update(left_marked[bisect_right(left_marked, i) :])
+        for j in sorted(later):
+            second = candidates[j]
+            if first.source_path and first.source_path == second.source_path:
                 continue
-            if rpos < lpos and rpos in left_set and lpos in right_set:
-                # rpos also carries ``outperforms`` and lpos ``is
-                # outperformed by``. The scan meets rpos first, so it reads
-                # rpos as ``left``; the outer loop emits that reading when it
-                # reaches rpos.
-                continue
-            right = candidates[rpos]
-            if left.source_path and left.source_path == right.source_path:
-                continue
-            if not _tokens_share_topic(tokens[lpos], tokens[rpos]):
+            # Assign left/right by marker, independent of id ordering. When
+            # both claims carry both markers, the earlier one is ``left``.
+            if i in left_set and j in right_set:
+                left, right, left_pos, right_pos = first, second, i, j
+            else:
+                left, right, left_pos, right_pos = second, first, j, i
+            if not _tokens_share_topic(tokens[left_pos], tokens[right_pos]):
                 continue
             key = tuple(sorted([left.id, right.id]))
-            scan_pos = (min(lpos, rpos), max(lpos, rpos))
-            prior = kept.get(key)
-            if prior is None or scan_pos < prior[0]:
-                kept[key] = (scan_pos, (left, right))
-    pairs = [pair for _, pair in kept.values()]
+            if key in seen:
+                continue
+            seen.add(key)
+            pairs.append((left, right))
     pairs.sort(key=lambda pr: (pr[0].id, pr[1].id))
     return pairs
 

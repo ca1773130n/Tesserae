@@ -442,7 +442,9 @@ def test_detect_matches_every_pair_scan_on_random_graphs() -> None:
 
 def test_lint_matches_every_pair_scan_on_random_graphs() -> None:
     graphs_with_findings = resolved = 0
-    for seed in range(1500):
+    # lint keys nodes by id, so the random graphs shrink and fewer of them
+    # hold a finding; twice the seeds keeps the coverage comparable.
+    for seed in range(3000):
         rng = random.Random(seed)
         graph = _random_graph(rng)
         nodes_by_id = {
@@ -473,7 +475,7 @@ def test_lint_matches_every_pair_scan_on_random_graphs() -> None:
         graphs_with_findings += bool(expected)
         resolved += sum(1 for f in expected if f.severity == "info")
     assert graphs_with_findings > 200
-    assert resolved > 10
+    assert resolved > 20
 
 
 def test_marker_names_and_topic_rule_are_unchanged() -> None:
@@ -500,6 +502,11 @@ def test_marker_names_and_topic_rule_are_unchanged() -> None:
 
 _UNMARKED = 50_000
 _OUTPERFORMS = 3_000
+# Each call below takes well under a second here. The every-pair scans walk
+# ~1.4 billion claim pairs (detection) and build claim text ~150 million times
+# (lint) on the same input, so the bound only catches a return to them; the
+# call counts are the precise pin.
+_GENEROUS_SECONDS = 20
 
 
 def _scale_claims(outperformed_by: int) -> List[ResearchNode]:
@@ -558,11 +565,13 @@ def test_detect_returns_nothing_without_a_reversed_claim(
     graph = ResearchGraph(nodes=_scale_claims(outperformed_by=0), edges=[])
     texts = _CallCounter(monkeypatch, contradiction, "_node_text")
     tokenized = _CallCounter(monkeypatch, contradiction, "_topic_tokens")
+    compared = _CallCounter(monkeypatch, contradiction, "_tokens_share_topic")
     started = time.monotonic()
     assert detect_contradicting_pairs(graph) == []
-    assert time.monotonic() - started < 5
+    assert time.monotonic() - started < _GENEROUS_SECONDS
     assert texts.calls == _UNMARKED + _OUTPERFORMS
     assert tokenized.calls == 0
+    assert compared.calls == 0
 
 
 def test_detect_compares_only_marked_claims_at_scale(
@@ -571,15 +580,18 @@ def test_detect_compares_only_marked_claims_at_scale(
     graph = ResearchGraph(nodes=_scale_claims(outperformed_by=5), edges=[])
     texts = _CallCounter(monkeypatch, contradiction, "_node_text")
     tokenized = _CallCounter(monkeypatch, contradiction, "_topic_tokens")
+    compared = _CallCounter(monkeypatch, contradiction, "_tokens_share_topic")
     started = time.monotonic()
     pairs = detect_contradicting_pairs(graph)
     # The every-pair scan needs ~1.4 billion comparisons here.
-    assert time.monotonic() - started < 5
+    assert time.monotonic() - started < _GENEROUS_SECONDS
     assert [(l.id, r.id) for l, r in pairs] == [
         (f"PerformanceClaim:l{k:04d}", f"PerformanceClaim:r{k}") for k in range(5)
     ]
     assert texts.calls == _UNMARKED + _OUTPERFORMS + 5
     assert tokenized.calls == _OUTPERFORMS + 5
+    # One topic check per (``outperforms``, ``is outperformed by``) pair.
+    assert compared.calls == _OUTPERFORMS * 5
 
 
 def test_lint_compares_only_marked_claims_at_scale(
@@ -592,13 +604,15 @@ def test_lint_compares_only_marked_claims_at_scale(
         }
         texts = _CallCounter(monkeypatch, lint_module, "_claim_text")
         tokenized = _CallCounter(monkeypatch, lint_module, "_topic_tokens")
+        compared = _CallCounter(monkeypatch, lint_module, "_tokens_share_topic")
         started = time.monotonic()
         findings = list(linter._check_contradicting_claims(nodes_by_id, []))
-        # The old scan rebuilt claim text ~80 million times here.
-        assert time.monotonic() - started < 5
+        # The old scan rebuilt claim text ~150 million times here.
+        assert time.monotonic() - started < _GENEROUS_SECONDS
         assert [f.node_id for f in findings] == [
             f"PerformanceClaim:l{k:04d}" for k in range(reversed_count)
         ]
         assert texts.calls == len(nodes_by_id)
         assert tokenized.calls == (_OUTPERFORMS + reversed_count if reversed_count else 0)
+        assert compared.calls == _OUTPERFORMS * reversed_count
         monkeypatch.undo()
