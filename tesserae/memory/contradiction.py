@@ -128,9 +128,9 @@ def detect_contradicting_pairs(
 
     The walk keeps the every-pair scan's order (earlier id-sorted claim
     first, then each later claim), which decides the cases the markers
-    alone leave open: when both claims carry both markers the earlier one
-    is ``left``, and when several nodes share an id the pair met first is
-    the one kept.
+    alone leave open: when either claim could be ``left``, the earlier one
+    is, and when several nodes share an id, the pair met first is the one
+    kept.
     """
     candidates = sorted(
         (n for n in graph.nodes if _kind(n) in _CLAIM_KINDS),
@@ -158,8 +158,8 @@ def detect_contradicting_pairs(
     seen: Set[Tuple[str, str]] = set()
     for i in sorted(tokens):
         first = candidates[i]
-        # The later claims that carry the marker ``first`` lacks a partner
-        # for; every other later claim fails the marker test below.
+        # Later claims carrying the marker opposite to one ``first`` carries.
+        # Any other later claim would fail the old scan's marker test.
         later: Set[int] = set()
         if i in left_set:
             later.update(right_marked[bisect_right(right_marked, i) :])
@@ -170,7 +170,7 @@ def detect_contradicting_pairs(
             if first.source_path and first.source_path == second.source_path:
                 continue
             # Assign left/right by marker, independent of id ordering. When
-            # both claims carry both markers, the earlier one is ``left``.
+            # either claim could be ``left``, the earlier one is.
             if i in left_set and j in right_set:
                 left, right, left_pos, right_pos = first, second, i, j
             else:
