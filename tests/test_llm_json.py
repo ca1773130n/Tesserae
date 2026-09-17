@@ -2700,3 +2700,33 @@ def test_claude_cli_available_counts_a_credentials_file_as_a_marker(monkeypatch,
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/claude" if name == "claude" else None)
     assert llm_json._claude_cli_available() is True
+
+
+def test_run_cli_kills_the_child_when_interrupted(monkeypatch):
+    """An interrupt while waiting on the CLI must not leave it running.
+
+    The child runs in its own session so a timeout can kill its whole group,
+    which also means a terminal Ctrl-C never reaches it. Only a timeout killed
+    it, so a KeyboardInterrupt, or the engine's second shutdown signal, left
+    an orphaned `claude -p` spending tokens for a process that had exited.
+    """
+    import subprocess
+    import sys
+
+    real_communicate = subprocess.Popen.communicate
+    children = []
+
+    def interrupted(self, *args, **kwargs):
+        if not children:
+            children.append(self.pid)
+            raise KeyboardInterrupt
+        return real_communicate(self, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        llm_json._run_cli(
+            [sys.executable, "-c", "import time; time.sleep(60)"], "", dict(os.environ), 120
+        )
+    assert children, "the child was never started"
+    with pytest.raises(ProcessLookupError):
+        os.kill(children[0], 0)

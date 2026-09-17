@@ -55,6 +55,10 @@ def _run_cli(
     those pipes, so the drain blocks until the orphaned grandchildren exit —
     observed as compiles sitting at 0% CPU for days. Run the child in its own
     process group and kill the whole group on timeout instead.
+
+    The group dies on ANY exit from the wait, not just a timeout. In its own
+    session the child never sees a terminal Ctrl-C, so a KeyboardInterrupt, or
+    the engine's second shutdown signal, used to leave it running and billing.
     """
     proc = subprocess.Popen(
         list(cmd),
@@ -67,7 +71,7 @@ def _run_cli(
     )
     try:
         stdout, stderr = proc.communicate(input=prompt, timeout=timeout)
-    except subprocess.TimeoutExpired:
+    except BaseException:
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError, OSError, AttributeError):
