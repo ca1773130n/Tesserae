@@ -1018,27 +1018,32 @@ class Daemon:
             )
             chunk_writer = None
 
-        try:
-            db = HarnessSessionsDB(
-                self.project_root / ".tesserae" / "harness_sessions.db"
-            )
-            tailer = SessionTailer(
-                project_root=self.project_root,
-                sessions_db=db,
-                poll_interval=self._session_poll_interval,
-                on_new_turns=on_new_turns,
-                on_chunk_turns=chunk_writer,
-            )
-        except Exception:  # noqa: BLE001 - tailer not ready: skip, don't crash
-            logger.warning(
-                "session-tail source unavailable (store/tailer not ready); skipping",
-                exc_info=True,
-            )
-            return
+        def build_and_run() -> None:
+            # Built on this thread, not the caller's: the constructor's first-run
+            # sweep walks every Codex rollout on the machine and can take minutes.
+            # On the main thread it held up every source started after it (the
+            # --serve socket among them) and the event loop that delivers SIGTERM.
+            try:
+                db = HarnessSessionsDB(
+                    self.project_root / ".tesserae" / "harness_sessions.db"
+                )
+                tailer = SessionTailer(
+                    project_root=self.project_root,
+                    sessions_db=db,
+                    poll_interval=self._session_poll_interval,
+                    on_new_turns=on_new_turns,
+                    on_chunk_turns=chunk_writer,
+                )
+            except Exception:  # noqa: BLE001 - tailer not ready: skip, don't crash
+                logger.warning(
+                    "session-tail source unavailable (store/tailer not ready); skipping",
+                    exc_info=True,
+                )
+                return
+            self._run_session_source(tailer)
 
         t = threading.Thread(
-            target=self._run_session_source,
-            args=(tailer,),
+            target=build_and_run,
             daemon=True,
             name="session-tail",
         )
