@@ -489,7 +489,7 @@ def test_vault_sync_persists_the_override_it_says_it_applied(tmp_path):
         re.sub(r"\ntitle: .*", "\ntitle: EDITED BY HAND", body, count=1), encoding="utf-8"
     )
 
-    wiki.reproject_after_vault_change()
+    assert wiki.reproject_after_vault_change().graph_changed is True
     assert wiki.paths.graph.read_text(encoding="utf-8") != before, (
         "the overlay was reported as applied but never reached graph.json"
     )
@@ -504,7 +504,8 @@ def test_a_vault_sync_that_changes_nothing_does_not_rewrite_the_graph(tmp_path):
     wiki.export_obsidian()
     wiki.reproject_after_vault_change()
     before = wiki.paths.graph.read_bytes()
-    wiki.reproject_after_vault_change()
+    # The engine reads this flag to decide whether a recompile is owed.
+    assert wiki.reproject_after_vault_change().graph_changed is False
     assert wiki.paths.graph.read_bytes() == before
 
 

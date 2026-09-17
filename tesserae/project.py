@@ -3398,6 +3398,7 @@ class ProjectWiki:
             overrides_applied=self._count_diverged_field_overrides(),
             user_link_changes_applied=max(0, len(graph.edges) - before_edge_count),
             stubs_minted=max(0, new_stubs),
+            graph_changed=overlay_changed,
         )
 
     def _count_diverged_field_overrides(self) -> int:

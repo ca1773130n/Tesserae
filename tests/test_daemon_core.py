@@ -428,6 +428,40 @@ def test_legacy_shared_scan_floor_seeds_this_host_and_is_left_alone(tmp_path, mo
     assert db.get_meta("codex_dir_floor:srv-a"), "this host now owns its own floor"
 
 
+def test_cold_session_sweep_does_not_block_daemon_startup(tmp_path, monkeypatch):
+    """The tailer's first-run sweep must happen on its own thread.
+
+    The constructor walks every Codex rollout on the machine (88k files, 15 GB
+    on the machine this was found on). Built on the main thread, it held up
+    every source started after it, so `engine --serve` bound no socket for
+    minutes, and the event loop that delivers SIGTERM was not yet running.
+    """
+    import threading
+
+    from tesserae.engine.session_tail import SessionTailer
+
+    release = threading.Event()
+    sweeping = threading.Event()
+
+    def slow_sweep(self):
+        sweeping.set()
+        release.wait(30)
+
+    monkeypatch.setattr(SessionTailer, "_enumerate", slow_sweep)
+    d = Daemon(tmp_path, install_signal_handlers=False)
+    started = time.monotonic()
+    try:
+        d._start_session_source(None)
+        assert time.monotonic() - started < 5, "the cold sweep ran on the caller's thread"
+        assert sweeping.wait(5), "the sweep never started"
+    finally:
+        d._stop_event.set()
+        release.set()
+        for t in d._threads:
+            t.join(timeout=10)
+    assert not any(t.is_alive() for t in d._threads), "session thread outlived stop"
+
+
 # ------------------------------------------------------------ harvest-only
 
 
