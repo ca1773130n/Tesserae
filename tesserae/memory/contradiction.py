@@ -92,9 +92,14 @@ def _topic_tokens(text: str) -> Set[str]:
     }
 
 
+def _tokens_share_topic(left_tokens: Set[str], right_tokens: Set[str]) -> bool:
+    """The shared-topic rule over already-tokenized text."""
+    return len(left_tokens & right_tokens) >= 2
+
+
 def _share_topic(left: str, right: str) -> bool:
     """At least two shared content tokens (matches lint's _share_topic)."""
-    return len(_topic_tokens(left) & _topic_tokens(right)) >= 2
+    return _tokens_share_topic(_topic_tokens(left), _topic_tokens(right))
 
 
 def _kind(node: ResearchNode) -> str:
@@ -108,48 +113,71 @@ def detect_contradicting_pairs(
 
     Roles are assigned by the CLAIM MARKERS, NOT by id sort order: ``left``
     is whichever node carries ``outperforms``; ``right`` is whichever
-    carries ``is outperformed by``. We compare every UNORDERED pair, so a
-    contradiction is detected regardless of how the two node ids sort
-    (codex MAJOR 2). They must share a topic and come from different
-    sources. The output list is sorted by ``(left.id, right.id)`` so the
-    pass stays byte-stable.
+    carries ``is outperformed by``. A contradiction is detected regardless
+    of how the two node ids sort (codex MAJOR 2). They must share a topic
+    and come from different sources. The output list is sorted by
+    ``(left.id, right.id)`` so the pass stays byte-stable.
+
+    Every pair needs one claim from each marker's bucket, so only those
+    pairs are compared: one text build per claim, then ``|left| x |right|``
+    comparisons, and nothing at all when either bucket is empty. Comparing
+    every unordered pair of claims instead meant 2.6 billion comparisons on
+    a 71,783-claim graph (where the answer was no pairs), and never finished.
+
+    The result is what an in-order scan of every pair of the id-sorted
+    claims returns. That scan decides the two cases the buckets leave open:
+    when both claims carry both markers, the one it meets first is ``left``;
+    and when several nodes share an id, the pair it meets first is kept.
     """
     candidates = sorted(
         (n for n in graph.nodes if _kind(n) in _CLAIM_KINDS),
         key=lambda n: n.id,
     )
-    pairs: List[Tuple[ResearchNode, ResearchNode]] = []
-    seen: Set[Tuple[str, str]] = set()
-    for i, first in enumerate(candidates):
-        first_text = first_lower = None  # lazy
-        for second in candidates[i + 1 :]:
-            if first.source_path and first.source_path == second.source_path:
-                continue
-            if first_text is None:
-                first_text = _node_text(first)
-                first_lower = first_text.lower()
-            second_text = _node_text(second)
-            second_lower = second_text.lower()
+    texts: Dict[int, str] = {}
+    left_marked: List[int] = []
+    right_marked: List[int] = []
+    for pos, node in enumerate(candidates):
+        text = _node_text(node)
+        lower = text.lower()
+        if _LEFT_MARKER in lower:
+            left_marked.append(pos)
+            texts[pos] = text
+        if _RIGHT_MARKER in lower:
+            right_marked.append(pos)
+            texts[pos] = text
+    if not left_marked or not right_marked:
+        return []
 
-            # Assign left/right by marker, independent of id ordering. The
-            # contradicting pair needs one ``outperforms`` claim and one
-            # ``is outperformed by`` claim.
-            if _LEFT_MARKER in first_lower and _RIGHT_MARKER in second_lower:
-                left, right = first, second
-                left_text, right_text = first_text, second_text
-            elif _LEFT_MARKER in second_lower and _RIGHT_MARKER in first_lower:
-                left, right = second, first
-                left_text, right_text = second_text, first_text
-            else:
+    left_set = set(left_marked)
+    right_set = set(right_marked)
+    tokens = {pos: _topic_tokens(text) for pos, text in texts.items()}
+    # Unordered id pair -> (scan position, (left, right)). The scan meets
+    # position pairs in (earlier, later) order, so the smallest one wins.
+    kept: Dict[
+        Tuple[str, str], Tuple[Tuple[int, int], Tuple[ResearchNode, ResearchNode]]
+    ] = {}
+    for lpos in left_marked:
+        left = candidates[lpos]
+        for rpos in right_marked:
+            if rpos == lpos:
                 continue
-
-            if not _share_topic(left_text, right_text):
+            if rpos < lpos and rpos in left_set and lpos in right_set:
+                # rpos also carries ``outperforms`` and lpos ``is
+                # outperformed by``. The scan meets rpos first, so it reads
+                # rpos as ``left``; the outer loop emits that reading when it
+                # reaches rpos.
+                continue
+            right = candidates[rpos]
+            if left.source_path and left.source_path == right.source_path:
+                continue
+            if not _tokens_share_topic(tokens[lpos], tokens[rpos]):
                 continue
             key = tuple(sorted([left.id, right.id]))
-            if key in seen:
-                continue
-            seen.add(key)
-            pairs.append((left, right))
+            scan_pos = (min(lpos, rpos), max(lpos, rpos))
+            prior = kept.get(key)
+            if prior is None or scan_pos < prior[0]:
+                kept[key] = (scan_pos, (left, right))
+    pairs = [pair for _, pair in kept.values()]
     pairs.sort(key=lambda pr: (pr[0].id, pr[1].id))
     return pairs
 
