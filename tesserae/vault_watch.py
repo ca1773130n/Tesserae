@@ -78,6 +78,9 @@ class VaultWatchResult:
     overrides_applied: int
     user_link_changes_applied: int
     stubs_minted: int
+    #: Whether the overlay changed graph.json. The counts above cannot say:
+    #: ``overrides_applied`` is the standing total, not this round's.
+    graph_changed: bool = True
 
 
 class VaultWatcher:

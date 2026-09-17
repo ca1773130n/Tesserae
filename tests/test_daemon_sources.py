@@ -432,3 +432,25 @@ def test_a_raising_closer_does_not_skip_the_others(tmp_path: Path) -> None:
     assert d.run() == 0
     assert ran == ["second"]
     assert not d._pidfile.exists()
+
+
+def test_vault_reproject_that_changed_nothing_queues_no_compile(tmp_path: Path) -> None:
+    """A compile rewrites the vault, and the watcher cannot tell that from a user edit.
+
+    Queueing a compile for every reproject made each compile schedule another,
+    full one: a single doc edit ran three compiles live, the last two with
+    "applied (no changes)" logged right before them. Only an overlay that
+    changed the graph owes a compile.
+    """
+    from tesserae.vault_watch import VaultWatchResult
+
+    d, loop = _make_daemon_with_loop(tmp_path)
+    try:
+        d._on_vault_reprojected(VaultWatchResult(0, 0, 0, graph_changed=False))
+        assert _drain_queue(loop, d._queue) == []
+
+        d._on_vault_reprojected(VaultWatchResult(1, 0, 0, graph_changed=True))
+        events = _drain_queue(loop, d._queue)
+    finally:
+        loop.close()
+    assert [e.source for e in events] == ["vault_watch"]

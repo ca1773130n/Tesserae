@@ -934,7 +934,11 @@ class Daemon:
             )
             return
 
-        watcher = VaultWatcher(wiki, poll_interval=self._vault_poll_interval)
+        watcher = VaultWatcher(
+            wiki,
+            poll_interval=self._vault_poll_interval,
+            on_change=self._on_vault_reprojected,
+        )
         t = threading.Thread(
             target=self._run_vault_source,
             args=(watcher,),
@@ -956,15 +960,21 @@ class Daemon:
                 # stop_event.wait() wakes promptly on shutdown (codex #6).
                 if self._stop_event.wait(watcher.poll_interval):
                     break
-                changed = watcher._tick()  # noqa: SLF001 - graceful-stop reuse
-                # Re-check stop_event immediately after _tick(): if shutdown
-                # raced in, do not enqueue into a closing loop.
-                if changed and not self._stop_event.is_set():
-                    self.enqueue(
-                        TriggerEvent(source="vault_watch", changed_only=True)
-                    )
+                watcher._tick()  # noqa: SLF001 - enqueues via _on_vault_reprojected
         except Exception:  # noqa: BLE001 - daemon survives a dead source
             logger.exception("vault-source thread died")
+
+    def _on_vault_reprojected(self, result) -> None:
+        """Queue a compile only when the vault overlay changed the graph.
+
+        Every compile rewrites the vault, and the watcher cannot tell that from
+        a user edit. Queueing on every reproject made each compile schedule
+        another, full one, until two in a row happened to produce identical
+        output. Re-checks stop_event so a shutdown race never enqueues into a
+        closing loop.
+        """
+        if result.graph_changed and not self._stop_event.is_set():
+            self.enqueue(TriggerEvent(source="vault_watch", changed_only=True))
 
     # ----- session-tail source --------------------------------------------
 
