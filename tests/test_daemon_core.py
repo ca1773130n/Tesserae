@@ -696,3 +696,42 @@ def test_a_long_running_daemon_that_survived_a_failure_still_exits_zero(tmp_path
     d._pipeline_failed = True
     d.request_stop()
     assert d.run() == 0
+
+
+def test_second_stop_request_skips_the_final_compile(tmp_path):
+    """One signal drains pending triggers; a second means stop now.
+
+    This project's engine log shows two shutdown signals followed by a final
+    compile over 4,740 paths. Pending work is not lost by skipping it: the next
+    start's compile finds changed sources through the manifest differ.
+    """
+    calls = []
+    d = Daemon(
+        tmp_path,
+        debounce=30.0,
+        queue_timeout=0.01,
+        run_pipeline=calls.append,
+        install_signal_handlers=False,
+    )
+    loop = _new_loop()
+    d._loop = loop
+    try:
+        async def scenario():
+            d._queue = asyncio.Queue()
+            d._queue.put_nowait(TriggerEvent(source="t", changed_paths=[Path("late.md")]))
+
+            async def stopper():
+                for _ in range(5):
+                    await asyncio.sleep(0)
+                d._handle_signal()
+                d._handle_signal()
+
+            st = asyncio.create_task(stopper())
+            await d._drain_loop()
+            await st
+
+        loop.run_until_complete(scenario())
+    finally:
+        loop.close()
+    assert calls == [], "a second stop request must skip the final compile"
+

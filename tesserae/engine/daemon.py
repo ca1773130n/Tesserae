@@ -32,7 +32,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import pidlock
 
@@ -99,6 +99,16 @@ def _is_census_domain(entry: dict) -> bool:
         and str(entry.get("own_altitude") or "") == "team"
         and not str(entry.get("anchor_id") or "")
     )
+
+
+def _stop_now(signum: int, frame: Any) -> None:
+    """Second shutdown signal: raise in the main thread, even mid-compile.
+
+    SystemExit unwinds through ``run``'s cleanup (pidfile, thread joins) and exits
+    with the conventional ``128 + signum``.
+    """
+    logger.warning("second shutdown signal: stopping now; the next start resumes pending work")
+    raise SystemExit(128 + signum)
 
 
 @dataclass
@@ -254,6 +264,10 @@ class Daemon:
         self._summary_client_override = summary_client
         self._pidfile = self.project_root / ".tesserae" / self._pidfile_name()
         self._stop_event = threading.Event()
+        #: Shutdown signals received; a second one means stop now.
+        self._stop_requests = 0
+        #: Dispositions _handle_signal replaced, restored when run() ends.
+        self._replaced_signals: Dict[int, Any] = {}
         # Backoff state for a compile deferred because another process holds
         # the per-project compile lock. ``_defer_until`` is a monotonic
         # deadline that EVERY attempt waits out, including one scheduled by a
@@ -390,15 +404,42 @@ class Daemon:
                 t.join(timeout=self._join_timeout)
             loop.close()
             self._loop = None
+            for sig, previous in self._replaced_signals.items():
+                signal.signal(sig, previous)
+            self._replaced_signals.clear()
             self._remove_pidfile()
         # Only a once-run reports failure through the exit code: a long-running
         # daemon that survived a bad compile and kept going has not failed.
         return 1 if (once and self._pipeline_failed) else 0
 
     def _handle_signal(self) -> None:
-        """Signal callback: request graceful drain+exit (no abrupt loop.stop)."""
-        logger.info("shutdown signal received")
+        """Signal callback: the first requests a graceful drain, a second stops now.
+
+        The graceful drain runs one final compile for pending triggers, and a
+        compile blocks this loop, so a signal delivered through the loop is not
+        seen until that compile ends. This project's engine log shows two
+        signals followed by a final compile over 4,740 paths. So the first
+        signal hands SIGTERM/SIGINT to a plain handler that raises in the main
+        thread whatever it is running, and a second signal already queued here
+        skips the final compile. Skipped work is not lost: the next start's
+        compile finds changed sources through the manifest differ.
+        """
+        self._stop_requests += 1
         self._stop_event.set()
+        if self._stop_requests > 1:
+            logger.warning("second shutdown signal: skipping the final compile")
+            return
+        logger.info("shutdown signal received; finishing current work (signal again to stop now)")
+        if self._loop is None or not self._install_signal_handlers:
+            return
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                self._loop.remove_signal_handler(sig)
+                self._replaced_signals[sig] = signal.signal(sig, _stop_now)
+            except (NotImplementedError, RuntimeError, ValueError):
+                # Not the main thread, or no signal support: the loop handler
+                # stays, which is the behaviour before a second signal existed.
+                pass
 
     def request_stop(self) -> None:
         """Thread-safe external stop (fleet supervisor / tests).
@@ -487,7 +528,12 @@ class Daemon:
             # ignored on purpose: we are shutting down, so there is nothing to
             # retry into — the next start's compile picks these files up through
             # the manifest differ.
-            if run_pending:
+            if run_pending and self._stop_requests > 1:
+                logger.warning(
+                    "stopped without the final compile; %d pending path(s) wait for the next start",
+                    len(pending_paths),
+                )
+            elif run_pending:
                 try:
                     self._run_pipeline(list(pending_paths))
                 except Exception as exc:  # noqa: BLE001 - daemon survives
