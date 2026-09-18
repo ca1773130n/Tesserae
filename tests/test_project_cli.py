@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 from typing import Iterator, List, Optional
 
 from tesserae.cli import main
@@ -311,19 +312,27 @@ def test_cli_project_compile_uses_configured_sources(tmp_path, capsys):
 def test_cli_module_can_init_from_current_working_directory(tmp_path):
     project = tmp_path / "cwd-project"
     project.mkdir()
+    home = tmp_path / "home"
+    root = Path(__file__).resolve().parents[1]
     result = subprocess.run(
         [sys.executable, "-m", "tesserae.cli", "init", "--bare", "--name", "cwd_wiki"],
         cwd=project,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env={"PYTHONPATH": "/Users/neo/Developer/Projects/Tesserae"},
+        # HOME: conftest isolates the registry in-process only, and `init`
+        # registers the project, so without it this child wrote `cwd_wiki` into
+        # the developer's ~/.tesserae/registry.json. PYTHONPATH: this checkout,
+        # not a hardcoded one, so a worktree tests its own code.
+        env={"PYTHONPATH": str(root), "HOME": str(home)},
         timeout=20,
     )
 
     assert result.returncode == 0, result.stderr
     assert (project / ".tesserae" / "config.json").exists()
     assert "Initialized project wiki" in result.stdout
+    registered = json.loads((home / ".tesserae" / "registry.json").read_text(encoding="utf-8"))
+    assert registered["projects"]["cwd_wiki"]["root"] == str(project.resolve())
 
 
 class _StubSourceLoader:
@@ -455,3 +464,26 @@ def test_compile_summary_reports_fallbacks(capsys):
     # An older result dict without the key must not raise.
     _warn_on_fallbacks({"processed_files": 10})
     assert capsys.readouterr().err == ""
+
+
+def test_compile_adds_no_second_alias_for_a_registered_project(tmp_path, monkeypatch):
+    """A compile registered its project under the directory name even when it
+    was already registered under another alias.
+
+    `init --name` registers the name it was given; the compile after it then
+    added a second alias for the same root. HypePaper names every expert it
+    builds `hp-topic-<topic>`, and each one ended up listed twice.
+    """
+    import argparse
+
+    from tesserae.cli import _register_initialized_project
+    from tesserae.mcp_server import ProjectRegistry
+
+    registry = tmp_path / "registry.json"
+    monkeypatch.setenv("TESSERAE_REGISTRY", str(registry))
+    project = tmp_path / "topic-x"
+    assert main(["init", "--bare", "--project", str(project), "--name", "hp-topic-x"]) == 0
+    # What a successful compile runs last: no --name of its own.
+    _register_initialized_project(argparse.Namespace(project=str(project)))
+
+    assert sorted(ProjectRegistry(registry).load()["projects"]) == ["hp-topic-x"]

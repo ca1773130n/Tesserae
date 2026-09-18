@@ -30,6 +30,7 @@ function of the conversation's own bytes, so re-staging is byte-identical.
 from __future__ import annotations
 
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -889,13 +890,16 @@ def _default_compile(work: Path) -> None:
     """
     venv = REPO / ".venv" / "bin" / "python"
     python = str(venv if venv.is_file() else sys.executable)
+    # init and compile add their project to the registry; a throwaway one
+    # belongs in this work dir's, not the developer's ~/.tesserae/registry.json.
+    env = {**os.environ, "TESSERAE_REGISTRY": str(work / "registry.json")}
     subprocess.run(
         [python, "-m", "tesserae", "init", "--yes", "--source", "./corpus"],
-        cwd=work, check=True, capture_output=True,
+        cwd=work, env=env, check=True, capture_output=True,
     )
     result = subprocess.run(
         [python, "-m", "tesserae", "compile"],
-        cwd=work, capture_output=True, text=True,
+        cwd=work, env=env, capture_output=True, text=True,
     )
     if result.returncode != 0:
         raise RuntimeError(
