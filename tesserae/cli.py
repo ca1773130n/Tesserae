@@ -4035,9 +4035,13 @@ def _register_initialized_project(args: argparse.Namespace) -> None:
     just compiled.
 
     ``ProjectRegistry.register`` resolves an existing ``.tesserae/graph.json``,
-    which does not exist until the first compile — so this is called from BOTH
-    ``init`` (a no-op on a fresh project) and the end of a successful compile
-    (where it succeeds). Registering is idempotent, so the repeat is free.
+    so this is called from BOTH ``init`` (which registers at once when it leaves
+    one, as ``init --bare`` does) and the end of a successful compile.
+
+    A root that is registered already, under any alias, is left alone. The
+    compile passes no ``--name``, so registering again added the directory
+    name as a second alias: every project named at ``init`` (HypePaper's
+    ``hp-topic-*`` experts) ended up listed twice.
 
     Best-effort on purpose. A registry that cannot be written (read-only home,
     corrupt file) must not fail an otherwise-successful command — the project
@@ -4052,14 +4056,14 @@ def _register_initialized_project(args: argparse.Namespace) -> None:
 
         registry = ProjectRegistry()
         known = registry.load().get("projects") or {}
-        already = any(
+        if any(
             str(Path(entry.get("root", "")).resolve()) == str(root)
             for entry in known.values()
             if isinstance(entry, dict)
-        )
+        ):
+            return
         entry = registry.register(root, getattr(args, "name", None))
-        if not already:
-            print(f"Registered project '{entry['name']}' ({entry['root']})")
+        print(f"Registered project '{entry['name']}' ({entry['root']})")
     except Exception as exc:  # registry problems must not fail a good command
         print(
             f"note: could not add this project to the registry ({exc}). "

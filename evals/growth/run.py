@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -443,12 +444,15 @@ def compile_slice(work: Path, first: bool) -> float:
     # workflow this repo asks you to use.
     venv = REPO / ".venv" / "bin" / "python"
     py = str(venv if venv.is_file() else sys.executable)
+    # init and compile add their project to the registry; a throwaway one
+    # belongs in this work dir's, not the developer's ~/.tesserae/registry.json.
+    env = {**os.environ, "TESSERAE_REGISTRY": str(work / "registry.json")}
     t0 = time.time()
     if first:
         subprocess.run([py, "-m", "tesserae", "init", "--yes", "--source", "./corpus"],
-                       cwd=work, check=True, capture_output=True)
+                       cwd=work, env=env, check=True, capture_output=True)
     r = subprocess.run([py, "-m", "tesserae", "compile"],
-                       cwd=work, capture_output=True, text=True)
+                       cwd=work, env=env, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"compile failed in {work}:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
     return time.time() - t0

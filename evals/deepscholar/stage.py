@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -260,13 +261,16 @@ def default_compile(work: Path, *, extractor: str = "deterministic") -> None:
     """
     venv = REPO / ".venv" / "bin" / "python"
     python = str(venv if venv.is_file() else sys.executable)
+    # init and compile add their project to the registry; a throwaway one
+    # belongs in this work dir's, not the developer's ~/.tesserae/registry.json.
+    env = {**os.environ, "TESSERAE_REGISTRY": str(work / "registry.json")}
     subprocess.run(
         [python, "-m", "tesserae", "init", "--yes", "--source", "./corpus"],
-        cwd=work, check=True, capture_output=True,
+        cwd=work, env=env, check=True, capture_output=True,
     )
     result = subprocess.run(
         [python, "-m", "tesserae", "compile", "--extractor", extractor],
-        cwd=work, capture_output=True, text=True,
+        cwd=work, env=env, capture_output=True, text=True,
     )
     if result.returncode != 0:
         raise RuntimeError(
