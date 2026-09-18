@@ -467,3 +467,99 @@ def test_harvest_only_reaches_every_fleet_unit(tmp_path):
 
     plain = FleetDaemon(registry_path=registry, pidfile=tmp_path / "e2.pid")
     assert plain._default_daemon_factory("alpha", root, plain)._enable_compile is True
+
+
+def test_stop_asks_every_unit_before_waiting_on_any(tmp_path):
+    """A unit still finishing its compile must not keep the other units running.
+
+    Units were stopped one at a time: while the first finished its compile,
+    every other unit kept watching, and could start a compile after the fleet
+    had been told to stop.
+    """
+    registry = tmp_path / "registry.json"
+    _write_registry(registry, {name: _make_project(tmp_path, name) for name in ("alpha", "beta")})
+    units: dict = {}
+    seen: dict = {}
+
+    class _Unit:
+        def __init__(self, name):
+            self.name = name
+            self.stopped = threading.Event()
+
+        def request_stop(self):
+            self.stopped.set()
+
+        def run(self):
+            self.stopped.wait()
+            if self.name == "alpha":
+                # Still finishing work: waits on beta to be told as well.
+                seen["beta_asked"] = units["beta"].stopped.wait(timeout=5)
+
+    def factory(name, root, fleet):
+        units[name] = _Unit(name)
+        return units[name]
+
+    fleet = FleetDaemon(
+        registry_path=registry,
+        registry_poll=0.05,
+        pidfile=tmp_path / "engine.pid",
+        daemon_factory=factory,
+    )
+    runner = threading.Thread(target=fleet.run)
+    runner.start()
+    try:
+        deadline = time.monotonic() + 5
+        while len(fleet._units) < 2 and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert sorted(fleet._units) == ["alpha", "beta"]
+    finally:
+        fleet.request_stop()
+        runner.join(timeout=15)
+    assert not runner.is_alive()
+    assert seen["beta_asked"], "beta kept running until alpha had finished"
+
+
+def test_stop_now_exits_even_when_a_unit_pidfile_cannot_be_removed(tmp_path, monkeypatch):
+    """A failed cleanup step must not cancel the exit.
+
+    The pidfile removal ran inside the signal handler with nothing around it,
+    so an unlink error (a read-only or stale shared disk) escaped before the
+    agents were killed and before the exit: the fleet went back to waiting
+    out the unit's compile.
+    """
+    import signal
+
+    import pytest
+
+    import tesserae.engine.fleet as fleet_mod
+    from tesserae.engine import pidlock
+
+    class _Exited(BaseException):
+        pass
+
+    exits: list = []
+    stopped: list = []
+
+    def fake_exit(code):
+        exits.append(code)
+        raise _Exited
+
+    monkeypatch.setattr(fleet_mod.os, "_exit", fake_exit)
+    monkeypatch.setattr(fleet_mod, "stop_cli_agents", lambda: stopped.append(True))
+
+    class _Daemon:
+        _pidfile = tmp_path / "unit.pid"
+
+        def _remove_pidfile(self):
+            raise PermissionError("read-only share")
+
+    _Daemon._pidfile.write_text(pidlock.serialize())
+    fleet = FleetDaemon(registry_path=tmp_path / "registry.json", pidfile=tmp_path / "engine.pid")
+    fleet._write_pidfile()
+    fleet._units["alpha"] = fleet_mod._Unit(name="alpha", root=tmp_path, daemon=_Daemon())
+
+    with pytest.raises(_Exited):
+        fleet._stop_now(signal.SIGTERM)
+    assert exits == [128 + signal.SIGTERM]
+    assert stopped == [True]
+    assert not (tmp_path / "engine.pid").exists()
