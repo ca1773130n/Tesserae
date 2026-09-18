@@ -232,7 +232,10 @@ class FleetDaemon:
         if self._stop_requests == 1:
             logger.info("shutdown signal received; finishing current work (signal again to stop now)")
             return
-        self._stop_now(signum)
+        # Only the second: a third, landing inside _stop_now, would take the
+        # pidfile lock its interrupted call already holds, and deadlock.
+        if self._stop_requests == 2:
+            self._stop_now(signum)
 
     def _stop_now(self, signum: int) -> None:
         """Release the pidfiles, kill running CLI agents, exit ``128 + signum``.
@@ -243,15 +246,23 @@ class FleetDaemon:
         sessions, so without the kill they would outlive the fleet, billing.
         """
         logger.warning("second shutdown signal: stopping now; each project's next compile picks up the rest")
-        for unit in list(self._units.values()):
-            # A unit that died at startup may have found another live engine's
-            # pidfile for its project; release only the ones this process wrote.
-            owner = pidlock.read_owner(unit.daemon._pidfile)
-            if owner and owner.get("pid") == os.getpid():
-                unit.daemon._remove_pidfile()
-        self._remove_pidfile()
-        stop_cli_agents()
-        os._exit(128 + signum)
+        # The kill and the exit are in a finally: anything escaping this
+        # handler lands in the main thread, which goes back to waiting out the
+        # units' compiles.
+        try:
+            for unit in list(self._units.values()):
+                # A unit that died at startup may have found another live
+                # engine's pidfile for its project; release only ours.
+                owner = pidlock.read_owner(unit.daemon._pidfile)
+                if owner and owner.get("pid") == os.getpid():
+                    try:
+                        unit.daemon._remove_pidfile()
+                    except OSError as exc:
+                        logger.warning("unit %s: pidfile left behind: %s", unit.name, exc)
+            self._remove_pidfile()
+        finally:
+            stop_cli_agents()
+            os._exit(128 + signum)
 
     def _run_once_over_registry(self) -> int:
         """One bounded run per registered project; per-project failure isolation.

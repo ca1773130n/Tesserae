@@ -517,3 +517,49 @@ def test_stop_asks_every_unit_before_waiting_on_any(tmp_path):
         runner.join(timeout=15)
     assert not runner.is_alive()
     assert seen["beta_asked"], "beta kept running until alpha had finished"
+
+
+def test_stop_now_exits_even_when_a_unit_pidfile_cannot_be_removed(tmp_path, monkeypatch):
+    """A failed cleanup step must not cancel the exit.
+
+    The pidfile removal ran inside the signal handler with nothing around it,
+    so an unlink error (a read-only or stale shared disk) escaped before the
+    agents were killed and before the exit: the fleet went back to waiting
+    out the unit's compile.
+    """
+    import signal
+
+    import pytest
+
+    import tesserae.engine.fleet as fleet_mod
+    from tesserae.engine import pidlock
+
+    class _Exited(BaseException):
+        pass
+
+    exits: list = []
+    stopped: list = []
+
+    def fake_exit(code):
+        exits.append(code)
+        raise _Exited
+
+    monkeypatch.setattr(fleet_mod.os, "_exit", fake_exit)
+    monkeypatch.setattr(fleet_mod, "stop_cli_agents", lambda: stopped.append(True))
+
+    class _Daemon:
+        _pidfile = tmp_path / "unit.pid"
+
+        def _remove_pidfile(self):
+            raise PermissionError("read-only share")
+
+    _Daemon._pidfile.write_text(pidlock.serialize())
+    fleet = FleetDaemon(registry_path=tmp_path / "registry.json", pidfile=tmp_path / "engine.pid")
+    fleet._write_pidfile()
+    fleet._units["alpha"] = fleet_mod._Unit(name="alpha", root=tmp_path, daemon=_Daemon())
+
+    with pytest.raises(_Exited):
+        fleet._stop_now(signal.SIGTERM)
+    assert exits == [128 + signal.SIGTERM]
+    assert stopped == [True]
+    assert not (tmp_path / "engine.pid").exists()
