@@ -2730,3 +2730,22 @@ def test_run_cli_kills_the_child_when_interrupted(monkeypatch):
     assert children, "the child was never started"
     with pytest.raises(ProcessLookupError):
         os.kill(children[0], 0)
+
+
+def test_run_cli_starts_no_agent_once_agents_are_stopped(monkeypatch, tmp_path):
+    """After stop_cli_agents(), a compile thread cannot start another agent.
+
+    The fleet calls it just before a hard exit. A unit thread whose agent was
+    just killed moves on to its next document, and an agent it started then
+    would outlive the fleet.
+    """
+    import sys
+
+    monkeypatch.setattr(llm_json, "_CLI_STOPPED", False)
+    llm_json.stop_cli_agents()
+    marker = tmp_path / "started"
+    with pytest.raises(RuntimeError, match="stopping"):
+        llm_json._run_cli(
+            [sys.executable, "-c", f"open({str(marker)!r}, 'w').close()"], "", os.environ, 10
+        )
+    assert not marker.exists()

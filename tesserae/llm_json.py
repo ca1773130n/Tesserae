@@ -44,6 +44,32 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol, Seque
 logger = logging.getLogger(__name__)
 
 
+#: Process groups of the CLI agents running now, and whether new ones are
+#: refused. A process that exits without unwinding the threads that started
+#: them (the fleet engine's second shutdown signal) kills them through
+#: :func:`stop_cli_agents`: each runs in its own session and would outlive it.
+_CLI_GROUPS: set[int] = set()
+_CLI_LOCK = threading.Lock()
+_CLI_STOPPED = False
+
+
+def stop_cli_agents() -> None:
+    """Kill every running CLI agent and refuse to start another.
+
+    Only for a process about to exit. A compile thread whose agent dies here
+    moves on to its next document, and an agent started for that would outlive
+    the process, so ``_run_cli`` raises from now on instead of starting it.
+    """
+    global _CLI_STOPPED
+    with _CLI_LOCK:
+        _CLI_STOPPED = True
+        for pgid in _CLI_GROUPS:
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except OSError:
+                pass  # already gone
+
+
 def _run_cli(
     cmd: Sequence[str], prompt: str, env: Mapping[str, str], timeout: float
 ) -> subprocess.CompletedProcess:
@@ -60,15 +86,21 @@ def _run_cli(
     session the child never sees a terminal Ctrl-C, so a KeyboardInterrupt, or
     the engine's second shutdown signal, used to leave it running and billing.
     """
-    proc = subprocess.Popen(
-        list(cmd),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=dict(env),
-        start_new_session=True,
-    )
+    # Started and registered under one lock, so stop_cli_agents() either
+    # sees this agent or stops it from starting.
+    with _CLI_LOCK:
+        if _CLI_STOPPED:
+            raise RuntimeError("process is stopping: not starting a CLI agent")
+        proc = subprocess.Popen(
+            list(cmd),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=dict(env),
+            start_new_session=True,
+        )
+        _CLI_GROUPS.add(proc.pid)
     try:
         stdout, stderr = proc.communicate(input=prompt, timeout=timeout)
     except BaseException:
@@ -81,6 +113,9 @@ def _run_cli(
         except (subprocess.TimeoutExpired, OSError, ValueError):
             pass
         raise
+    finally:
+        with _CLI_LOCK:
+            _CLI_GROUPS.discard(proc.pid)
     return subprocess.CompletedProcess(list(cmd), proc.returncode, stdout, stderr)
 
 # Test-only client factory hook. Mirrors the pattern in

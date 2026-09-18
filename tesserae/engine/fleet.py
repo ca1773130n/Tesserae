@@ -21,13 +21,14 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 try:
     import fcntl
 except ImportError:  # pragma: no cover — Windows: pidfile acquire degrades to O_EXCL only
     fcntl = None  # type: ignore[assignment]
 
+from ..llm_json import stop_cli_agents
 from . import pidlock
 from .daemon import Daemon
 
@@ -92,6 +93,10 @@ class FleetDaemon:
         self._daemon_factory = daemon_factory or self._default_daemon_factory
         self._units: Dict[str, _Unit] = {}
         self._stop = threading.Event()
+        #: Shutdown signals received; a second one means stop now.
+        self._stop_requests = 0
+        #: Dispositions run() replaced, restored before it releases the pidfile.
+        self._replaced_signals: Dict[int, Any] = {}
 
     # ----- unit construction ------------------------------------------------
 
@@ -188,7 +193,9 @@ class FleetDaemon:
         logger.info("unit %s started (%s)", name, root)
 
     def _stop_unit(self, name: str) -> None:
-        unit = self._units.pop(name, None)
+        # Stays in _units until joined, so a second shutdown signal during the
+        # wait still finds this unit's pidfile to release.
+        unit = self._units.get(name)
         if unit is None:
             return
         unit.daemon.request_stop()
@@ -202,6 +209,7 @@ class FleetDaemon:
                 if not unit.thread.is_alive():
                     break
                 logger.warning("unit %s still stopping (compile in progress?); waiting", name)
+        self._units.pop(name, None)
         logger.info("unit %s stopped", name)
 
     # ----- lifecycle ----------------------------------------------------------
@@ -209,6 +217,41 @@ class FleetDaemon:
     def request_stop(self) -> None:
         """Thread-safe external stop (signals route here too)."""
         self._stop.set()
+
+    def _handle_signal(self, signum: int, frame: Any) -> None:
+        """The first SIGTERM/SIGINT stops gracefully; a second stops now.
+
+        A graceful stop lets every unit finish its current compile, which can
+        take hours. The single-project engine stops one by raising in its main
+        thread, where its compile runs. A unit compiles on its own thread,
+        which no exception raised here can reach, so stopping now means
+        exiting without unwinding the units.
+        """
+        self._stop_requests += 1
+        self.request_stop()
+        if self._stop_requests == 1:
+            logger.info("shutdown signal received; finishing current work (signal again to stop now)")
+            return
+        self._stop_now(signum)
+
+    def _stop_now(self, signum: int) -> None:
+        """Release the pidfiles, kill running CLI agents, exit ``128 + signum``.
+
+        Skipped work is not lost: each project's next compile finds its changed
+        sources through the manifest differ, and the compile lock is an
+        ``flock``, which the exit releases. The agents run in their own
+        sessions, so without the kill they would outlive the fleet, billing.
+        """
+        logger.warning("second shutdown signal: stopping now; each project's next compile picks up the rest")
+        for unit in list(self._units.values()):
+            # A unit that died at startup may have found another live engine's
+            # pidfile for its project; release only the ones this process wrote.
+            owner = pidlock.read_owner(unit.daemon._pidfile)
+            if owner and owner.get("pid") == os.getpid():
+                unit.daemon._remove_pidfile()
+        self._remove_pidfile()
+        stop_cli_agents()
+        os._exit(128 + signum)
 
     def _run_once_over_registry(self) -> int:
         """One bounded run per registered project; per-project failure isolation.
@@ -261,7 +304,7 @@ class FleetDaemon:
             # Fleet uses signal.signal (main-thread only); unit Daemons use loop.add_signal_handler — see daemon.py.
             try:
                 for sig in (signal.SIGTERM, signal.SIGINT):
-                    signal.signal(sig, lambda *_: self.request_stop())
+                    self._replaced_signals[sig] = signal.signal(sig, self._handle_signal)
             except ValueError:
                 # signal.signal only works from the main thread; both signals
                 # fail or succeed together, so one warning covers it. Callers
@@ -277,9 +320,17 @@ class FleetDaemon:
             # Stop/join all units on EVERY exit path — including reconcile()
             # raising mid-loop — before releasing the pidfile. Otherwise
             # non-daemon unit threads would outlive a "stopped" fleet whose
-            # pidfile is already gone.
+            # pidfile is already gone. Every unit is asked first: stopped one
+            # at a time, the rest kept compiling while the first finished.
+            for unit in list(self._units.values()):
+                unit.daemon.request_stop()
             for name in list(self._units):
                 self._stop_unit(name)
+            # Before the pidfile: the handler takes the pidfile lock too, and
+            # would deadlock on it if it interrupted _remove_pidfile.
+            for sig, previous in self._replaced_signals.items():
+                signal.signal(sig, previous)
+            self._replaced_signals.clear()
             self._remove_pidfile()
 
     # ----- pidfile (atomic acquire; only the owner removes it) ---------------
