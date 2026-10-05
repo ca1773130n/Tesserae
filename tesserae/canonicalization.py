@@ -621,7 +621,7 @@ def rewire_edges(edges: Iterable[ResearchEdge], replacement: Mapping[str, str], 
             continue
         if source not in node_ids or target not in node_ids:
             continue
-        rewritten[(source, edge.type, target)] = ResearchEdge(source=source, target=target, type=edge.type, evidence=edge.evidence, metadata=edge.metadata)
+        rewritten[(source, edge.type, target)] = replace(edge, source=source, target=target)
     return list(rewritten.values())
 
 

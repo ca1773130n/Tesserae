@@ -37,6 +37,7 @@ from typing import (Any, Callable, Dict, FrozenSet, List, Mapping, Optional,
                     Sequence, Set, Tuple, Union)
 
 from .graph_filters import suppressed_ids
+from .ports.content_resolver import ContentResolver
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 from .retrieval.hybrid import RetrievalProfile, hybrid_search
 from .retrieval.local_scope import LocalScope
@@ -120,6 +121,10 @@ class ContextCitation:
     #: them). A tuple, not a list: the dataclass is frozen and must stay
     #: hashable.
     via_views: Tuple[str, ...] = ()
+    #: The content-resolver refs (0.42, T5) whose text is this node's body —
+    #: e.g. ``hp://paper/<id>/tldr/en``. Empty when no resolver was passed or
+    #: it served nothing for the node; stripped from ``citation_dict`` then.
+    content_refs: Tuple[str, ...] = ()
 
 
 def citation_dict(citation: ContextCitation) -> Dict[str, Any]:
@@ -134,6 +139,8 @@ def citation_dict(citation: ContextCitation) -> Dict[str, Any]:
     payload = asdict(citation)
     if not payload.get("via_views"):
         payload.pop("via_views", None)
+    if not payload.get("content_refs"):
+        payload.pop("content_refs", None)
     return payload
 
 
@@ -320,13 +327,82 @@ def _source_text(node: ResearchNode, cache: Dict[str, str],
     return text
 
 
-def _fetch_body(node: ResearchNode, store: Optional[WikiPageStore]) -> str:
+def _resolver_body(
+    node: ResearchNode, resolver: ContentResolver, share: int
+) -> Tuple[str, Tuple[str, ...]]:
+    """Fill ``node``'s body from the host's content views, cheapest first.
+
+    ``share`` is the per-node character allowance (``0`` = the budget walk does
+    not split, in which case one node takes at most ``SOURCE_EXCERPT_CHARS`` —
+    the same cap a raw source excerpt gets). Views are taken in ascending
+    ``est_chars`` order (ties by ref, so the fill is deterministic) until the
+    next one no longer fits; the first view is fetched truncated when even it
+    exceeds the share, so a node with content never comes back empty-handed.
+
+    ``prose`` views obey the measured :data:`_MIN_SOURCE_EXCERPT` crossover —
+    below it, running text is worse evidence than the distillation beside it —
+    so on a tight share only dense views (TL;DR, key ideas, results) are used.
+
+    Returns ``("", ())`` when the resolver has nothing or fails: any exception
+    from the host is swallowed here (PITFALL 2) and the caller falls back to
+    the wiki page / description.
+    """
+    limit = share if share > 0 else SOURCE_EXCERPT_CHARS
+    allow_prose = share == 0 or share >= _MIN_SOURCE_EXCERPT
+    try:
+        views = list(resolver.list_views(node) or ())
+    except Exception:  # noqa: BLE001 - a host failure must not sink the bundle
+        return "", ()
+    ordered = sorted(
+        (v for v in views if getattr(v, "ref", "")),
+        key=lambda v: (max(0, int(getattr(v, "est_chars", 0) or 0)), str(v.ref)),
+    )
+    parts: List[str] = []
+    refs: List[str] = []
+    used = 0
+    for view in ordered:
+        if getattr(view, "prose", False) and not allow_prose:
+            continue
+        sep = 2 if parts else 0  # the "\n\n" joining two views
+        room = limit - used - sep
+        if room <= 0:
+            break
+        if parts and max(0, int(view.est_chars or 0)) > room:
+            break  # ascending order: nothing after this fits either
+        try:
+            text = resolver.fetch(str(view.ref), room) or ""
+        except Exception:  # noqa: BLE001 - see docstring
+            continue
+        text = str(text)[:room]  # hold the host to its max_chars contract
+        if not text.strip():
+            continue
+        parts.append(text)
+        refs.append(str(view.ref))
+        used += sep + len(text)
+    return "\n\n".join(parts), tuple(refs)
+
+
+def _fetch_body(
+    node: ResearchNode,
+    store: Optional[WikiPageStore],
+    content_resolver: Optional[ContentResolver] = None,
+    share: int = 0,
+    refs_out: Optional[List[str]] = None,
+) -> str:
     """Return the best available body text for ``node``, degrading gracefully.
 
-    Prefer the projected wiki page body (when a ``store`` and a public wiki kind
-    exist); fall back to the node description, then a minimal stub. Filesystem
-    errors are swallowed (PITFALL 2 — degrade, never raise).
+    0.42 (T5): when a ``content_resolver`` is given, ask it first (see
+    :func:`_resolver_body`); the refs it served are appended to ``refs_out``.
+    Then prefer the projected wiki page body (when a ``store`` and a public
+    wiki kind exist); fall back to the node description, then a minimal stub.
+    Filesystem errors are swallowed (PITFALL 2 — degrade, never raise).
     """
+    if content_resolver is not None:
+        body, refs = _resolver_body(node, content_resolver, share)
+        if refs:
+            if refs_out is not None:
+                refs_out.extend(refs)
+            return body
     if store is not None:
         try:
             kind = kind_for_node(node)
@@ -598,6 +674,8 @@ def compile_context(
     view: Optional[Union[str, Sequence[str]]] = None,
     explain: bool = False,
     local: Optional[LocalScope] = None,
+    content_resolver: Optional[ContentResolver] = None,
+    include_edge_statuses: Optional[Sequence[str]] = None,
 ) -> ContextBundle:
     """Compile a tailored, cited context bundle for ``query`` / ``seeds``.
 
@@ -672,6 +750,18 @@ def compile_context(
     ``graph`` is the induced subgraph. Its ``seed_weights`` are forwarded to
     PPR as the personalization vector: a MAPPING keyed by seed id, so the first
     stage's rank order cannot reach the walk.
+
+    ``content_resolver=<ContentResolver>`` (0.42, T5; default ``None``,
+    byte-identical unset) lets the host serve each selected node's body from
+    where it keeps the content — the resolver is asked first, cheapest view
+    first within the node's share, then the wiki page, then the description.
+    A node whose body came from the resolver does not also get the raw source
+    excerpt (that would pay for the same document twice), and its citation
+    carries the refs in ``content_refs``.
+
+    ``include_edge_statuses`` (0.42, T4) is forwarded to PPR: edge statuses
+    from ``candidate`` / ``refuted`` / ``retracted`` the walk may cross. Unset,
+    the walk skips all three; edges with no status are always walked.
 
     Both ``scope`` and ``strategy="hierarchical"`` require ``project_root``
     (the sidecar lives under it); the ``budget=0`` uncapped invariant is
@@ -965,6 +1055,7 @@ def compile_context(
                 edge_type_weights=_vw,
                 tame_hubs=tame_hubs, hub_ids=hub_ids,
                 seed_weights=local_seed_weights,
+                include_edge_statuses=include_edge_statuses,
             )
             _lane = {
                 nid: score
@@ -1008,6 +1099,7 @@ def compile_context(
             edge_type_weights=edge_type_weights,
             tame_hubs=tame_hubs, hub_ids=hub_ids,
             seed_weights=local_seed_weights,
+            include_edge_statuses=include_edge_statuses,
         )
         pre_rank = [
             (nid, score)
@@ -1176,11 +1268,17 @@ def compile_context(
     _per_node = budget // _TARGET_BUNDLE_NODES if budget > 0 else 0
     if _per_node < _MIN_NODE_SHARE:
         _per_node = 0  # too tight to split; first body takes what it needs
+    _refs_for: Dict[str, Tuple[str, ...]] = {}
     for node_id, _score in ranked:
         node = node_index.get(node_id)
         if node is None:
             continue
-        body = _fetch_body(node, store)
+        _node_refs: List[str] = []
+        body = _fetch_body(
+            node, store, content_resolver, _per_node, refs_out=_node_refs
+        )
+        if _node_refs:
+            _refs_for[node.id] = tuple(_node_refs)
         # Carry the SOURCE text for each distinct document the bundle touches,
         # once. Deduplicated by path because several nodes routinely extract
         # from one document and repeating it would spend the budget on copies
@@ -1188,7 +1286,7 @@ def compile_context(
         _sp = _owning_path(node, project_root)
         _doc_for[node.id] = _sp
         _can_afford_source = _per_node == 0 or _per_node >= _MIN_SOURCE_EXCERPT
-        if _sp and _sp not in _docs_emitted and _can_afford_source:
+        if _sp and _sp not in _docs_emitted and _can_afford_source and not _node_refs:
             _raw = _source_text(node, _source_cache, project_root, path=_sp)
             if _raw:
                 _docs_emitted.add(_sp)
@@ -1261,6 +1359,7 @@ def compile_context(
                 source_path=_doc_for.get(node.id) or node.source_path,
                 wiki_kind=kind_for_node(node),
                 via_views=via_map.get(node.id, ()),
+                content_refs=_refs_for.get(node.id, ()),
             )
         )
     sections.append("\n---\n## Citations\n")

@@ -19,7 +19,7 @@ import dataclasses
 import os
 from collections import OrderedDict, defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from .research_graph import (
     SESSION_FINDING_TYPE_VALUES,
@@ -115,7 +115,65 @@ def identity_key(node: ResearchNode) -> Optional[tuple]:
         source_path = str(node.source_path or md.get("source_path") or "").strip()
         qualified = str(md.get("qualified_name") or "").strip()
         return (type_value, source_path, qualified) if (source_path and qualified) else None
+    return concept_identity_key(node)
+
+
+def concept_identity_key(node: ResearchNode) -> Optional[tuple]:
+    """Concept identity (0.42, T6) for nodes no type-specific rule above keys.
+
+    In order: ``metadata.concept_id`` (a host's canonical concept — HypePaper's
+    shared concept layer stamps it on expert nodes), then a Wikidata QID
+    (``metadata.wikidata_qid``), then an MSC2020 class (``metadata.msc2020``).
+    All three are VERIFIED identifiers minted outside the graph, which is the
+    bar every other key in this module meets; a name or an embedding never is.
+
+    ``Trend`` is excluded: its ``metadata.concept_id`` is a back-reference to
+    the project-LOCAL node it tracks (``ResearchCorpusAnalyzer``), and a local
+    stable id is the same string in every project that names the concept the
+    same way — keying on it would fuse two projects' trends into one.
+    """
+    if node.type == ResearchNodeType.TREND:
+        return None
+    md = node.metadata or {}
+    concept_id = str(md.get("concept_id") or "").strip()
+    if concept_id:
+        return ("concept", concept_id)
+    qid = str(md.get("wikidata_qid") or "").strip().upper()
+    if qid:
+        return ("qid", qid)
+    msc = str(md.get("msc2020") or "").strip().upper()
+    if msc:
+        return ("msc", msc)
     return None
+
+
+#: ``identity_resolver(alias, node)`` — ``node`` is the ORIGINAL (un-namespaced)
+#: node of project ``alias``. Return a concept id string (keyed as
+#: ``("concept", id)``), a full identity tuple, or ``None`` to fall back to
+#: :func:`identity_key`.
+IdentityResolver = Callable[[str, ResearchNode], Union[None, str, tuple]]
+
+
+def _resolved_identity(
+    node: ResearchNode, identity_resolver: Optional[IdentityResolver]
+) -> Optional[tuple]:
+    if identity_resolver is not None:
+        md = node.metadata or {}
+        alias = str(md.get("federation_alias") or "")
+        origin = dataclasses.replace(
+            node, id=str(md.get("federation_origin_id") or node.id)
+        )
+        resolved = identity_resolver(alias, origin)
+        if isinstance(resolved, str) and resolved.strip():
+            return ("concept", resolved.strip())
+        if isinstance(resolved, tuple) and resolved:
+            return resolved
+        if resolved not in (None, ""):
+            raise TypeError(
+                "identity_resolver must return a concept id str, an identity "
+                f"tuple or None, got {type(resolved).__name__}"
+            )
+    return identity_key(node)
 
 
 # --------------------------------------------------------------------------- #
@@ -170,8 +228,16 @@ def federate_graphs(
     semantic_min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE,
     semantic_backend=None,
     semantic_cache_dir: Optional[Path] = None,
+    identity_resolver: Optional[IdentityResolver] = None,
 ) -> Tuple[ResearchGraph, dict]:
     """Namespace + identity-merge ``[(alias, graph), ...]`` into one ResearchGraph.
+
+    ``identity_resolver`` (0.42, T6) lets a host supply identities from its
+    own tables — HypePaper maps expert nodes to concept ids through a link
+    table — WITHOUT editing any project's ``graph.json``. It is consulted
+    first for every node; ``None`` falls back to :func:`identity_key`. It must
+    be a pure function of its arguments, or the result stops being
+    order-independent.
 
     Deterministic regardless of input order: aliases are sorted, nodes processed
     in id order, clusters keep the smallest member id as representative.
@@ -209,7 +275,7 @@ def federate_graphs(
 
     key_to_first: Dict[tuple, str] = {}
     for node in all_nodes:  # id-sorted
-        key = identity_key(node)
+        key = _resolved_identity(node, identity_resolver)
         if key is None:
             continue
         if key in key_to_first:

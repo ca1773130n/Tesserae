@@ -22,6 +22,22 @@ or the graph. Promoting an entry to the enum is a human edit on
 
 Designed for the EDC blueprint (Zhang et al., EMNLP 2024) but
 scaled down to a single-host pass that fits in a quick win.
+
+0.42 (T7) widens it in four ways, all opt-in, the default run unchanged:
+
+* ``kind="edge"`` clusters the edges of a host EDGE type by their relation
+  text (``metadata.relation_label`` / ``relation`` / ``raw_type``, else the
+  evidence) and proposes snake_case sub-relations.
+* ``embedder=<EmbeddingBackend>`` replaces name-token Jaccard with cosine
+  single-link clustering over embeddings — Jaccard cannot see that "SE(3)
+  equivariant" and "rotation equivariance" are one idea.
+* Every ledger record carries ``kind`` and ``gate`` metrics measured without
+  an LLM (instances, distinct sources, cohesion, clustering method), which is
+  what a host's promotion gate reads.
+* :func:`apply_ledger_to_registry` writes approved proposals into a type
+  registry JSON (:mod:`tesserae.type_registry`) as ``shadow`` types under
+  their host type. It never retypes a node and never touches ``graph.json``;
+  promotion and veto are the host's lifecycle.
 """
 
 from __future__ import annotations
@@ -35,10 +51,16 @@ import re
 import string
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from .llm_json import LLMJsonClient
-from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
+from .research_graph import (
+    ALLOWED_EDGE_TYPES,
+    ALLOWED_NODE_TYPES,
+    ResearchGraph,
+    ResearchNode,
+    ResearchNodeType,
+)
 
 
 _LOG = logging.getLogger(__name__)
@@ -129,6 +151,150 @@ def cluster_nodes_by_jaccard(
     return clusters
 
 
+@dataclass(frozen=True)
+class DriftItem:
+    """A clusterable member: a node, or an edge seen as ``source|type|target``.
+
+    Duck-types the three :class:`ResearchNode` attributes the clustering and
+    prompt code read (``id``, ``name``, ``description``), so edges flow through
+    the same functions as nodes. ``source`` is the provenance key the gate
+    metrics count distinct values of.
+    """
+
+    id: str
+    name: str
+    description: str = ""
+    source: str = ""
+
+
+def _cosine_unit(vec: Sequence[float]) -> List[float]:
+    norm = sum(float(x) * float(x) for x in vec) ** 0.5
+    return [float(x) / norm for x in vec] if norm > 0 else [0.0 for _ in vec]
+
+
+def cluster_by_embedding(
+    items: Sequence[Any],
+    embedder: Any,
+    threshold: float = 0.8,
+    min_cluster_size: int = 5,
+    text_of=None,
+) -> List[List[Any]]:
+    """Single-link clustering on cosine similarity of embeddings (0.42, T7).
+
+    Same contract as :func:`cluster_nodes_by_jaccard` — id-sorted processing,
+    clusters below ``min_cluster_size`` dropped, largest first — so either can
+    feed the proposal step. ``embedder`` is any object with
+    ``embed(texts) -> List[List[float]]`` (an ``EmbeddingBackend``). O(n²)
+    pairs: callers cap the host's member count (``min_volume`` / top-k keep it
+    to a host type at a time).
+    """
+    ordered = sorted(items, key=lambda n: n.id)
+    if not ordered:
+        return []
+    text_fn = text_of or (lambda n: n.name)
+    vectors = [_cosine_unit(v) for v in embedder.embed([text_fn(n) for n in ordered])]
+    if len(vectors) != len(ordered):
+        raise ValueError(
+            f"embedder returned {len(vectors)} vectors for {len(ordered)} texts"
+        )
+    parent = list(range(len(ordered)))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i in range(len(ordered)):
+        vi = vectors[i]
+        for j in range(i + 1, len(ordered)):
+            sim = sum(a * b for a, b in zip(vi, vectors[j]))
+            if sim >= threshold:
+                ri, rj = find(i), find(j)
+                if ri != rj:
+                    parent[rj] = ri
+    buckets: Dict[int, List[Any]] = {}
+    for i, item in enumerate(ordered):
+        buckets.setdefault(find(i), []).append(item)
+    clusters = [c for c in buckets.values() if len(c) >= min_cluster_size]
+    clusters.sort(key=lambda c: (-len(c), c[0].id))
+    return clusters
+
+
+def edge_drift_items(graph: ResearchGraph, edge_type: str) -> List[DriftItem]:
+    """The edges of ``edge_type`` as clusterable items.
+
+    The text is the most specific relation label the edge carries — an open
+    label an extractor attached (``metadata.relation_label``), a registry
+    relation (``metadata.relation``), the type a lenient load mapped away
+    (``metadata.raw_type``) — else its evidence. Edges with no text at all
+    carry no signal about a finer relation and are skipped.
+    """
+    items: List[DriftItem] = []
+    for edge in graph.edges:
+        if edge.type != edge_type:
+            continue
+        md = edge.metadata or {}
+        label = ""
+        for key in ("relation_label", "relation", "raw_type"):
+            if str(md.get(key) or "").strip():
+                label = str(md[key]).strip()
+                break
+        text = label or str(edge.evidence or "").strip()
+        if not text:
+            continue
+        items.append(
+            DriftItem(
+                id=f"{edge.source}|{edge.type}|{edge.target}",
+                name=text[:200],
+                description=str(edge.evidence or "")[:200] if label else "",
+                source=edge.source,
+            )
+        )
+    return items
+
+
+def gate_metrics(
+    cluster: Sequence[Any],
+    *,
+    clustering: str,
+    embedder: Any = None,
+    cohesion_sample: int = 60,
+) -> Dict[str, Any]:
+    """LLM-free evidence for a promotion gate, stored on each ledger record.
+
+    ``n_instances`` and ``n_sources`` (distinct source documents for nodes,
+    distinct source nodes for edges) are the volume test; ``cohesion`` is the
+    mean pairwise similarity under the clustering's own metric over the first
+    ``cohesion_sample`` members (id order), a cheap signal of how much one
+    definition can cover the cluster.
+    """
+    members = sorted(cluster, key=lambda n: n.id)
+    sources = {
+        str(getattr(n, "source", "") or getattr(n, "source_path", "") or "")
+        for n in members
+    }
+    sources.discard("")
+    sample = members[: max(2, int(cohesion_sample))]
+    sims: List[float] = []
+    if clustering == "embedding" and embedder is not None and len(sample) > 1:
+        vecs = [_cosine_unit(v) for v in embedder.embed([n.name for n in sample])]
+        for i in range(len(vecs)):
+            for j in range(i + 1, len(vecs)):
+                sims.append(sum(a * b for a, b in zip(vecs[i], vecs[j])))
+    elif len(sample) > 1:
+        toks = [_tokenize(n.name) for n in sample]
+        for i in range(len(toks)):
+            for j in range(i + 1, len(toks)):
+                sims.append(_jaccard(toks[i], toks[j]))
+    return {
+        "clustering": clustering,
+        "cohesion": round(sum(sims) / len(sims), 4) if sims else None,
+        "n_instances": len(members),
+        "n_sources": len(sources),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Cache
 # ---------------------------------------------------------------------------
@@ -178,6 +344,17 @@ _SYSTEM_PROMPT = (
 )
 
 
+_EDGE_SYSTEM_PROMPT = (
+    "You are an ontology engineer assisting the Tesserae knowledge-graph "
+    "compiler. The user will show you a cluster of RELATIONS (edges) that all "
+    "share the same coarse edge type, each given by its relation label or "
+    "evidence. Propose 1 to 3 candidate sub-relations using the EDC "
+    "(Extract-Define-Canonicalize) pattern: each must be a snake_case "
+    "relation name, a one-line definition (<= 100 chars), and three example "
+    "member ids drawn from the cluster."
+)
+
+
 def _build_user_prompt(host_type: str, cluster: Sequence[ResearchNode]) -> str:
     preview = []
     for node in cluster[:25]:
@@ -200,7 +377,14 @@ def _build_user_prompt(host_type: str, cluster: Sequence[ResearchNode]) -> str:
     )
 
 
-def _coerce_proposals(payload: object, valid_ids: set[str]) -> List[dict]:
+def _snake_case(name: str) -> str:
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name)
+    return "_".join(p.lower() for p in re.split(r"[^A-Za-z0-9]+", spaced) if p)
+
+
+def _coerce_proposals(
+    payload: object, valid_ids: set[str], kind: str = "node"
+) -> List[dict]:
     """Validate and clean an LLM proposal payload."""
     if not isinstance(payload, dict):
         return []
@@ -214,8 +398,12 @@ def _coerce_proposals(payload: object, valid_ids: set[str]) -> List[dict]:
         name = str(item.get("name") or "").strip()
         if not name or not name[:1].isalpha():
             continue
-        # PascalCase guard: strip whitespace/punct, capitalize segments.
-        name = "".join(part[:1].upper() + part[1:] for part in re.split(r"[^A-Za-z0-9]+", name) if part)
+        if kind == "edge":
+            # Edge vocabulary is snake_case (``uses_metric``, ``improves_on``).
+            name = _snake_case(name)
+        else:
+            # PascalCase guard: strip whitespace/punct, capitalize segments.
+            name = "".join(part[:1].upper() + part[1:] for part in re.split(r"[^A-Za-z0-9]+", name) if part)
         if not name:
             continue
         description = str(item.get("description") or "").strip()[:200]
@@ -233,6 +421,7 @@ def propose_subtypes_for_cluster(
     host_type: str,
     llm: LLMJsonClient,
     cache: Dict[str, dict],
+    kind: str = "node",
 ) -> List[dict]:
     """Look up or fetch sub-type proposals for ``cluster``.
 
@@ -247,9 +436,11 @@ def propose_subtypes_for_cluster(
             return proposals  # cache hit — skip LLM
     valid_ids = {n.id for n in cluster}
     payload = llm.complete_json(
-        system=_SYSTEM_PROMPT,
+        system=_EDGE_SYSTEM_PROMPT if kind == "edge" else _SYSTEM_PROMPT,
         user=_build_user_prompt(host_type, cluster),
-        schema_name="schema-drift-subtypes-v1",
+        schema_name=(
+            "schema-drift-subrelations-v1" if kind == "edge" else "schema-drift-subtypes-v1"
+        ),
         # The cluster hash is no longer load-bearing: llm_json now digests the
         # prompt itself, so two clusters cannot collide however the key is
         # spelled. It stays because it was RIGHT — this caller was the only one
@@ -258,7 +449,11 @@ def propose_subtypes_for_cluster(
         # strips the foreign example ids, leaving proposals that look plausible
         # and cite nothing") and defended against it by hand. Ten callers that
         # did not are what this fix is for. Now it reads as a namespace.
-        cache_key=f"schema-drift:{host_type}:{key}",
+        cache_key=(
+            f"schema-drift:edge:{host_type}:{key}"
+            if kind == "edge"
+            else f"schema-drift:{host_type}:{key}"
+        ),
     )
     if payload is None:
         # Transient LLM failure (backend error / unparseable JSON). Do NOT
@@ -273,7 +468,7 @@ def propose_subtypes_for_cluster(
             len(cluster),
         )
         return []
-    proposals = _coerce_proposals(payload, valid_ids)
+    proposals = _coerce_proposals(payload, valid_ids, kind)
     cache[key] = {
         "host_type": host_type,
         "cluster_size": len(cluster),
@@ -295,6 +490,12 @@ class HostTypeReport:
     #: Why this host produced no clusters, when the reason is not "clustering
     #: ran and found none". Empty means clustering actually ran.
     skipped_reason: str = ""
+    #: ``node`` or ``edge`` (0.42, T7) — what ``host_type`` names.
+    kind: str = "node"
+    #: ``jaccard`` or ``embedding`` — how ``clusters`` were formed.
+    clustering: str = "jaccard"
+    #: Per-cluster gate metrics, parallel to ``clusters``.
+    gates: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def render_report(
@@ -479,24 +680,31 @@ def build_proposal_ledger(reports: Sequence["HostTypeReport"]) -> List[dict]:
     """
     records: List[dict] = []
     for report in reports:
-        for cluster, proposals in report.clusters:
+        kind = getattr(report, "kind", "node")
+        gates = getattr(report, "gates", None) or []
+        for index, (cluster, proposals) in enumerate(report.clusters):
             cluster_key = _cluster_cache_key(cluster)
             node_ids = sorted(n.id for n in cluster)
             for proposal in proposals:
                 name = str(proposal.get("name") or "").strip()
                 if not name:
                     continue
-                records.append(
-                    {
-                        "approved": False,
-                        "cluster_key": cluster_key,
-                        "description": str(proposal.get("description") or ""),
-                        "host_type": report.host_type,
-                        "name": name,
-                        "node_ids": node_ids,
-                        "proposed_type": name,
-                    }
-                )
+                record = {
+                    "approved": False,
+                    "cluster_key": cluster_key,
+                    "description": str(proposal.get("description") or ""),
+                    "host_type": report.host_type,
+                    "name": name,
+                    "node_ids": node_ids,
+                    "proposed_type": name,
+                }
+                # Only stamped for the 0.42 shapes, so a default node run's
+                # ledger keeps exactly its 0.41 bytes.
+                if kind != "node":
+                    record["kind"] = kind
+                if index < len(gates) and gates[index]:
+                    record["gate"] = dict(gates[index])
+                records.append(record)
     records.sort(key=lambda r: (r["host_type"], r["cluster_key"], r["name"]))
     return records
 
@@ -570,25 +778,51 @@ def analyze_schema_drift(
     top_k_clusters: int = 5,
     jaccard_threshold: float = 0.34,
     min_cluster_size: int = 5,
+    kind: str = "node",
+    host_edge_types: Optional[Iterable[str]] = None,
+    embedder: Any = None,
+    cosine_threshold: float = 0.8,
 ) -> Tuple[Path, List[HostTypeReport]]:
     """Run the EDC pass and write the report to ``schema-drift.md``.
 
+    ``kind="edge"`` (0.42, T7) analyzes ``host_edge_types`` (default
+    ``["references"]``, the generic fallback edge) instead of node types.
+    ``embedder`` switches clustering from name-token Jaccard to embedding
+    cosine at ``cosine_threshold``. Every report carries LLM-free gate
+    metrics, which the ledger records keep.
+
     Returns ``(report_path, host_type_reports)``.
     """
+    if kind not in ("node", "edge"):
+        raise ValueError(f"schema drift kind must be 'node' or 'edge', got {kind!r}")
+    clustering = "embedding" if embedder is not None else "jaccard"
     tesserae_dir = Path(tesserae_dir)
     cache_dir = tesserae_dir / "schema_drift_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    hosts: List[ResearchNodeType]
-    if host_types is None:
-        hosts = [ResearchNodeType.SOURCE_DOCUMENT]
+    host_names: List[str]
+    if kind == "edge":
+        host_names = sorted(set(host_edge_types or ["references"]))
+        unknown = [h for h in host_names if h not in ALLOWED_EDGE_TYPES]
+        if unknown:
+            raise ValueError(f"unknown host edge type(s): {unknown}")
+    elif host_types is None:
+        host_names = [ResearchNodeType.SOURCE_DOCUMENT.value]
     else:
-        hosts = list(host_types)
+        host_names = [ResearchNodeType(h).value if not isinstance(h, ResearchNodeType) else h.value for h in host_types]
 
     reports: List[HostTypeReport] = []
-    for host in hosts:
-        members = _nodes_of_type(graph, host)
-        report = HostTypeReport(host_type=host.value, member_count=len(members))
+    for host_name in host_names:
+        if kind == "edge":
+            members: List[Any] = edge_drift_items(graph, host_name)
+        else:
+            members = _nodes_of_type(graph, ResearchNodeType(host_name))
+        report = HostTypeReport(
+            host_type=host_name,
+            member_count=len(members),
+            kind=kind,
+            clustering=clustering,
+        )
         if len(members) < min_volume:
             report.skipped_reason = (
                 f"Not clustered: {len(members)} member(s) is below --min-volume "
@@ -596,18 +830,30 @@ def analyze_schema_drift(
             )
             reports.append(report)
             continue
-        clusters = cluster_nodes_by_jaccard(
-            members,
-            threshold=jaccard_threshold,
-            min_cluster_size=min_cluster_size,
-        )[:top_k_clusters]
-        cache_path = cache_dir / f"{host.value}.json"
+        if embedder is not None:
+            clusters = cluster_by_embedding(
+                members,
+                embedder,
+                threshold=cosine_threshold,
+                min_cluster_size=min_cluster_size,
+            )[:top_k_clusters]
+        else:
+            clusters = cluster_nodes_by_jaccard(
+                members,
+                threshold=jaccard_threshold,
+                min_cluster_size=min_cluster_size,
+            )[:top_k_clusters]
+        cache_name = f"edge.{host_name}.json" if kind == "edge" else f"{host_name}.json"
+        cache_path = cache_dir / cache_name
         cache = _load_cache(cache_path)
         for cluster in clusters:
             proposals = propose_subtypes_for_cluster(
-                cluster, host_type=host.value, llm=llm, cache=cache
+                cluster, host_type=host_name, llm=llm, cache=cache, kind=kind
             )
             report.clusters.append((cluster, proposals))
+            report.gates.append(
+                gate_metrics(cluster, clustering=clustering, embedder=embedder)
+            )
         _save_cache(cache_path, cache)
         reports.append(report)
 
@@ -621,3 +867,77 @@ def analyze_schema_drift(
     # pass consumes once a human sets ``approved``.
     write_proposal_ledger(tesserae_dir, reports)
     return report_path, reports
+
+
+# ---------------------------------------------------------------------------
+# Registry apply (0.42, T7)
+# ---------------------------------------------------------------------------
+
+
+def apply_ledger_to_registry(
+    records: Sequence[dict],
+    registry_path: Union[str, Path],
+) -> List[dict]:
+    """Write APPROVED ledger proposals into a type-registry JSON file.
+
+    Each approved record becomes (or updates) a :class:`TypeSpec` named by its
+    ``proposed_type`` under ``core_parent = host_type``, with status
+    ``shadow`` — rows may be written under it, and it walks at its parent's
+    weight until the host's gate promotes it. A spec the file already has keeps
+    its status unless that status is ``proposed`` (a later lifecycle decision —
+    promoted, vetoed, retired — is the host's, and a re-run must never revert
+    it, exactly as :func:`_merge_proposal_ledger` never reverts ``approved``).
+
+    It NEVER retypes a node and never writes ``graph.json``. A proposal whose
+    name is already core vocabulary is skipped with a warning: promoting into
+    the enum is a release, not a ledger edit. Returns the specs written, as
+    dicts. The file is written atomically.
+    """
+    from .type_registry import TypeRegistry, TypeSpec, register_types
+
+    path = Path(registry_path)
+    registry = TypeRegistry()
+    if path.exists():
+        register_types(path, registry=registry)
+    written: List[dict] = []
+    for record in records:
+        if not isinstance(record, dict) or not record.get("approved"):
+            continue
+        name = str(record.get("proposed_type") or record.get("name") or "").strip()
+        host = str(record.get("host_type") or "").strip()
+        kind = str(record.get("kind") or "node")
+        if not name or not host:
+            continue
+        core = ALLOWED_EDGE_TYPES if kind == "edge" else ALLOWED_NODE_TYPES
+        if name in core:
+            _LOG.warning(
+                "apply_ledger_to_registry: %r is already a core %s type; "
+                "skipping (core promotion is a release, not a registry edit).",
+                name,
+                kind,
+            )
+            continue
+        prior = registry.get(name)
+        status = "shadow"
+        if prior is not None and prior.status != "proposed":
+            status = prior.status
+        spec = TypeSpec(
+            name=name,
+            kind=kind,
+            core_parent=host,
+            definition=str(record.get("description") or (prior.definition if prior else "")),
+            view=prior.view if prior else None,
+            ppr_weight=prior.ppr_weight if prior else None,
+            extractable=prior.extractable if prior else True,
+            inverse_of=prior.inverse_of if prior else None,
+            symmetric=prior.symmetric if prior else False,
+            acyclic=prior.acyclic if prior else False,
+            status=status,
+        )
+        registry.register(spec)
+        written.append(spec.to_dict())
+    _atomic_write(
+        path,
+        json.dumps(registry.to_payload(), indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+    )
+    return written

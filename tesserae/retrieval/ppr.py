@@ -29,9 +29,14 @@ Implementation notes
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Collection, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from tesserae.research_graph import CAUSAL_EDGE_TYPES, ResearchGraph
+from tesserae.research_graph import (
+    CAUSAL_EDGE_TYPES,
+    UNTRUSTED_EDGE_STATUSES,
+    ResearchGraph,
+)
+from tesserae.type_registry import get_registry
 
 
 # Edge types Tesserae emits that carry session-memory provenance.
@@ -74,6 +79,23 @@ DEFAULT_EDGE_TYPE_WEIGHTS: Dict[str, float] = {
 # below even ``references``. Derived from ``CAUSAL_EDGE_TYPES`` so the weight
 # is not something the next causal type has to remember to ask for.
 DEFAULT_EDGE_TYPE_WEIGHTS.update({edge_type: 2.0 for edge_type in CAUSAL_EDGE_TYPES})
+
+
+
+def effective_edge_type_weights() -> Dict[str, float]:
+    """``DEFAULT_EDGE_TYPE_WEIGHTS`` with the type registry's overlay (0.42, T3).
+
+    Active registry edge types walk at their core parent's weight until the
+    host promotes them, then at their own ``ppr_weight``. With an empty
+    registry this is exactly ``DEFAULT_EDGE_TYPE_WEIGHTS``. The module constant
+    is never mutated: the registry can change at runtime, a constant cannot.
+    """
+    weights = dict(DEFAULT_EDGE_TYPE_WEIGHTS)
+    registry = get_registry()
+    if len(registry):
+        weights.update(registry.edge_weight_overlay(DEFAULT_EDGE_TYPE_WEIGHTS))
+    return weights
+
 
 # Edge classes that carry provenance/bookkeeping ("where did this come
 # from") rather than semantic relatedness. Under ``tame_hubs`` they are
@@ -227,6 +249,7 @@ def personalized_pagerank(
     tame_hubs: bool = False,
     hub_ids: Optional[Sequence[str]] = None,
     seed_weights: Optional[Mapping[str, float]] = None,
+    include_edge_statuses: Optional[Collection[str]] = None,
 ) -> List[Tuple[str, float]]:
     """Run Personalized PageRank seeded at ``seed_ids``.
 
@@ -267,6 +290,15 @@ def personalized_pagerank(
             the sidecar already knows who the hubs are. ``None`` keeps the
             PR1 scan-everything behaviour; unknown ids are dropped silently
             (same contract as ``seed_ids``).
+        include_edge_statuses: Edge statuses from ``UNTRUSTED_EDGE_STATUSES``
+            (``candidate`` / ``refuted`` / ``retracted``) the walk may cross
+            anyway (0.42, T4). ``None`` skips all three — the default read
+            never walks a proposal or a refuted assertion. Edges with no
+            ``status`` (every 0.41 edge) are always walked.
+
+    Edge confidence (0.42, T4): an edge's ``confidence`` multiplies its type
+    weight; an edge without one walks at the full type weight, so a graph
+    with no T4 fields ranks exactly as before.
 
     Returns:
         ``[(node_id, score), ...]`` sorted descending. Scores over all
@@ -284,9 +316,10 @@ def personalized_pagerank(
     if top_k <= 0:
         raise ValueError(f"top_k must be positive, got {top_k}")
 
-    weights = dict(DEFAULT_EDGE_TYPE_WEIGHTS)
+    weights = effective_edge_type_weights()
     if edge_type_weights:
         weights.update(edge_type_weights)
+    skipped_statuses = UNTRUSTED_EDGE_STATUSES - frozenset(include_edge_statuses or ())
 
     node_ids: List[str] = [node.id for node in graph.nodes]
     if not node_ids:
@@ -302,7 +335,11 @@ def personalized_pagerank(
         dst = node_index.get(edge.target)
         if src is None or dst is None:
             continue
+        if edge.status is not None and edge.status in skipped_statuses:
+            continue
         w = float(weights.get(edge.type, 1.0))
+        if edge.confidence is not None:
+            w *= edge.confidence
         if tame_hubs and edge.type in PROVENANCE_EDGE_TYPES:
             w *= PROVENANCE_EDGE_DOWNWEIGHT
         if w <= 0.0:

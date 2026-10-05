@@ -191,7 +191,7 @@ Phase 5 激活了持久的自我改进。每个节点的可变状态存放在 `n
 | [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | `personalized_pagerank`：HippoRAG-2 风格（arXiv:2502.14802）的图上个性化 PageRank，用于多跳种子扩展——浮现距种子数跳之外、连接良好的节点，而不只是 1 跳邻域。 |
 | 嵌入后端（Phase 6，Track B） | 混合嵌入通道的默认后端是无需额外依赖的确定性哈希桶伪嵌入；优先使用 `sentence-transformers`（`all-MiniLM-L6-v2`），在可选依赖已安装时惰性加载。`embedding_status` MCP 工具报告当前激活的后端。 |
 | [`tesserae/retrieval/vector_cache.py`](../../tesserae/retrieval/vector_cache.py) | SQLite 边车中的 `node_vectors` 表，以及所有三个 `.embed(` 调用点共同经由的唯一访问器。以 `(backend_name, backend_dim, sha256(embedded_text))` 为键 —— 此处的身份是嵌入的**文本**，而非节点 id，因此一个未修改的节点在完整重编译、项目迁移或规范化重写其 id 之后仍会命中，而被重新描述的则会失手并重新嵌入。两个模型的向量永不相会：它们的空间无法比较，默认混合会破坏余弦相似度而非失败。 |
-| [`tesserae/retrieval/views.py`](../../tesserae/retrieval/views.py) | 视图注册表：`semantic` / `temporal` / `causal` / `entity`，各自是 `ALLOWED_EDGE_TYPES` 的一个具名子集，经 `weights_for()` 解析为每种视图外边类型的显式零权重。两项分割决策都有载重：`summarizes` + `evidenced_by`（~50% 的所有边 —— 抽象和来源）属于**任何**视图都不包含，否则 semantic 视图就成了整张图；causal 视图比 `CAUSAL_EDGE_TYPES` 更宽，因为仅凭 `{recovers}` 就会是一个没有活着的边的视图。 |
+| [`tesserae/retrieval/views.py`](../../tesserae/retrieval/views.py) | 视图注册表：`semantic` / `temporal` / `causal` / `entity` / `crossdomain`，各自是 `ALLOWED_EDGE_TYPES` 的一个具名子集，经 `weights_for()` 解析为每种视图外边类型的显式零权重。两项分割决策都有载重：`summarizes` + `evidenced_by`（~50% 的所有边 —— 抽象和来源）属于**任何**视图都不包含，否则 semantic 视图就成了整张图；causal 视图比 `CAUSAL_EDGE_TYPES` 更宽，因为仅凭 `{recovers}` 就会是一个没有活着的边的视图。 |
 | [`tesserae/blocking.py`](../../tesserae/blocking.py) | 面向两个配对 pass（规范化的审查构建器和 `memory.supersede`）的单一阻塞层。上限按**排序的 id** 截断，因此上限运行不依赖于节点到达的顺序，而受限编译仍可重现；调用方提供其自己的分词器，因为比其评分者更粗的阻塞器会静默删除真正的匹配。每条 pass 都会报告它命中的上限，而非返回一个悄悄较短的队列。 |
 
 ### 按需上下文编译器（v0.5.0 —— 支柱 3 头条）

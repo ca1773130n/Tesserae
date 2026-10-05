@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence
 
 from .llm_json import _note_failure, last_failure_kind
+from .type_registry import is_producer_only_edge_type
 from .research_graph import (
     ALLOWED_EDGE_TYPES,
     EXTRACTABLE_EDGE_TYPES,
@@ -202,13 +203,20 @@ def graph_from_llm_payload(payload: Mapping[str, object], source_path: Optional[
             metadata = {}
         if not isinstance(metadata, dict):
             raise GraphJSONValidationError(f"Edge metadata must be an object: {source_ref} -> {target_ref}")
+        if is_producer_only_edge_type(metadata.get("relation")):
+            # T9: ``shares_concept_with`` + ``metadata.relation="transfers_to"``
+            # is exactly how a bridge is stored, so the label is the claim. A
+            # model reading one document cannot attest a bridge; drop the edge
+            # the same way a producer-only TYPE is dropped above.
+            dropped_edges += 1
+            continue
         builder.add_edge(source, edge_type, target, evidence=str(raw_edge.get("evidence") or "") or None, metadata=dict(metadata))
 
     if dropped_nodes:  # non-silent: name what we discarded
         print(f"  extract: dropped {dropped_nodes} node(s) with a non-extractable type "
               f"from {source_path or 'payload'}", file=sys.stderr)
     if dropped_edges:  # non-silent: name what we discarded
-        print(f"  extract: dropped {dropped_edges} edge(s) with unknown type/endpoints "
+        print(f"  extract: dropped {dropped_edges} edge(s) with unknown type/endpoints or a producer-only relation "
               f"from {source_path or 'payload'}", file=sys.stderr)
 
     _attach_orphan_spans(builder, key_to_node, source_kind, source_path)

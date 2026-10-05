@@ -2129,14 +2129,39 @@ def _handle_schema_drift(args: argparse.Namespace) -> int:
         if not wiki.paths.graph.exists():
             print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
             return 2
+        from .research_graph import ALLOWED_EDGE_TYPES as _ALLOWED_EDGE_TYPES
         from .research_graph import ResearchNodeType as _ResearchNodeType
         from .schema_drift import analyze_schema_drift
-        host_args = args.host_type or ["SourceDocument"]
-        try:
-            host_types = [_ResearchNodeType(value) for value in host_args]
-        except ValueError as exc:
-            print(f"error: unknown --host-type: {exc}", file=sys.stderr)
-            return 2
+        kind = getattr(args, "kind", "node") or "node"
+        host_types = None
+        host_edge_types = None
+        if kind == "edge":
+            host_edge_types = args.host_type or ["references"]
+            unknown = sorted(set(host_edge_types) - set(_ALLOWED_EDGE_TYPES))
+            if unknown:
+                print(f"error: unknown --host-type edge type(s): {unknown}", file=sys.stderr)
+                return 2
+        else:
+            host_args = args.host_type or ["SourceDocument"]
+            try:
+                host_types = [_ResearchNodeType(value) for value in host_args]
+            except ValueError as exc:
+                print(f"error: unknown --host-type: {exc}", file=sys.stderr)
+                return 2
+        embedder = None
+        if getattr(args, "cluster", "jaccard") == "embedding":
+            from .retrieval.hybrid import active_embedding_backend, backend_is_semantic
+
+            embedder = active_embedding_backend("auto")
+            if not backend_is_semantic(embedder):
+                # The hash fallback is not semantic: clustering on it would
+                # group names by hash collisions and call it meaning.
+                print(
+                    "error: --cluster embedding needs a semantic embedding backend "
+                    "(install tesserae[semantic]); only the hash fallback is available.",
+                    file=sys.stderr,
+                )
+                return 2
         llm = wiki._build_json_client()
         if llm is None:
             print(
@@ -2154,6 +2179,10 @@ def _handle_schema_drift(args: argparse.Namespace) -> int:
             top_k_clusters=args.top_k,
             min_cluster_size=args.min_cluster_size,
             jaccard_threshold=args.jaccard_threshold,
+            kind=kind,
+            host_edge_types=host_edge_types,
+            embedder=embedder,
+            cosine_threshold=getattr(args, "cosine_threshold", 0.8),
         )
         candidate_count = sum(
             len(proposals) for r in reports for _cluster, proposals in r.clusters
@@ -6710,6 +6739,9 @@ def _build_schema_drift_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top-k", type=int, default=5, help="Take only the top-K clusters per host type (default: 5)")
     parser.add_argument("--min-cluster-size", type=int, default=5, help="Drop clusters smaller than this size (default: 5)")
     parser.add_argument("--jaccard-threshold", type=float, default=0.34, help="Jaccard similarity threshold for clustering (default: 0.34)")
+    parser.add_argument("--kind", choices=("node", "edge"), default="node", help="Analyze node types (default) or edge types; with 'edge', --host-type names edge types (default: references)")
+    parser.add_argument("--cluster", choices=("jaccard", "embedding"), default="jaccard", help="Cluster on name-token Jaccard (default) or on embeddings from the semantic backend")
+    parser.add_argument("--cosine-threshold", type=float, default=0.8, help="Cosine similarity threshold for --cluster embedding (default: 0.8)")
     return parser
 
 
