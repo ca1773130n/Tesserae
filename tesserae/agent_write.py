@@ -25,7 +25,9 @@ instead of coercing, and refuses loudly:
 * node ``type`` inside the producer-owned deny set (an agent minting a
   ``Session`` node collides with ids ``__session_graph__`` already owns, giving
   one node two ``__`` provenance sources)
-* edge ``type`` outside ``ALLOWED_EDGE_TYPES``
+* edge ``type`` outside ``ALLOWED_EDGE_TYPES`` (and not an active registry
+  type — see below)
+* edge ``type`` in ``PRODUCER_ONLY_EDGE_TYPES`` (cross-domain bridges, merges)
 * an edge endpoint that resolves to no node in the payload
 * an edge with empty ``evidence``
 * ``provenance`` missing ``agent``, or missing **every** external anchor
@@ -34,10 +36,20 @@ instead of coercing, and refuses loudly:
 The last rule is the "some evidence must originate outside the graph"
 constraint made mechanical: a verifier reading these nodes later can always
 walk back to something the graph did not author.
+
+**Registry types (0.42, T10).** A write may name a type from the host's type
+registry (:mod:`tesserae.type_registry`). It is mapped onto its CORE parent
+before anything is recorded: a node becomes ``type=<parent>`` with
+``metadata.subtype=<name>``, an edge becomes ``type=<parent>`` with
+``metadata.relation=<name>``. A core type may also carry those keys directly.
+So ``agent-writes.jsonl`` and ``graph.json`` only ever hold core types — a
+0.41 reader replays them unchanged, which is what keeps a rollback safe.
+Producer-only edge types are refused as types outright.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import sys
 from dataclasses import dataclass
@@ -48,6 +60,7 @@ from .llm_extractor import GraphJSONValidationError
 from .llm_extractor import validate_research_graph
 from .locking import compile_lock
 from .research_graph import (
+    PRODUCER_ONLY_EDGE_TYPES,
     AGENT_LAYER_TYPES,
     ALLOWED_EDGE_TYPES,
     CAUSAL_EDGE_TYPES,
@@ -68,6 +81,11 @@ from .research_graph import (
 # collapses with an arbitrary winner. Same package, one import, no fork.
 from .research_graph import _aggressive_dedup_key
 from .batch import sha256_text
+from .type_registry import get_registry
+
+#: Edge metadata keys a payload may not set: the replay stamps them, and they
+#: are what marks an edge as agent-written (see ``_graph_from_record``).
+RESERVED_EDGE_METADATA_KEYS: frozenset = frozenset({"agent_write_id", "agent_key"})
 
 __all__ = [
     "AGENT_WRITE_SOURCE",
@@ -239,10 +257,39 @@ def validate_write(
         type_name = str(raw.get("type") or "").strip()
         if not name:
             raise GraphJSONValidationError("graph_write: every node needs a name")
-        if type_name not in ALLOWED_NODE_TYPES:
+        metadata = raw.get("metadata") or {}
+        if not isinstance(metadata, dict):
             raise GraphJSONValidationError(
-                f"graph_write: unsupported node type: {type_name!r}"
+                f"graph_write: node metadata must be an object: {name}"
             )
+        metadata = dict(metadata)
+        registry = get_registry()
+        if type_name not in ALLOWED_NODE_TYPES:
+            # A registry node type is written as its core parent + subtype.
+            parent = (
+                registry.core_parent(type_name, "node")
+                if registry.is_active(type_name, "node")
+                else None
+            )
+            if parent is None:
+                raise GraphJSONValidationError(
+                    f"graph_write: unsupported node type: {type_name!r}"
+                )
+            if metadata.get("subtype") not in (None, "", type_name):
+                raise GraphJSONValidationError(
+                    f"graph_write: node {name!r} is typed {type_name!r} but "
+                    f"carries metadata.subtype {metadata.get('subtype')!r}"
+                )
+            metadata["subtype"] = type_name
+            type_name = parent
+        subtype = metadata.get("subtype")
+        if subtype not in (None, ""):
+            sub_parent = registry.core_parent(str(subtype), "node")
+            if sub_parent is not None and sub_parent != type_name:
+                raise GraphJSONValidationError(
+                    f"graph_write: subtype {subtype!r} belongs under core type "
+                    f"{sub_parent!r}, not {type_name!r}"
+                )
         if type_name in DENIED_NODE_TYPES:
             raise GraphJSONValidationError(
                 f"graph_write: node type {type_name!r} is owned by a compile "
@@ -256,11 +303,6 @@ def validate_write(
         ):
             raise GraphJSONValidationError(
                 f"graph_write: node aliases must be a list of strings: {name}"
-            )
-        metadata = raw.get("metadata") or {}
-        if not isinstance(metadata, dict):
-            raise GraphJSONValidationError(
-                f"graph_write: node metadata must be an object: {name}"
             )
         nodes.append(
             {
@@ -288,11 +330,49 @@ def validate_write(
                 "failure followed by an observed success in the same session "
                 "(tesserae.session_recovery), never claimed"
             )
-        if edge_type not in ALLOWED_EDGE_TYPES:
+        if edge_type in PRODUCER_ONLY_EDGE_TYPES:
             raise GraphJSONValidationError(
-                f"graph_write: unsupported edge type: {edge_type!r}. Unlike the "
-                "LLM extraction path, a typed write never drops an edge silently"
+                f"graph_write: {edge_type!r} is producer-only and cannot be "
+                "asserted by an agent. Cross-domain bridges are derived by a "
+                "miner or generator and validated, and merges belong to the "
+                "canonicalizer — never claimed"
             )
+        edge_meta = raw.get("metadata") or {}
+        if not isinstance(edge_meta, dict):
+            raise GraphJSONValidationError(
+                f"graph_write: edge metadata must be an object: {edge_type!r}"
+            )
+        edge_meta = dict(edge_meta)
+        reserved = sorted(RESERVED_EDGE_METADATA_KEYS & set(edge_meta))
+        if reserved:
+            raise GraphJSONValidationError(
+                f"graph_write: edge metadata may not set {reserved} — the "
+                "replay stamps them to mark the edge as agent-written"
+            )
+        if edge_type not in ALLOWED_EDGE_TYPES:
+            registry = get_registry()
+            parent = (
+                registry.core_parent(edge_type, "edge")
+                if registry.is_active(edge_type, "edge")
+                else None
+            )
+            if parent is None:
+                raise GraphJSONValidationError(
+                    f"graph_write: unsupported edge type: {edge_type!r}. Unlike the "
+                    "LLM extraction path, a typed write never drops an edge silently"
+                )
+            if parent in DENIED_EDGE_TYPES:
+                raise GraphJSONValidationError(
+                    f"graph_write: {edge_type!r} maps onto producer-owned "
+                    f"{parent!r} and cannot be asserted by an agent"
+                )
+            if edge_meta.get("relation") not in (None, "", edge_type):
+                raise GraphJSONValidationError(
+                    f"graph_write: edge typed {edge_type!r} carries "
+                    f"metadata.relation {edge_meta.get('relation')!r}"
+                )
+            edge_meta["relation"] = edge_type
+            edge_type = parent
         source = str(raw.get("source") or "").strip()
         target = str(raw.get("target") or "").strip()
         # Payload-declared names win over graph ids: an endpoint is resolved
@@ -322,6 +402,10 @@ def validate_write(
             "type": edge_type,
             "evidence": evidence,
         }
+        if edge_meta:
+            # Only present when non-empty, so every write recorded before 0.42
+            # hashes to the same ``write_id`` it always did.
+            edge["metadata"] = {k: edge_meta[k] for k in sorted(edge_meta)}
         if id_endpoints:
             # Only present when an endpoint IS an id, so every pre-existing
             # write hashes to the same ``write_id`` it always did. Replay
@@ -337,6 +421,20 @@ def validate_write(
         edges=edges,
         provenance={str(k): provenance[k] for k in sorted(provenance)},
     )
+
+
+def _record_edge_metadata(raw: Mapping[str, Any]) -> Dict[str, Any]:
+    """A recorded edge's payload metadata (0.42), minus the reserved keys.
+
+    ``validate_write`` already refuses the reserved keys; stripping them here
+    too means a hand-edited JSONL line cannot forge the agent-write marker.
+    """
+    meta = raw.get("metadata")
+    if not isinstance(meta, Mapping):
+        return {}
+    return {
+        str(k): v for k, v in meta.items() if str(k) not in RESERVED_EDGE_METADATA_KEYS
+    }
 
 
 def _graph_from_record(record: Mapping[str, Any]) -> ResearchGraph:
@@ -421,7 +519,11 @@ def _graph_from_record(record: Mapping[str, Any]) -> ResearchGraph:
                     target=resolved["target"],
                     type=str(raw["type"]),
                     evidence=str(raw.get("evidence") or ""),
-                    metadata={"agent_write_id": write_id, "agent_key": agent_key},
+                    metadata={
+                        **_record_edge_metadata(raw),
+                        "agent_write_id": write_id,
+                        "agent_key": agent_key,
+                    },
                 )
             )
             continue
@@ -455,7 +557,11 @@ def _graph_from_record(record: Mapping[str, Any]) -> ResearchGraph:
             # ``setdefault``s on (source, type, target), so two writes that
             # collapse onto the same triple converge on the lowest write_id in
             # both a full and an incremental compile.
-            metadata={"agent_write_id": write_id, "agent_key": agent_key},
+            metadata={
+                **_record_edge_metadata(raw),
+                "agent_write_id": write_id,
+                "agent_key": agent_key,
+            },
         )
     graph = builder.build()
     validate_research_graph(graph)
@@ -670,12 +776,8 @@ def align_overlay(overlay: ResearchGraph, graph: ResearchGraph) -> ResearchGraph
             continue
         seen.add((source, edge.type, target))
         edges.append(
-            ResearchEdge(
-                source=source,
-                target=target,
-                type=edge.type,
-                evidence=edge.evidence,
-                metadata=dict(edge.metadata),
+            dataclasses.replace(
+                edge, source=source, target=target, metadata=dict(edge.metadata)
             )
         )
     return ResearchGraph(nodes=nodes, edges=edges)
