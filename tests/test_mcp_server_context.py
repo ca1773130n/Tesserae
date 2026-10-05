@@ -473,9 +473,10 @@ def test_compile_context_advertises_the_view_knob():
     props = by_name["compile_context"]["inputSchema"]["properties"]
 
     single, many = props["view"]["anyOf"]
-    assert single["enum"] == ["semantic", "temporal", "causal", "entity"]
+    # 0.42 adds "crossdomain" (registry bridge relations; empty without a registry).
+    assert single["enum"] == ["semantic", "temporal", "causal", "entity", "crossdomain"]
     assert many["type"] == "array"
-    assert many["items"]["enum"] == ["semantic", "temporal", "causal", "entity"]
+    assert many["items"]["enum"] == ["semantic", "temporal", "causal", "entity", "crossdomain"]
     assert many["minItems"] == 1
     # No default key: absence means the full graph, same as scope.
     assert "default" not in props["view"]

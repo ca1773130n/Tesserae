@@ -20,14 +20,20 @@ from tesserae.retrieval.views import (
 
 
 def test_partition_covers_the_vocabulary_exactly_once() -> None:
-    """The four views plus the excluded bucket partition ALLOWED_EDGE_TYPES.
+    """The core members of the views plus the excluded bucket partition
+    ALLOWED_EDGE_TYPES; ``crossdomain`` (0.42) lists registry names only.
 
     This is the loud gate the registry's module docstring promises: adding an
     edge type to the vocabulary without deciding its view fails HERE, instead
     of the new type silently landing in no view (union check) or in two
     (disjointness check).
     """
-    buckets = list(VIEWS.values()) + [VIEW_EXCLUDED_EDGE_TYPES]
+    assert not (VIEWS["crossdomain"] & ALLOWED_EDGE_TYPES), (
+        "crossdomain must hold no core type — those belong to a core view"
+    )
+    buckets = [
+        members for name, members in VIEWS.items() if name != "crossdomain"
+    ] + [VIEW_EXCLUDED_EDGE_TYPES]
     union = frozenset().union(*buckets)
     assert union == ALLOWED_EDGE_TYPES, (
         f"unassigned edge types: {sorted(ALLOWED_EDGE_TYPES - union)}; "
@@ -118,3 +124,76 @@ def test_the_view_names_have_one_source_of_truth() -> None:
     parser = _build_context_parser()
     view_action = next(a for a in parser._actions if a.dest == "view")
     assert list(view_action.choices) == list(VIEWS)
+
+
+# --------------------------------------------------------------------------- #
+# 0.42 (T3): registry types join exactly one view                             #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture()
+def registry():
+    from tesserae.type_registry import get_registry, reset_registry
+
+    reset_registry()
+    yield get_registry()
+    reset_registry()
+
+
+def test_every_known_type_has_exactly_one_bucket(registry) -> None:
+    from tesserae.retrieval.views import EXCLUDED, known_edge_types, view_members, view_of
+    from tesserae.type_registry import TypeSpec
+
+    registry.register(TypeSpec("uses_math_of", "edge", "uses"))  # inherits semantic
+    registry.register(TypeSpec("transfers_to", "edge", "uses"))  # crossdomain by name
+    registry.register(TypeSpec("cites_badly", "edge", "references", view="temporal"))
+    registry.register(TypeSpec("hidden_rel", "edge", "summarizes"))  # parent excluded
+    registry.register(TypeSpec("old_rel", "edge", "uses", status="vetoed"))  # inactive
+
+    for edge_type in known_edge_types():
+        bucket = view_of(edge_type)
+        assert bucket is not None, edge_type
+        holders = [v for v in VIEWS if edge_type in view_members(v)]
+        if bucket == EXCLUDED:
+            assert holders == [], (edge_type, holders)
+        else:
+            assert holders == [bucket], (edge_type, holders)
+
+    assert view_of("uses_math_of") == "semantic"
+    assert view_of("transfers_to") == "crossdomain"
+    assert view_of("cites_badly") == "temporal"
+    assert view_of("hidden_rel") == EXCLUDED
+    assert "old_rel" not in known_edge_types()
+
+
+def test_crossdomain_is_empty_without_a_registry(registry) -> None:
+    from tesserae.retrieval.views import view_members
+
+    assert view_members("crossdomain") == frozenset()
+    assert set(weights_for("crossdomain")) == set(ALLOWED_EDGE_TYPES)
+
+
+def test_registry_types_get_parent_weight_until_promoted(registry) -> None:
+    from tesserae.retrieval.ppr import effective_edge_type_weights
+    from tesserae.type_registry import TypeSpec
+
+    assert effective_edge_type_weights() == DEFAULT_EDGE_TYPE_WEIGHTS
+    registry.register(TypeSpec("grounded_in", "edge", "derived_from", ppr_weight=3.0))
+    registry.register(
+        TypeSpec("strong_rel", "edge", "uses", ppr_weight=2.5, status="promoted")
+    )
+    weights = effective_edge_type_weights()
+    # A seed walks at its parent's weight (derived_from = 1.25), not its own.
+    assert weights["grounded_in"] == DEFAULT_EDGE_TYPE_WEIGHTS["derived_from"]
+    assert weights["strong_rel"] == 2.5
+    # The module constant itself is never mutated.
+    assert "grounded_in" not in DEFAULT_EDGE_TYPE_WEIGHTS
+
+
+def test_a_declared_unknown_view_fails_loud(registry) -> None:
+    from tesserae.retrieval.views import view_of
+    from tesserae.type_registry import TypeSpec
+
+    registry.register(TypeSpec("typo_rel", "edge", "uses", view="semantc"))
+    with pytest.raises(ValueError, match="semantc"):
+        view_of("typo_rel")
