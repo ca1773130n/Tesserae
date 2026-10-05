@@ -8,7 +8,17 @@ changes to the middle layer.
 
 from __future__ import annotations
 
-from .graph_store import GraphStore
+from .content_resolver import ContentResolver, ContentView
+from .graph_store import GraphStore, NeighborQueryStore, store_iterate_edges, store_neighbors
 from .source_loader import Source, SourceLoader
 
-__all__ = ["GraphStore", "Source", "SourceLoader"]
+__all__ = [
+    "ContentResolver",
+    "ContentView",
+    "GraphStore",
+    "NeighborQueryStore",
+    "Source",
+    "SourceLoader",
+    "store_iterate_edges",
+    "store_neighbors",
+]
