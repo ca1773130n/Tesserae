@@ -344,10 +344,16 @@ def get_registry() -> TypeRegistry:
     if not _ENV_LOADED:
         with _ENV_LOCK:
             if not _ENV_LOADED:
-                _ENV_LOADED = True
                 path = os.environ.get(ENV_REGISTRY_PATH, "").strip()
                 if path:
+                    # Raises on an unreadable or invalid file — and keeps
+                    # raising on every call until it is fixed. Marking the
+                    # load done before it succeeded would fail once and then
+                    # run every later read with an empty registry, which is
+                    # exactly the silent degradation an explicit env var must
+                    # not get.
                     register_types(path, registry=_REGISTRY)
+                _ENV_LOADED = True
     return _REGISTRY
 
 

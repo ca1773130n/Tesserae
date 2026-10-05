@@ -116,6 +116,14 @@ def test_registry_loads_from_json_file_and_env(tmp_path: Path, monkeypatch) -> N
     assert get_registry().get("Property").definition.startswith("A guarantee")
 
 
+def test_a_broken_registry_env_keeps_failing_loud(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TESSERAE_TYPE_REGISTRY", str(tmp_path / "missing.json"))
+    reset_registry()
+    for _ in range(2):  # not just the first call
+        with pytest.raises(ValueError, match="cannot read"):
+            get_registry()
+
+
 def test_subtype_rides_in_metadata_and_is_validated() -> None:
     register_types([{"name": "Property", "kind": "node", "core_parent": "Concept"}])
     node = _node("n", "SE(3) equivariance").with_subtype("Property")
