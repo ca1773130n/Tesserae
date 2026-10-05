@@ -609,10 +609,119 @@ def test_producer_only_types_and_reserved_metadata_are_refused() -> None:
 def test_core_edge_with_relation_metadata_is_accepted() -> None:
     validated = validate_write(
         _write_payload(edge_type="shares_concept_with",
-                       metadata={"relation": "transfers_to", "concept_id": "c1"}),
+                       metadata={"relation": "inspired_by", "concept_id": "c1"}),
         "feed",
     )
-    assert validated.edges[0]["metadata"] == {"concept_id": "c1", "relation": "transfers_to"}
+    assert validated.edges[0]["metadata"] == {"concept_id": "c1", "relation": "inspired_by"}
+
+
+@pytest.mark.parametrize("relation", sorted(PRODUCER_ONLY_EDGE_TYPES) + [" Transfers_To "])
+def test_a_producer_only_relation_on_a_core_edge_is_refused(relation: str) -> None:
+    """``shares_concept_with`` + ``metadata.relation="transfers_to"`` IS how a
+    bridge is stored (design §5.4b), so the label is refused like the type —
+    otherwise an LLM-written bridge reads exactly like a SQL-attested one."""
+    payload = _write_payload(edge_type="shares_concept_with",
+                             metadata={"relation": relation})
+    with pytest.raises(GraphJSONValidationError, match="producer-only"):
+        validate_write(payload, "some-llm-agent")
+
+
+def test_a_registry_child_of_a_producer_only_type_is_refused() -> None:
+    register_types([
+        {"name": "transfers_to", "kind": "edge", "core_parent": "shares_concept_with"},
+        {"name": "attested_transfer", "kind": "edge", "core_parent": "transfers_to"},
+    ])
+    # As the edge type: it resolves to plain ``shares_concept_with``.
+    with pytest.raises(GraphJSONValidationError, match="producer-only"):
+        validate_write(_write_payload(edge_type="attested_transfer"), "feed")
+    # As the relation label on a core edge.
+    with pytest.raises(GraphJSONValidationError, match="producer-only"):
+        validate_write(_write_payload(edge_type="shares_concept_with",
+                                      metadata={"relation": "attested_transfer"}), "feed")
+    # And never offered to an extraction prompt.
+    assert "attested_transfer" not in extractable_edge_types()
+
+
+def test_a_non_string_relation_is_refused() -> None:
+    with pytest.raises(GraphJSONValidationError, match="must be a string"):
+        validate_write(_write_payload(edge_type="shares_concept_with",
+                                      metadata={"relation": ["transfers_to"]}), "feed")
+
+
+def test_the_host_producer_may_write_an_attested_bridge(tmp_path: Path) -> None:
+    """Only an in-process caller that passes ``allow_producer_only`` gets the
+    bridge through, encoded as core type + relation so 0.41 replays it."""
+    register_types([{"name": "transfers_to", "kind": "edge",
+                     "core_parent": "shares_concept_with"}])
+    path = tmp_path / "agent-writes.jsonl"
+    record_agent_write(path, _write_payload(edge_type="transfers_to"),
+                       "hp:expert_feed", allow_producer_only=True)
+    record_agent_write(
+        path,
+        _write_payload(edge_type="shares_concept_with",
+                       metadata={"relation": "transfers_to", "concept_id": "c1"}),
+        "hp:expert_feed", allow_producer_only=True,
+    )
+    records = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [r["edges"][0]["type"] for r in records] == ["shares_concept_with"] * 2
+    assert [r["edges"][0]["metadata"]["relation"] for r in records] == ["transfers_to"] * 2
+    reset_registry()  # a 0.41-shaped reader with no registry
+    replayed = replay_agent_writes(path)
+    bridges = [e for e in replayed.edges if e.metadata.get("relation") == "transfers_to"]
+    assert bridges  # both writes are the same edge, so replay keeps one
+    assert {e.metadata["agent_key"] for e in bridges} == {"hp:expert_feed"}
+    # The same payload without the flag is refused, and nothing is appended.
+    register_types([{"name": "transfers_to", "kind": "edge",
+                     "core_parent": "shares_concept_with"}])
+    before = path.read_text()
+    with pytest.raises(GraphJSONValidationError, match="producer-only"):
+        record_agent_write(path, _write_payload(edge_type="transfers_to"), "hp:expert_feed")
+    assert path.read_text() == before
+
+
+def test_mcp_graph_write_never_admits_a_bridge_whatever_agent_it_claims(tmp_path: Path) -> None:
+    """The MCP client names its own ``agent``, so the tool must not trust one:
+    it never passes ``allow_producer_only``."""
+    from tesserae.mcp_server import LLMWikiMCPServer
+    from tesserae.project import ProjectWiki
+
+    wiki = ProjectWiki.init(tmp_path / "project")
+    server = LLMWikiMCPServer(default_graph_path=wiki.paths.graph)
+    payload = _write_payload(edge_type="shares_concept_with",
+                             metadata={"relation": "transfers_to"})
+    with pytest.raises(GraphJSONValidationError, match="producer-only"):
+        server.call_tool("graph_write", {
+            "graph_path": str(wiki.paths.graph),
+            "agent": "hp:expert_feed",
+            "nodes": payload["nodes"],
+            "edges": payload["edges"],
+            "provenance": payload["provenance"],
+        })
+    assert not wiki.paths.agent_writes.exists()
+
+
+def test_extraction_drops_an_edge_whose_relation_is_producer_only() -> None:
+    from tesserae.llm_extractor import graph_from_llm_payload
+
+    payload = {
+        "nodes": [
+            {"key": "a", "name": "Optimal transport", "type": "MathematicalConcept"},
+            {"key": "b", "name": "Point cloud registration", "type": "Task"},
+            {"key": "c", "name": "Color transfer", "type": "Task"},
+        ],
+        "edges": [
+            # Distinct endpoints, so the builder's edge dedup cannot hide a drop.
+            {"source": "a", "target": "b", "type": "shares_concept_with", "evidence": "e",
+             "metadata": {"relation": "transfers_to"}},
+            {"source": "a", "target": "c", "type": "shares_concept_with", "evidence": "e",
+             "metadata": {"relation": "inspired_by"}},
+        ],
+    }
+    graph = graph_from_llm_payload(payload, source_path=None, source_kind="paper")
+    names = {n.id: n.name for n in graph.nodes}
+    kept = sorted((names[e.target], e.metadata.get("relation")) for e in graph.edges
+                  if e.type == "shares_concept_with")
+    assert kept == [("Color transfer", "inspired_by")]
 
 
 def test_pre_042_write_ids_are_unchanged() -> None:

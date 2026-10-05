@@ -51,6 +51,7 @@ __all__ = [
     "TypeRegistry",
     "TypeSpec",
     "get_registry",
+    "is_producer_only_edge_type",
     "register_types",
     "reset_registry",
 ]
@@ -255,13 +256,34 @@ class TypeRegistry:
         except ValueError:
             return None
 
+    def is_producer_only(self, name: str) -> bool:
+        """True when edge type ``name`` IS a producer-only type or descends from one.
+
+        A registry child of ``transfers_to`` (say ``attested_transfer``) is a
+        bridge too: checking only the name would let a writer mint one under a
+        new label, and checking only the core parent misses it entirely,
+        because producer-only types are registry types whose parent is a plain
+        core relation. So the whole chain up to the core is walked.
+        """
+        current = str(name or "").strip()
+        seen: List[str] = []
+        while current and current not in seen:
+            if current in PRODUCER_ONLY_EDGE_TYPES:
+                return True
+            seen.append(current)
+            spec = self._specs.get(current)
+            if spec is None or spec.kind != "edge":
+                return False
+            current = spec.core_parent
+        return False
+
     def extractable_edge_types(self) -> FrozenSet[str]:
         """Active, extractable, non-producer-only registry edge types."""
         return frozenset(
             s.name
             for s in self.specs("edge")
             if s.active and s.status != "core" and s.extractable
-            and s.name not in PRODUCER_ONLY_EDGE_TYPES
+            and not self.is_producer_only(s.name)
         )
 
     def edge_weight_overlay(self, defaults: Mapping[str, float]) -> Dict[str, float]:
@@ -355,6 +377,24 @@ def get_registry() -> TypeRegistry:
                     register_types(path, registry=_REGISTRY)
                 _ENV_LOADED = True
     return _REGISTRY
+
+
+def is_producer_only_edge_type(name: Any) -> bool:
+    """Whether an edge type or ``metadata.relation`` value names a bridge or a merge.
+
+    The one check every write and parse path asks, so the edge ``type``, a
+    registry child of a producer-only type and a ``metadata.relation`` label
+    are all refused by the same rule (T9). A non-string is never a type name
+    and answers ``False``; callers that accept free metadata must reject the
+    non-string themselves.
+    """
+    if not isinstance(name, str):
+        return False
+    registry = get_registry()
+    stripped = name.strip()
+    # Case-folded too: a reader that lower-cases ``Transfers_To`` must not find
+    # a bridge the writer was never allowed to mint.
+    return registry.is_producer_only(stripped) or registry.is_producer_only(stripped.lower())
 
 
 def reset_registry() -> None:

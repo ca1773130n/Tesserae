@@ -27,7 +27,9 @@ instead of coercing, and refuses loudly:
   one node two ``__`` provenance sources)
 * edge ``type`` outside ``ALLOWED_EDGE_TYPES`` (and not an active registry
   type — see below)
-* edge ``type`` in ``PRODUCER_ONLY_EDGE_TYPES`` (cross-domain bridges, merges)
+* edge ``type`` in ``PRODUCER_ONLY_EDGE_TYPES`` (cross-domain bridges, merges),
+  a registry type descending from one, or a ``metadata.relation`` naming one —
+  unless the in-process caller passes ``allow_producer_only=True`` (below)
 * an edge endpoint that resolves to no node in the payload
 * an edge with empty ``evidence``
 * ``provenance`` missing ``agent``, or missing **every** external anchor
@@ -44,7 +46,19 @@ before anything is recorded: a node becomes ``type=<parent>`` with
 ``metadata.relation=<name>``. A core type may also carry those keys directly.
 So ``agent-writes.jsonl`` and ``graph.json`` only ever hold core types — a
 0.41 reader replays them unchanged, which is what keeps a rollback safe.
-Producer-only edge types are refused as types outright.
+
+**Producer-only relations.** A bridge is stored the same way a registry type
+is: ``shares_concept_with`` + ``metadata.relation="transfers_to"``. Refusing
+only ``type="transfers_to"`` would therefore leave the encoding itself open, and
+an LLM-written bridge would be indistinguishable from a SQL-attested one. So a
+producer-only name is refused wherever it appears — as the ``type``, as an
+ancestor of a registry type, or as ``metadata.relation`` — unless the caller
+passes ``allow_producer_only=True``. That is a keyword on the Python API, not
+an ``agent`` key, on purpose: the MCP ``graph_write`` tool lets the client name
+any agent it likes, so an allowlist of agent keys could be claimed by any
+client. The MCP path never passes the flag; only host code that IS the
+producer (HypePaper's ``expert_feed``, writing rows its SQL miner attested)
+does. An LLM can never mint a bridge.
 """
 
 from __future__ import annotations
@@ -60,7 +74,6 @@ from .llm_extractor import GraphJSONValidationError
 from .llm_extractor import validate_research_graph
 from .locking import compile_lock
 from .research_graph import (
-    PRODUCER_ONLY_EDGE_TYPES,
     AGENT_LAYER_TYPES,
     ALLOWED_EDGE_TYPES,
     CAUSAL_EDGE_TYPES,
@@ -81,7 +94,12 @@ from .research_graph import (
 # collapses with an arbitrary winner. Same package, one import, no fork.
 from .research_graph import _aggressive_dedup_key
 from .batch import sha256_text
-from .type_registry import get_registry
+from .type_registry import get_registry, is_producer_only_edge_type
+
+_PRODUCER_ONLY_WHY = (
+    ". Cross-domain bridges are derived by a miner or generator and validated, "
+    "and merges belong to the canonicalizer — never claimed"
+)
 
 #: Edge metadata keys a payload may not set: the replay stamps them, and they
 #: are what marks an edge as agent-written (see ``_graph_from_record``).
@@ -213,6 +231,8 @@ def validate_write(
     payload: Mapping[str, Any],
     agent_key: str,
     graph: Optional[ResearchGraph] = None,
+    *,
+    allow_producer_only: bool = False,
 ) -> ValidatedWrite:
     """Strict pre-pass. Refuses; never coerces, never silently drops.
 
@@ -223,6 +243,10 @@ def validate_write(
     rightly refuses to align: an agent's re-typed copy would fork beside the
     real finding and retract the fork. An id endpoint resolves exactly or
     refuses, mirroring ``resolve_existing_id``'s refuse-on-ambiguity posture.
+
+    ``allow_producer_only`` admits producer-only relations (bridges, merges;
+    see the module docstring). Only a host-side producer passes it; the MCP
+    tool never does.
     """
     agent_key = str(agent_key or "").strip()
     if not agent_key:
@@ -330,12 +354,10 @@ def validate_write(
                 "failure followed by an observed success in the same session "
                 "(tesserae.session_recovery), never claimed"
             )
-        if edge_type in PRODUCER_ONLY_EDGE_TYPES:
+        if not allow_producer_only and is_producer_only_edge_type(edge_type):
             raise GraphJSONValidationError(
                 f"graph_write: {edge_type!r} is producer-only and cannot be "
-                "asserted by an agent. Cross-domain bridges are derived by a "
-                "miner or generator and validated, and merges belong to the "
-                "canonicalizer — never claimed"
+                f"asserted by an agent{_PRODUCER_ONLY_WHY}"
             )
         edge_meta = raw.get("metadata") or {}
         if not isinstance(edge_meta, dict):
@@ -373,6 +395,20 @@ def validate_write(
                 )
             edge_meta["relation"] = edge_type
             edge_type = parent
+        if "relation" in edge_meta:
+            relation = edge_meta["relation"]
+            if relation is not None and not isinstance(relation, str):
+                raise GraphJSONValidationError(
+                    f"graph_write: edge metadata.relation must be a string, got "
+                    f"{type(relation).__name__}"
+                )
+            if not allow_producer_only and is_producer_only_edge_type(relation):
+                raise GraphJSONValidationError(
+                    f"graph_write: metadata.relation {relation!r} is producer-only "
+                    f"and cannot be asserted by an agent{_PRODUCER_ONLY_WHY}. "
+                    "The relation label is how a bridge is stored, so carrying it "
+                    "on a core edge is the same claim as the type"
+                )
         source = str(raw.get("source") or "").strip()
         target = str(raw.get("target") or "").strip()
         # Payload-declared names win over graph ids: an endpoint is resolved
@@ -850,9 +886,16 @@ def record_agent_write(
     graph: Optional[ResearchGraph] = None,
     written_at: str = "",
     lock_dir: Optional[str | Path] = None,
+    allow_producer_only: bool = False,
 ) -> Dict[str, Any]:
-    """Validate + append one write. Returns the MCP response body."""
-    validated = validate_write(payload, agent_key, graph)
+    """Validate + append one write. Returns the MCP response body.
+
+    ``allow_producer_only`` is for host-side producers only; see
+    :func:`validate_write`.
+    """
+    validated = validate_write(
+        payload, agent_key, graph, allow_producer_only=allow_producer_only
+    )
     write_id = validated.write_id
     file_path = Path(path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
