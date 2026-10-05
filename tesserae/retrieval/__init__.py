@@ -34,6 +34,7 @@ from .hybrid import (
 )
 from .ppr import (
     DEFAULT_EDGE_TYPE_WEIGHTS,
+    effective_edge_type_weights,
     personalized_pagerank,
 )
 from .query_decompose import DEFAULT_UBIQUITY_DF_RATIO
@@ -44,6 +45,7 @@ __all__ = [
     "DEFAULT_SOURCE_CAP",
     "DEFAULT_UBIQUITY_DF_RATIO",
     "EmbeddingBackend",
+    "effective_edge_type_weights",
     "HashEmbeddingBackend",
     "HybridSearchResult",
     "LaneProfile",

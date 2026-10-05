@@ -16,6 +16,7 @@ recompile's anchor count, refusal count and retrieval recall within noise.
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace
 from typing import Dict, List, Set, Tuple
 
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, is_source_anchor
@@ -72,8 +73,7 @@ def collapse_document_anchors(graph: ResearchGraph) -> Tuple[ResearchGraph, int]
             continue
         seen.add(key)
         edges.append(edge if (src, dst) == (edge.source, edge.target) else
-                     ResearchEdge(source=src, target=dst, type=edge.type,
-                                  evidence=edge.evidence, metadata=edge.metadata))
+                     replace(edge, source=src, target=dst))
     return ResearchGraph(nodes=nodes, edges=edges), len(redirect)
 
 

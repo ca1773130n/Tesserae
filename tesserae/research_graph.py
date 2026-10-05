@@ -14,6 +14,7 @@ import json
 import os
 import re
 from dataclasses import asdict, dataclass, field
+from dataclasses import replace as _dc_replace
 from enum import Enum
 from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
@@ -25,6 +26,9 @@ from typing import Dict, FrozenSet, Iterable, List, Mapping, Optional, Sequence,
 # its inputs. Safe at module scope: ``merge_ledger`` imports nothing from the
 # package.
 from .merge_ledger import BASIS_AGGRESSIVE_KEY, BASIS_CROSS_TYPE, record_merge
+# Safe at module scope for the same reason: ``type_registry`` imports nothing
+# from this module at load time (its core-vocabulary lookups are lazy).
+from .type_registry import PRODUCER_ONLY_EDGE_TYPES, get_registry
 
 
 class ResearchNodeType(str, Enum):
@@ -699,8 +703,58 @@ ALLOWED_EDGE_TYPES: Set[str] = {
 #: could quietly delete curated knowledge from every answer. It stays
 #: agent-writable on purpose — an agent saying "this is wrong" against an
 #: external anchor is exactly what the edge is for.
+#: ``PRODUCER_ONLY_EDGE_TYPES`` (0.42, T9: ``transfers_to``,
+#: ``candidate_transfer``, ``analogous_to``, ``merged_into``) is subtracted for
+#: the causal layer's reason: a cross-domain bridge or a merge is derived by a
+#: miner, generator or canonicalizer and validated — an LLM reading one paper
+#: cannot observe it, and a model that could mint one would make every bridge
+#: in the graph indistinguishable from a guess. None of them is a core type
+#: today, so the subtraction is a guard for the day one is promoted to core.
 EXTRACTABLE_EDGE_TYPES: FrozenSet[str] = (
-    frozenset(ALLOWED_EDGE_TYPES) - CAUSAL_EDGE_TYPES - RETRACTION_EDGE_TYPES
+    frozenset(ALLOWED_EDGE_TYPES)
+    - CAUSAL_EDGE_TYPES
+    - RETRACTION_EDGE_TYPES
+    - PRODUCER_ONLY_EDGE_TYPES
+)
+
+
+def extractable_edge_types() -> FrozenSet[str]:
+    """``EXTRACTABLE_EDGE_TYPES`` plus the registry's active extractable types.
+
+    The frozen constant stays the core gate (the extraction prompt and
+    ``graph_write`` read it); a host that wants its registry types in a prompt
+    asks for this union explicitly. Producer-only types are never included.
+    """
+    return EXTRACTABLE_EDGE_TYPES | get_registry().extractable_edge_types()
+
+
+def is_known_edge_type(edge_type: str) -> bool:
+    """Core edge type, or an ACTIVE registry edge type (T1)."""
+    return edge_type in ALLOWED_EDGE_TYPES or get_registry().is_active(edge_type, "edge")
+
+
+#: Lifecycle of an asserted edge (0.42, T4). ``None`` — every edge a 0.41
+#: producer wrote — means "asserted, status not tracked" and is treated like
+#: ``attested`` everywhere.
+EDGE_STATUSES: FrozenSet[str] = frozenset(
+    {"attested", "candidate", "validated", "refuted", "retracted"}
+)
+
+#: Statuses PPR and the read filters skip unless a caller opts in: an
+#: unvalidated proposal, and the two that say "this is wrong".
+UNTRUSTED_EDGE_STATUSES: FrozenSet[str] = frozenset({"candidate", "refuted", "retracted"})
+
+#: The optional T4 fields, in serialization order. Each is omitted from
+#: ``model_dump`` when ``None`` so a graph without them is byte-identical to
+#: what 0.41 wrote, and a 0.41 reader (which reads only source/target/type/
+#: evidence/metadata) loads a 0.42 graph unchanged.
+EDGE_OPTIONAL_FIELDS: Tuple[str, ...] = (
+    "confidence",
+    "status",
+    "asserted_by",
+    "valid_from",
+    "invalid_at",
+    "provenance",
 )
 
 
@@ -719,6 +773,40 @@ class ResearchNode:
         payload["type"] = self.type.value
         return payload
 
+    @property
+    def subtype(self) -> Optional[str]:
+        """The registry kind under this node's core type (0.42, T1), or ``None``.
+
+        Stored as ``metadata.subtype`` and nowhere else, on purpose: a 0.41
+        reader loads it unchanged, and every pass that copies a node's
+        metadata (merges, alignment, federation) carries it without having to
+        know it exists — a separate field would be silently dropped by each of
+        the many sites that rebuild a node field by field.
+        """
+        value = (self.metadata or {}).get("subtype")
+        return str(value) if value not in (None, "") else None
+
+    def with_subtype(self, subtype: Optional[str]) -> "ResearchNode":
+        """A copy carrying ``subtype``, validated against the registry.
+
+        A registered subtype must resolve to THIS node's core type — a
+        ``Property`` subtype on a ``Paper`` would put a concept-kind into the
+        paper id space. An unregistered name is allowed (hosts tag before they
+        register), and ``None`` clears it.
+        """
+        metadata = dict(self.metadata or {})
+        if subtype in (None, ""):
+            metadata.pop("subtype", None)
+        else:
+            parent = get_registry().core_parent(str(subtype), "node")
+            if parent is not None and parent != self.type.value:
+                raise ValueError(
+                    f"subtype {subtype!r} resolves to core type {parent!r}, "
+                    f"not this node's {self.type.value!r}"
+                )
+            metadata["subtype"] = str(subtype)
+        return _dc_replace(self, metadata=metadata)
+
 
 @dataclass(frozen=True)
 class ResearchEdge:
@@ -727,13 +815,47 @@ class ResearchEdge:
     type: str
     evidence: Optional[str] = None
     metadata: Dict[str, object] = field(default_factory=dict)
+    # 0.42 (T4) — all optional, all omitted from model_dump when None. They are
+    # first-class fields rather than metadata keys because existing producers
+    # already write ``metadata.confidence`` / ``metadata.status`` with other
+    # meanings; reading those as PPR multipliers would change the walk over
+    # every 0.41 graph. ``confidence`` ∈ [0, 1] multiplies the type weight;
+    # ``status`` ∈ EDGE_STATUSES; ``valid_from`` / ``invalid_at`` are ISO dates
+    # (world time); ``provenance`` is a free-form object.
+    confidence: Optional[float] = None
+    status: Optional[str] = None
+    asserted_by: Optional[str] = None
+    valid_from: Optional[str] = None
+    invalid_at: Optional[str] = None
+    provenance: Optional[Dict[str, object]] = None
 
     def __post_init__(self) -> None:
-        if self.type not in ALLOWED_EDGE_TYPES:
+        if self.type not in ALLOWED_EDGE_TYPES and not get_registry().is_active(self.type, "edge"):
             raise ValueError(f"Unsupported research edge type: {self.type}")
+        if self.confidence is not None:
+            try:
+                value = float(self.confidence)
+            except (TypeError, ValueError):
+                raise ValueError(f"edge confidence must be a number, got {self.confidence!r}") from None
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"edge confidence must be in [0, 1], got {value}")
+            object.__setattr__(self, "confidence", value)
+        if self.status is not None and self.status not in EDGE_STATUSES:
+            raise ValueError(
+                f"edge status must be one of {sorted(EDGE_STATUSES)}, got {self.status!r}"
+            )
+
+    @property
+    def is_untrusted(self) -> bool:
+        """``candidate`` / ``refuted`` / ``retracted`` — skipped by default reads."""
+        return self.status in UNTRUSTED_EDGE_STATUSES
 
     def model_dump(self) -> Dict[str, object]:
-        return asdict(self)
+        payload = asdict(self)
+        for name in EDGE_OPTIONAL_FIELDS:
+            if payload.get(name) is None:
+                payload.pop(name, None)
+        return payload
 
 
 def is_arxiv_placeholder_name(name: str) -> bool:
@@ -786,6 +908,11 @@ def prefer_research_node(existing: ResearchNode, incoming: ResearchNode) -> Rese
 class ResearchGraph:
     nodes: List[ResearchNode] = field(default_factory=list)
     edges: List[ResearchEdge] = field(default_factory=list)
+    #: What ``graph_from_payload`` did on load (0.42, T2): ``type_mode`` and,
+    #: in lenient mode, ``unknown_types`` = {"node:<raw>"/"edge:<raw>": count}.
+    #: Load-time information only — never serialized, never compared, and not
+    #: carried by passes that build a new graph.
+    load_stats: Dict[str, object] = field(default_factory=dict, compare=False, repr=False)
 
     def model_dump(self) -> Dict[str, object]:
         # Canonical, content-derived ordering so the serialized graph is
@@ -828,38 +955,140 @@ class ResearchGraph:
         )
 
 
-def graph_from_payload(payload: Dict[str, object]) -> ResearchGraph:
+#: ``TESSERAE_TYPE_MODE`` values (0.42, T2).
+TYPE_MODES: Tuple[str, ...] = ("strict", "lenient")
+TYPE_MODE_ENV = "TESSERAE_TYPE_MODE"
+
+#: Where lenient load puts a type nothing (core vocabulary or registry) knows.
+LENIENT_NODE_FALLBACK = "Concept"
+LENIENT_EDGE_FALLBACK = "references"
+
+
+def resolve_type_mode(type_mode: Optional[str] = None) -> str:
+    """``type_mode`` if given, else ``$TESSERAE_TYPE_MODE``, else ``strict``.
+
+    An unrecognised value raises rather than silently picking a mode: a typo in
+    the env var must not quietly turn strict loading off (or on).
+    """
+    mode = (type_mode if type_mode is not None else os.environ.get(TYPE_MODE_ENV, "")).strip().lower()
+    if not mode:
+        return "strict"
+    if mode not in TYPE_MODES:
+        raise ValueError(
+            f"type mode must be one of {list(TYPE_MODES)}, got {mode!r} "
+            f"(from {'argument' if type_mode is not None else TYPE_MODE_ENV})"
+        )
+    return mode
+
+
+def _edge_optional_fields(raw: Mapping[str, object]) -> Dict[str, object]:
+    return {name: raw[name] for name in EDGE_OPTIONAL_FIELDS if raw.get(name) is not None}
+
+
+def graph_from_payload(
+    payload: Dict[str, object], *, type_mode: Optional[str] = None
+) -> ResearchGraph:
     """Rehydrate a :class:`ResearchGraph` from a ``model_dump()``-shaped dict.
 
     Moved verbatim from ``project.load_graph_file`` (which now delegates here)
     so callers that already hold the parsed payload — e.g. the code-graph
     extraction cache — can rehydrate without importing ``tesserae.project``
     (circular import).
+
+    ``type_mode`` (0.42, T2; default ``$TESSERAE_TYPE_MODE``, else ``strict``):
+
+    * ``strict`` — exactly the 0.41 behaviour: an unknown node type or an
+      unknown edge type raises ``ValueError``. An ACTIVE registry edge type is
+      known (T1), so a host's in-memory registry types load.
+    * ``lenient`` — an unknown type is mapped to its registry ``core_parent``
+      when the registry knows it (any status — a vetoed type's rows read as
+      the parent), else to ``Concept`` / ``references``. The original goes to
+      ``metadata.raw_type`` (a registered node type also becomes
+      ``metadata.subtype``), and every mapping is counted in
+      ``graph.load_stats["unknown_types"]``. Nothing is dropped.
     """
-    return ResearchGraph(
-        nodes=[
+    mode = resolve_type_mode(type_mode)
+    if mode == "strict":
+        graph = ResearchGraph(
+            nodes=[
+                ResearchNode(
+                    id=str(raw["id"]),
+                    name=str(raw["name"]),
+                    type=ResearchNodeType(str(raw["type"])),
+                    aliases=[str(alias) for alias in raw.get("aliases", [])],
+                    description=str(raw.get("description") or ""),
+                    source_path=raw.get("source_path"),
+                    metadata=dict(raw.get("metadata") or {}),
+                )
+                for raw in payload.get("nodes", [])
+            ],
+            edges=[
+                ResearchEdge(
+                    source=str(raw["source"]),
+                    target=str(raw["target"]),
+                    type=str(raw["type"]),
+                    evidence=raw.get("evidence"),
+                    metadata=dict(raw.get("metadata") or {}),
+                    **_edge_optional_fields(raw),
+                )
+                for raw in payload.get("edges", [])
+            ],
+        )
+        graph.load_stats = {"type_mode": "strict"}
+        return graph
+
+    registry = get_registry()
+    unknown: Dict[str, int] = {}
+    nodes: List[ResearchNode] = []
+    for raw in payload.get("nodes", []):
+        raw_type = str(raw["type"])
+        metadata = dict(raw.get("metadata") or {})
+        if raw_type in ALLOWED_NODE_TYPES:
+            node_type = ResearchNodeType(raw_type)
+        else:
+            parent = registry.core_parent(raw_type, "node")
+            node_type = ResearchNodeType(parent or LENIENT_NODE_FALLBACK)
+            metadata.setdefault("raw_type", raw_type)
+            if parent is not None:
+                metadata.setdefault("subtype", raw_type)
+            unknown[f"node:{raw_type}"] = unknown.get(f"node:{raw_type}", 0) + 1
+        nodes.append(
             ResearchNode(
                 id=str(raw["id"]),
                 name=str(raw["name"]),
-                type=ResearchNodeType(str(raw["type"])),
+                type=node_type,
                 aliases=[str(alias) for alias in raw.get("aliases", [])],
                 description=str(raw.get("description") or ""),
                 source_path=raw.get("source_path"),
-                metadata=dict(raw.get("metadata") or {}),
+                metadata=metadata,
             )
-            for raw in payload.get("nodes", [])
-        ],
-        edges=[
+        )
+    edges: List[ResearchEdge] = []
+    for raw in payload.get("edges", []):
+        raw_type = str(raw["type"])
+        metadata = dict(raw.get("metadata") or {})
+        edge_type = raw_type
+        if raw_type not in ALLOWED_EDGE_TYPES and not registry.is_active(raw_type, "edge"):
+            parent = registry.core_parent(raw_type, "edge")
+            edge_type = parent or LENIENT_EDGE_FALLBACK
+            metadata.setdefault("raw_type", raw_type)
+            unknown[f"edge:{raw_type}"] = unknown.get(f"edge:{raw_type}", 0) + 1
+        edges.append(
             ResearchEdge(
                 source=str(raw["source"]),
                 target=str(raw["target"]),
-                type=str(raw["type"]),
+                type=edge_type,
                 evidence=raw.get("evidence"),
-                metadata=dict(raw.get("metadata") or {}),
+                metadata=metadata,
+                **_edge_optional_fields(raw),
             )
-            for raw in payload.get("edges", [])
-        ],
-    )
+        )
+    graph = ResearchGraph(nodes=nodes, edges=edges)
+    graph.load_stats = {
+        "type_mode": "lenient",
+        "unknown_types": dict(sorted(unknown.items())),
+    }
+    return graph
 
 
 class ResearchGraphBuilder:
@@ -1260,15 +1489,9 @@ def _merge_same_type_aliased_duplicates(
         if src is edge.source and tgt is edge.target:
             new_edges.append(edge)
         else:
-            new_edges.append(
-                ResearchEdge(
-                    source=src,
-                    target=tgt,
-                    type=edge.type,
-                    evidence=edge.evidence,
-                    metadata=edge.metadata,
-                )
-            )
+            # ``replace`` rather than a field-by-field rebuild, so the optional
+            # T4 fields (confidence, status, ...) survive the redirect.
+            new_edges.append(_dc_replace(edge, source=src, target=tgt))
 
     return new_nodes, new_edges
 
@@ -1396,15 +1619,9 @@ def _merge_cross_type_duplicates(
         if src == edge.source and tgt == edge.target:
             new_edges.append(edge)
         else:
-            new_edges.append(
-                ResearchEdge(
-                    source=src,
-                    target=tgt,
-                    type=edge.type,
-                    evidence=edge.evidence,
-                    metadata=edge.metadata,
-                )
-            )
+            # ``replace`` rather than a field-by-field rebuild, so the optional
+            # T4 fields (confidence, status, ...) survive the redirect.
+            new_edges.append(_dc_replace(edge, source=src, target=tgt))
     return new_nodes, new_edges
 
 

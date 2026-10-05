@@ -77,6 +77,7 @@ module promises not to be.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 import os
 import re
@@ -334,8 +335,7 @@ def _apply_redirect(graph: ResearchGraph, redirect: Dict[str, str]) -> Tuple[Res
         if key in seen:
             continue
         seen.add(key)
-        edges.append(ResearchEdge(source=src, target=dst, type=edge.type,
-                                  evidence=edge.evidence, metadata=edge.metadata))
+        edges.append(dataclasses.replace(edge, source=src, target=dst))
     return ResearchGraph(nodes=kept, edges=edges), len(redirect)
 
 

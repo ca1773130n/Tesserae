@@ -9,13 +9,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Set
 
-from .research_graph import RETRACTION_EDGE_TYPES
+from .research_graph import RETRACTION_EDGE_TYPES, UNTRUSTED_EDGE_STATUSES
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard for type checkers
     from .research_graph import ResearchGraph
 
 __all__ = [
     "SUPPRESSION_EDGE_TYPES",
+    "asserts_suppression",
     "retracted_ids",
     "superseded_ids",
     "suppressed_ids",
@@ -29,6 +30,18 @@ __all__ = [
 SUPPRESSION_EDGE_TYPES: frozenset = (
     frozenset({"supersedes", "resolved_by"}) | RETRACTION_EDGE_TYPES
 )
+
+
+def asserts_suppression(edge) -> bool:
+    """Whether a suppression-typed edge actually suppresses (0.42, T4).
+
+    An edge whose own ``status`` is ``candidate`` / ``refuted`` / ``retracted``
+    is a proposal or a withdrawn assertion — letting it hide its target would
+    let an unvalidated "this replaces that" silence curated knowledge, which is
+    exactly what the default read path refuses. Edges without a status (every
+    0.41 edge) suppress as before.
+    """
+    return getattr(edge, "status", None) not in UNTRUSTED_EDGE_STATUSES
 
 
 def superseded_ids(graph: "ResearchGraph") -> Set[str]:
@@ -45,8 +58,14 @@ def superseded_ids(graph: "ResearchGraph") -> Set[str]:
     compile_context) suppress the same set so a claim that lost LLM
     arbitration is never cited identically to its winner.
     """
-    return {edge.target for edge in graph.edges if edge.type == "supersedes"} | {
-        edge.source for edge in graph.edges if edge.type == "resolved_by"
+    return {
+        edge.target
+        for edge in graph.edges
+        if edge.type == "supersedes" and asserts_suppression(edge)
+    } | {
+        edge.source
+        for edge in graph.edges
+        if edge.type == "resolved_by" and asserts_suppression(edge)
     }
 
 
@@ -67,7 +86,7 @@ def retracted_ids(graph: "ResearchGraph") -> Set[str]:
     return {
         edge.target
         for edge in graph.edges
-        if edge.type in RETRACTION_EDGE_TYPES
+        if edge.type in RETRACTION_EDGE_TYPES and asserts_suppression(edge)
     }
 
 

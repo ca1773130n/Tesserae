@@ -4919,7 +4919,9 @@ def _strip_generated_layer(graph: ResearchGraph) -> ResearchGraph:
     return ResearchGraph(nodes=kept_nodes, edges=kept_edges)
 
 
-def load_graph_file(path: str | Path) -> ResearchGraph:
+def load_graph_file(path: str | Path, *, type_mode: Optional[str] = None) -> ResearchGraph:
+    # ``type_mode`` (0.42, T2): ``strict`` | ``lenient``, default
+    # ``$TESSERAE_TYPE_MODE`` else strict — see ``graph_from_payload``.
     # Body moved verbatim to ``research_graph.graph_from_payload`` so the
     # code-graph cache can rehydrate without importing this module (circular).
     #
@@ -4932,7 +4934,7 @@ def load_graph_file(path: str | Path) -> ResearchGraph:
     # ~500 MB.
     # ``json.loads`` accepts bytes and returns an identical object, so this
     # cannot change what is loaded — only what it costs to load it.
-    return graph_from_payload(json.loads(Path(path).read_bytes()))
+    return graph_from_payload(json.loads(Path(path).read_bytes()), type_mode=type_mode)
 
 
 def resolve_project_input(project_root: Path, item: str | Path) -> Path:
