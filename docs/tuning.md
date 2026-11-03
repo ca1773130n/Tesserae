@@ -342,6 +342,8 @@ you navigate cross-project wants the eager pass on.
 | `TESSERAE_EMBEDDING_PREFER` | auto | Dense lane encoder: `model2vec` (shipped, static, no torch), `st` (a trained sentence-transformers model), `openai`, `gemini`, `hash`. Unset, the ladder picks the first one installed |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | The sentence-transformers model `st` loads; any Hugging Face name |
 | `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | The model `gemini` calls. Needs `GEMINI_API_KEY` (or `GOOGLE_API_KEY`); hosted and billed per call, so `auto` never picks it |
+| `TESSERAE_GEMINI_API_KEY` | — | Key for `gemini`, read before `GEMINI_API_KEY` and `GOOGLE_API_KEY`. Use it on hosts that also run generative tools, which read the two generic names on their own |
+| `TESSERAE_GEMINI_DIM` | — (3072) | Output width `gemini` requests, e.g. `768`; a truncated vector is L2-normalised |
 
 ### `TESSERAE_VERIFY_BAND`
 

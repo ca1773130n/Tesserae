@@ -358,6 +358,8 @@ das Sie cross-project navigieren, den eifrigen Pass ein.
 | `TESSERAE_EMBEDDING_PREFER` | auto | Encoder der dichten Spur: `model2vec` (mitgeliefert, statisch, ohne torch), `st` (ein trainiertes sentence-transformers-Modell), `openai`, `gemini`, `hash`. Ungesetzt nimmt die Leiter den ersten installierten |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | Das sentence-transformers-Modell, das `st` lädt; jeder Hugging-Face-Name |
 | `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | Das Modell, das `gemini` aufruft. Braucht `GEMINI_API_KEY` (oder `GOOGLE_API_KEY`); gehostet und pro Aufruf abgerechnet, daher wählt `auto` es nie |
+| `TESSERAE_GEMINI_API_KEY` | — | Schlüssel für `gemini`, gelesen vor `GEMINI_API_KEY` und `GOOGLE_API_KEY`. Für Hosts, auf denen auch generative Werkzeuge laufen, die die beiden allgemeinen Namen selbst lesen |
+| `TESSERAE_GEMINI_DIM` | — (3072) | Ausgabebreite, die `gemini` anfordert, z. B. `768`; ein gekürzter Vektor wird L2-normalisiert |
 
 ### `TESSERAE_VERIFY_BAND`
 
