@@ -348,6 +348,8 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_EMBEDDING_PREFER` | auto | Кодировщик плотной дорожки: `model2vec` (поставляется в комплекте, статический, без torch), `st` (обученная модель sentence-transformers), `openai`, `gemini`, `hash`. Если не задано, лестница берёт первый установленный |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | Модель sentence-transformers, которую загружает `st`; любое имя с Hugging Face |
 | `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | Модель, которую вызывает `gemini`. Нужен `GEMINI_API_KEY` (или `GOOGLE_API_KEY`); сервис облачный и платный за каждый вызов, поэтому `auto` его никогда не выбирает |
+| `TESSERAE_GEMINI_API_KEY` | — | Ключ для `gemini`; читается раньше `GEMINI_API_KEY` и `GOOGLE_API_KEY`. Нужен на хостах, где работают и генеративные инструменты: они сами читают оба общих имени |
+| `TESSERAE_GEMINI_DIM` | — (3072) | Размерность, которую запрашивает `gemini`, например `768`; усечённый вектор нормализуется по L2 |
 
 ### `TESSERAE_VERIFY_BAND`
 

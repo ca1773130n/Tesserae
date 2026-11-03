@@ -1416,3 +1416,117 @@ def test_gemini_is_reachable_by_name_only_never_from_auto(monkeypatch):
     monkeypatch.setattr(h, "_BACKEND_CACHE", {})
     monkeypatch.setenv("TESSERAE_EMBEDDING_PREFER", "gemini")
     assert h.active_embedding_backend("auto").name == "gemini:fake"
+
+
+def _gemini_fake_urlopen(seen, width):
+    import io
+    import json
+
+    def fake_urlopen(req, timeout=None):
+        body = json.loads(req.data)
+        seen.append((req.get_header("X-goog-api-key"), body))
+        vecs = [{"values": [3.0, 4.0] + [0.0] * (width - 2)} for _ in body["requests"]]
+        return io.BytesIO(json.dumps({"embeddings": vecs}).encode())
+
+    return fake_urlopen
+
+
+def test_gemini_key_order_is_argument_then_scoped_then_generic(monkeypatch):
+    """A host that runs generative CLIs keeps the key under the scoped name only."""
+    from tesserae.retrieval import hybrid as h
+
+    seen = []
+    monkeypatch.setattr("urllib.request.urlopen", _gemini_fake_urlopen(seen, 2))
+    monkeypatch.setenv("GEMINI_API_KEY", "k-generic")
+    monkeypatch.setenv("GOOGLE_API_KEY", "k-google")
+    monkeypatch.setenv("TESSERAE_GEMINI_API_KEY", "k-scoped")
+    h.GeminiEmbeddingBackend().embed(["a"])
+    h.GeminiEmbeddingBackend(api_key="k-arg").embed(["a"])
+    monkeypatch.delenv("GEMINI_API_KEY")
+    monkeypatch.delenv("GOOGLE_API_KEY")
+    h.GeminiEmbeddingBackend().embed(["a"])  # scoped alone is enough
+    assert [key for key, _ in seen] == ["k-scoped", "k-arg", "k-scoped"]
+    monkeypatch.delenv("TESSERAE_GEMINI_API_KEY")
+    with pytest.raises(RuntimeError, match="TESSERAE_GEMINI_API_KEY"):
+        h.GeminiEmbeddingBackend()
+
+
+def test_gemini_output_dimensionality_is_requested_and_renormalised(monkeypatch):
+    from tesserae.retrieval import hybrid as h
+
+    seen = []
+    monkeypatch.setattr("urllib.request.urlopen", _gemini_fake_urlopen(seen, 768))
+    monkeypatch.setenv("TESSERAE_GEMINI_API_KEY", "k")
+    monkeypatch.delenv("TESSERAE_GEMINI_DIM", raising=False)
+    b = h.GeminiEmbeddingBackend(output_dimensionality=768)
+    assert b.dim == 768
+    (vec,) = b.embed(["a"])
+    assert seen[0][1]["requests"][0]["outputDimensionality"] == 768
+    assert len(vec) == 768 and vec[:2] == [0.6, 0.8]  # (3, 4) / 5
+
+    monkeypatch.setenv("TESSERAE_GEMINI_DIM", "768")
+    assert h.GeminiEmbeddingBackend().dim == 768
+    monkeypatch.setenv("TESSERAE_GEMINI_DIM", "1536")
+    with pytest.raises(RuntimeError, match="768-d vector, asked for 1536"):
+        h.GeminiEmbeddingBackend().embed(["a"])
+    with pytest.raises(ValueError, match="outside"):
+        h.GeminiEmbeddingBackend(output_dimensionality=4096)
+    monkeypatch.setenv("TESSERAE_GEMINI_DIM", "wide")
+    with pytest.raises(ValueError, match="not an integer"):
+        h.GeminiEmbeddingBackend()
+
+
+def test_gemini_without_a_dimension_sends_none_and_keeps_the_raw_vector(monkeypatch):
+    from tesserae.retrieval import hybrid as h
+
+    seen = []
+    monkeypatch.setattr("urllib.request.urlopen", _gemini_fake_urlopen(seen, 2))
+    monkeypatch.setenv("TESSERAE_GEMINI_API_KEY", "k")
+    monkeypatch.delenv("TESSERAE_GEMINI_DIM", raising=False)
+    assert h.GeminiEmbeddingBackend().embed(["a"]) == [[3.0, 4.0]]
+    assert "outputDimensionality" not in seen[0][1]["requests"][0]
+
+
+class _NodeVectorBackend:
+    """Supplies vectors per node id; plain ``embed`` must never be reached."""
+
+    name = "node-vectors:test"
+    dim = 2
+
+    def __init__(self, vectors, query_vec):
+        self.vectors = vectors
+        self.query_vec = query_vec
+        self.queries: List[str] = []
+
+    def embed(self, texts):
+        raise AssertionError("embed() must not run when embed_nodes is defined")
+
+    def embed_query(self, text):
+        self.queries.append(text)
+        return self.query_vec
+
+    def embed_nodes(self, nodes):
+        return [self.vectors[n.id] for n in nodes]
+
+
+def test_dense_lane_ranks_by_the_vectors_embed_nodes_supplies():
+    graph = _eight_node_graph()
+    ids = [n.id for n in graph.nodes]
+    # The last node points exactly along the query; every other node is orthogonal.
+    vectors = {nid: [0.0, 1.0] for nid in ids}
+    vectors[ids[-1]] = [1.0, 0.0]
+    backend = _NodeVectorBackend(vectors, [1.0, 0.0])
+    result = hybrid_search(graph, "zzz unrelated words", top_k=3, backend=backend, mode="embedding")
+    assert result.scored[0].node.id == ids[-1]
+    assert backend.queries == ["zzz unrelated words"]
+
+
+def test_dense_lane_refuses_a_short_embed_nodes_reply():
+    graph = _eight_node_graph()
+
+    class Short(_NodeVectorBackend):
+        def embed_nodes(self, nodes):
+            return [[1.0, 0.0]] * (len(nodes) - 1)
+
+    with pytest.raises(RuntimeError, match="returned 7 vectors for 8 nodes"):
+        hybrid_search(graph, "q", top_k=3, backend=Short({}, [1.0, 0.0]), mode="embedding")

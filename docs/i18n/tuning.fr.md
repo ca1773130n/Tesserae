@@ -362,6 +362,8 @@ veut la passe hâtive activée.
 | `TESSERAE_EMBEDDING_PREFER` | auto | Encodeur de la voie dense : `model2vec` (livré, statique, sans torch), `st` (un modèle sentence-transformers entraîné), `openai`, `gemini`, `hash`. Non défini, l'échelle prend le premier installé |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | Le modèle sentence-transformers que `st` charge ; n'importe quel nom Hugging Face |
 | `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | Le modèle qu'appelle `gemini`. Requiert `GEMINI_API_KEY` (ou `GOOGLE_API_KEY`) ; hébergé et facturé à l'appel, donc `auto` ne le choisit jamais |
+| `TESSERAE_GEMINI_API_KEY` | — | Clé de `gemini`, lue avant `GEMINI_API_KEY` et `GOOGLE_API_KEY`. À utiliser sur les hôtes qui exécutent aussi des outils génératifs, lesquels lisent d'eux-mêmes les deux noms génériques |
+| `TESSERAE_GEMINI_DIM` | — (3072) | Largeur de sortie demandée par `gemini`, par ex. `768` ; un vecteur tronqué est normalisé en L2 |
 
 ### `TESSERAE_VERIFY_BAND`
 

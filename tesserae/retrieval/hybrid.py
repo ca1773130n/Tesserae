@@ -232,7 +232,22 @@ class HybridSearchResult:
 
 
 class EmbeddingBackend(Protocol):
-    """Minimal embedding protocol: project a list of strings to vectors."""
+    """Minimal embedding protocol: project a list of strings to vectors.
+
+    Two OPTIONAL methods, looked up with ``getattr``, let a backend own the
+    dense lane's inputs instead of receiving ``_node_text`` strings:
+
+    * ``embed_nodes(nodes) -> vectors``: one vector per node, in order. A
+      backend that already holds vectors for these nodes (a database column, a
+      store keyed by node id) returns them without re-embedding text.
+    * ``embed_query(text) -> vector``: the query side on that same path, for
+      models that want a query form distinct from the document form. Without
+      it the query goes through ``embed``.
+
+    When a backend defines ``embed_nodes``, the dense lane calls it instead of
+    ``embed`` and bypasses ``vector_cache``. The backend is then its own store.
+    ``embed_query`` is consulted only on that path.
+    """
 
     name: str
     dim: int
@@ -440,18 +455,32 @@ class GeminiEmbeddingBackend:
     Same contract as :class:`OpenAIEmbeddingBackend`: it bills per call and
     needs the network, so it is reachable only as ``prefer="gemini"`` (or
     ``TESSERAE_EMBEDDING_PREFER=gemini``), never from ``auto``, and it raises
-    rather than degrading when no key is configured. The key is
-    ``GEMINI_API_KEY``, falling back to ``GOOGLE_API_KEY`` — the two names
-    Google's own SDK reads. ``TESSERAE_GEMINI_MODEL`` swaps the model
-    (``gemini-embedding-001`` is the text-only predecessor).
+    rather than degrading when no key is configured.
+
+    The key, first match wins: the ``api_key`` argument, then
+    ``TESSERAE_GEMINI_API_KEY``, then ``GEMINI_API_KEY`` and ``GOOGLE_API_KEY``
+    (the two names Google's own SDK reads). The scoped name exists for hosts
+    that also run generative tools: the Gemini CLI, opencode and other
+    LLM SDKs pick up the two generic names on their own, so a key meant only
+    for embeddings must not sit in the environment under either of them.
+    ``TESSERAE_GEMINI_MODEL`` swaps the model (``gemini-embedding-001`` is the
+    text-only predecessor).
+
+    ``output_dimensionality`` (or ``TESSERAE_GEMINI_DIM``) asks the API for a
+    truncated vector, e.g. 768 to share a space with vectors stored at that
+    width. Google documents only the full 3072-d output as normalised, so a
+    truncated vector is L2-normalised here, and a reply of any other width
+    raises. Unset, the request carries no ``outputDimensionality`` and the
+    reply's own width wins, exactly as before.
 
     Each text goes in its own request of a ``batchEmbedContents`` call:
     ``gemini-embedding-2`` folds several parts of one ``Content`` into a
     single aggregated vector, which would silently merge texts.
 
     ponytail: no task prefix. Gemini recommends asymmetric query/document
-    prefixes for retrieval, but ``EmbeddingBackend.embed`` cannot tell a query
-    from a document. Adding that split to the protocol is the upgrade path.
+    prefixes for retrieval, but ``embed`` cannot tell a query from a document.
+    A caller that needs the split implements the optional ``embed_query`` /
+    ``embed_nodes`` methods of :class:`EmbeddingBackend` on its own backend.
     """
 
     DEFAULT_MODEL = "gemini-embedding-2"
@@ -460,25 +489,51 @@ class GeminiEmbeddingBackend:
     _DIM = 3072
     _BATCH = 96
 
-    def __init__(self, model: Optional[str] = None) -> None:
-        key = (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or "").strip()
+    def __init__(
+        self,
+        model: Optional[str] = None,
+        *,
+        api_key: Optional[str] = None,
+        output_dimensionality: Optional[int] = None,
+    ) -> None:
+        key = (
+            api_key
+            or os.environ.get("TESSERAE_GEMINI_API_KEY")
+            or os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY")
+            or ""
+        ).strip()
         if not key:
             raise RuntimeError(
-                "GeminiEmbeddingBackend requires GEMINI_API_KEY (or GOOGLE_API_KEY). "
+                "GeminiEmbeddingBackend requires TESSERAE_GEMINI_API_KEY "
+                "(or GEMINI_API_KEY / GOOGLE_API_KEY, or api_key=). "
                 "It is never reached on the 'auto' path, so this means it was asked "
                 "for explicitly (prefer='gemini') without a key configured."
             )
+        if output_dimensionality is None:
+            raw = os.environ.get("TESSERAE_GEMINI_DIM", "").strip()
+            if raw:
+                try:
+                    output_dimensionality = int(raw)
+                except ValueError:
+                    raise ValueError(f"TESSERAE_GEMINI_DIM={raw!r} is not an integer") from None
+        if output_dimensionality is not None and not 1 <= output_dimensionality <= self._DIM:
+            raise ValueError(
+                f"output_dimensionality={output_dimensionality} is outside 1..{self._DIM}")
         self._key = key
         self._model = model or os.environ.get("TESSERAE_GEMINI_MODEL") or self.DEFAULT_MODEL
+        self._out_dim = output_dimensionality
         self.name = f"gemini:{self._model}"
-        self.dim = self._DIM
+        self.dim = output_dimensionality or self._DIM
 
     def _post(self, batch: List[str]) -> List[List[float]]:
         import json as _json
         import urllib.request
 
         model = f"models/{self._model}"
-        body = {"requests": [{"model": model, "content": {"parts": [{"text": t}]}} for t in batch]}
+        extra = {"outputDimensionality": self._out_dim} if self._out_dim else {}
+        body = {"requests": [{"model": model, "content": {"parts": [{"text": t}]}, **extra}
+                             for t in batch]}
         req = urllib.request.Request(
             self._URL.format(model=self._model),
             data=_json.dumps(body).encode("utf-8"),
@@ -493,6 +548,15 @@ class GeminiEmbeddingBackend:
         if len(vectors) != len(batch):
             raise RuntimeError(
                 f"Gemini returned {len(vectors)} embeddings for {len(batch)} texts")
+        if self._out_dim:
+            out = []
+            for vec in vectors:
+                if len(vec) != self._out_dim:
+                    raise RuntimeError(
+                        f"Gemini returned a {len(vec)}-d vector, asked for {self._out_dim}")
+                norm = math.sqrt(sum(x * x for x in vec)) or 1.0
+                out.append([x / norm for x in vec])
+            return out
         return vectors
 
     def embed(self, texts: Sequence[str]) -> List[List[float]]:
@@ -1118,6 +1182,42 @@ def _embedding_scores(
     return scores
 
 
+def _node_vector_scores(
+    query: str,
+    nodes: Sequence[ResearchNode],
+    backend: EmbeddingBackend,
+) -> List[float]:
+    """Exhaustive cosine against vectors the backend supplies per node.
+
+    The lane for a backend that defines ``embed_nodes`` (see
+    :class:`EmbeddingBackend`). The query goes through ``embed_query`` when the
+    backend has one, else through ``embed``. A count mismatch raises: a short
+    list would attach every later vector to the wrong node.
+    """
+    if not nodes:
+        return []
+    embed_query = getattr(backend, "embed_query", None)
+    qvec = embed_query(query) if callable(embed_query) else backend.embed([query])[0]
+    docs = backend.embed_nodes(list(nodes))  # type: ignore[attr-defined]
+    if len(docs) != len(nodes):
+        raise RuntimeError(
+            f"{backend.name}.embed_nodes returned {len(docs)} vectors for {len(nodes)} nodes")
+    np = _numpy()
+    if np is not None and _same_width([qvec, *docs]):
+        q = np.asarray(qvec, dtype=np.float64)
+        matrix = np.asarray(docs, dtype=np.float64)
+        qnorm = math.sqrt(float(q @ q)) or 1.0
+        dnorms = np.sqrt(np.einsum("ij,ij->i", matrix, matrix))
+        dnorms[dnorms == 0.0] = 1.0
+        return ((matrix @ q) / (qnorm * dnorms)).tolist()
+    qnorm = math.sqrt(sum(v * v for v in qvec)) or 1.0
+    scores: List[float] = []
+    for doc_vec in docs:
+        dnorm = math.sqrt(sum(v * v for v in doc_vec)) or 1.0
+        scores.append(sum(a * b for a, b in zip(qvec, doc_vec)) / (qnorm * dnorm))
+    return scores
+
+
 # ---------------------------------------------------------------------------
 # Fusion
 # ---------------------------------------------------------------------------
@@ -1541,7 +1641,12 @@ def hybrid_search(
             vector_cache.stats.misses,
         )
     _embedding_vectorized = False
-    if _embedding_ran:
+    if _embedding_ran and callable(getattr(embed_backend, "embed_nodes", None)):
+        # The backend supplies node vectors itself (see EmbeddingBackend), so
+        # ``texts`` and the vector cache are not consulted on this lane.
+        lane_scores["embedding"] = _node_vector_scores(query, nodes, embed_backend)
+        backend_name = embed_backend.name
+    elif _embedding_ran:
         # Vectorised first, scalar as the fallback. ``_embedding_scores_vectorized``
         # returns None WITHOUT embedding anything when numpy is absent, so the
         # fallback re-embeds nothing and the cache counters below stay honest.

@@ -333,6 +333,8 @@ la pasada ansiosa activada.
 | `TESSERAE_EMBEDDING_PREFER` | auto | Codificador del carril denso: `model2vec` (incluido, estático, sin torch), `st` (un modelo sentence-transformers entrenado), `openai`, `gemini`, `hash`. Sin definir, la escalera elige el primero instalado |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | El modelo sentence-transformers que carga `st`; cualquier nombre de Hugging Face |
 | `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | El modelo que llama `gemini`. Requiere `GEMINI_API_KEY` (o `GOOGLE_API_KEY`); es alojado y se cobra por llamada, así que `auto` nunca lo elige |
+| `TESSERAE_GEMINI_API_KEY` | — | Clave para `gemini`, leída antes que `GEMINI_API_KEY` y `GOOGLE_API_KEY`. Úsala en hosts que también ejecutan herramientas generativas, que leen por su cuenta los dos nombres genéricos |
+| `TESSERAE_GEMINI_DIM` | — (3072) | Ancho de salida que pide `gemini`, p. ej. `768`; un vector truncado se normaliza en L2 |
 
 ### `TESSERAE_VERIFY_BAND`
 

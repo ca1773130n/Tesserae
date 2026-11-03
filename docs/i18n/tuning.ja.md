@@ -305,6 +305,8 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_EMBEDDING_PREFER` | auto | 密ベクトルレーンのエンコーダ: `model2vec`(同梱、静的、torch 不要)、`st`(学習済み sentence-transformers モデル)、`openai`、`gemini`、`hash`。未設定なら、インストール済みのものを順に最初の一つ選ぶ |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | `st` が読み込む sentence-transformers モデル。Hugging Face の任意の名前 |
 | `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | `gemini` が呼ぶモデル。`GEMINI_API_KEY`(または `GOOGLE_API_KEY`)が必要。ホスト型で呼び出しごとに課金されるため、`auto` は選ばない |
+| `TESSERAE_GEMINI_API_KEY` | — | `gemini` のキー。`GEMINI_API_KEY` と `GOOGLE_API_KEY` より先に読む。生成系ツールも動くホストで使う(それらのツールは汎用の 2 つの名前を自分で読む) |
+| `TESSERAE_GEMINI_DIM` | — (3072) | `gemini` が要求する出力次元。例: `768`。切り詰めたベクトルは L2 正規化する |
 
 ### `TESSERAE_VERIFY_BAND`
 
