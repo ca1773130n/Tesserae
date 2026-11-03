@@ -330,8 +330,9 @@ la pasada ansiosa activada.
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Trabajadores de síntesis paralela |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | desactivado | Salta el modelo, ejecuta la tubería |
 | `TESSERAE_VERIFY_BAND` | activado | Vuelve a decidir con el modelo las marcas de revisión dudosas de `ask` en la banda medida 0.30–0.70; `lo-hi` la sustituye. `off` deja solo las marcas gratuitas, que no cuestan tokens ni red |
-| `TESSERAE_EMBEDDING_PREFER` | auto | Codificador del carril denso: `model2vec` (incluido, estático, sin torch), `st` (un modelo sentence-transformers entrenado), `openai`, `hash`. Sin definir, la escalera elige el primero instalado |
+| `TESSERAE_EMBEDDING_PREFER` | auto | Codificador del carril denso: `model2vec` (incluido, estático, sin torch), `st` (un modelo sentence-transformers entrenado), `openai`, `gemini`, `hash`. Sin definir, la escalera elige el primero instalado |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | El modelo sentence-transformers que carga `st`; cualquier nombre de Hugging Face |
+| `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | El modelo que llama `gemini`. Requiere `GEMINI_API_KEY` (o `GOOGLE_API_KEY`); es alojado y se cobra por llamada, así que `auto` nunca lo elige |
 
 ### `TESSERAE_VERIFY_BAND`
 

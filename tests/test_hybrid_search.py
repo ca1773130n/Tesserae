@@ -1352,3 +1352,67 @@ def test_the_trained_encoder_default_is_the_measured_one_and_env_overrides_it(mo
     monkeypatch.setenv("TESSERAE_ST_MODEL", "BAAI/bge-small-en-v1.5")
     h.SentenceTransformersBackend()
     assert seen == ["BAAI/bge-base-en-v1.5", "BAAI/bge-small-en-v1.5"]
+
+
+def test_gemini_backend_needs_a_key_and_says_so(monkeypatch):
+    from tesserae.retrieval import hybrid as h
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+        h.GeminiEmbeddingBackend()
+
+
+def test_gemini_backend_embeds_each_text_separately_in_order(monkeypatch):
+    """gemini-embedding-2 AGGREGATES several parts in one Content into a single
+    vector; one request per text is what keeps one vector per text."""
+    import io
+    import json
+    from tesserae.retrieval import hybrid as h
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_API_KEY", "k-google")
+    monkeypatch.delenv("TESSERAE_GEMINI_MODEL", raising=False)
+    monkeypatch.setattr(h.GeminiEmbeddingBackend, "_BATCH", 2)
+    seen = []
+
+    def fake_urlopen(req, timeout=None):
+        body = json.loads(req.data)
+        seen.append((req.full_url, req.get_header("X-goog-api-key"), body))
+        vecs = [{"values": [float(len(r["content"]["parts"][0]["text"])), 1.0]}
+                for r in body["requests"]]
+        return io.BytesIO(json.dumps({"embeddings": vecs}).encode())
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    b = h.GeminiEmbeddingBackend()
+    assert b.name == "gemini:gemini-embedding-2"
+    assert b.embed(["a", "bbb", "cc"]) == [[1.0, 1.0], [3.0, 1.0], [2.0, 1.0]]
+    assert len(seen) == 2  # batched at _BATCH
+    url, key, body = seen[0]
+    assert url.endswith("/models/gemini-embedding-2:batchEmbedContents")
+    assert key == "k-google"
+    assert body["requests"][0]["model"] == "models/gemini-embedding-2"
+    assert b.dim == 2  # the response's real width wins over the published one
+
+
+def test_gemini_is_reachable_by_name_only_never_from_auto(monkeypatch):
+    from tesserae.retrieval import hybrid as h
+
+    class FakeGemini:
+        name = "gemini:fake"
+
+    class Boom:
+        def __init__(self, *a, **k):
+            raise ImportError("no local backend")
+
+    monkeypatch.setattr(h, "GeminiEmbeddingBackend", FakeGemini)
+    monkeypatch.setattr(h, "Model2VecBackend", Boom)
+    monkeypatch.setattr(h, "SentenceTransformersBackend", Boom)
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    monkeypatch.delenv("TESSERAE_EMBEDDING_PREFER", raising=False)
+    monkeypatch.setattr(h, "_BACKEND_CACHE", {})
+    with pytest.warns(UserWarning):
+        assert isinstance(h.active_embedding_backend("auto"), h.HashEmbeddingBackend)
+    monkeypatch.setattr(h, "_BACKEND_CACHE", {})
+    monkeypatch.setenv("TESSERAE_EMBEDDING_PREFER", "gemini")
+    assert h.active_embedding_backend("auto").name == "gemini:fake"

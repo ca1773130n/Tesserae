@@ -297,8 +297,9 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_SYNTHESIS_WORKERS` | — | 并行综合工作者 |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | 关闭 | 跳过模型，运行管道 |
 | `TESSERAE_VERIFY_BAND` | 开启 | 在实测的 0.30–0.70 区间内用模型重新判定 `ask` 不确定的复核标记；`lo-hi` 覆盖它。`off` 只保留不花费令牌也不走网络的免费标记 |
-| `TESSERAE_EMBEDDING_PREFER` | auto | 稠密通道编码器：`model2vec`（随包附带，静态，无需 torch）、`st`（经过训练的 sentence-transformers 模型）、`openai`、`hash`。未设置时按顺序选用第一个已安装的 |
+| `TESSERAE_EMBEDDING_PREFER` | auto | 稠密通道编码器：`model2vec`（随包附带，静态，无需 torch）、`st`（经过训练的 sentence-transformers 模型）、`openai`、`gemini`、`hash`。未设置时按顺序选用第一个已安装的 |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | `st` 加载的 sentence-transformers 模型；任意 Hugging Face 名称 |
+| `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | `gemini` 调用的模型。需要 `GEMINI_API_KEY`（或 `GOOGLE_API_KEY`）；托管服务，按调用计费，因此 `auto` 从不选用 |
 
 ### `TESSERAE_VERIFY_BAND`
 

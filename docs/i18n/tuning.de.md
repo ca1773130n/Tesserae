@@ -355,8 +355,9 @@ das Sie cross-project navigieren, den eifrigen Pass ein.
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Parallele Synthese-Worker |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | aus | Skip das Modell, führe Pipeline aus |
 | `TESSERAE_VERIFY_BAND` | an | Lässt das Modell die unsicheren Prüfmarkierungen von `ask` im gemessenen Band 0.30–0.70 neu entscheiden; `lo-hi` überschreibt es. `off` behält nur die kostenlosen Markierungen, die weder Token noch Netzwerk kosten |
-| `TESSERAE_EMBEDDING_PREFER` | auto | Encoder der dichten Spur: `model2vec` (mitgeliefert, statisch, ohne torch), `st` (ein trainiertes sentence-transformers-Modell), `openai`, `hash`. Ungesetzt nimmt die Leiter den ersten installierten |
+| `TESSERAE_EMBEDDING_PREFER` | auto | Encoder der dichten Spur: `model2vec` (mitgeliefert, statisch, ohne torch), `st` (ein trainiertes sentence-transformers-Modell), `openai`, `gemini`, `hash`. Ungesetzt nimmt die Leiter den ersten installierten |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | Das sentence-transformers-Modell, das `st` lädt; jeder Hugging-Face-Name |
+| `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | Das Modell, das `gemini` aufruft. Braucht `GEMINI_API_KEY` (oder `GOOGLE_API_KEY`); gehostet und pro Aufruf abgerechnet, daher wählt `auto` es nie |
 
 ### `TESSERAE_VERIFY_BAND`
 

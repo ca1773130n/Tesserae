@@ -345,8 +345,9 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Рабочие потоки параллельного синтеза |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | выключено | Пропустить модель, выполнить конвейер |
 | `TESSERAE_VERIFY_BAND` | включено | Пересудить моделью неуверенные пометки проверки в `ask` в измеренной полосе 0.30–0.70; `lo-hi` её переопределяет. `off` оставляет только бесплатные пометки, не стоящие ни токенов, ни сети |
-| `TESSERAE_EMBEDDING_PREFER` | auto | Кодировщик плотной дорожки: `model2vec` (поставляется в комплекте, статический, без torch), `st` (обученная модель sentence-transformers), `openai`, `hash`. Если не задано, лестница берёт первый установленный |
+| `TESSERAE_EMBEDDING_PREFER` | auto | Кодировщик плотной дорожки: `model2vec` (поставляется в комплекте, статический, без torch), `st` (обученная модель sentence-transformers), `openai`, `gemini`, `hash`. Если не задано, лестница берёт первый установленный |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | Модель sentence-transformers, которую загружает `st`; любое имя с Hugging Face |
+| `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | Модель, которую вызывает `gemini`. Нужен `GEMINI_API_KEY` (или `GOOGLE_API_KEY`); сервис облачный и платный за каждый вызов, поэтому `auto` его никогда не выбирает |
 
 ### `TESSERAE_VERIFY_BAND`
 

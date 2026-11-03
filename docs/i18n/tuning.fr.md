@@ -359,8 +359,9 @@ veut la passe hâtive activée.
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Travailleurs de synthèse parallèles |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | désactivé | Ignorer le modèle, exécuter le pipeline |
 | `TESSERAE_VERIFY_BAND` | activé | Faire retrancher par le modèle les signalements incertains de `ask` dans la bande mesurée 0.30–0.70 ; `lo-hi` la remplace. `off` ne garde que les signalements gratuits, qui ne coûtent ni jetons ni réseau |
-| `TESSERAE_EMBEDDING_PREFER` | auto | Encodeur de la voie dense : `model2vec` (livré, statique, sans torch), `st` (un modèle sentence-transformers entraîné), `openai`, `hash`. Non défini, l'échelle prend le premier installé |
+| `TESSERAE_EMBEDDING_PREFER` | auto | Encodeur de la voie dense : `model2vec` (livré, statique, sans torch), `st` (un modèle sentence-transformers entraîné), `openai`, `gemini`, `hash`. Non défini, l'échelle prend le premier installé |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | Le modèle sentence-transformers que `st` charge ; n'importe quel nom Hugging Face |
+| `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | Le modèle qu'appelle `gemini`. Requiert `GEMINI_API_KEY` (ou `GOOGLE_API_KEY`) ; hébergé et facturé à l'appel, donc `auto` ne le choisit jamais |
 
 ### `TESSERAE_VERIFY_BAND`
 

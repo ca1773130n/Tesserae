@@ -339,8 +339,9 @@ you navigate cross-project wants the eager pass on.
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Parallel synthesis workers |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | off | Skip the model, exercise the pipeline |
 | `TESSERAE_VERIFY_BAND` | on | Re-decide `ask`'s uncertain review flags with the model, in the measured 0.30–0.70 band; `lo-hi` overrides it. `off` keeps the free flags only, which cost no tokens and no network |
-| `TESSERAE_EMBEDDING_PREFER` | auto | Dense lane encoder: `model2vec` (shipped, static, no torch), `st` (a trained sentence-transformers model), `openai`, `hash`. Unset, the ladder picks the first one installed |
+| `TESSERAE_EMBEDDING_PREFER` | auto | Dense lane encoder: `model2vec` (shipped, static, no torch), `st` (a trained sentence-transformers model), `openai`, `gemini`, `hash`. Unset, the ladder picks the first one installed |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | The sentence-transformers model `st` loads; any Hugging Face name |
+| `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | The model `gemini` calls. Needs `GEMINI_API_KEY` (or `GOOGLE_API_KEY`); hosted and billed per call, so `auto` never picks it |
 
 ### `TESSERAE_VERIFY_BAND`
 

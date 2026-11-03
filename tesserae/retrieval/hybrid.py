@@ -434,6 +434,77 @@ class OpenAIEmbeddingBackend:
         return out
 
 
+class GeminiEmbeddingBackend:
+    """Hosted embeddings via the Gemini API — EXPLICIT USE ONLY.
+
+    Same contract as :class:`OpenAIEmbeddingBackend`: it bills per call and
+    needs the network, so it is reachable only as ``prefer="gemini"`` (or
+    ``TESSERAE_EMBEDDING_PREFER=gemini``), never from ``auto``, and it raises
+    rather than degrading when no key is configured. The key is
+    ``GEMINI_API_KEY``, falling back to ``GOOGLE_API_KEY`` — the two names
+    Google's own SDK reads. ``TESSERAE_GEMINI_MODEL`` swaps the model
+    (``gemini-embedding-001`` is the text-only predecessor).
+
+    Each text goes in its own request of a ``batchEmbedContents`` call:
+    ``gemini-embedding-2`` folds several parts of one ``Content`` into a
+    single aggregated vector, which would silently merge texts.
+
+    ponytail: no task prefix. Gemini recommends asymmetric query/document
+    prefixes for retrieval, but ``EmbeddingBackend.embed`` cannot tell a query
+    from a document. Adding that split to the protocol is the upgrade path.
+    """
+
+    DEFAULT_MODEL = "gemini-embedding-2"
+    _URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents"
+    #: Published default output width; the first response's real width wins.
+    _DIM = 3072
+    _BATCH = 96
+
+    def __init__(self, model: Optional[str] = None) -> None:
+        key = (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or "").strip()
+        if not key:
+            raise RuntimeError(
+                "GeminiEmbeddingBackend requires GEMINI_API_KEY (or GOOGLE_API_KEY). "
+                "It is never reached on the 'auto' path, so this means it was asked "
+                "for explicitly (prefer='gemini') without a key configured."
+            )
+        self._key = key
+        self._model = model or os.environ.get("TESSERAE_GEMINI_MODEL") or self.DEFAULT_MODEL
+        self.name = f"gemini:{self._model}"
+        self.dim = self._DIM
+
+    def _post(self, batch: List[str]) -> List[List[float]]:
+        import json as _json
+        import urllib.request
+
+        model = f"models/{self._model}"
+        body = {"requests": [{"model": model, "content": {"parts": [{"text": t}]}} for t in batch]}
+        req = urllib.request.Request(
+            self._URL.format(model=self._model),
+            data=_json.dumps(body).encode("utf-8"),
+            headers={"x-goog-api-key": self._key, "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            payload = _json.load(resp)
+        vectors = [[float(x) for x in e["values"]] for e in payload["embeddings"]]
+        # The response carries no per-item index; a short reply would shift
+        # every later vector onto the wrong text, so refuse it outright.
+        if len(vectors) != len(batch):
+            raise RuntimeError(
+                f"Gemini returned {len(vectors)} embeddings for {len(batch)} texts")
+        return vectors
+
+    def embed(self, texts: Sequence[str]) -> List[List[float]]:
+        out: List[List[float]] = []
+        pending = list(texts)
+        for i in range(0, len(pending), self._BATCH):
+            out.extend(self._post(pending[i : i + self._BATCH]))
+        if out:
+            self.dim = len(out[0])
+        return out
+
+
 # Module-scope cache so repeated MCP `search_nodes` calls don't reload a
 # multi-hundred-MB ``SentenceTransformer`` model every query. Keyed by the
 # ``prefer`` argument so swapping resolver preferences mid-process still
@@ -454,11 +525,11 @@ def active_embedding_backend(prefer: str = "auto") -> EmbeddingBackend:
     """Resolve the best embedding backend that is actually importable.
 
     ``prefer`` may be ``auto`` (default), ``model2vec``/``m2v``,
-    ``sentence-transformers``/``st``, ``openai`` or ``hash``.
+    ``sentence-transformers``/``st``, ``openai``, ``gemini`` or ``hash``.
 
-    ``openai`` is reachable ONLY by name. It is the one backend that bills per
-    call and needs the network, so the ``auto`` path must never be able to
-    select it — an ordinary read would otherwise become a metered request. It
+    ``openai`` and ``gemini`` are reachable ONLY by name. They are the backends
+    that bill per call and need the network, so the ``auto`` path must never be
+    able to select them — an ordinary read would otherwise become a metered request. It
     exists so a benchmark can hold the embedding substrate constant with a
     published protocol that fixes ``text-embedding-3-small``.
 
@@ -483,12 +554,12 @@ def active_embedding_backend(prefer: str = "auto") -> EmbeddingBackend:
         # rather than to the hash stub, and is reported: a silently ignored
         # setting looks exactly like a backend that ran and did nothing.
         wanted = os.environ.get("TESSERAE_EMBEDDING_PREFER", "").strip().lower()
-        if wanted in ("model2vec", "m2v", "sentence-transformers", "st", "openai", "hash"):
+        if wanted in ("model2vec", "m2v", "sentence-transformers", "st", "openai", "gemini", "hash"):
             prefer = wanted
         elif wanted:
             warnings.warn(
                 f"TESSERAE_EMBEDDING_PREFER={wanted!r} names no backend "
-                "(model2vec, st, openai, hash); using auto", UserWarning, stacklevel=2)
+                "(model2vec, st, openai, gemini, hash); using auto", UserWarning, stacklevel=2)
     cached = _BACKEND_CACHE.get(prefer)
     if cached is not None:
         return cached
@@ -512,8 +583,8 @@ def active_embedding_backend(prefer: str = "auto") -> EmbeddingBackend:
                 raise
     # Hosted embeddings: EXPLICIT ONLY, never reachable from "auto". This one
     # bills per call and needs the network, so it must be asked for by name.
-    if prefer == "openai":
-        backend = OpenAIEmbeddingBackend()
+    if prefer in ("openai", "gemini"):
+        backend = OpenAIEmbeddingBackend() if prefer == "openai" else GeminiEmbeddingBackend()
         _BACKEND_CACHE[prefer] = backend
         return backend
     if prefer == "hash":
