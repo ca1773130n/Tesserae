@@ -302,8 +302,9 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_SYNTHESIS_WORKERS` | — | 並行合成ワーカー |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | オフ | モデルをスキップ、パイプラインを実行 |
 | `TESSERAE_VERIFY_BAND` | オン | `ask` の不確かなレビュー印を、実測の 0.30–0.70 帯でモデルに判定し直させる。`lo-hi` はその帯を上書きする。`off` はトークンもネットワークも使わない無料の印だけを残す |
-| `TESSERAE_EMBEDDING_PREFER` | auto | 密ベクトルレーンのエンコーダ: `model2vec`(同梱、静的、torch 不要)、`st`(学習済み sentence-transformers モデル)、`openai`、`hash`。未設定なら、インストール済みのものを順に最初の一つ選ぶ |
+| `TESSERAE_EMBEDDING_PREFER` | auto | 密ベクトルレーンのエンコーダ: `model2vec`(同梱、静的、torch 不要)、`st`(学習済み sentence-transformers モデル)、`openai`、`gemini`、`hash`。未設定なら、インストール済みのものを順に最初の一つ選ぶ |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | `st` が読み込む sentence-transformers モデル。Hugging Face の任意の名前 |
+| `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | `gemini` が呼ぶモデル。`GEMINI_API_KEY`(または `GOOGLE_API_KEY`)が必要。ホスト型で呼び出しごとに課金されるため、`auto` は選ばない |
 
 ### `TESSERAE_VERIFY_BAND`
 

@@ -315,8 +315,9 @@ cross-project navigate하는 project는 eager pass를 원합니다.
 | `TESSERAE_SYNTHESIS_WORKERS` | — | Parallel synthesis workers |
 | `TESSERAE_SYNTHESIS_DRY_RUN` | off | model skip, pipeline exercise |
 | `TESSERAE_VERIFY_BAND` | on | `ask`의 불확실한 검토 플래그를 측정된 0.30–0.70 구간에서 모델로 다시 판정한다. `lo-hi`는 그 구간을 덮어쓴다. `off`는 토큰도 네트워크도 쓰지 않는 무료 플래그만 남긴다 |
-| `TESSERAE_EMBEDDING_PREFER` | auto | 밀집 레인 인코더: `model2vec`(기본 탑재, 정적, torch 불필요), `st`(학습된 sentence-transformers 모델), `openai`, `hash`. 설정하지 않으면 설치된 것 중 첫 번째를 고른다 |
+| `TESSERAE_EMBEDDING_PREFER` | auto | 밀집 레인 인코더: `model2vec`(기본 탑재, 정적, torch 불필요), `st`(학습된 sentence-transformers 모델), `openai`, `gemini`, `hash`. 설정하지 않으면 설치된 것 중 첫 번째를 고른다 |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | `st`가 로드하는 sentence-transformers 모델; Hugging Face 이름 아무거나 |
+| `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | `gemini`가 호출하는 모델. `GEMINI_API_KEY`(또는 `GOOGLE_API_KEY`)가 필요하다. 호스팅되고 호출마다 과금되므로 `auto`는 절대 고르지 않는다 |
 
 ### `TESSERAE_VERIFY_BAND`
 
