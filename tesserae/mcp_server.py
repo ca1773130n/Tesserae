@@ -5308,7 +5308,13 @@ class LLMWikiMCPServer:
         report_path = project_root / ".tesserae" / "doctor-report.md"
         # Machine-wide, not per project: it scores the extraction and update
         # code itself, so it is served whether or not this project has a report.
-        lifecycle_eval = latest_lifecycle_results()
+        # An auxiliary field: whatever goes wrong reading it is reported in
+        # it, never allowed to take the project's report down.
+        try:
+            lifecycle_eval = latest_lifecycle_results()
+        except Exception as exc:
+            _LOG.warning("doctor_report: lifecycle eval results unreadable: %s", exc)
+            lifecycle_eval = {"stages": {}, "errors": [{"error": f"{type(exc).__name__}: {exc}"}]}
         if not report_path.exists():
             return {
                 "exists": False,
