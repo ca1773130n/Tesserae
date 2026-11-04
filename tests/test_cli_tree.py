@@ -230,7 +230,7 @@ def test_every_command_help_has_examples(capsys):
                 ["status"], ["engine"], ["refresh"], ["research"], ["query"],
                 ["lint"], ["extract"], ["graph-map"],
                 ["sessions", "import"], ["vault", "sync"], ["export", "site"],
-                ["code", "sync"], ["config", "llm"], ["projects", "register"],
+                ["code", "sync"], ["hook", "inject"], ["config", "llm"], ["projects", "register"],
                 ["integrations", "refresh"], ["lab", "evolve"]):
         with pytest.raises(SystemExit):
             cli.main([*cmd, "--help"])
