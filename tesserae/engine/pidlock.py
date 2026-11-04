@@ -31,7 +31,9 @@ owner renews through :class:`LeaseHeartbeat`. :func:`owner_is_alive` never
 probes a pid recorded by another host: it reads that host's lease, and an
 absent lease field answers "alive" (conservative, as above). On the writer's
 own host a ``boot_id`` that changed means the machine rebooted since, which
-kills every pid it recorded. :func:`version_conflicts` is what lets an engine
+kills every pid it recorded — decisive on Linux, where ``/proc`` start times
+restart at every boot; only a tiebreaker on macOS, where the start time is an
+absolute timestamp and already rules out a pid recycled across a reboot. :func:`version_conflicts` is what lets an engine
 notice that another host runs a different Tesserae version against the same
 project — the stale-code failure mode, one machine removed.
 
@@ -45,6 +47,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import socket
 import subprocess
 import threading
@@ -96,13 +99,15 @@ def process_start_time(pid: int) -> Optional[str]:
     # under a Korean-locale shell and a checker under an English one would
     # otherwise disagree about the SAME instant and misread a live owner as
     # PID reuse (doctor would then offer to delete a live daemon's pidfile).
+    # TZ=UTC0 for the same reason: lstart is rendered in the caller's local
+    # zone, so a launchd daemon and a shell with TZ exported disagree too.
     try:
         result = subprocess.run(
             ["ps", "-o", "lstart=", "-p", str(pid)],
             capture_output=True,
             text=True,
             timeout=_PS_TIMEOUT_S,
-            env={**os.environ, "LC_ALL": "C"},
+            env={**os.environ, "LC_ALL": "C", "TZ": "UTC0"},
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -153,9 +158,12 @@ def own_start_time() -> Optional[str]:
 def boot_id() -> Optional[str]:
     """An opaque token that changes on every reboot of this machine, or None.
 
-    Linux: ``/proc/sys/kernel/random/boot_id``. macOS / BSD: ``sysctl -n
-    kern.boottime``. A pid recorded before a reboot names nothing, whatever
-    process holds that number now.
+    Linux: ``/proc/sys/kernel/random/boot_id``. macOS / BSD: the ``sec``
+    field of ``sysctl -n kern.boottime`` — only that integer, because the rest
+    of the line is a date rendered in the caller's timezone, and two processes
+    on one boot that run under different ``TZ`` would otherwise disagree. A
+    pid recorded before a reboot names nothing, whatever process holds that
+    number now.
     """
     global _boot_id_cache
     if _boot_id_cache is not _BOOT_ID_UNSET:
@@ -170,11 +178,36 @@ def boot_id() -> Optional[str]:
                 ["sysctl", "-n", "kern.boottime"], capture_output=True, text=True,
                 timeout=_PS_TIMEOUT_S, env={**os.environ, "LC_ALL": "C"},
             )
-            value = result.stdout.strip() or None
+            value = _boot_token(result.stdout.strip()) or None
     except (OSError, subprocess.SubprocessError) as exc:
         logger.debug("boot id unavailable: %s", exc)
     _boot_id_cache = value
     return value
+
+
+_BOOTTIME_SEC = re.compile(r"\bsec\s*=\s*(\d+)")
+
+
+def _boot_token(raw: str) -> str:
+    """``kern.boottime`` text → its ``sec`` integer; anything else unchanged.
+
+    Applied to recorded values too, so a pidfile written before this fix (the
+    whole line, local-time date included) still compares equal on the same
+    boot.
+    """
+    match = _BOOTTIME_SEC.search(raw)
+    return match.group(1) if match else raw
+
+
+def _start_time_survives_reboot() -> bool:
+    """Whether a matching start time alone proves the pid was not recycled.
+
+    ``ps -o lstart`` (macOS / BSD) is a wall-clock timestamp: a process started
+    after a reboot cannot match one recorded before it. ``/proc`` ``starttime``
+    counts clock ticks since boot, so after a reboot a recycled pid can match
+    by coincidence — there the boot id has to decide.
+    """
+    return not Path("/proc/self/stat").exists()
 
 
 def local_host() -> str:
@@ -273,10 +306,13 @@ def owner_is_alive(payload: Optional[dict]) -> bool:
             return time.time() < expires
         return True  # no lease recorded: cannot judge, so never call it stale
     recorded_boot = payload.get("boot_id")
-    if recorded_boot:
-        live_boot = boot_id()
-        if live_boot and live_boot != recorded_boot:
-            return False  # this machine rebooted since; every recorded pid died
+    live_boot = boot_id() if recorded_boot else None
+    boot_changed = bool(live_boot and _boot_token(str(recorded_boot)) != live_boot)
+    if boot_changed and not _start_time_survives_reboot():
+        return False  # this machine rebooted since; every recorded pid died
+    # Where start times are absolute (macOS), the boot id only breaks a tie
+    # the start time cannot: kern.boottime is the least trustworthy signal
+    # here, and a wrong "stale" lets a second engine start beside a live one.
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -288,12 +324,14 @@ def owner_is_alive(payload: Optional[dict]) -> bool:
 
     recorded = payload.get("start_time")
     if not recorded:
-        return True  # no recorded identity (legacy) — can't detect reuse
+        return not boot_changed  # no recorded identity (legacy) — can't detect reuse
     live = process_start_time(pid)
     if live is None:
-        return True  # can't read identity now — don't risk a double start
+        return not boot_changed  # can't read identity now — don't risk a double start
     if live == recorded:
         return True
+    if boot_changed:
+        return False
     # Start-time render can differ for the SAME instant when writer and
     # reader ran under different locales (pre-fix pidfiles; ps localizes
     # lstart on macOS). A matching full cmdline rescues the alive verdict —

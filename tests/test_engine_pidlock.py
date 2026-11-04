@@ -173,12 +173,67 @@ def test_foreign_pid_is_never_probed(monkeypatch):
 
 
 def test_reboot_on_this_host_makes_the_record_stale(monkeypatch):
+    """Linux: /proc start times restart at boot, so the boot id decides."""
     monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
     monkeypatch.setattr(pidlock, "boot_id", lambda: "BOOT-NEW")
+    monkeypatch.setattr(pidlock, "_start_time_survives_reboot", lambda: False)
     monkeypatch.setattr(pidlock, "process_start_time", lambda pid: "SAME")
     payload = {"pid": os.getpid(), "host": "srv-a", "boot_id": "BOOT-OLD", "start_time": "SAME"}
     assert pidlock.owner_is_alive(payload) is False
     assert pidlock.owner_is_alive({**payload, "boot_id": "BOOT-NEW"}) is True
+
+
+def test_absolute_start_time_outranks_a_changed_boot_id(monkeypatch):
+    """macOS: lstart is wall-clock, so a matching one proves the pid is the
+    recorded process whatever kern.boottime says; the boot id only decides
+    when the start time cannot."""
+    monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
+    monkeypatch.setattr(pidlock, "boot_id", lambda: "1793711863")
+    monkeypatch.setattr(pidlock, "_start_time_survives_reboot", lambda: True)
+    monkeypatch.setattr(pidlock, "process_start_time", lambda pid: "SAME")
+    payload = {"pid": os.getpid(), "host": "srv-a", "boot_id": "1700000000", "start_time": "SAME"}
+    assert pidlock.owner_is_alive(payload) is True
+    assert pidlock.owner_is_alive({**payload, "start_time": None}) is False
+    assert pidlock.owner_is_alive({**payload, "start_time": "OTHER", "cmdline": None}) is False
+
+
+def test_boot_token_ignores_the_local_time_date():
+    """A pre-fix record carried the whole kern.boottime line, date included."""
+    old = "{ sec = 1793711863, usec = 718139 } Tue Nov  3 13:17:43 2026"
+    assert pidlock._boot_token(old) == "1793711863"
+    assert pidlock._boot_token("4c1e-uuid") == "4c1e-uuid"
+
+
+def test_owner_written_under_another_timezone_is_alive(tmp_path):
+    """Reproduces the review blocker with real subprocesses: an owner started
+    with TZ=UTC must read as alive to a checker running with TZ=Asia/Seoul.
+    Before the fix kern.boottime's local-time date differed between them, and
+    the boot-id mismatch declared the live owner dead."""
+    import subprocess
+    import sys
+
+    record = tmp_path / "owner.json"
+    env = {**os.environ, "TESSERAE_HOST_ID": "tz-test-host"}
+    owner = subprocess.Popen(
+        [sys.executable, "-c",
+         "import sys, pathlib; from tesserae.engine import pidlock; "
+         f"pathlib.Path({str(record)!r}).write_text(pidlock.serialize()); "
+         "print('ready', flush=True); sys.stdin.read()"],
+        env={**env, "TZ": "UTC"}, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+    )
+    try:
+        assert owner.stdout.readline().strip() == "ready"
+        check = subprocess.run(
+            [sys.executable, "-c",
+             "import pathlib; from tesserae.engine import pidlock; "
+             f"print(pidlock.owner_is_alive(pidlock.read_owner(pathlib.Path({str(record)!r}))))"],
+            env={**env, "TZ": "Asia/Seoul"}, capture_output=True, text=True, timeout=60,
+        )
+        assert check.returncode == 0, check.stderr
+        assert check.stdout.strip() == "True"
+    finally:
+        owner.stdin.close()
+        owner.wait(timeout=30)
 
 
 def test_renew_extends_only_our_own_lease(tmp_path, monkeypatch):
