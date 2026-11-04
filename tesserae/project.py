@@ -4070,8 +4070,10 @@ class ProjectWiki:
         # the documented ``TESSERAE_ENABLE_LLM_PASSES`` env gate is set — in
         # which case we build the best-effort default. Otherwise they are
         # skipped entirely and the default path stays deterministic and
-        # credential-free. Either way graph.json is byte-idempotent (the
-        # content-keyed disk caches keep warm LLM reruns byte-stable).
+        # credential-free. Either way graph.json is byte-idempotent once the
+        # content-keyed disk caches are warm. The opt-in reconcile pass (4b) has
+        # a per-run call budget, so on a large graph it needs several compiles
+        # to warm and graph.json can change on each of them until it is.
         if json_client is None and _env_truthy("TESSERAE_ENABLE_LLM_PASSES"):
             try:
                 # Provider-aware (honors llm_provider=codex), same as the

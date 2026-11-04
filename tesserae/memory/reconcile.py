@@ -16,8 +16,10 @@ operation:
   EXISTING`` edge is minted (or an existing one upgraded) carrying
   ``invalid_at`` (NEW's own source timestamp — Graphiti's rule that an
   invalidation's end time is the invalidating fact's valid time),
-  ``status="attested"`` and ``asserted_by="memory.reconcile"``. Nothing is
-  deleted. ``raw_source`` and ``verify_claim`` DEMOTE such a fact (they return
+  ``status="attested"`` and ``asserted_by="memory.reconcile"``. Only when
+  both facts carry source timestamps that order them: an unordered pair
+  (e.g. two undated document claims) is counted and left alone, since the
+  roles would otherwise be assigned by node id. Nothing is deleted. ``raw_source`` and ``verify_claim`` DEMOTE such a fact (they return
   it with an invalidation record, see :func:`tesserae.graph_filters.invalidations`)
   and never filter it.
 * ``NOOP`` — NEW says the same thing and adds nothing. Nothing is written.
@@ -33,10 +35,12 @@ backend the "neighbours" are token-bucket collisions, not meaning, so the pass
 does not run at all rather than pretend.
 
 Cost is bounded three ways: ``top_s`` neighbours per node, a content-hash
-verdict cache on disk (an unchanged pair is never re-asked, so a warm rerun is
-free and byte-stable), and a per-run call budget
-(``TESSERAE_RECONCILE_MAX_CALLS``, default :data:`DEFAULT_MAX_CALLS`). Pairs past
-the budget are counted and reported, never silently dropped.
+verdict cache on disk (an unchanged pair is never re-asked), and a per-run call
+budget (``TESSERAE_RECONCILE_MAX_CALLS``, default :data:`DEFAULT_MAX_CALLS`).
+Pairs past the budget are counted and reported, never silently dropped. The
+budget means ``graph.json`` is byte-stable across reruns only once the cache is
+warm: until then each compile asks for more verdicts and may mint more edges
+(logged at WARNING).
 """
 
 from __future__ import annotations
@@ -62,7 +66,6 @@ from ..research_graph import (
 from .supersede import (
     SUPERSEDE_EDGE,
     _node_blob,
-    _session_id,
     embedding_candidate_pairs,
 )
 
@@ -300,8 +303,12 @@ class ReconcileStats:
     verdicts: Dict[str, int] = field(default_factory=lambda: {v: 0 for v in VERDICTS})
     invalidations_minted: int = 0
     invalidations_upgraded: int = 0
+    #: Edges this pass wrote on an earlier run whose current verdict is no
+    #: longer INVALIDATE (content changed, cache cleared, or now unordered).
+    invalidations_retired: int = 0
     conflicts: int = 0
-    undated: int = 0
+    #: INVALIDATE verdicts on pairs no source clock orders; no edge written.
+    unordered: int = 0
     proofs_added: int = 0
     proofs_unpersisted: int = 0
 
@@ -309,21 +316,32 @@ class ReconcileStats:
         return dataclasses.asdict(self)
 
 
-def _order_pair(a: ResearchNode, b: ResearchNode) -> Tuple[ResearchNode, ResearchNode]:
-    """``(existing, new)``: older first by source timestamp, then session id.
+def _order_pair(
+    a: ResearchNode,
+    b: ResearchNode,
+    roots: Tuple[str, ...] = (),
+    doc_dates: Optional[Dict[str, str]] = None,
+) -> Tuple[ResearchNode, ResearchNode, Optional[str]]:
+    """``(existing, new, new_ts)``: older first by source timestamp.
 
-    Falls back to the incoming ``a.id < b.id`` order when neither clock
-    separates them, so the orientation is a pure function of content.
+    ``roots`` / ``doc_dates`` are the graph's own (:func:`temporal.graph_project_roots`,
+    :func:`temporal.document_dates`), so document claims are dated by their
+    source path and the date their document states, exactly as
+    ``TemporalFactProjector`` dates them.
+
+    ``new_ts`` is NEW's source timestamp when the two timestamps parse and
+    differ, else ``None``. In that case the pair keeps the incoming
+    ``a.id < b.id`` orientation, which is stable but says nothing about which
+    fact came first, so the caller must not INVALIDATE on it. Session ids are
+    deliberately NOT a fallback clock: comparing id strings orders nothing.
     """
     from ..temporal import _parse_iso, _source_ts
 
-    ta, tb = _parse_iso(_source_ts(a)), _parse_iso(_source_ts(b))
+    sa, sb = _source_ts(a, roots, doc_dates), _source_ts(b, roots, doc_dates)
+    ta, tb = _parse_iso(sa), _parse_iso(sb)
     if ta is not None and tb is not None and ta != tb:
-        return (a, b) if ta < tb else (b, a)
-    sa, sb = _session_id(a), _session_id(b)
-    if sa and sb and sa != sb:
-        return (a, b) if sa < sb else (b, a)
-    return a, b
+        return (a, b, sb) if ta < tb else (b, a, sa)
+    return a, b, None
 
 
 def _evidence_span(new: ResearchNode, proposed: str) -> str:
@@ -350,16 +368,29 @@ def run_reconcile_pass(
 ) -> Tuple[ResearchGraph, ReconcileStats]:
     """Reconcile findings and claims; returns the (edge-augmented) graph + stats.
 
-    ``recorded_at`` is the compile's content-derived reference instant. It is
-    stamped on proof rows, and is the fallback ``invalid_at`` when NEW carries
-    no source timestamp (provenance then says ``invalid_at_basis:
-    "compile_reference"`` — an upper bound, not the moment). With neither, the
-    INVALIDATE is not written: an edge that hides a fact without saying when
-    is exactly what this pass must not mint.
+    ``recorded_at`` is the compile's content-derived reference instant,
+    stamped on proof rows. It is NOT an ``invalid_at`` fallback: an INVALIDATE
+    is written only when both facts carry source timestamps that order them,
+    and ``invalid_at`` is NEW's. A pair no clock orders is counted in
+    ``unordered`` and left alone, because hiding one of two undated facts
+    would be deciding by node id which one came first.
+
+    Edges this pass wrote on an earlier run are re-checked against the
+    verdict for their endpoints' CURRENT content; one that is no longer an
+    ordered, cached INVALIDATE is retired (a minted edge is removed, an
+    upgraded one is restored to what it was). An edge whose ``status`` a host
+    or a hand edit set to an untrusted value is never touched.
+
+    ``graph.json`` is byte-stable across reruns only once every candidate pair
+    has a cached verdict. While ``over_budget`` is non-zero each compile asks
+    for up to ``max_calls`` more verdicts and may mint more edges; that is
+    logged at WARNING.
 
     ``proof_db_path`` is the ``sqlite.db`` holding ``node_memory_proof``; with
     ``None`` UPDATE verdicts are counted in ``proofs_unpersisted`` and logged.
     """
+    from ..temporal import document_dates, graph_project_roots
+
     from ..retrieval.hybrid import backend_is_semantic
 
     stats = ReconcileStats(backend=getattr(embedder, "name", type(embedder).__name__))
@@ -384,14 +415,18 @@ def run_reconcile_pass(
     stats.candidates = len(pairs)
     budget = _max_calls_from_env() if max_calls is None else max(0, max_calls)
 
+    roots = graph_project_roots(graph)
+    doc_dates = document_dates(graph)
     supersede_at: Dict[Tuple[str, str], int] = {
         (e.source, e.target): i for i, e in enumerate(graph.edges) if e.type == SUPERSEDE_EDGE
     }
     proofs: List[Any] = []
     seen_proof: Set[Tuple[str, str]] = set()
+    #: (source, target) of every edge this run (re)asserted an INVALIDATE on.
+    asserted: Set[Tuple[str, str]] = set()
 
     for a, b, sim in pairs:
-        existing, new = _order_pair(a, b)
+        existing, new, new_ts = _order_pair(a, b, roots, doc_dates)
         key = verdict_cache_key(classifier.name, existing, new)
         cache_path = cache_dir / f"{key}.json"
         verdict: Optional[ReconcileVerdict] = None
@@ -435,10 +470,16 @@ def run_reconcile_pass(
                 )
             )
         elif verdict.verdict == "INVALIDATE":
-            _apply_invalidation(
-                graph, supersede_at, existing, new, verdict, sim, key,
-                classifier.name, recorded_at, stats,
-            )
+            if new_ts is None:
+                stats.unordered += 1
+                continue
+            if _apply_invalidation(
+                graph, supersede_at, existing, new, new_ts, verdict, sim, key,
+                classifier.name, stats,
+            ):
+                asserted.add((new.id, existing.id))
+
+    _retire_stale_edges(graph, asserted, classifier.name, cache_dir, roots, doc_dates, stats)
 
     if proofs:
         if proof_db_path is None:
@@ -452,11 +493,16 @@ def run_reconcile_pass(
 
             stats.proofs_added = append_proofs(proof_db_path, proofs)
 
-    if stats.failed or stats.over_budget or stats.conflicts or stats.undated:
+    if stats.failed or stats.over_budget or stats.conflicts or stats.unordered:
         logger.warning(
             "memory.reconcile: %d failed, %d over budget (max_calls=%d), "
-            "%d conflicting, %d undated pair(s) left unreconciled",
-            stats.failed, stats.over_budget, budget, stats.conflicts, stats.undated,
+            "%d conflicting, %d unordered pair(s) left unreconciled",
+            stats.failed, stats.over_budget, budget, stats.conflicts, stats.unordered,
+        )
+    if stats.over_budget or stats.failed:
+        logger.warning(
+            "memory.reconcile: verdict cache not yet warm; the next compile asks "
+            "for more verdicts and graph.json may change again"
         )
     logger.info("memory.reconcile: %s", stats.as_dict())
     return graph, stats
@@ -467,47 +513,61 @@ def _apply_invalidation(
     supersede_at: Dict[Tuple[str, str], int],
     existing: ResearchNode,
     new: ResearchNode,
+    invalid_at: str,
     verdict: ReconcileVerdict,
     sim: float,
     key: str,
     classifier_name: str,
-    recorded_at: Optional[str],
     stats: ReconcileStats,
-) -> None:
-    """Mint or upgrade ``new supersedes existing`` with ``invalid_at``/``status``."""
-    from ..temporal import _source_ts
+) -> bool:
+    """Mint or upgrade ``new supersedes existing``; True when the edge now says so.
 
+    ``invalid_at`` is NEW's own source timestamp (Graphiti's rule). This pass's
+    record lives under ``provenance[ASSERTED_BY]``, so an upgrade MERGES into
+    the edge's existing provenance, and the lifecycle fields it overwrites are
+    kept in that record's ``prior`` so :func:`_retire_stale_edges` can undo it.
+    """
     if (existing.id, new.id) in supersede_at:
         # The other pass already says EXISTING supersedes NEW. Minting the
         # reverse would suppress BOTH facts; refuse and report instead.
         stats.conflicts += 1
-        return
-    invalid_at = _source_ts(new)
-    basis = "source"
-    if invalid_at is None:
-        invalid_at, basis = recorded_at, "compile_reference"
-    if invalid_at is None:
-        stats.undated += 1
-        return
-    lifecycle = {
-        "status": "attested",
-        "asserted_by": ASSERTED_BY,
-        "invalid_at": invalid_at,
-        "provenance": {
-            "verdict": "INVALIDATE",
-            "classifier": classifier_name,
-            "verdict_key": key,
-            "invalid_at_basis": basis,
-        },
+        return False
+    record: Dict[str, Any] = {
+        "verdict": "INVALIDATE",
+        "classifier": classifier_name,
+        "verdict_key": key,
+        "invalid_at_basis": "source",
     }
     index = supersede_at.get((new.id, existing.id))
     if index is not None:
         current = graph.edges[index]
-        upgraded = dataclasses.replace(current, **lifecycle)
+        if current.is_untrusted:
+            # A host or a hand edit marked this edge candidate/refuted/retracted:
+            # a person reversed the suppression. Never re-attest over that.
+            stats.conflicts += 1
+            return False
+        provenance = dict(current.provenance or {})
+        previous = provenance.get(ASSERTED_BY)
+        if isinstance(previous, dict) and isinstance(previous.get("prior"), dict):
+            record["prior"] = previous["prior"]
+        elif (current.metadata or {}).get("extractor") != ASSERTED_BY:
+            record["prior"] = {
+                "status": current.status,
+                "asserted_by": current.asserted_by,
+                "invalid_at": current.invalid_at,
+            }
+        provenance[ASSERTED_BY] = record
+        upgraded = dataclasses.replace(
+            current,
+            status="attested",
+            asserted_by=ASSERTED_BY,
+            invalid_at=invalid_at,
+            provenance=provenance,
+        )
         if upgraded != current:
             graph.edges[index] = upgraded
             stats.invalidations_upgraded += 1
-        return
+        return True
     graph.edges.append(
         ResearchEdge(
             source=new.id,
@@ -519,8 +579,93 @@ def _apply_invalidation(
                 "similarity": round(sim, 4),
                 "kind": existing.type.value,
             },
-            **lifecycle,
+            status="attested",
+            asserted_by=ASSERTED_BY,
+            invalid_at=invalid_at,
+            provenance={ASSERTED_BY: record},
         )
     )
     supersede_at[(new.id, existing.id)] = len(graph.edges) - 1
     stats.invalidations_minted += 1
+    return True
+
+
+def _still_invalidated(
+    edge: ResearchEdge,
+    nodes: Dict[str, ResearchNode],
+    classifier_name: str,
+    cache_dir: Path,
+    roots: Tuple[str, ...],
+    doc_dates: Dict[str, str],
+) -> bool:
+    """True when the cache holds an ordered INVALIDATE for the edge's current content."""
+    target, source = nodes.get(edge.target), nodes.get(edge.source)
+    if target is None or source is None:
+        return False
+    _, new, new_ts = _order_pair(target, source, roots, doc_dates)
+    if new_ts is None or new.id != source.id:
+        return False
+    path = cache_dir / f"{verdict_cache_key(classifier_name, target, source)}.json"
+    if not path.exists():
+        return False
+    cached = _read_cached(path)
+    return cached is not None and cached.verdict == "INVALIDATE"
+
+
+def _retire_stale_edges(
+    graph: ResearchGraph,
+    asserted: Set[Tuple[str, str]],
+    classifier_name: str,
+    cache_dir: Path,
+    roots: Tuple[str, ...],
+    doc_dates: Dict[str, str],
+    stats: ReconcileStats,
+) -> None:
+    """Undo this pass's earlier INVALIDATEs that no longer hold.
+
+    An incremental compile carries the previous graph's edges forward, so an
+    edge minted on an earlier run outlives a change to the facts it joins.
+    Every trusted ``supersedes`` edge with ``asserted_by == ASSERTED_BY`` that
+    this run did not re-assert is kept only when the verdict cache still holds
+    an ordered INVALIDATE for its endpoints' CURRENT content (the pair may just
+    have left the top-``s`` neighbours, which is no evidence the fact holds
+    again). Otherwise an edge this pass minted is removed and an upgraded one
+    gets back the lifecycle fields recorded in ``prior``. Untrusted edges are a
+    person's override and are left alone. With the pass switched off this does
+    not run, so edges it already wrote stay until a compile drops them.
+    """
+    nodes = {n.id: n for n in graph.nodes}
+    kept: List[ResearchEdge] = []
+    for edge in graph.edges:
+        if (
+            edge.type != SUPERSEDE_EDGE
+            or edge.asserted_by != ASSERTED_BY
+            or edge.is_untrusted
+            or (edge.source, edge.target) in asserted
+            or _still_invalidated(edge, nodes, classifier_name, cache_dir, roots, doc_dates)
+        ):
+            kept.append(edge)
+            continue
+        provenance = dict(edge.provenance or {})
+        record = provenance.pop(ASSERTED_BY, None)
+        prior = record.get("prior") if isinstance(record, dict) else None
+        if isinstance(prior, dict):
+            kept.append(
+                dataclasses.replace(
+                    edge,
+                    status=prior.get("status"),
+                    asserted_by=prior.get("asserted_by"),
+                    invalid_at=prior.get("invalid_at"),
+                    provenance=provenance or None,
+                )
+            )
+        elif (edge.metadata or {}).get("extractor") != ASSERTED_BY:
+            logger.warning(
+                "memory.reconcile: %s supersedes %s says asserted_by=%s but records "
+                "no prior state; cannot restore it, leaving it as is",
+                edge.source, edge.target, ASSERTED_BY,
+            )
+            kept.append(edge)
+            continue
+        stats.invalidations_retired += 1
+    graph.edges[:] = kept

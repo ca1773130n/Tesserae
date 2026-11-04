@@ -11,6 +11,7 @@ honest skips, and the demote-not-filter read surfaces.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -178,26 +179,51 @@ def test_invalidate_writes_dated_attested_edge_and_deletes_nothing(tmp_path):
     assert (edge.source, edge.type, edge.target) == (NEW.id, "supersedes", OLD.id)
     assert edge.invalid_at == "2026-03-01T00:00:00+00:00"  # NEW's own valid time
     assert edge.status == "attested" and edge.asserted_by == ASSERTED_BY
-    assert edge.provenance["invalid_at_basis"] == "source"
+    assert edge.provenance[ASSERTED_BY]["invalid_at_basis"] == "source"
     assert stats.invalidations_minted == 1 and stats.verdicts["INVALIDATE"] == 1
     # Round-trips through graph.json.
     reloaded = graph_from_payload(json.loads(graph.to_json()))
     assert reloaded.edges[0].invalid_at == edge.invalid_at
 
 
-def test_invalidate_falls_back_to_compile_reference_when_undated(tmp_path):
-    older = ResearchNode(id="SessionInsight:b-old", name=OLD.name, type=INSIGHT)
-    newer = ResearchNode(id="SessionInsight:a-new", name=NEW.name, type=INSIGHT)
+def test_invalidate_on_pair_no_clock_orders_writes_nothing(tmp_path):
+    # Neither node has a source timestamp; only session ids differ. Comparing
+    # id strings says nothing about which fact is older, so no edge is minted.
+    older = ResearchNode(id="SessionInsight:b-old", name=OLD.name, type=INSIGHT, metadata={"session_id": "s-2"})
+    newer = ResearchNode(id="SessionInsight:a-new", name=NEW.name, type=INSIGHT, metadata={"session_id": "s-1"})
     vectors = [(older, [1.0, 0.0, 0.0]), (newer, [0.95, 0.31, 0.0])]
-    # No clock separates them, so the order is the stable id order.
     graph, stats, classifier = run(
         graph_of(older, newer), {(newer.id, older.id): "INVALIDATE"}, tmp_path,
         embedder=embedder_for(vectors),
     )
-    assert classifier.calls == [(newer.id, older.id)]
+    assert classifier.calls == [(newer.id, older.id)], "stable id orientation for the cache"
+    assert graph.edges == []
+    assert stats.unordered == 1 and stats.invalidations_minted == 0
+
+
+def test_document_claims_are_ordered_by_their_source_path_date(tmp_path):
+    # Undated claims whose ids sort AGAINST time. The path rung (bounded by the
+    # graph's own project root) dates them, so July supersedes April, not the
+    # other way round.
+    root = "/proj"
+    session = ResearchNode(id="Session:s", name="s", type=ResearchNodeType.SESSION, metadata={"project_root": root})
+    july = ResearchNode(
+        id="PerformanceClaim:a-july", name="Model X scores 71 on Bench", type=ResearchNodeType.PERFORMANCE_CLAIM,
+        source_path=f"{root}/data/research/daily/2026-07-03/x.md",
+    )
+    april = ResearchNode(
+        id="PerformanceClaim:b-april", name="Model X scores 64 on Bench", type=ResearchNodeType.PERFORMANCE_CLAIM,
+        source_path=f"{root}/data/research/daily/2026-04-08/x.md",
+    )
+    vectors = [(july, [1.0, 0.0, 0.0]), (april, [0.95, 0.31, 0.0]), (session, [0.0, 1.0, 0.0])]
+    graph, stats, classifier = run(
+        graph_of(session, july, april), {(april.id, july.id): "INVALIDATE"}, tmp_path,
+        embedder=embedder_for(vectors),
+    )
+    assert classifier.calls == [(april.id, july.id)]
     (edge,) = graph.edges
-    assert edge.invalid_at == "2026-04-01T00:00:00+00:00"
-    assert edge.provenance["invalid_at_basis"] == "compile_reference"
+    assert (edge.source, edge.target) == (july.id, april.id)
+    assert edge.invalid_at == "2026-07-03"
 
 
 def test_update_appends_one_proof_per_evidence_and_reruns_do_not_double_count(tmp_path):
@@ -235,16 +261,66 @@ def test_verdicts_are_cached_by_content_so_reruns_are_free_and_identical(tmp_pat
 
 
 def test_existing_supersedes_edge_is_upgraded_and_opposite_edge_is_a_conflict(tmp_path):
-    same = ResearchEdge(source=NEW.id, target=OLD.id, type="supersedes", metadata={"extractor": "memory.supersede"})
+    same = ResearchEdge(
+        source=NEW.id, target=OLD.id, type="supersedes",
+        metadata={"extractor": "memory.supersede"}, provenance={"judge": "deterministic"},
+    )
     graph, stats, _ = run(graph_of(OLD, NEW, edges=[same]), {(OLD.id, NEW.id): "INVALIDATE"}, tmp_path / "a")
     (edge,) = graph.edges
     assert edge.invalid_at and edge.metadata == {"extractor": "memory.supersede"}
+    assert edge.provenance["judge"] == "deterministic", "upgrade merges, never replaces"
+    assert edge.provenance[ASSERTED_BY]["prior"] == {"status": None, "asserted_by": None, "invalid_at": None}
     assert stats.invalidations_upgraded == 1 and stats.invalidations_minted == 0
 
     opposite = ResearchEdge(source=OLD.id, target=NEW.id, type="supersedes")
     graph, stats, _ = run(graph_of(OLD, NEW, edges=[opposite]), {(OLD.id, NEW.id): "INVALIDATE"}, tmp_path / "b")
     assert graph.edges == [opposite], "never suppress both sides of a pair"
     assert stats.conflicts == 1
+
+
+def test_a_refuted_reconcile_edge_is_never_re_attested(tmp_path):
+    table = {(OLD.id, NEW.id): "INVALIDATE"}
+    first, _, _ = run(graph_of(OLD, NEW), table, tmp_path)
+    (minted,) = first.edges
+    # A person reverses the wrong invalidation; the cached verdict fires again.
+    refuted = dataclasses.replace(minted, status="refuted")
+    graph, stats, _ = run(graph_of(OLD, NEW, edges=[refuted]), table, tmp_path)
+    assert graph.edges == [refuted]
+    assert stats.conflicts == 1 and stats.invalidations_upgraded == 0
+    assert OLD.id not in suppressed_ids(graph)
+
+
+def test_reconcile_edges_are_retired_when_the_verdict_no_longer_holds(tmp_path):
+    # Run 1 mints an INVALIDATE edge and upgrades a supersede-pass edge.
+    prior_edge = ResearchEdge(source=NEW.id, target=OLD.id, type="supersedes", metadata={"extractor": "memory.supersede"})
+    table = {(OLD.id, NEW.id): "INVALIDATE"}
+    first, _, _ = run(graph_of(OLD, NEW, edges=[prior_edge]), table, tmp_path, embedder=embedder_for(VECTORS))
+    (upgraded,) = first.edges
+    assert upgraded.asserted_by == ASSERTED_BY
+    minted_graph, _, _ = run(graph_of(OLD, NEW), table, tmp_path / "m", embedder=embedder_for(VECTORS))
+    (minted,) = minted_graph.edges
+
+    # Incremental compile: edges carried forward, NEW's content changed, verdict now ADD.
+    changed = finding(NEW.id, NEW.name, when="2026-03-01T00:00:00+00:00", description="Only for sessions.")
+    cvectors = [(OLD, [1.0, 0.0, 0.0]), (changed, [0.95, 0.31, 0.0])]
+    graph, stats, _ = run(
+        graph_of(OLD, changed, edges=[upgraded]), {(OLD.id, NEW.id): "ADD"}, tmp_path,
+        embedder=embedder_for(cvectors),
+    )
+    assert graph.edges == [prior_edge], "upgraded edge is restored exactly"
+    assert stats.invalidations_retired == 1
+    graph, stats, _ = run(
+        graph_of(OLD, changed, edges=[minted]), {(OLD.id, NEW.id): "ADD"}, tmp_path / "m",
+        embedder=embedder_for(cvectors),
+    )
+    assert graph.edges == [] and stats.invalidations_retired == 1
+
+    # Unchanged content but the pair is no longer a candidate: the cached
+    # INVALIDATE still holds, so the edge stays.
+    graph, stats, _ = run(
+        graph_of(OLD, NEW, edges=[minted]), {}, tmp_path / "m", embedder=embedder_for(VECTORS), min_similarity=0.999,
+    )
+    assert graph.edges == [minted] and stats.invalidations_retired == 0
 
 
 def test_failures_and_budget_are_counted_logged_and_not_cached(tmp_path, caplog):
