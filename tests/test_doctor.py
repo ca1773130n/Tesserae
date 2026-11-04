@@ -291,6 +291,22 @@ def test_live_daemon_pid_is_ok_and_never_removed(tmp_path):
     assert pidfile.exists()
 
 
+def test_live_daemon_running_an_older_version_is_reported_as_stale_code(tmp_path, monkeypatch):
+    """The stale-code failure mode: the process imported the old modules and
+    keeps running them after an upgrade. Report it; never touch the process."""
+    from tesserae.engine import pidlock
+
+    monkeypatch.setattr(pidlock, "package_version", lambda: "0.42.0")
+    make_project(tmp_path)
+    pidfile = tmp_path / ".tesserae" / "daemon.pid"
+    pidfile.write_text(json.dumps({"pid": os.getpid(), "version": "0.41.8"}), encoding="utf-8")
+    report = doctor.run_doctor(tmp_path, fix=True, now=PINNED_NOW)
+    f = finding(report, "daemon_pid")
+    assert f.severity == "warn"
+    assert "runs Tesserae 0.41.8 but 0.42.0 is installed" in f.message
+    assert pidfile.exists()
+
+
 def test_write_journal_interrupted_publish_is_recovered(tmp_path):
     from tesserae import locking
 

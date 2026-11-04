@@ -51,7 +51,7 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 _LOG_DOCTOR = logging.getLogger(__name__)
 
@@ -902,6 +902,8 @@ def _detect_daemon_pid(ctx: DoctorContext) -> Optional[Finding]:
     note = _foreign_pidfile_note(sorted(host for host, _ in entries if host and host != local))
     stale: List[str] = []
     live: List[int] = []
+    stale_code: List[Tuple[int, str]] = []
+    installed = pidlock.package_version()
     for host, path in entries:
         if host and host != local:
             continue
@@ -913,6 +915,9 @@ def _detect_daemon_pid(ctx: DoctorContext) -> Optional[Finding]:
         owner = pidlock.read_owner(path)
         if owner is not None and pidlock.owner_is_alive(owner):
             live.append(owner["pid"])
+            running = owner.get("version")
+            if running and installed != "unknown" and running != installed:
+                stale_code.append((owner["pid"], str(running)))
         else:
             stale.append(path.name)
     if stale:
@@ -923,6 +928,16 @@ def _detect_daemon_pid(ctx: DoctorContext) -> Optional[Finding]:
             f"stale {', '.join(stale)} — recorded owner is not running{note}",
             suggestion="tesserae doctor --fix (removes the stale pidfile)",
             fixable=True,
+        )
+    if stale_code:
+        # Report only: restarting means signalling a process, which doctor
+        # never does. The running engine imported its modules at startup and
+        # keeps executing the old version until it is restarted.
+        return _f(
+            "daemon_pid", "processes", WARN,
+            f"engine daemon pid {stale_code[0][0]} runs Tesserae {stale_code[0][1]} but "
+            f"{pidlock.package_version()} is installed — it is executing the old code{note}",
+            suggestion="restart the engine process (SIGTERM it, then run `tesserae engine` again)",
         )
     if live:
         return _f("daemon_pid", "processes", OK, f"engine daemon running (pid {live[0]}){note}")

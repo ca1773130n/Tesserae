@@ -54,6 +54,7 @@ SESSION_ITERS = max(1, ITERS // 5)
 #: Big enough that a publish spans many write() calls, so a reader or a
 #: SIGKILL has a real window to land inside one.
 PAD = "x" * 200_000
+SOAK_HOST = "soak-host"
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("TESSERAE_SOAK", "") not in ("1", "true", "yes"),
@@ -195,7 +196,7 @@ def _worker_main(argv: list) -> None:
 
 
 def _spawn(*args: str) -> subprocess.Popen:
-    env = {**os.environ, "PYTHONPATH": str(REPO_ROOT), "TESSERAE_HOST_ID": "soak-host"}
+    env = {**os.environ, "PYTHONPATH": str(REPO_ROOT), "TESSERAE_HOST_ID": SOAK_HOST}
     return subprocess.Popen([sys.executable, __file__, *args], env=env, cwd=str(REPO_ROOT))
 
 
@@ -319,6 +320,15 @@ def _measure_kill9(tdir: Path) -> dict:
             result["pidfile_judged_alive"] += 1
     result["orphan_tmp_files"] = len(_orphans(tdir))
     result["orphan_names_sample"] = _orphans(tdir)[:5]
+    # Informational: from ANOTHER host the dead writer's pid means nothing, so
+    # a lease-aware reader waits for the lease to expire (True) where a
+    # pid-only reader probes its own process table (False, by luck).
+    os.environ["TESSERAE_HOST_ID"] = "soak-other-host"
+    try:
+        result["other_host_sees_live_lease"] = pidlock.owner_is_alive(
+            pidlock.read_owner(tdir / "daemon.soak.pid"))
+    finally:
+        os.environ["TESSERAE_HOST_ID"] = SOAK_HOST
     try:
         from tesserae.locking import recover_journal  # absent before R5
     except ImportError:
@@ -330,7 +340,10 @@ def _measure_kill9(tdir: Path) -> dict:
     return result
 
 
-def test_soak_shared_tesserae_writers():
+def test_soak_shared_tesserae_writers(monkeypatch):
+    # The driver judges the writers' pidfiles and journal from THEIR host; a
+    # different host id would (correctly) wait out their leases instead.
+    monkeypatch.setenv("TESSERAE_HOST_ID", SOAK_HOST)
     base = os.environ.get("TESSERAE_SOAK_DIR") or None
     report: dict = {"iters": ITERS, "writers": WRITERS, "filesystem": base or "local tmp"}
     with tempfile.TemporaryDirectory(prefix="tesserae-soak-", dir=base) as raw:
@@ -357,6 +370,7 @@ def test_soak_shared_tesserae_writers():
         "kill9.lock_stuck": report["kill9"]["lock_stuck"],
         "kill9.graph": report["kill9"]["graph_unparseable"],
         "kill9.pidfile": report["kill9"]["pidfile_judged_alive"],
+        "kill9.journal_left": (report["kill9"]["recovered_by_doctor"] or {}).get("journal_left", 0),
     }
     assert {k: v for k, v in failures.items() if v} == {}
 

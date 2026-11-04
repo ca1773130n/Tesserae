@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from ..locking import journaled_write
 from . import pidlock
 
 logger = logging.getLogger("tesserae.daemon")
@@ -370,10 +371,14 @@ class Daemon:
         # raised — and the fleet, which reads each unit's rc, reported
         # "2/2 units ok" for a batch in which a project failed to compile.
         self._pipeline_failed = False
+        heartbeat: Optional[pidlock.LeaseHeartbeat] = None
         try:
             if once:
                 loop.run_until_complete(self._drain_once())
             else:
+                # Keeps this host's lease live for the other hosts reading it;
+                # a once-run is bounded and must not start a thread.
+                heartbeat = pidlock.LeaseHeartbeat(self._pidfile).start()
                 if self._install_signal_handlers:
                     for sig in (signal.SIGTERM, signal.SIGINT):
                         try:
@@ -407,6 +412,8 @@ class Daemon:
             for sig, previous in self._replaced_signals.items():
                 signal.signal(sig, previous)
             self._replaced_signals.clear()
+            if heartbeat is not None:
+                heartbeat.stop()  # before the unlink, or a beat could re-create it
             self._remove_pidfile()
         # Only a once-run reports failure through the exit code: a long-running
         # daemon that survived a bad compile and kept going has not failed.
@@ -1852,11 +1859,41 @@ class Daemon:
             # or a dead PID is stale and overwrite-safe. Unknown identity
             # degrades to a plain liveness check (conservative; see pidlock).
             if pidlock.owner_is_alive(owner):
-                raise RuntimeError(f"Daemon already running (pid {old_pid})")
+                version = (owner or {}).get("version")
+                running = f", version {version}" if version else ""
+                raise RuntimeError(f"Daemon already running (pid {old_pid}{running})")
             if old_pid is not None:
                 logger.warning("Stale pidfile (pid %s); overwriting.", old_pid)
+        self._check_sibling_versions()
         self._pidfile.parent.mkdir(parents=True, exist_ok=True)
-        self._pidfile.write_text(pidlock.serialize())
+        # Atomic, so another host's version check or doctor never parses half
+        # a lease; not durable, because a lost pidfile only costs a restart.
+        journaled_write(self._pidfile, pidlock.serialize(), durable=False)
+
+    def _check_sibling_versions(self) -> None:
+        """Warn (or, under ``TESSERAE_LEASE_STRICT_VERSION=1``, refuse) when
+        another host's live engine for this project runs a different version.
+
+        The pidfiles are host-scoped, so a live engine elsewhere never blocks
+        this one — which is right for liveness and wrong for code: two
+        versions compiling one shared ``.tesserae`` can publish graphs the
+        other does not read the same way. Warning is the default because a
+        refusal also blocks every rolling upgrade, and nothing has yet
+        measured that the mixed-version case causes damage.
+        """
+        siblings = [
+            p for p in self._pidfile.parent.glob("daemon*.pid") if p.name != self._pidfile.name
+        ]
+        conflicts = pidlock.version_conflicts(siblings)
+        if not conflicts:
+            return
+        message = (
+            f"another engine for this project runs a different Tesserae version: "
+            f"{pidlock.describe_conflicts(conflicts)}; this one is {pidlock.package_version()}"
+        )
+        if pidlock.strict_version_guard():
+            raise RuntimeError(f"refusing to start: {message} (TESSERAE_LEASE_STRICT_VERSION is set)")
+        logger.warning("%s — set TESSERAE_LEASE_STRICT_VERSION=1 to refuse instead", message)
 
     def _remove_pidfile(self) -> None:
         try:
