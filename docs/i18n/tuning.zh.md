@@ -273,6 +273,8 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_SESSION_EVENT_PASS` | **打开** | 从会话记录生成的逐轮 `Event` 节点。不调用 LLM，字节级确定性，但每个有效轮次生成一个节点——语料库较长时规模可观。`false`/`0`/`no`/`off` 可禁用 |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | 打开 | 将会话洞察链接到代码符号 |
 | `TESSERAE_SUPERSEDE_PASS` | 打开 | 修订声明之间的 `superseded_by` 边 |
+| `TESSERAE_RECONCILE_PASS` | 关闭 | 写入时调和：将每条会话发现和声明与其最近的 embedding 邻居比对，结果为 `ADD`、`UPDATE`、`INVALIDATE` 或 `NOOP`。需要 `TESSERAE_ENABLE_LLM_PASSES` 和语义 embedding 后端（`tesserae[semantic]`），否则会带警告跳过。`INVALIDATE` 会创建带 `invalid_at` 的 `supersedes` 边，且仅在两条事实都带有来源时间戳时才创建；`UPDATE` 会向 `node_memory_proof` 边车追加一行。`raw_source` 在 `invalidated_facts` 中、`verify_claim` 在 `advisory.invalidated_endpoints` 中列出这些事实，两者都不会隐藏它们。默认关闭：`INVALIDATE` 的精度尚未审计，一次错误的判定会让正确的事实在搜索中消失 |
+| `TESSERAE_RECONCILE_MAX_CALLS` | 200 | `TESSERAE_RECONCILE_PASS` 每次编译的分类器调用次数。判定按内容缓存，因此大型图谱需要多次编译才能完成调和，在缓存预热完成之前，`graph.json` 每次都可能变化 |
 | `TESSERAE_PROMPT_SIGNATURES` | 关闭 | 记录提示签名以进行漂移检测 |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | 在放弃前等待 `.tesserae/compile.lock` 的秒数 |
 

@@ -315,6 +315,8 @@ now" is a wrong yes. `tesserae doctor` never spends a call at all.
 | `TESSERAE_SESSION_EVENT_PASS` | **on** | Per-turn `Event` nodes from session transcripts. LLM-free and byte-deterministic, but one node per significant turn — sizeable on a long corpus. `false`/`0`/`no`/`off` disables |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | on | Links session insights to code symbols |
 | `TESSERAE_SUPERSEDE_PASS` | on | `superseded_by` edges between revised claims |
+| `TESSERAE_RECONCILE_PASS` | off | Write-time reconciliation of each session finding and claim against its nearest embedding neighbours: `ADD`, `UPDATE`, `INVALIDATE` or `NOOP`. Needs `TESSERAE_ENABLE_LLM_PASSES` and a semantic embedding backend (`tesserae[semantic]`); otherwise it is skipped with a warning. `INVALIDATE` mints a `supersedes` edge carrying `invalid_at`, and only when both facts have source timestamps; `UPDATE` adds a row to the `node_memory_proof` sidecar. `raw_source` lists such facts under `invalidated_facts` and `verify_claim` under `advisory.invalidated_endpoints`; neither withholds them. Off by default: its `INVALIDATE` precision has not been audited, and a wrong one hides a correct fact from search |
+| `TESSERAE_RECONCILE_MAX_CALLS` | 200 | Classifier calls per compile for `TESSERAE_RECONCILE_PASS`. Verdicts are cached by content, so a large graph is reconciled over several compiles and `graph.json` can change on each one until the cache is warm |
 | `TESSERAE_PROMPT_SIGNATURES` | off | Records prompt signatures for drift detection |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | Seconds to wait for `.tesserae/compile.lock` before giving up |
 

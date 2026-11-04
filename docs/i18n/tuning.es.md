@@ -305,6 +305,8 @@ ninguna llamada.
 | `TESSERAE_SESSION_EVENT_PASS` | **activado** | Nodos `Event` por turno a partir de las transcripciones de sesión. Sin LLM y determinista byte a byte, pero un nodo por cada turno significativo: considerable en un corpus largo. `false`/`0`/`no`/`off` lo desactiva |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | activado | Vincula ideas de sesión a símbolos de código |
 | `TESSERAE_SUPERSEDE_PASS` | activado | Aristas `superseded_by` entre reclamaciones revisadas |
+| `TESSERAE_RECONCILE_PASS` | desactivado | Reconciliación en escritura de cada hallazgo de sesión y cada reclamación con sus vecinos de embedding más cercanos: `ADD`, `UPDATE`, `INVALIDATE` o `NOOP`. Requiere `TESSERAE_ENABLE_LLM_PASSES` y un backend de embedding semántico (`tesserae[semantic]`); si no, se omite con una advertencia. `INVALIDATE` crea una arista `supersedes` con `invalid_at`, y solo cuando ambos hechos tienen marca de tiempo de origen; `UPDATE` añade una fila al sidecar `node_memory_proof`. `raw_source` lista esos hechos en `invalidated_facts` y `verify_claim` en `advisory.invalidated_endpoints`; ninguno los oculta. Desactivado por defecto: la precisión de `INVALIDATE` no se ha auditado, y un veredicto erróneo oculta un hecho correcto a la búsqueda |
+| `TESSERAE_RECONCILE_MAX_CALLS` | 200 | Llamadas al clasificador por compilación para `TESSERAE_RECONCILE_PASS`. Los veredictos se cachean por contenido, así que un grafo grande se reconcilia a lo largo de varias compilaciones y `graph.json` puede cambiar en cada una hasta que la caché esté precalentada |
 | `TESSERAE_PROMPT_SIGNATURES` | desactivado | Registra firmas de prompt para detección de deriva |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | Segundos a esperar `.tesserae/compile.lock` antes de rendirse |
 

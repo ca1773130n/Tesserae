@@ -291,6 +291,8 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_SESSION_EVENT_PASS` | **on** | 세션 트랜스크립트의 턴별 `Event` 노드. LLM을 쓰지 않고 바이트 단위로 결정적이지만, 유의미한 턴마다 노드 하나씩 — 긴 코퍼스에서는 규모가 커집니다. `false`/`0`/`no`/`off`로 비활성화 |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | on | session insights를 code symbols에 link |
 | `TESSERAE_SUPERSEDE_PASS` | on | 수정된 claims 사이의 `superseded_by` edges |
+| `TESSERAE_RECONCILE_PASS` | off | 쓰기 시점 reconciliation: 각 세션 finding과 claim을 가장 가까운 embedding 이웃과 비교해 `ADD`, `UPDATE`, `INVALIDATE`, `NOOP` 중 하나를 정합니다. `TESSERAE_ENABLE_LLM_PASSES`와 시맨틱 embedding 백엔드(`tesserae[semantic]`)가 필요하며, 없으면 경고와 함께 건너뜁니다. `INVALIDATE`는 `invalid_at`을 담은 `supersedes` edge를 만들며, 두 사실 모두 소스 타임스탬프가 있을 때만 그렇게 합니다. `UPDATE`는 `node_memory_proof` 사이드카에 행을 하나 추가합니다. `raw_source`는 이런 사실을 `invalidated_facts`에, `verify_claim`은 `advisory.invalidated_endpoints`에 나열하며, 둘 다 숨기지 않습니다. 기본값 off: `INVALIDATE`의 정밀도는 감사되지 않았고, 잘못된 판정은 올바른 사실을 검색에서 숨깁니다 |
+| `TESSERAE_RECONCILE_MAX_CALLS` | 200 | `TESSERAE_RECONCILE_PASS`의 컴파일당 분류기 호출 수. 판정은 내용 기준으로 캐시되므로 큰 그래프는 여러 번의 컴파일에 걸쳐 reconcile되고, 캐시 예열이 끝날 때까지 `graph.json`은 매번 바뀔 수 있습니다 |
 | `TESSERAE_PROMPT_SIGNATURES` | off | drift detection을 위한 prompt signatures 기록 |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | `.tesserae/compile.lock`을 기다릴 초 단위의 초 |
 

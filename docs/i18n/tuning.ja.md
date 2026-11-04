@@ -278,6 +278,8 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_SESSION_EVENT_PASS` | **オン** | セッショントランスクリプトからターンごとに生成する `Event` ノード。LLM を使わずバイト単位で決定的ですが、有意なターンごとに 1 ノード — 長いコーパスでは規模が大きくなります。`false`/`0`/`no`/`off` で無効化 |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | オン | セッション洞察をコードシンボルにリンク |
 | `TESSERAE_SUPERSEDE_PASS` | オン | 修正されたクレーム間の `superseded_by` エッジ |
+| `TESSERAE_RECONCILE_PASS` | オフ | 書き込み時の照合：各セッションの発見と各クレームを最も近い embedding の近傍と比べ、`ADD`、`UPDATE`、`INVALIDATE`、`NOOP` のいずれかを決める。`TESSERAE_ENABLE_LLM_PASSES` とセマンティック embedding バックエンド（`tesserae[semantic]`）が必要で、ない場合は警告を出してスキップする。`INVALIDATE` は `invalid_at` を持つ `supersedes` エッジを作成し、両方の事実にソースのタイムスタンプがある場合に限る。`UPDATE` は `node_memory_proof` サイドカーに行を追加する。`raw_source` はこれらの事実を `invalidated_facts` に、`verify_claim` は `advisory.invalidated_endpoints` に列挙し、どちらも隠さない。デフォルトでオフ：`INVALIDATE` の精度は監査されておらず、誤った判定は正しい事実を検索から隠す |
+| `TESSERAE_RECONCILE_MAX_CALLS` | 200 | `TESSERAE_RECONCILE_PASS` のコンパイルごとの分類器呼び出し回数。判定は内容でキャッシュされるため、大きなグラフは複数回のコンパイルにわたって照合され、キャッシュのウォーミングが終わるまで `graph.json` は毎回変わりうる |
 | `TESSERAE_PROMPT_SIGNATURES` | オフ | ドリフト検出のためのプロンプトシグネチャの記録 |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | `.tesserae/compile.lock` を待つまでの秒数 |
 
