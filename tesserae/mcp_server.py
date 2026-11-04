@@ -18,6 +18,7 @@ import secrets
 import sys
 import time
 from collections import Counter
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
@@ -85,6 +86,13 @@ from .wiki_store import WikiPageStore
 JSONDict = Dict[str, Any]
 
 _LOG = logging.getLogger(__name__)
+
+#: Access bumps held while an enveloped call runs (see ``_call_enveloped``):
+#: ``(project_root, node_ids)`` per bump call, applied once the envelope knows
+#: which nodes the response actually delivers. ``None`` outside such a call.
+_HELD_BUMPS: ContextVar[Optional[List[Tuple[Path, List[str]]]]] = ContextVar(
+    "tesserae_held_bumps", default=None
+)
 
 
 # Cap raw payload sizes returned to MCP clients so a malicious / huge file
@@ -2992,27 +3000,48 @@ class LLMWikiMCPServer:
             return self._dispatch_tool(name, arguments)
 
     def _call_enveloped(self, name: str, args: JSONDict) -> JSONDict:
-        """One tool call through the response envelope (see ``call_tool``)."""
+        """One tool call through the response envelope (see ``call_tool``).
+
+        The tool's access bumps are held while it runs and applied only for
+        the nodes the envelope's page delivers; the rest wait with the paging
+        snapshot until a follow-up page delivers them (``mcp_envelope``). A
+        call that fails or returns a non-dict applies every bump it made, as
+        it did before the envelope existed.
+        """
         from .mcp_envelope import ENVELOPE_ARGS, apply_envelope, caps_for, serve_page
         from .memory.store import deferred_reads, flush_deferred_reads
 
-        if args.get("page_cursor"):
-            # A follow-up page is served from the first call's snapshot: no
-            # re-run, so no second access bump and no second audit row.
-            return serve_page(
-                name, args["page_cursor"], max_items=args.get("max_items"), pages=self._pages
-            )
-        tool_args = {k: v for k, v in args.items() if k not in ENVELOPE_ARGS}
         est_tokens = 0
+        release: List[Tuple[Path, List[str]]] = []
         with deferred_reads() as pending:
             try:
-                started = time.monotonic()
-                payload = self._dispatch_tool(name, tool_args)
-                elapsed = time.monotonic() - started
+                if args.get("page_cursor"):
+                    # Served from the first call's snapshot, never a re-run:
+                    # the only reads it records are nodes this page delivers
+                    # for the first time.
+                    out, release = serve_page(
+                        name, args["page_cursor"], max_items=args.get("max_items"), pages=self._pages
+                    )
+                    est_tokens = int(out.get("est_tokens") or 0)
+                    return out
+                tool_args = {k: v for k, v in args.items() if k not in ENVELOPE_ARGS}
+                held: List[Tuple[Path, List[str]]] = []
+                token = _HELD_BUMPS.set(held)
+                try:
+                    started = time.monotonic()
+                    payload = self._dispatch_tool(name, tool_args)
+                    elapsed = time.monotonic() - started
+                finally:
+                    _HELD_BUMPS.reset(token)
+                    release = held
                 if not isinstance(payload, dict):
                     return payload
-                out = apply_envelope(
-                    name, payload, max_items=args.get("max_items"), pages=self._pages
+                out, release = apply_envelope(
+                    name,
+                    payload,
+                    max_items=args.get("max_items"),
+                    pages=self._pages,
+                    reads=held,
                 )
                 timeout_s = caps_for(name).timeout_s
                 if timeout_s and elapsed > timeout_s:
@@ -3024,6 +3053,8 @@ class LLMWikiMCPServer:
                 est_tokens = int(out.get("est_tokens") or 0)
                 return out
             finally:
+                for root, ids in release:
+                    self._bump_nodes_access(root, ids)
                 try:
                     flush_deferred_reads(pending, est_tokens)
                 except Exception as exc:  # noqa: BLE001 — a read must survive its audit
@@ -5822,6 +5853,10 @@ class LLMWikiMCPServer:
         """
         if project_root is None:
             return
+        held = _HELD_BUMPS.get()
+        if held is not None:
+            held.append((project_root, [str(node_id)]))
+            return
         try:
             from datetime import datetime, timezone
 
@@ -5853,6 +5888,12 @@ class LLMWikiMCPServer:
         is not split per node.
         """
         if project_root is None:
+            return
+        held = _HELD_BUMPS.get()
+        if held is not None:
+            # Inside an enveloped call: hold the bump until the envelope knows
+            # which of these nodes the response delivers (_call_enveloped).
+            held.append((project_root, [str(raw) for raw in node_ids if raw]))
             return
         try:
             from datetime import datetime, timezone

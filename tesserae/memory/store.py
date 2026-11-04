@@ -24,6 +24,7 @@ here. ``node_memory`` owns only the columns that mutate after mint.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -34,6 +35,8 @@ from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Un
 from ..graph_stores.sqlite import SqliteGraphStore
 
 PathLike = Union[str, Path]
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass
@@ -158,9 +161,12 @@ class ReadAuditRow:
     tesserae_version: str
     schema_version: int
     #: Estimated tokens of the tool response this read belongs to. Only the
-    #: FIRST row a call writes carries the call's estimate (the rest carry 0),
+    #: FIRST row a response writes carries its estimate (the rest carry 0),
     #: so summing the column is total tokens served — never a double count of
-    #: a call that bumped through several rows. 0 on shape-1 rows.
+    #: a call that bumped through several rows. A follow-up page writes rows
+    #: (with its own estimate) only for nodes it delivers first; a page that
+    #: delivers none writes no row, so its tokens go unrecorded. 0 on
+    #: shape-1 rows.
     est_tokens: int = 0
 
 
@@ -242,18 +248,37 @@ def deferred_reads() -> Iterator[List[Tuple[str, str, str, str, List[str]]]]:
 def flush_deferred_reads(
     pending: Sequence[Tuple[str, str, str, str, List[str]]], est_tokens: int
 ) -> None:
-    """Write rows held by :func:`deferred_reads`; the first carries ``est_tokens``."""
+    """Write rows held by :func:`deferred_reads`; the first written carries ``est_tokens``.
+
+    Each row is written independently: the bumps every row explains have
+    already landed, so one failed append (a transient ``database is locked``)
+    must not discard the rows after it. Every lost row is logged at WARNING
+    with its tool and id count, and the call's token estimate moves to the
+    next row that does land, so the column's sum stays the tokens served.
+    """
     version = _reader_version() if pending else ""
-    for index, (db_path, at, tool, actor, ids) in enumerate(pending):
-        _store(db_path).append_read_audit(
-            at,
-            tool,
-            actor,
-            ids,
-            version,
-            READ_AUDIT_SCHEMA_VERSION,
-            est_tokens=est_tokens if index == 0 else 0,
-        )
+    tokens = est_tokens
+    lost = 0
+    for db_path, at, tool, actor, ids in pending:
+        try:
+            _store(db_path).append_read_audit(
+                at,
+                tool,
+                actor,
+                ids,
+                version,
+                READ_AUDIT_SCHEMA_VERSION,
+                est_tokens=tokens,
+            )
+        except Exception as exc:  # noqa: BLE001 — a read must survive its audit
+            lost += 1
+            _LOG.warning(
+                "read audit row lost (tool %r, %d node ids): %s", tool, len(ids), exc
+            )
+            continue
+        tokens = 0
+    if lost:
+        _LOG.warning("%d of %d read audit rows from one call were lost", lost, len(pending))
 
 
 def record_read(

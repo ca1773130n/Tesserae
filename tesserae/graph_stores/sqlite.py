@@ -70,6 +70,11 @@ def _decode_vector(blob: bytes) -> List[float]:
     return list(struct.unpack(f"<{count}d", blob[: count * 8]))
 
 
+def _table_columns(con: sqlite3.Connection, table: str) -> set:
+    """Column names of ``table`` as the schema says right now."""
+    return {row[1] for row in con.execute(f"pragma table_info({table})")}
+
+
 class SqliteGraphStore:
     """Local SQLite-backed :class:`GraphStore` adapter.
 
@@ -1783,11 +1788,20 @@ class SqliteGraphStore:
         # sidecar created by an older release lacks it. ADD COLUMN with a
         # default is the one migration SQLite does in place; old rows read 0,
         # which is the truth — nobody measured them.
-        _audit_cols = {row[1] for row in con.execute("pragma table_info(read_audit)")}
-        if "est_tokens" not in _audit_cols:
-            con.execute(
-                "alter table read_audit add column est_tokens integer not null default 0"
-            )
+        #
+        # Check-then-ALTER races on a shared disk: two processes opening the
+        # same old sidecar both see the column missing, and the loser's ALTER
+        # raises "duplicate column name". That outcome is the one we wanted,
+        # so it is accepted — but only after re-reading the schema proves the
+        # column is really there; any other failure propagates.
+        if "est_tokens" not in _table_columns(con, "read_audit"):
+            try:
+                con.execute(
+                    "alter table read_audit add column est_tokens integer not null default 0"
+                )
+            except sqlite3.OperationalError:
+                if "est_tokens" not in _table_columns(con, "read_audit"):
+                    raise
         con.execute("create index if not exists idx_read_audit_actor on read_audit(actor)")
 
         # fact_observed sidecar (transaction time). Same discipline as

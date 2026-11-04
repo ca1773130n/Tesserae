@@ -23,7 +23,7 @@ import pytest
 from tesserae import mcp_envelope
 from tesserae.mcp_envelope import ToolCaps, apply_envelope, wire_text
 from tesserae.mcp_server import LLMWikiMCPServer, MCPRequestHandler
-from tesserae.memory.store import READ_AUDIT_ENV, read_audit_rows, read_memory
+from tesserae.memory.store import READ_AUDIT_ENV, read_audit_rows, read_memory, record_read
 from tesserae.research_graph import (
     ResearchEdge,
     ResearchGraph,
@@ -255,14 +255,14 @@ def test_transport_advertises_and_applies_the_envelope(tmp_path: Path) -> None:
 
 
 def test_a_tools_own_truncated_flag_is_never_reset() -> None:
-    out = apply_envelope("lint_report", {"truncated": True, "body": "x"}, pages=mcp_envelope.PageStore())
+    out, _ = apply_envelope("lint_report", {"truncated": True, "body": "x"}, pages=mcp_envelope.PageStore())
     assert out["truncated"] is True
 
 
 def test_max_items_cannot_exceed_the_hard_cap(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(mcp_envelope.TOOL_CAPS, "search_nodes", ToolCaps("nodes", max_items=3))
     payload = {"nodes": [{"id": i} for i in range(10)]}
-    out = apply_envelope("search_nodes", payload, max_items=500, pages=mcp_envelope.PageStore())
+    out, _ = apply_envelope("search_nodes", payload, max_items=500, pages=mcp_envelope.PageStore())
     assert len(out["nodes"]) == 3
     assert out["page"] == {"offset": 0, "returned": 3, "total": 10}
 
@@ -272,7 +272,7 @@ def test_an_unpageable_oversized_response_is_clamped_not_passed_through(
 ) -> None:
     monkeypatch.setitem(mcp_envelope.TOOL_CAPS, "lint_report", ToolCaps(max_chars=2_000))
     payload = {"exists": True, "body": "word " * 5_000, "truncated": False}
-    out = apply_envelope("lint_report", payload, pages=mcp_envelope.PageStore())
+    out, _ = apply_envelope("lint_report", payload, pages=mcp_envelope.PageStore())
     assert len(wire_text(out)) <= 2_000
     assert out["truncated"] is True
     assert payload["body"] == "word " * 5_000, "the tool's own payload must not be mutated"
@@ -299,16 +299,115 @@ def test_a_cursor_cannot_be_replayed_against_another_tool(tmp_path: Path) -> Non
     assert "belongs to tool 'search_nodes'" in out["error"]
 
 
-def test_follow_up_pages_do_not_count_as_new_reads(tmp_path: Path) -> None:
-    server, _gp, _g = _project(tmp_path)
-    db = tmp_path / ".tesserae" / "sqlite.db"
+def _hub_project(tmp_path: Path, spokes: int = 30) -> Tuple[LLMWikiMCPServer, Path]:
+    """A graph with one hub joined to ``spokes`` neighbours, and nothing else."""
+    tess = tmp_path / ".tesserae"
+    tess.mkdir(parents=True, exist_ok=True)
+    hub = ResearchNode(id="Concept:hub", name="hub", type=ResearchNodeType.CONCEPT)
+    nodes = [hub] + [
+        ResearchNode(
+            id=f"Concept:s{i:03d}",
+            name=f"spoke {i}",
+            type=ResearchNodeType.CONCEPT,
+            description="spoke " * 20,
+        )
+        for i in range(spokes)
+    ]
+    edges = [
+        ResearchEdge(source=hub.id, target=n.id, type="uses", evidence="ev " * 30)
+        for n in nodes[1:]
+    ]
+    graph_path = tess / "graph.json"
+    graph_path.write_text(ResearchGraph(nodes=nodes, edges=edges).to_json(indent=2), encoding="utf-8")
+    return LLMWikiMCPServer(default_graph_path=graph_path), tess / "sqlite.db"
+
+
+def _accessed(db: Path) -> Dict[str, int]:
+    return {k: v.access_count for k, v in read_memory(db).items() if v.access_count}
+
+
+def test_only_delivered_nodes_count_as_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A node the agent never received is not a read, page by page."""
+    monkeypatch.setenv(READ_AUDIT_ENV, "1")
+    monkeypatch.setitem(mcp_envelope.TOOL_CAPS, "node_context", ToolCaps("neighbors", max_items=10))
+    server, db = _hub_project(tmp_path)
+    args = {"name": "hub", "limit": 200, "budget_chars": 0}
+    first = server.call_tool("node_context", args, envelope=True)
+    delivered = {"Concept:hub"} | {n["id"] for n in first["neighbors"]}
+    assert len(first["neighbors"]) == 10 and first["next_cursor"]
+    assert set(_accessed(db)) == delivered
+    assert set(read_audit_rows(db)[0].node_ids) == delivered
+
+    response = first
+    while response["next_cursor"]:
+        cursor = response["next_cursor"]
+        response = server.call_tool("node_context", {"page_cursor": cursor}, envelope=True)
+        delivered |= {n["id"] for n in response["neighbors"]}
+        assert set(_accessed(db)) == delivered
+        # Replaying a cursor delivers nothing new, so it counts nothing new.
+        server.call_tool("node_context", {"page_cursor": cursor}, envelope=True)
+    assert len(delivered) == 31
+    assert set(_accessed(db).values()) == {1}, "every delivered node counted exactly once"
+    audited = [nid for row in read_audit_rows(db) for nid in row.node_ids]
+    assert sorted(audited) == sorted(delivered)
+
+
+def test_a_call_that_does_not_page_counts_every_read(tmp_path: Path) -> None:
+    server, db = _hub_project(tmp_path, spokes=5)
+    out = server.call_tool("node_context", {"name": "hub", "budget_chars": 0}, envelope=True)
+    assert out["next_cursor"] is None
+    assert set(_accessed(db)) == {"Concept:hub"} | {n["id"] for n in out["neighbors"]}
+
+
+def test_follow_up_pages_do_not_resend_what_page_one_carried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(mcp_envelope.TOOL_CAPS, "node_context", ToolCaps("neighbors", max_items=10))
+    server, _db = _hub_project(tmp_path)
     first = server.call_tool(
-        "search_nodes", {"query": "splat", "mode": "bm25", "max_items": 2}, envelope=True
+        "node_context", {"name": "hub", "limit": 200, "budget_chars": 0}, envelope=True
     )
-    before = {k: v.access_count for k, v in read_memory(db).items()}
-    server.call_tool("search_nodes", {"page_cursor": first["next_cursor"]}, envelope=True)
-    after = {k: v.access_count for k, v in read_memory(db).items()}
-    assert before == after
+    assert len(first["edges"]) == 30 and first["node"]["id"] == "Concept:hub"
+    second = server.call_tool("node_context", {"page_cursor": first["next_cursor"]}, envelope=True)
+    assert "edges" not in second and "node" not in second
+    assert set(second["omitted_keys"]) >= {"edges", "node"}
+    assert len(second["neighbors"]) == 10
+
+
+def test_envelope_pages_then_the_tools_own_cursor_visit_every_card_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """graph_map pages by its own ``cursor=K`` too; the two must compose."""
+    from tesserae.mcp_server import _paginate_cards
+
+    monkeypatch.setitem(mcp_envelope.TOOL_CAPS, "graph_map", ToolCaps("cards", max_items=40))
+    cards = [{"id": f"card-{i:03d}", "summary": "s" * 40} for i in range(400)]
+    pages = mcp_envelope.PageStore()
+    seen: List[str] = []
+    cursor, calls = 0, 0
+    while True:
+        calls += 1
+        assert calls < 50, "the tool's cursor never advanced"
+        tool_out = _paginate_cards({}, cards, 12_000, cursor)
+        if calls == 1:
+            kept = len(tool_out["cards"])
+            assert 40 < kept < 400, "the tool must keep more than one envelope page"
+        out, _ = apply_envelope("graph_map", tool_out, pages=pages)
+        while True:
+            seen.extend(card["id"] for card in out["cards"])
+            if out["next_cursor"] is None:
+                break
+            # Only the last envelope page may carry the tool's continuation.
+            assert "continuation" not in out
+            out, _ = mcp_envelope.serve_page("graph_map", out["next_cursor"], pages=pages)
+        continuation = out.get("continuation")
+        if continuation is None:
+            break
+        assert continuation == tool_out["continuation"]
+        cursor = int(continuation.rsplit("cursor=", 1)[1])
+    assert seen == [card["id"] for card in cards]
 
 
 def test_audit_rows_carry_the_calls_tokens_once(
@@ -359,3 +458,55 @@ def test_an_overrun_is_flagged_and_logged_not_aborted(
     assert out["timeout_exceeded"] is True
     assert out["node_count"] > 0
     assert any("over its" in r.getMessage() for r in caplog.records)
+
+
+def test_the_tokens_migration_survives_losing_the_race(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two processes open an old sidecar at once; the second ALTER must not fail."""
+    from tesserae.graph_stores import sqlite as sqlite_store
+
+    db = tmp_path / "sqlite.db"
+    read_audit_rows(db)  # current schema, est_tokens already present
+    real = sqlite_store._table_columns
+    calls = {"n": 0}
+
+    def stale_first_look(con: sqlite3.Connection, table: str) -> set:
+        cols = real(con, table)
+        calls["n"] += 1
+        # The first check ran before the other process's ALTER landed.
+        return cols - {"est_tokens"} if calls["n"] == 1 and table == "read_audit" else cols
+
+    monkeypatch.setattr(sqlite_store, "_table_columns", stale_first_look)
+    assert read_audit_rows(db) == []
+    assert calls["n"] == 2, "the ALTER must have run and been re-checked"
+
+
+def test_one_failed_audit_append_does_not_drop_the_rest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from tesserae.graph_stores.sqlite import SqliteGraphStore
+    from tesserae.memory.store import deferred_reads, flush_deferred_reads
+
+    monkeypatch.setenv(READ_AUDIT_ENV, "1")
+    db = tmp_path / "sqlite.db"
+    with deferred_reads() as pending:
+        for i in range(4):
+            record_read(db, [f"n{i}"], f"2026-11-05T00:00:0{i}Z", tool="t")
+    real = SqliteGraphStore.append_read_audit
+    state = {"calls": 0}
+
+    def locked_once(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        state["calls"] += 1
+        if state["calls"] == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(SqliteGraphStore, "append_read_audit", locked_once)
+    with caplog.at_level(logging.WARNING, logger="tesserae.memory.store"):
+        flush_deferred_reads(pending, 77)
+    rows = list(reversed(read_audit_rows(db)))
+    assert [r.node_ids for r in rows] == [("n1",), ("n2",), ("n3",)]
+    # The call's estimate lands on the first row that was written.
+    assert [r.est_tokens for r in rows] == [77, 0, 0]
+    assert any("1 of 4" in r.getMessage() for r in caplog.records)

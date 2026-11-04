@@ -27,11 +27,31 @@ into pages of at most ``max_items`` items whose serialized response fits
 pages, and every later page is served from that snapshot without re-running
 the tool. So the pages of one call concatenate to exactly the items an
 uncapped call returns — same items, same order — even when the tool's own
-ranking reads state the first call mutated (access counts). It also means a
-paged read is recorded (access bump, audit row) once, by the first call.
-Snapshots are content-keyed and LRU-bounded; an evicted or unknown cursor is a
-structured error telling the caller to re-issue the original call, never a
-silent restart from page one.
+ranking reads state the first call mutated (access counts). Snapshots are
+content-keyed and LRU-bounded; an evicted or unknown cursor is a structured
+error telling the caller to re-issue the original call, never a silent
+restart from page one.
+
+Follow-up pages carry the primary list, ``page`` and the response's short
+scalars only. Every other list or dict (``node_context``'s ``edges`` and
+focal ``node``, ``graph_map``'s ``header``) arrived on the first page, so
+re-sending it would make paging multiply the tokens it exists to bound; the
+keys left out are named in ``omitted_keys``.
+
+A tool's own ``continuation`` line describes what lies beyond the list the
+tool returned, so it is true only once every envelope page of that list has
+been read. It is therefore withheld from every page but the last, where it
+appears unchanged — following ``next_cursor`` to the end and THEN the tool's
+own cursor (``graph_map``'s ``cursor=K``) visits every item exactly once.
+
+Reads count only what was delivered. A tool bumps access counts (and writes
+audit rows) for the nodes it returns; the server holds those bumps until the
+envelope has cut the page (see ``LLMWikiMCPServer._call_enveloped``). A node
+named only by items the page did not deliver is held with the snapshot and
+counted when a later page delivers it — once, however often a cursor is
+replayed — or never, if nobody asks. "Named" means an item carries the id as
+a string value or key; ids outside the primary list (a focal node) are
+counted at once.
 
 The one case the multiset guarantee cannot hold: a single item whose own
 serialization exceeds ``max_chars``. It is returned alone with its longest
@@ -53,7 +73,7 @@ import logging
 import math
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .context_compiler import _truncate_to_budget
 
@@ -82,6 +102,14 @@ _ENVELOPE_RESERVE = 256
 #: The arguments the envelope consumes. Stripped before the tool sees its
 #: arguments, so no tool needs to know they exist.
 ENVELOPE_ARGS = ("page_cursor", "max_items")
+
+#: Follow-up pages keep a top-level string only up to this length; longer
+#: ones went out on the first page.
+_FOLLOW_UP_STR_MAX = 256
+
+#: One held access bump: ``(scope, node_ids)``, as one bump call made it.
+#: ``scope`` is opaque here; the server replays the event against it.
+ReadEvent = Tuple[Any, List[str]]
 
 
 @dataclass(frozen=True)
@@ -149,7 +177,9 @@ def envelope_schema_properties() -> JSONDict:
             "description": (
                 "Resume token from a previous response's next_cursor. With it, "
                 "the next page of THAT call is returned from a server-side "
-                "snapshot and every other argument except max_items is ignored."
+                "snapshot and every other argument except max_items is ignored. "
+                "Follow-up pages omit what page one carried (see omitted_keys); "
+                "a tool's own continuation line appears only on the last page."
             ),
         },
         "max_items": {
@@ -186,6 +216,8 @@ class PageStore:
     def __init__(self, capacity: int = 16) -> None:
         self._cap = capacity
         self._items: "OrderedDict[str, Tuple[str, JSONDict]]" = OrderedDict()
+        #: Bumps for nodes the snapshot holds but no page has delivered yet.
+        self._held: Dict[str, List[ReadEvent]] = {}
 
     def put(self, tool: str, payload: JSONDict) -> str:
         digest = hashlib.sha256((tool + "\0" + wire_text(payload)).encode("utf-8"))
@@ -193,8 +225,18 @@ class PageStore:
         self._items[sid] = (tool, payload)
         self._items.move_to_end(sid)
         while len(self._items) > self._cap:
-            self._items.popitem(last=False)
+            evicted, _ = self._items.popitem(last=False)
+            # Never delivered, so never read: the held bumps go with it.
+            self._held.pop(evicted, None)
         return sid
+
+    def hold(self, sid: str, events: List[ReadEvent]) -> None:
+        """Replace the bumps held for ``sid`` (a re-issued call starts over)."""
+        if sid in self._items:
+            self._held[sid] = events
+
+    def held(self, sid: str) -> List[ReadEvent]:
+        return self._held.get(sid, [])
 
     def get(self, sid: str) -> Optional[Tuple[str, JSONDict]]:
         hit = self._items.get(sid)
@@ -262,6 +304,60 @@ def _clamp_to_chars(payload: JSONDict, max_chars: int) -> Tuple[JSONDict, bool]:
     return out, True
 
 
+def _named_ids(obj: Any, candidates: set, found: set) -> set:
+    """Add to ``found`` every candidate id ``obj`` carries as a string value or key."""
+    if isinstance(obj, str):
+        if obj in candidates:
+            found.add(obj)
+    elif isinstance(obj, dict):
+        for key, value in obj.items():
+            if isinstance(key, str) and key in candidates:
+                found.add(key)
+            _named_ids(value, candidates, found)
+    elif isinstance(obj, (list, tuple)):
+        for value in obj:
+            _named_ids(value, candidates, found)
+    return found
+
+
+def _event_ids(events: Sequence[ReadEvent]) -> set:
+    return {nid for _scope, ids in events for nid in ids}
+
+
+def _partition(
+    events: Sequence[ReadEvent], release: set
+) -> Tuple[List[ReadEvent], List[ReadEvent]]:
+    """Split each event into its ids in ``release`` and the rest, keeping order."""
+    now: List[ReadEvent] = []
+    later: List[ReadEvent] = []
+    for scope, ids in events:
+        out = [nid for nid in ids if nid in release]
+        kept = [nid for nid in ids if nid not in release]
+        if out:
+            now.append((scope, out))
+        if kept:
+            later.append((scope, kept))
+    return now, later
+
+
+def _follow_up_base(full: JSONDict, key: str) -> JSONDict:
+    """``full`` minus what the first page already delivered (see module doc)."""
+    base: JSONDict = {}
+    omitted: List[str] = []
+    for name, value in full.items():
+        if name in (key, "continuation"):
+            base[name] = value
+        elif isinstance(value, (dict, list)) or (
+            isinstance(value, str) and len(value) > _FOLLOW_UP_STR_MAX
+        ):
+            omitted.append(name)
+        else:
+            base[name] = value
+    if omitted:
+        base["omitted_keys"] = omitted
+    return base
+
+
 def _finish(payload: JSONDict, *, truncated: bool, next_cursor: Optional[str]) -> JSONDict:
     payload["truncated"] = bool(payload.get("truncated") is True or truncated)
     payload["next_cursor"] = next_cursor
@@ -279,10 +375,14 @@ def _page(
     total = len(items)
     offset = max(0, min(offset, total))
     limit = caps.max_chars - _ENVELOPE_RESERVE
+    base = full if offset == 0 else _follow_up_base(full, key)
 
     def build(n: int) -> JSONDict:
-        page = dict(full)
+        page = dict(base)
         page[key] = items[offset : offset + n]
+        if offset + n < total:
+            # The tool's continuation is only true after the last page.
+            page.pop("continuation", None)
         page["page"] = {"offset": offset, "returned": n, "total": total}
         return page
 
@@ -310,9 +410,20 @@ def _page(
 
 
 def apply_envelope(
-    tool: str, payload: JSONDict, *, max_items: Any = None, pages: PageStore
-) -> JSONDict:
-    """Cap, page and measure one fresh tool response."""
+    tool: str,
+    payload: JSONDict,
+    *,
+    max_items: Any = None,
+    pages: PageStore,
+    reads: Sequence[ReadEvent] = (),
+) -> Tuple[JSONDict, List[ReadEvent]]:
+    """Cap, page and measure one fresh tool response.
+
+    ``reads`` are the bumps the tool made, held by the caller. Returns the
+    response and the bumps to apply now: all of them, unless the response
+    paged and some node is named only by items this page did not deliver —
+    those are held with the snapshot for :func:`serve_page`.
+    """
     caps = caps_for(tool)
     size = _page_size(caps, max_items)
     key = caps.items_key
@@ -322,13 +433,26 @@ def apply_envelope(
         or len(wire_text(payload)) > caps.max_chars - _ENVELOPE_RESERVE
     ):
         sid = pages.put(tool, payload)
-        return _page(tool, sid, payload, 0, size, caps)
+        page = _page(tool, sid, payload, 0, size, caps)
+        served = page["page"]["returned"]
+        candidates = _event_ids(reads)
+        delivered = _named_ids(items[:served], candidates, set())
+        undelivered = _named_ids(items[served:], candidates, set()) - delivered
+        now, later = _partition(reads, candidates - undelivered)
+        pages.hold(sid, later)
+        return page, now
     clamped_payload, clamped = _clamp_to_chars(payload, caps.max_chars)
-    return _finish(dict(clamped_payload), truncated=clamped, next_cursor=None)
+    return _finish(dict(clamped_payload), truncated=clamped, next_cursor=None), list(reads)
 
 
-def serve_page(tool: str, cursor: Any, *, max_items: Any = None, pages: PageStore) -> JSONDict:
-    """The page ``cursor`` points at, from the snapshot its first call stored."""
+def serve_page(
+    tool: str, cursor: Any, *, max_items: Any = None, pages: PageStore
+) -> Tuple[JSONDict, List[ReadEvent]]:
+    """The page ``cursor`` points at, from the snapshot its first call stored.
+
+    Also returns the held bumps this page releases: those for nodes its items
+    deliver. A replayed cursor releases nothing the first serving released.
+    """
     raw = str(cursor or "")
     parts = raw.split(":")
     if (
@@ -340,7 +464,7 @@ def serve_page(tool: str, cursor: Any, *, max_items: Any = None, pages: PageStor
             {"error": f"malformed page_cursor {raw!r}; pass a next_cursor value back unchanged"},
             truncated=False,
             next_cursor=None,
-        )
+        ), []
     sid, offset_text, size_text = parts
     hit = pages.get(sid)
     if hit is None:
@@ -354,14 +478,22 @@ def serve_page(tool: str, cursor: Any, *, max_items: Any = None, pages: PageStor
             },
             truncated=False,
             next_cursor=None,
-        )
+        ), []
     owner, full = hit
     if owner != tool:
         return _finish(
             {"error": f"page_cursor belongs to tool {owner!r}, not {tool!r}"},
             truncated=False,
             next_cursor=None,
-        )
+        ), []
     caps = caps_for(tool)
     size = _page_size(caps, int(size_text) if max_items is None else max_items)
-    return _page(tool, sid, full, int(offset_text), size, caps)
+    page = _page(tool, sid, full, int(offset_text), size, caps)
+    start, served = page["page"]["offset"], page["page"]["returned"]
+    held = pages.held(sid)
+    delivered = _named_ids(
+        full[caps.items_key][start : start + served], _event_ids(held), set()
+    )
+    now, later = _partition(held, delivered)
+    pages.hold(sid, later)
+    return page, now
