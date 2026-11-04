@@ -42,8 +42,8 @@ fi
 
 timeout_ms="${TESSERAE_HOOK_INJECT_TIMEOUT_MS:-300}"
 [[ "$timeout_ms" =~ ^[0-9]+$ ]] || timeout_ms=300
-# Python's own deadline sits 50 ms under the watchdog so the usual slow case
-# is a logged timeout from inside the process, not an anonymous kill.
+# Python's own deadline (armed after its imports) sits 50 ms under the
+# watchdog; it bounds the retrieval work, the watchdog bounds everything.
 py_timeout_ms=$(( timeout_ms > 100 ? timeout_ms - 50 : timeout_ms ))
 timeout_s=$(printf '%d.%03d' $(( timeout_ms / 1000 )) $(( timeout_ms % 1000 )))
 

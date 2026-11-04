@@ -73,10 +73,11 @@ __all__ = [
 ]
 
 DEFAULT_BUDGET_TOKENS = 1500
-#: Python-side deadline. The shell hook kills the process at 300 ms; this is
-#: lower so that the common slow case ends in a LOGGED fail-open from inside
-#: the process rather than an anonymous kill. The 50 ms gap is interpreter
-#: start-up plus imports, which run before the deadline can be armed.
+#: Python-side deadline, armed only once imports are done, so it bounds the
+#: work (a SQLite busy wait, a huge prompt) and turns that into a LOGGED
+#: fail-open. The hard cap is the shell hook's 300 ms watchdog, which also
+#: covers interpreter start-up and imports — on a loaded machine those alone
+#: can pass 50 ms, so a slow start ends in the watchdog's rc=143 log line.
 DEFAULT_TIMEOUT_MS = 250
 #: Rough English-text ratio. Used only to turn the token budget into a
 #: character budget; nothing here pretends to be a tokenizer.
