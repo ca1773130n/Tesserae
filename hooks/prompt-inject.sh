@@ -57,8 +57,10 @@ cat > "$in_file"
 "${cmd[@]}" --project "$project_root" --timeout-ms "$py_timeout_ms" \
   < "$in_file" > "$out_file" 2>> "${project_root}/.tesserae/${log_rel}" &
 pid=$!
-# Watchdog. It only ever signals the PID this script just launched, and is
-# itself stopped as soon as the injector exits, before PID reuse is possible.
+# Watchdog. It only ever signals the PID this script just launched. That PID
+# stays a zombie, so cannot be reused, until `wait` below reaps it, and the
+# watchdog is stopped on the very next line: the reuse window is the gap
+# between two shell statements, not the timeout.
 # Two details are load-bearing. Its stdio goes to /dev/null: a `sleep` still
 # holding the hook's stdout keeps the pipe open, and Claude Code (like any
 # caller) waits for EOF, so every prompt would pay the full timeout. And its
