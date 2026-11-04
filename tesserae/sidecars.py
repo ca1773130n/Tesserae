@@ -223,6 +223,11 @@ SIDECARS: Tuple[Sidecar, ...] = (
     Sidecar("discovered_links.json", "tesserae.memory.associate", KIND_ACCUMULATED, False,
             "the association overlay accumulates scored shares_concept_with "
             "links across runs; a single run does not reconstruct it"),
+    Sidecar("dream", "tesserae.dream", KIND_ACCUMULATED, False,
+            "the dream pass's dated journal (the before-values its undo "
+            "replays), its pass counter and rejected-op ledger, and optional "
+            "hand-written probes.jsonl; deleting it makes every applied pass "
+            "permanent and re-proposes ops the gate already rejected"),
     Sidecar("extraction-feedback.jsonl", "tesserae.extraction_feedback", KIND_ACCUMULATED, False,
             "human corrections captured during vault overlay and review-apply"),
     Sidecar("extraction-guidance.md", "tesserae.extraction_guidance", KIND_ACCUMULATED, False,

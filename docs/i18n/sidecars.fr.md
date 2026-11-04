@@ -86,6 +86,7 @@ perte de données, pas un délai.
 | `charter` | `derived` | chaque compilation le dérive de `graph.json`, mais aucune reconstruction ne le reproduit : les slugs sont frappés à partir des ancres que la reconstruction choisit, donc le supprimer refonde chaque domaine sous un nouveau nom, casse tout chemin d'attache épinglé et jette les pierres tombales qui seules disaient où étaient passés les anciens noms |
 | `agents` | `accumulated` | le `registry.json` par agent et le `purpose.md` écrit à la main |
 | `discovered_links.json` | `accumulated` | la couche d'association accumule des liens notés au fil des exécutions ; une seule ne la reconstruit pas |
+| `dream` | `accumulated` | le journal de la passe dream conserve les valeurs antérieures que l'annulation rejoue, ainsi que le registre des opérations rejetées ; le supprimer rend définitive chaque passe appliquée et fait reproposer des opérations que la barrière avait déjà rejetées |
 | `extraction-feedback.jsonl` | `accumulated` | corrections humaines recueillies lors de la superposition du vault et de review-apply |
 | `extraction-guidance.md` | `accumulated` | guidance éditée à la main, dans laquelle une passe evolve fusionne |
 | `harness_sessions` | `accumulated` | état des sessions importées |

@@ -82,6 +82,7 @@ No compile re-derives anything here. Deleting one is data loss, not a delay.
 | `charter` | `derived` | every compile derives it from `graph.json`, yet no rebuild reproduces it: slugs are minted from whichever anchors a rebuild happens to pick, so deleting it re-founds every domain under a new name, breaks every pinned attach path, and discards the tombstones that were the only record of where the old names went |
 | `agents` | `accumulated` | per-agent `registry.json` and the hand-written `purpose.md` |
 | `discovered_links.json` | `accumulated` | the association overlay accumulates scored links across runs; one run does not reconstruct it |
+| `dream` | `accumulated` | the dream pass's journal holds the before-values its undo replays, plus the rejected-op ledger; deleting it makes every applied pass permanent and re-proposes ops the gate already rejected |
 | `extraction-feedback.jsonl` | `accumulated` | human corrections captured during vault overlay and review-apply |
 | `extraction-guidance.md` | `accumulated` | hand-edited guidance that an evolve pass merges into |
 | `harness_sessions` | `accumulated` | imported session state |

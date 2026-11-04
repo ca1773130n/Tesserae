@@ -80,6 +80,7 @@
 | `charter` | `derived` | コンパイルのたびに `graph.json` から導出されますが、再ビルドしても同じものは復元されません。スラッグは再ビルドがたまたま選んだアンカーから作られるため、削除するとすべてのドメインが別名で再創設され、ピン留めしたアタッチパスがすべて壊れ、旧名の行き先を唯一記録していた tombstone も失われます |
 | `agents` | `accumulated` | エージェントごとの `registry.json` と、手書きの `purpose.md` |
 | `discovered_links.json` | `accumulated` | 関連オーバーレイは複数回の実行にわたってスコア付きリンクを積み上げます。一回の実行では再構成できません |
+| `dream` | `accumulated` | dream パスのジャーナルには、undo が再生する変更前の値と、却下された操作の記録が入っています。削除すると適用済みのパスはすべて取り消せなくなり、ゲートが却下済みの操作が再び提案されます |
 | `extraction-feedback.jsonl` | `accumulated` | vault オーバーレイと review-apply の過程で集めた人間の訂正 |
 | `extraction-guidance.md` | `accumulated` | 手で編集されたガイダンス。evolve のパスがここへマージします |
 | `harness_sessions` | `accumulated` | 取り込んだセッションの状態 |
