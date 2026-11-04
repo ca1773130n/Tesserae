@@ -7,7 +7,7 @@ served as current knowledge unless the caller opts in.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Set
+from typing import TYPE_CHECKING, Dict, List, Set
 
 from .research_graph import RETRACTION_EDGE_TYPES, UNTRUSTED_EDGE_STATUSES
 
@@ -17,6 +17,7 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard for type checkers
 __all__ = [
     "SUPPRESSION_EDGE_TYPES",
     "asserts_suppression",
+    "invalidations",
     "retracted_ids",
     "superseded_ids",
     "suppressed_ids",
@@ -88,6 +89,39 @@ def retracted_ids(graph: "ResearchGraph") -> Set[str]:
         for edge in graph.edges
         if edge.type in RETRACTION_EDGE_TYPES and asserts_suppression(edge)
     }
+
+
+def invalidations(graph: "ResearchGraph") -> Dict[str, List[Dict[str, object]]]:
+    """``{node_id: [{invalidated_by, invalid_at, asserted_by}, ...]}``.
+
+    An invalidation is a ``supersedes`` edge that says WHEN its target stopped
+    holding — it carries ``invalid_at`` (Graphiti's valid-time end). The
+    opt-in write-time reconciliation pass (:mod:`tesserae.memory.reconcile`)
+    is what writes them. Edges whose own ``status`` is untrusted are skipped,
+    as in :func:`superseded_ids`.
+
+    This is for the surfaces that must DEMOTE rather than FILTER an
+    invalidated fact (``raw_source``, ``verify_claim``): they return the fact
+    and attach this record, because a wrong invalidation must never be able to
+    make a correct fact unreadable. Entries are sorted per node by
+    ``(invalid_at, invalidated_by)``.
+    """
+    out: Dict[str, List[Dict[str, object]]] = {}
+    for edge in graph.edges:
+        if edge.type != "supersedes" or getattr(edge, "invalid_at", None) is None:
+            continue
+        if not asserts_suppression(edge):
+            continue
+        out.setdefault(edge.target, []).append(
+            {
+                "invalidated_by": edge.source,
+                "invalid_at": edge.invalid_at,
+                "asserted_by": getattr(edge, "asserted_by", None),
+            }
+        )
+    for items in out.values():
+        items.sort(key=lambda item: (str(item["invalid_at"]), str(item["invalidated_by"])))
+    return out
 
 
 def suppressed_ids(graph: "ResearchGraph") -> Set[str]:
