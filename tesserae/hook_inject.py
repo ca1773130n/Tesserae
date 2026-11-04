@@ -68,12 +68,16 @@ __all__ = [
     "DEFAULT_TIMEOUT_MS",
     "INJECT_TYPES",
     "InjectItem",
+    "PoolCold",
     "add_arguments",
     "file_anchors",
+    "load_pool",
     "main",
     "query_from_event",
     "render",
     "retrieve",
+    "run_args",
+    "spawn_pool_build",
 ]
 
 DEFAULT_BUDGET_TOKENS = 1500
