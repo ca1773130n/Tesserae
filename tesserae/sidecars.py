@@ -314,7 +314,9 @@ SIDECARS: Tuple[Sidecar, ...] = (
             "still roll forward; deleting it turns that into plain debris. Only "
             "written under TESSERAE_JOURNALED_WRITES=1"),
     Sidecar("sessions-import.lock", "tesserae.cli", KIND_SCRATCH, False,
-            "`sessions discover --import` mutex; removing a held one lets two "
+            "mutex for every session-store import (`sessions discover --import`, "
+            "`sessions import`, the `sessions-import` step of `refresh`); removing "
+            "a held one lets two "
             "imports scan and rewrite the session store at once"),
     Sidecar("graph.json.bak-*", "operator (manual backup)", KIND_SCRATCH, False,
             "no Tesserae code path writes these; they are hand-made copies from "

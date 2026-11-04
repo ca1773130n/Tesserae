@@ -110,7 +110,7 @@ vacuum, en lugar de borrando la base de datos.
 | `compile.lock` | `scratch` | el mutex de compilación. **Nunca** lo elimina ninguna vía automática — el fallo registrado son las acumulaciones de compilaciones en SessionEnd, y la comprobación `compile_lock` de doctor es de sólo informe por lo mismo |
 | `.recompile.lock.d` | `scratch` | mutex de hooks basado en mkdir; borrar uno retenido deja que dos recompilaciones compitan |
 | `session_chunks.lock` | `scratch` | el flock de «saltar si está tomado» del backfill; borrar uno retenido deja que dos backfills escriban el mismo día |
-| `sessions-import.lock` | `scratch` | el mutex de `sessions discover --import`; borrar uno retenido deja que dos importaciones escaneen y reescriban a la vez el almacén de sesiones |
+| `sessions-import.lock` | `scratch` | el mutex de toda importación al almacén de sesiones (`sessions discover --import`, `sessions import`, el paso `sessions-import` de `refresh`); borrar uno retenido deja que dos importaciones escaneen y reescriban a la vez el almacén de sesiones |
 | `journal` | `scratch` | registros de intención de las escrituras con diario en curso. Uno que sobrevive a su escritor apunta a un archivo temporal completo que `doctor --recover` aún puede completar; borrarlo convierte ese archivo en simple residuo. Solo se escribe con `TESSERAE_JOURNALED_WRITES=1` |
 | `daemon*.pid` | `scratch` | pidfile del motor, con ámbito de host como `daemon.<host>.pid`. Doctor sólo lo elimina tras confirmar que el propietario registrado está muerto **en esta máquina** |
 | `graph.json.bak-*` | `scratch` | ninguna ruta de código de Tesserae los escribe. Son copias hechas a mano en una sesión de restauración: se informan, nunca se eliminan, porque las hizo una persona |

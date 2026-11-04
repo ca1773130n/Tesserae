@@ -565,6 +565,35 @@ def test_cli_discover_import_fails_fast_while_another_import_runs(tmp_path, caps
     argv = ["sessions", "discover", "--project", str(project), "--root", str(tmp_path / "roots")]
     with compile_lock(wiki.paths.root, name=SESSIONS_IMPORT_LOCK):
         assert main([*argv, "--import"]) == 2
-        assert "`sessions discover --import` is already running" in capsys.readouterr().err
+        assert "session import is already running" in capsys.readouterr().err
         assert main(argv) == 0  # discovery without --import only reads; never locked
     assert main([*argv, "--import"]) == 0
+
+
+def test_sessions_import_takes_the_import_lock(tmp_path, capsys):
+    """Review finding: `sessions import` wrote the store with no lock."""
+    from tesserae.cli import SESSIONS_IMPORT_LOCK, main
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    wiki = ProjectWiki.init(project, name="proj")
+    with compile_lock(wiki.paths.root, name=SESSIONS_IMPORT_LOCK):
+        assert main(["sessions", "import", "--project", str(project)]) == 2
+        assert "session import is already running" in capsys.readouterr().err
+    assert main(["sessions", "import", "--project", str(project)]) == 0
+
+
+def test_discover_import_accepts_the_wait_the_error_suggests(tmp_path, capsys):
+    """The lock-held error says 'pass --wait'; the verb must accept it (it
+    used to be an argparse 'unrecognized arguments' error)."""
+    from tesserae.cli import SESSIONS_IMPORT_LOCK, main
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    wiki = ProjectWiki.init(project, name="proj")
+    (tmp_path / "roots").mkdir()
+    argv = ["sessions", "discover", "--project", str(project), "--root", str(tmp_path / "roots"), "--import"]
+    with compile_lock(wiki.paths.root, name=SESSIONS_IMPORT_LOCK):
+        assert main([*argv, "--wait", "0.2"]) == 2  # queued, timed out — not a usage error
+        assert "session import is already running" in capsys.readouterr().err
+    assert main([*argv, "--wait", "0.2"]) == 0

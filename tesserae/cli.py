@@ -1295,8 +1295,8 @@ def _run_over_all_projects(args: argparse.Namespace, verb: str, work) -> int:
     return exit_code_for(outcomes)
 
 
-def _add_lock_wait_arg(parser: argparse.ArgumentParser) -> None:
-    """Attach ``--wait [SECONDS]``: queue for the compile lock, don't fail."""
+def _add_lock_wait_arg(parser: argparse.ArgumentParser, lock: str = "compile lock") -> None:
+    """Attach ``--wait [SECONDS]``: queue for ``lock``, don't fail."""
     parser.add_argument(
         "--wait",
         dest="lock_wait",
@@ -1306,14 +1306,14 @@ def _add_lock_wait_arg(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="SECONDS",
         help=(
-            "Wait for the project's compile lock instead of failing when a "
+            f"Wait for the project's {lock} instead of failing when a "
             f"background engine or another run holds it (default {int(DEFAULT_LOCK_WAIT_SECONDS)}s "
             "with a bare --wait). Progress is reported every 5s."
         ),
     )
 
 
-def _lock_wait_reporter(label: str):
+def _lock_wait_reporter(label: str, lock: str = "compile lock"):
     """An ``on_wait`` callback that says what is being waited for.
 
     Without this the command looks hung: the lock is held by a process the
@@ -1324,7 +1324,7 @@ def _lock_wait_reporter(label: str):
         from .locking import describe_holder
 
         print(
-            f"{label}: waiting for the project compile lock"
+            f"{label}: waiting for the project {lock}"
             f"{describe_holder(holder)} — {int(elapsed)}s elapsed",
             file=sys.stderr,
         )
@@ -2410,6 +2410,10 @@ def _handle_refresh_one(args: argparse.Namespace) -> int:
     wiki = ProjectWiki.load(args.project)
 
     def step_sessions_import():
+        with _sessions_import_lock(wiki, getattr(args, "lock_wait", None), "refresh"):
+            return _sessions_import_step()
+
+    def _sessions_import_step():
         roots = hs.discover_harness_roots()
         sessions = hs.discover_harness_sessions(wiki.project_root, roots=roots)
         # Same reason as `sessions discover`: refresh never configures logging,
@@ -2670,27 +2674,44 @@ def _handle_export_obsidian(args: argparse.Namespace) -> int:
     return 0
 
 
-#: Held for the whole of ``sessions discover --import``, scan included.
+#: Held by every writer of the session store for the whole of its run, scan
+#: included: ``sessions discover --import``, ``sessions import`` and the
+#: ``sessions-import`` step of ``refresh``.
 SESSIONS_IMPORT_LOCK = "sessions-import.lock"
 
 
-def _handle_sessions(args: argparse.Namespace) -> int:
-    """``sessions discover --import`` runs under ``sessions-import.lock``.
+def _sessions_import_lock(wiki: "ProjectWiki", wait_seconds: Optional[float], label: str):
+    """``sessions-import.lock`` for ``wiki``, as a context manager.
 
-    It used to take no lock at all: three concurrent runs each scanned for
-    ~133 s and rewrote the store over one another, which is how a burst of
-    SessionEnd hooks stacks imports. The lock fails fast like the compile
-    lock (``TESSERAE_COMPILE_LOCK_WAIT`` queues instead), and it is its own
-    file so an import never waits behind a multi-minute compile. Discovery
-    without ``--import`` only reads, so it stays unlocked.
+    The scan has to sit inside it, not just the write: a replace+prune import
+    whose scan predates another import's write prunes the record that write
+    just added. Fails fast like the compile lock (``--wait`` or
+    ``TESSERAE_COMPILE_LOCK_WAIT`` queue instead); it is its own file so an
+    import never waits behind a multi-minute compile.
     """
-    if getattr(args, "sessions_command", None) == "discover" and getattr(args, "import_sessions", False):
-        from .locking import compile_lock
+    from .locking import compile_lock
 
-        with compile_lock(
-            ProjectWiki.load(args.project).root,
-            name=SESSIONS_IMPORT_LOCK,
-            what="`sessions discover --import`",
+    return compile_lock(
+        wiki.paths.root,
+        wait_seconds=wait_seconds,
+        name=SESSIONS_IMPORT_LOCK,
+        what="session import",
+        on_wait=_lock_wait_reporter(label, "session-import lock"),
+    )
+
+
+def _handle_sessions(args: argparse.Namespace) -> int:
+    """Store-writing ``sessions`` verbs run under :data:`SESSIONS_IMPORT_LOCK`.
+
+    They used to take no lock at all: three concurrent runs each scanned for
+    ~133 s and rewrote the store over one another, which is how a burst of
+    SessionEnd hooks stacks imports. Discovery without ``--import`` and
+    ``list`` only read, so they stay unlocked.
+    """
+    command = getattr(args, "sessions_command", None)
+    if command == "import" or (command == "discover" and getattr(args, "import_sessions", False)):
+        with _sessions_import_lock(
+            ProjectWiki.load(args.project), getattr(args, "lock_wait", None), f"sessions {command}",
         ):
             return _handle_sessions_unlocked(args)
     return _handle_sessions_unlocked(args)
@@ -3404,7 +3425,7 @@ def _build_refresh_parser() -> argparse.ArgumentParser:
         action=_RemovedFlagAction,
         message="refresh: --skip-sessions has moved → --no-sessions",
     )
-    _add_lock_wait_arg(parser)
+    _add_lock_wait_arg(parser, "compile and session-import locks")
     _add_all_projects_args(parser, "refresh")
     return parser
 
@@ -4293,6 +4314,7 @@ def _build_sessions_parser() -> argparse.ArgumentParser:
     # what the Task-5 `test_group_dispatch` contract requires.
     p_import.add_argument("paths", nargs="*", default=[], help="JSON files containing one session object or a list of sessions")
     p_import.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    _add_lock_wait_arg(p_import, "session-import lock")
     p_import.set_defaults(_handler="_handle_sessions_import")
     p_discover = sub.add_parser("discover", help="Discover local Claude Code/Codex sessions scoped to this project")
     p_discover.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
@@ -4300,6 +4322,7 @@ def _build_sessions_parser() -> argparse.ArgumentParser:
     p_discover.add_argument("--harness", action="append", default=[], choices=["claude-code", "codex"], help="Harness to scan; repeat for multiple harnesses. Defaults to both")
     p_discover.add_argument("--import", dest="import_sessions", action="store_true", help="Import discovered normalized sessions into .tesserae/harness_sessions")
     p_discover.add_argument("--adopt-unowned", action="store_true", help="Claim records that predate provenance stamping, so discovery may refresh and prune them. One-time migration; do NOT use if another tool writes into this store")
+    _add_lock_wait_arg(p_discover, "session-import lock")
     p_discover.set_defaults(_handler="_handle_sessions_discover")
     p_list = sub.add_parser("list", help="List normalized harness sessions for this project")
     p_list.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
