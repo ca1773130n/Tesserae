@@ -26,7 +26,9 @@ Contract, every clause of which is load-bearing:
   but the error is appended to ``.tesserae/.prompt-inject-hook.log``.
 * **Bounded.** ~1.5k tokens (estimated at 4 chars/token) and a wall-clock
   deadline armed with ``SIGALRM``; the shell hook adds a hard 300 ms watchdog
-  on top, which also covers interpreter start-up.
+  on the Python child, interpreter start-up included. The shell prelude that
+  runs before the child (opt-in check, project-root walk, binary lookup) is
+  NOT under the watchdog; ``hooks/prompt-inject.sh`` states its measured cost.
 * **Cold start is out of band.** The candidate pool is cached per graph
   version (:func:`load_pool`); the first event after a compile injects
   nothing and starts one detached ``--build-pool`` process
@@ -86,8 +88,8 @@ __all__ = [
 DEFAULT_BUDGET_TOKENS = 1500
 #: Python-side deadline, armed only once imports are done, so it bounds the
 #: work (a SQLite busy wait, a huge prompt) and turns that into a LOGGED
-#: fail-open. The hard cap is the shell hook's 300 ms watchdog, which also
-#: covers interpreter start-up and imports — on a loaded machine those alone
+#: fail-open. The hard cap on the child is the shell hook's 300 ms watchdog,
+#: which also covers interpreter start-up and imports — on a loaded machine those alone
 #: can pass 50 ms, so a slow start ends in the watchdog's rc=143 log line.
 DEFAULT_TIMEOUT_MS = 250
 #: Rough English-text ratio. Used only to turn the token budget into a
@@ -360,13 +362,14 @@ def spawn_pool_build(project_root: Path, cache_dir: Path) -> Optional[int]:
     it runs in its own session so the harness reaping the hook's process group
     cannot cut it short, and it ends by itself in about a second.
 
-    It runs ``python -I`` from the temp dir, not the hook's cwd (the user's
-    project): a project ``json.py`` must not shadow the stdlib in it. Its
-    stderr goes to the hook log, so a builder that cannot even import fails
-    loudly rather than leaving every event cold.
+    It runs from the interpreter's own bin dir, not the hook's cwd (the user's
+    project): ``-m`` puts the cwd first on ``sys.path``, and a project
+    ``json.py`` must not shadow the stdlib. Not ``-I``: that also drops user
+    site-packages, where a ``pip install --user`` tesserae lives. Its stderr
+    goes to the hook log, so a builder that cannot even import fails loudly
+    rather than leaving every event cold.
     """
     import subprocess
-    import tempfile
 
     project_root, cache_dir = project_root.resolve(), cache_dir.resolve()
     _, cache_file, _ = _pool_cache(project_root, cache_dir)
@@ -385,10 +388,10 @@ def spawn_pool_build(project_root: Path, cache_dir: Path) -> Optional[int]:
     try:
         with (project_root / ".tesserae" / LOG_NAME).open("ab") as log:
             proc = subprocess.Popen(
-                [sys.executable, "-I", "-m", "tesserae.hook_inject", "--build-pool",
+                [sys.executable, "-m", "tesserae.hook_inject", "--build-pool",
                  "--project", str(project_root), "--state-dir", str(cache_dir)],
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log,
-                cwd=tempfile.gettempdir(), start_new_session=True,
+                cwd=os.path.dirname(sys.executable), start_new_session=True,
             )
     except BaseException:
         os.close(fd)

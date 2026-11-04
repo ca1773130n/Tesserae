@@ -87,12 +87,15 @@ hook_autocompile_enabled() {
 
 # Opt-in gate for hooks/prompt-inject.sh. Either switch turns it on:
 # TESSERAE_HOOK_INJECT truthy (1 true yes on), or `prompt_inject: true` under
-# hooks: in .claude/tesserae.local.md. The env var is checked first so the
-# default (off) path costs no file read on every prompt and tool call.
+# hooks: in .claude/tesserae.local.md. This runs before every prompt and every
+# Read/Grep/Edit for every plugin user, so the default (off) path is kept to
+# one project-root walk and one `grep -qs`: read_plugin_setting's sed/grep
+# pipeline (~16 ms measured) runs only when the file names the key at all.
 hook_inject_enabled() {
   case "${TESSERAE_HOOK_INJECT:-}" in
     1|true|TRUE|yes|YES|on|ON) return 0 ;;
   esac
+  grep -qs 'prompt_inject' "$(resolve_project_root)/.claude/tesserae.local.md" || return 1
   [[ "$(read_plugin_setting prompt_inject)" == "true" ]]
 }
 

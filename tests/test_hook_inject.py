@@ -462,6 +462,21 @@ def test_project_files_cannot_shadow_the_injector_modules(project, tmp_path):
     assert not marker.exists(), marker.read_text()
 
 
+def test_injector_imports_a_package_outside_the_interpreters_own_site(project, tmp_path):
+    """A ``pip install --user`` tesserae lives in user site-packages, not next
+    to its interpreter; ``python -I`` would drop it and every event would fail.
+    Stand-in: a bare interpreter that reaches the package only via PYTHONPATH."""
+    bare = Path(sys.base_prefix) / "bin" / "python3"
+    if not bare.exists():
+        pytest.skip("no base interpreter outside the venv")
+    stub = f"#!{bare}\nraise SystemExit('fast path not taken')\n"
+    env = _hook_env(tmp_path, stub, TESSERAE_HOOK_INJECT="1", TESSERAE_HOOK_INJECT_TIMEOUT_MS="5000")
+    proc = _run_hook(project, env, _prompt("compile exclusive lock"))
+    assert proc.returncode == 0, proc.stderr
+    log = project / ".tesserae" / hook_inject.LOG_NAME
+    assert D_LOCK in _context(proc.stdout), log.read_text() if log.exists() else "no log"
+
+
 def test_shell_hook_is_a_noop_inside_tesserae_own_llm_call(project, tmp_path):
     env = _hook_env(tmp_path, PY_STUB, TESSERAE_HOOK_INJECT="1", TESSERAE_INTERNAL_LLM="1")
     proc = _run_hook(project, env, _prompt("compile exclusive lock"))

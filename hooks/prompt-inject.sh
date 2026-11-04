@@ -14,8 +14,14 @@
 #
 # Fail-open: any failure prints nothing and exits 0, so a prompt or tool call
 # is never blocked. Failures are logged to .tesserae/.prompt-inject-hook.log.
-# A watchdog kills the injector at TESSERAE_HOOK_INJECT_TIMEOUT_MS (default
-# 300) wall-clock, interpreter start-up included.
+# A watchdog kills the Python injector at TESSERAE_HOOK_INJECT_TIMEOUT_MS
+# (default 300) wall-clock, interpreter start-up included. It does NOT bound
+# the shell prelude before it (bash start-up, opt-in check, project-root walk,
+# binary lookup, payload spool). Measured on macOS under load average 13-21,
+# where a bare `bash -c exit` took 12 ms: ~68 ms median from start to the
+# injector's launch (two mktemp + cat are ~34 ms of it), and 25-30 ms for the
+# default-off path, which every plugin user pays on every prompt and
+# Read/Grep/Edit.
 
 set -uo pipefail
 # Tesserae's own `claude -p` calls (compile extraction, synthesis) load plugin
@@ -37,16 +43,19 @@ tesserae_bin=$(find_tesserae) || { log_to "$log_rel" "skipped: tesserae binary n
 # Fast path: run the module with the interpreter the `tesserae` launcher uses.
 # `tesserae hook inject` is the same code but imports the whole CLI first
 # (~200 ms), which alone would spend most of the budget.
-# `-I` is load-bearing: `python -m` puts the cwd — the user's project, which
-# may be a cloned untrusted repo — first on sys.path, so a `json.py` there
-# would run in place of the stdlib on every prompt. `-I` drops the cwd,
-# PYTHON* env vars and user site-packages, but keeps the venv's own.
+# It runs from the launcher's own bin dir (the `cd` below), not the hook's
+# cwd: `python -m` puts the cwd — the user's project, which may be a cloned
+# untrusted repo — first on sys.path, so a `json.py` there would run in place
+# of the stdlib on every prompt. That gives it the console script's own
+# sys.path[0]. Not `-I`: that also drops user site-packages, where a
+# `pip install --user` tesserae lives (find_tesserae probes those).
 cmd=("$tesserae_bin" hook inject)
 first_line=$(head -n 1 "$tesserae_bin" 2>/dev/null || true)
 if [[ "$first_line" == '#!'*python* ]]; then
   read -r -a interp <<< "${first_line#\#!}"
-  cmd=("${interp[@]}" -I -m tesserae.hook_inject)
+  cmd=("${interp[@]}" -m tesserae.hook_inject)
 fi
+bin_dir=$(dirname "$tesserae_bin")
 
 timeout_ms="${TESSERAE_HOOK_INJECT_TIMEOUT_MS:-300}"
 [[ "$timeout_ms" =~ ^[0-9]+$ ]] || timeout_ms=300
@@ -62,7 +71,8 @@ trap 'rm -f "$in_file" "$out_file"' EXIT
 # the payload is spooled to a file first rather than inherited.
 cat > "$in_file"
 
-"${cmd[@]}" --project "$project_root" --timeout-ms "$py_timeout_ms" \
+# `exec` keeps $! the injector's own PID, which the watchdog relies on.
+( cd "$bin_dir" && exec "${cmd[@]}" --project "$project_root" --timeout-ms "$py_timeout_ms" ) \
   < "$in_file" > "$out_file" 2>> "${project_root}/.tesserae/${log_rel}" &
 pid=$!
 # Watchdog. It only ever signals the PID this script just launched. That PID
