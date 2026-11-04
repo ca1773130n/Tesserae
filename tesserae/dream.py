@@ -17,20 +17,28 @@ and no way back. This module is the same consolidation, made operable:
 * **Gated.** Each region's ops become a candidate overlay that is promoted only
   if a held-out probe set shows no regression against the baseline (paired
   bootstrap over per-probe reciprocal rank in
-  :func:`~tesserae.context_compiler.compile_context`). The probe retriever sees
-  ``supersedes`` edges (suppression) and association edges (PPR expansion); it
-  does NOT see ``decay_score``, so a decay-only region always passes. The gate
-  measures collateral damage to retrieval, not whether a supersede verdict is
-  correct: a probe whose gold node was superseded accepts the superseder.
-* **Cursor-scoped.** A per-session "last reviewed turn" cursor lives in
-  ``session_chunks.db``; only regions holding findings from sessions with turns
-  past their cursor are in scope. With no chunk store (the daemon's tailer
-  never ran) every region is in scope. All of it runs under ``compile.lock``.
-* **Journaled and undoable.** Each applied pass writes a dated journal of its
-  ops, its gate verdicts, the sessions it reviewed and the before-values it
-  overwrote, under ``.tesserae/dream/journal/<YYYY-MM-DD>/``. :func:`undo_dream`
-  replays the newest applied pass backwards; ``graph.json`` and ``node_memory``
-  come back byte-identical, or the undo refuses loudly.
+  :func:`~tesserae.context_compiler.compile_context`, with the project's vector
+  cache and BM25 index, on a LOCAL backend — see :func:`resolve_probe_backend`).
+  The probe retriever sees ``supersedes`` edges (suppression) and association
+  edges (PPR expansion); it does NOT see ``decay_score``, so a decay-only
+  region always passes. The gate measures collateral damage to retrieval, not
+  whether a supersede verdict is correct: a probe whose gold node was
+  superseded accepts the superseder.
+* **Cursor-scoped.** A per-session cursor in ``session_chunks.db`` records the
+  last turn reviewed and a digest of that session's findings in ``graph.json``
+  at the time; only regions holding findings from sessions with newer turns OR
+  changed findings are in scope (the tailer stores turns before a compile turns
+  them into findings, so turns alone would mark a session reviewed too early).
+  With no chunk store (the daemon's tailer never ran) every region is in scope.
+  Applying runs under ``compile.lock``; a dry run takes no lock.
+* **Journaled and undoable.** Each applied pass journals its ops, its gate
+  verdicts, the sessions it reviewed and every before-value it will overwrite
+  under ``.tesserae/dream/journal/<YYYY-MM-DD>/`` BEFORE its first write. A pass
+  that raises mid-apply is rolled back from that journal on the spot; one that
+  crashed (journal left ``applying``) blocks further passes until
+  :func:`undo_dream` replays it backwards. :func:`undo_dream` replays the live
+  pass with the highest ``pass_index``; ``graph.json`` and ``node_memory`` come
+  back byte-identical, or the undo refuses loudly.
 
 Op kinds (all deterministic for a fixed graph, sidecars and backend):
 
@@ -38,8 +46,13 @@ Op kinds (all deterministic for a fixed graph, sidecars and backend):
   region subgraph, with a client that only READS the supersede cache, so a
   recorded LLM verdict (including "distinct") is honoured and no model is
   called. Adds the ``supersedes`` edge to ``graph.json`` and sets
-  ``node_memory.superseded`` on the target. The next compile re-derives the
-  same edge from the same deterministic verdict.
+  ``node_memory.superseded`` on the target. **For supersede the gate and undo
+  are advisory until the next compile**: the compile's own supersede pass is
+  on by default, global and ungated, and re-derives the same deterministic
+  verdict, so an edge the gate rejected, or one an undo removed, is minted by
+  the next ``tesserae compile`` anyway (unless an LLM-backed compile has
+  recorded "distinct" for the pair). What the gate decides for supersede is
+  only whether the edge lands before that compile.
 * ``associate`` — :func:`tesserae.memory.associate.discover_links` on the region
   subgraph with the existing overlay applied; persists into
   ``discovered_links.json``. Skipped honestly without a semantic backend.
@@ -75,7 +88,7 @@ from dataclasses import dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode
 
@@ -411,7 +424,22 @@ def _build_probes(project_root: Path, graph: ResearchGraph, n: int, seed: int) -
     return [(node.name, [node.id]) for node in pool[: max(0, int(n))]]
 
 
-def _probe_scores(graph: ResearchGraph, probes: Sequence[Tuple[str, List[str]]], backend, top_k: int) -> List[float]:
+def _probe_scores(
+    graph: ResearchGraph,
+    probes: Sequence[Tuple[str, List[str]]],
+    backend,
+    top_k: int,
+    *,
+    project_root: Optional[Path] = None,
+    should_stop: Optional[Callable[[], bool]] = None,
+) -> Optional[List[float]]:
+    """Per-probe reciprocal rank, or ``None`` when ``should_stop`` fired.
+
+    ``project_root`` hands ``compile_context`` the project's vector cache and
+    BM25 index: the candidate graphs differ from the baseline by edges only,
+    so every probe after the first embeds nothing new. Without it each call
+    re-embeds and re-tokenises the whole corpus.
+    """
     from .context_compiler import compile_context
 
     superseders: Dict[str, Set[str]] = {}
@@ -420,6 +448,8 @@ def _probe_scores(graph: ResearchGraph, probes: Sequence[Tuple[str, List[str]]],
             superseders.setdefault(edge.target, set()).add(edge.source)
     scores: List[float] = []
     for query, gold in probes:
+        if should_stop is not None and should_stop():
+            return None
         accept: Set[str] = set()
         frontier = list(gold)
         while frontier:  # gold plus everything that (transitively) supersedes it
@@ -428,7 +458,9 @@ def _probe_scores(graph: ResearchGraph, probes: Sequence[Tuple[str, List[str]]],
                 continue
             accept.add(nid)
             frontier.extend(superseders.get(nid, ()))
-        bundle = compile_context(graph, query=query, backend=backend, budget=4000)
+        bundle = compile_context(
+            graph, project_root=str(project_root) if project_root else None, query=query, backend=backend, budget=4000
+        )
         rr = 0.0
         for rank, nid in enumerate(bundle.ranked_nodes[:top_k], 1):
             if nid in accept:
@@ -497,7 +529,7 @@ class DreamPlan:
     regions: List[RegionPlan] = field(default_factory=list)
     distill_ops: List[dict] = field(default_factory=list)
     deferred_regions: List[str] = field(default_factory=list)
-    reviewed_sessions: Dict[str, str] = field(default_factory=dict)
+    reviewed_sessions: Dict[str, List[str]] = field(default_factory=dict)
     unmatched_sessions: List[str] = field(default_factory=list)
     skipped_rejected: int = 0
     gate_ran: bool = False
@@ -540,8 +572,24 @@ def _op_counts(ops: Iterable[Mapping[str, Any]]) -> Dict[str, int]:
     return counts
 
 
+def _findings_sha(nodes: Iterable[ResearchNode]) -> str:
+    """Digest of a session's findings as the graph has them (ids + names)."""
+    lines = sorted(f"{node.id}\t{node.name or ''}" for node in nodes)
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
 def _dirty_scope(project_root: Path, graph: ResearchGraph, regions: Sequence[Tuple[str, List[str]]]):
-    """``(scope, dirty region ids or None for all, session heads, unmatched)``."""
+    """``(scope, dirty region ids or None for all, {sid: [head, findings_sha]}, unmatched)``.
+
+    A session is dirty when the chunk store has turns past its cursor OR its
+    findings in ``graph.json`` changed since the cursor was set. The second
+    half is what keeps cursor scoping honest: the tailer stores turns live,
+    before a compile turns them into findings, so a pass can review a session
+    whose findings do not exist yet (``unmatched_sessions``) or exist only in
+    part. Its cursor still advances to the turn head, but with the findings
+    digest it saw; when the compile adds the findings the digest changes and
+    the session's regions are dirty again.
+    """
     from .session_chunks import SessionChunksDB, chunks_db_path
 
     db_path = chunks_db_path(project_root)
@@ -552,25 +600,30 @@ def _dirty_scope(project_root: Path, graph: ResearchGraph, regions: Sequence[Tup
     if not heads:
         return "all", None, {}, []
     cursors = db.dream_cursors()
-    dirty = {sid: ts for sid, ts in heads.items() if ts > cursors.get(sid, "")}
     node_region = {nid: rid for rid, members in regions for nid in members}
-    by_key: Dict[str, Set[str]] = {}
+    by_key: Dict[str, List[ResearchNode]] = {}
     for node in graph.nodes:
         sid = (node.metadata or {}).get("session_id") if isinstance(node.metadata, dict) else None
         if sid:
-            by_key.setdefault(_session_key(str(sid)), set()).add(node_region.get(node.id, UNASSIGNED_REGION))
+            by_key.setdefault(_session_key(str(sid)), []).append(node)
     touched: Set[str] = set()
+    dirty: Dict[str, List[str]] = {}
     unmatched: List[str] = []
-    for sid in sorted(dirty):
+    for sid in sorted(heads):
         key = _session_key(sid)
-        hit = set(by_key.get(key, ()))
+        hit = list(by_key.get(key, ()))
         if not hit:  # codex stems carry the session id as a suffix
-            for graph_key, rids in by_key.items():
+            for graph_key, nodes in by_key.items():
                 # length floor: a short key would suffix-match unrelated stems
                 if len(graph_key) >= 8 and key.endswith(graph_key):
-                    hit |= rids
+                    hit.extend(nodes)
+        sha = _findings_sha(hit)
+        last_ts, last_sha = cursors.get(sid, ("", ""))
+        if heads[sid] <= last_ts and sha == last_sha:
+            continue
+        dirty[sid] = [heads[sid], sha]
         if hit:
-            touched |= hit
+            touched |= {node_region.get(node.id, UNASSIGNED_REGION) for node in hit}
         else:
             unmatched.append(sid)
     return "cursor", touched, dirty, unmatched
@@ -584,9 +637,11 @@ def plan_dream(
     probe_backend=None,
     cfg: Optional[dict] = None,
     env: Optional[Mapping[str, str]] = None,
+    should_stop: Optional[Callable[[], bool]] = None,
 ) -> DreamPlan:
-    """Compute one pass's plan. Writes nothing (opening the chunk store may
-    add its empty ``dream_cursor`` table, as any of its readers would)."""
+    """Compute one pass's plan. Writes no graph or memory state (opening the
+    chunk store may add its empty ``dream_cursor`` table, and the probe gate
+    may fill the project's vector cache, as any reader would)."""
     from .memory.associate import apply_overlay
     from .memory.store import read_memory
     from .project import load_graph_file
@@ -666,11 +721,47 @@ def plan_dream(
     if "distill" in settings.ops:
         plan.distill_ops = [op for op in _plan_distill(root, graph, cfg, env) if _fingerprint(op) not in rejected]
 
-    _gate(root, plan, view, settings, probe_backend)
+    _gate(root, plan, view, settings, probe_backend, should_stop)
     return plan
 
 
-def _gate(root: Path, plan: DreamPlan, view: ResearchGraph, settings: DreamSettings, probe_backend) -> None:
+def _defer_ungated(plan: DreamPlan, regions: Sequence[RegionPlan]) -> None:
+    """``should_stop`` fired: hand the not-yet-gated regions to the next pass."""
+    for region in regions:
+        plan.regions.remove(region)
+        plan.deferred_regions.append(region.region)
+    plan.reviewed_sessions = {}
+    plan.notes.append(
+        f"asked to stop mid-gate (a pipeline run is waiting): {len(regions)} region(s) deferred to the "
+        "next pass; cursors not advanced"
+    )
+
+
+def resolve_probe_backend():
+    """A LOCAL backend for the probe gate: model2vec, else the hash stub.
+
+    Never the active backend: ``TESSERAE_EMBEDDING_PREFER=gemini`` (or
+    openai) would turn every probe into a metered call. The gate compares a
+    baseline against candidates on the same backend, so a weaker local one
+    still measures the difference it is asked about.
+    """
+    from .retrieval.hybrid import HashEmbeddingBackend, active_embedding_backend
+
+    try:
+        return active_embedding_backend("model2vec")
+    except Exception as exc:  # noqa: BLE001 - optional dep; degrade loudly
+        logger.warning("dream: model2vec unavailable for the probe gate (%s); probing with the hash stub", exc)
+        return HashEmbeddingBackend()
+
+
+def _gate(
+    root: Path,
+    plan: DreamPlan,
+    view: ResearchGraph,
+    settings: DreamSettings,
+    probe_backend,
+    should_stop: Optional[Callable[[], bool]] = None,
+) -> None:
     visible = [r for r in plan.regions if any(op["op"] in ("supersede", "associate") for op in r.ops)]
     if not settings.gate:
         for region in plan.regions:
@@ -683,22 +774,31 @@ def _gate(root: Path, plan: DreamPlan, view: ResearchGraph, settings: DreamSetti
         )
         plan.reviewed_sessions = {}
         return
-    probes = _build_probes(root, view, settings.probes, settings.seed) if visible else []
-    if visible and len(probes) < settings.probes:
-        plan.notes.append(f"probe set has n={len(probes)} (< {settings.probes} requested: that is all the graph offers)")
-    base = _probe_scores(view, probes, probe_backend, settings.top_k) if visible else []
-    plan.gate_ran = bool(visible)
     visible_ids = {id(r) for r in visible}
     for region in plan.regions:
         if id(region) not in visible_ids:
             region.promoted = True
             region.gate = {"skipped": "no probe-visible ops (decay is not seen by the probe retriever)"}
-            continue
+    probes = _build_probes(root, view, settings.probes, settings.seed) if visible else []
+    if visible and len(probes) < settings.probes:
+        plan.notes.append(f"probe set has n={len(probes)} (< {settings.probes} requested: that is all the graph offers)")
+    if probes and probe_backend is None:
+        probe_backend = resolve_probe_backend()
+    score = dict(project_root=root, should_stop=should_stop)
+    base = _probe_scores(view, probes, probe_backend, settings.top_k, **score) if probes else []
+    if base is None:
+        _defer_ungated(plan, visible)
+        return
+    plan.gate_ran = bool(visible)
+    for region in visible:
         if not probes:
             region.promoted = False
             region.gate = {"n": 0, "reason": "no probes available; refusing to promote ungated"}
             continue
-        cand = _probe_scores(_candidate_graph(view, region.ops), probes, probe_backend, settings.top_k)
+        cand = _probe_scores(_candidate_graph(view, region.ops), probes, probe_backend, settings.top_k, **score)
+        if cand is None:
+            _defer_ungated(plan, [r for r in visible if not r.gate])
+            return
         stats = paired_bootstrap(base, cand, samples=settings.bootstrap, alpha=settings.alpha, seed=settings.seed)
         regressed = stats["ci"][1] < 0 or stats["mean_delta"] < -float(settings.max_drop)
         region.promoted = not regressed
@@ -718,8 +818,39 @@ def _journal_dir(root: Path) -> Path:
     return dream_dir(root) / "journal"
 
 
-def _journal_files(root: Path) -> List[Path]:
-    return sorted(_journal_dir(root).glob("*/*.json"), key=lambda p: p.stem)
+def _is_interrupted(status: str) -> bool:
+    """A pass that started writing and neither finished nor rolled back."""
+    return status == "applying" or status.startswith("failed")
+
+
+def _live_journals(root: Path) -> List[Tuple[Path, Dict[str, Any]]]:
+    """Journals whose writes are still on disk, oldest first.
+
+    Ordered by ``pass_index``, which is read and bumped under ``compile.lock``,
+    never by the wall-clock stamp in the filename: on N hosts sharing a disk a
+    skewed clock would otherwise make an older pass look newest to undo.
+    """
+    live = []
+    for path in _journal_dir(root).glob("*/*.json"):
+        payload = _read_json(path, {})
+        status = str(payload.get("status", ""))
+        if status == "applied" or _is_interrupted(status):
+            live.append((path, payload))
+    live.sort(key=lambda item: int(item[1]["plan"]["pass_index"]))
+    indexes = [int(payload["plan"]["pass_index"]) for _, payload in live]
+    if len(indexes) != len(set(indexes)):
+        raise DreamError(
+            f"two live dream journals share a pass index ({sorted(indexes)}) under "
+            f"{_journal_dir(root)}; the undo order is ambiguous, so resolve it by hand"
+        )
+    return live
+
+
+def _interrupted_journal(root: Path) -> Optional[Dict[str, Any]]:
+    for _path, payload in _live_journals(root):
+        if _is_interrupted(str(payload["status"])):
+            return payload
+    return None
 
 
 def _canonical_graph_text(graph: ResearchGraph) -> str:
@@ -736,24 +867,48 @@ def run_dream(
     cfg: Optional[dict] = None,
     env: Optional[Mapping[str, str]] = None,
     lock_wait: Optional[float] = None,
+    should_stop: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
-    """Plan (and unless ``dry_run``, apply + journal) one pass under ``compile.lock``.
+    """Plan (and unless ``dry_run``, apply + journal) one pass.
 
-    Raises :class:`~tesserae.locking.CompileLockHeldError` when a compile holds
-    the lock and :class:`DreamError` on anything unsafe. Returns the plan as a
-    dict, plus ``journal`` / ``applied_ops`` when written.
+    Applying runs under ``compile.lock`` and raises
+    :class:`~tesserae.locking.CompileLockHeldError` when a compile holds it. A
+    dry run only reads, so it takes no lock: a preview never blocks a compile
+    or fails because one is running (its probe-gate verdicts are then computed
+    on whatever graph was last published). :class:`DreamError` on anything
+    unsafe, including an earlier pass left half-applied. ``should_stop`` is
+    polled during the probe gate; when it turns true the regions not yet gated
+    are deferred to the next pass (the daemon passes its pipeline-pending flag).
     """
     from .locking import compile_lock
 
     root = Path(project_root).resolve()
     cfg = cfg if cfg is not None else load_project_config(root)
     settings = settings or DreamSettings.from_config(cfg)
-    with compile_lock(root / ".tesserae", wait_seconds=lock_wait):
-        plan = plan_dream(root, settings=settings, backend=backend, probe_backend=probe_backend, cfg=cfg, env=env)
+    kwargs = dict(
+        settings=settings, backend=backend, probe_backend=probe_backend, cfg=cfg, env=env, should_stop=should_stop
+    )
+    if dry_run:
+        plan = plan_dream(root, **kwargs)
         report = plan.to_dict()
-        report["dry_run"] = dry_run
-        if dry_run:
-            return report
+        report["dry_run"] = True
+        stuck = _interrupted_journal(root)
+        if stuck:
+            report["notes"].append(
+                f"pass {stuck['pass_id']} is {stuck['status']!r} (in progress, or interrupted: then "
+                f"`tesserae dream --undo {stuck['pass_id']}` before applying again)"
+            )
+        return report
+    with compile_lock(root / ".tesserae", wait_seconds=lock_wait):
+        stuck = _interrupted_journal(root)
+        if stuck:
+            raise DreamError(
+                f"dream pass {stuck['pass_id']} was interrupted mid-apply ({stuck['status']}); its "
+                f"partial writes are still on disk. Run `tesserae dream --undo {stuck['pass_id']}` first"
+            )
+        plan = plan_dream(root, **kwargs)
+        report = plan.to_dict()
+        report["dry_run"] = False
         if plan.deferred_reason:
             _write_json(_state_path(root), {**_load_state(root), "passes": plan.pass_index + 1})
             report["applied_ops"] = []
@@ -768,6 +923,13 @@ def run_dream(
 
 
 def _apply(root: Path, plan: DreamPlan) -> Dict[str, Any]:
+    """Write a plan's promoted ops; on ANY failure roll the written ones back.
+
+    Every before-value (and the graph's expected after-hash) is journaled
+    before the first write, so the same reverse replay serves three cases: an
+    exception here (rolled back in place), a crash that left the journal at
+    ``applying`` (``undo_dream`` accepts it), and an ordinary undo.
+    """
     from .memory.associate import _overlay_path, persist_links
     from .memory.store import read_memory, set_memory_fields
     from .project import _publish_atomically, load_graph_file
@@ -787,12 +949,21 @@ def _apply(root: Path, plan: DreamPlan) -> Dict[str, Any]:
     distill = [op for op in ops if op["op"] == "distill"]
 
     graph = load_graph_file(graph_path)
-    graph_sha_before = _sha256(graph_path)
-    if supersede and _canonical_graph_text(graph).encode("utf-8") != graph_path.read_bytes():
-        raise DreamError(
-            f"{graph_path} does not round-trip through the graph serializer, so an undo could not "
-            "restore it byte-for-byte; recompile before dreaming"
-        )
+    graph_bytes = graph_path.read_bytes()
+    graph_sha_before = hashlib.sha256(graph_bytes).hexdigest()
+    graph_text_after: Optional[str] = None
+    if supersede:
+        if _canonical_graph_text(graph).encode("utf-8") != graph_bytes:
+            raise DreamError(
+                f"{graph_path} does not round-trip through the graph serializer, so an undo could not "
+                "restore it byte-for-byte; recompile before dreaming"
+            )
+        for op in supersede:
+            graph.edges.append(ResearchEdge(**op["edge"]))
+        graph_text_after = _canonical_graph_text(graph)
+    graph_sha_after = (
+        hashlib.sha256(graph_text_after.encode("utf-8")).hexdigest() if graph_text_after is not None else graph_sha_before
+    )
 
     # node_memory before-values for every row an op touches.
     memory = read_memory(sqlite_path) if sqlite_path.is_file() else {}
@@ -802,10 +973,10 @@ def _apply(root: Path, plan: DreamPlan) -> Dict[str, Any]:
     }
 
     chunks_path = chunks_db_path(root)
-    cursor_before: Dict[str, Optional[str]] = {}
+    cursor_before: Dict[str, Optional[List[str]]] = {}
     if plan.reviewed_sessions and chunks_path.is_file():
         existing = SessionChunksDB(chunks_path).dream_cursors()
-        cursor_before = {sid: existing.get(sid) for sid in plan.reviewed_sessions}
+        cursor_before = {sid: (list(existing[sid]) if sid in existing else None) for sid in plan.reviewed_sessions}
 
     journal: Dict[str, Any] = {
         "version": JOURNAL_VERSION,
@@ -822,15 +993,14 @@ def _apply(root: Path, plan: DreamPlan) -> Dict[str, Any]:
             "overlay_existed": _overlay_path(root).is_file(),
             "cursors": cursor_before,
             "state": state_before,
-            "distill": {},
+            "distill": {op["agent"]: _distill_before(root, op["agent"]) for op in distill},
         },
+        "after": {"graph_sha256": graph_sha_after},
     }
     _write_json(journal_path, journal)
     try:
-        if supersede:
-            for op in supersede:
-                graph.edges.append(ResearchEdge(**op["edge"]))
-            _publish_atomically(graph_path, _canonical_graph_text(graph))
+        if graph_text_after is not None:
+            _publish_atomically(graph_path, graph_text_after)
         memory_rows: Dict[str, List[Any]] = {nid: list(v) for nid, v in memory_before.items()}
         for op in decay:
             if op["node_id"] in memory_rows:
@@ -843,117 +1013,145 @@ def _apply(root: Path, plan: DreamPlan) -> Dict[str, Any]:
         if associate:
             persist_links(root, [(op["source"], op["target"], op["cosine"]) for op in associate])
         for op in distill:
-            journal["before"]["distill"][op["agent"]] = _apply_distill(root, graph, op["agent"], journal_path)
+            journal["before"]["distill"][op["agent"]]["status"] = _run_distill(root, graph, op["agent"])
         if plan.reviewed_sessions and chunks_path.is_file():
             SessionChunksDB(chunks_path).set_dream_cursors(dict(plan.reviewed_sessions))
         rejected = set(state_before["rejected"]) | {_fingerprint(op) for op in plan.rejected_ops()}
         _write_json(_state_path(root), {"passes": plan.pass_index + 1, "rejected": sorted(rejected)})
-    except Exception as exc:
-        journal["status"] = f"failed: {exc}"
-        _write_json(journal_path, journal)
-        logger.error("dream pass %s failed mid-apply (%s); journal at %s", pass_id, exc, journal_path)
+    except BaseException as exc:  # incl. KeyboardInterrupt: roll back, then re-raise
+        _roll_back(root, journal, journal_path, exc)
         raise
     journal["status"] = "applied"
-    journal["after"] = {"graph_sha256": _sha256(graph_path)}
     _write_json(journal_path, journal)
     return {"pass_id": pass_id, "journal": str(journal_path), "applied_ops": ops}
 
 
-def _apply_distill(root: Path, graph: ResearchGraph, agent: str, journal_path: Path) -> Dict[str, Any]:
-    from .agent_distill import (
-        DistillError,
-        DistillStateStore,
-        _state_db_path,
-        agent_artifact_path,
-        distill_agent,
-    )
+def _roll_back(root: Path, journal: Dict[str, Any], journal_path: Path, exc: BaseException) -> None:
+    """Undo a pass that raised mid-apply. Never raises: the caller re-raises ``exc``."""
+    journal["status"] = f"failed: {exc!r}"
+    _write_json(journal_path, journal)
+    try:
+        _reverse(root, journal, interrupted=True)
+    except Exception as undo_exc:  # noqa: BLE001 - reported loudly; the original error wins
+        journal["status"] = f"failed: {exc!r}; rollback failed: {undo_exc!r}"
+        _write_json(journal_path, journal)
+        logger.error(
+            "dream pass %s failed mid-apply (%r) AND its rollback failed (%r): partial writes remain; "
+            "fix the cause, then `tesserae dream --undo %s` (journal %s)",
+            journal["pass_id"], exc, undo_exc, journal["pass_id"], journal_path,
+        )
+        return
+    journal["status"] = f"rolled back: {exc!r}"
+    journal["rolled_back_at"] = datetime.now(timezone.utc).isoformat()
+    _write_json(journal_path, journal)
+    logger.error("dream pass %s failed mid-apply (%r); rolled back (journal %s)", journal["pass_id"], exc, journal_path)
+
+
+def _distill_before(root: Path, agent: str) -> Dict[str, Any]:
+    from .agent_distill import DistillStateStore, _state_db_path, agent_artifact_path
 
     artifact = agent_artifact_path(root, agent)
-    state = DistillStateStore(_state_db_path(root))
-    before = {
+    return {
         "artifact": str(artifact),
         "artifact_b64": base64.b64encode(artifact.read_bytes()).decode("ascii") if artifact.is_file() else None,
-        "watermark": state.get(DistillStateStore.SCOPE_WATERMARK, agent, ""),
+        "watermark": DistillStateStore(_state_db_path(root)).get(DistillStateStore.SCOPE_WATERMARK, agent, ""),
     }
+
+
+def _run_distill(root: Path, graph: ResearchGraph, agent: str) -> str:
+    from .agent_distill import DistillError, DistillStateStore, _state_db_path, distill_agent
+
     try:
-        result = distill_agent(graph, agent, project_root=root, state=state)
-        before["status"] = result.status
+        return distill_agent(graph, agent, project_root=root, state=DistillStateStore(_state_db_path(root))).status
     except DistillError as exc:
         logger.warning("dream: distill for %s failed: %s", agent, exc)
-        before["status"] = f"failed: {exc}"
-    return before
+        return f"failed: {exc}"
 
 
-def undo_dream(project_root: Path | str, pass_id: str = "last", *, lock_wait: Optional[float] = None) -> Dict[str, Any]:
-    """Reverse-replay the newest applied pass (``pass_id`` must name it, or ``last``).
+def _reverse(root: Path, journal: Mapping[str, Any], *, interrupted: bool) -> None:
+    """Replay one journal backwards. Every check runs before the first write.
 
-    Refuses when ``graph.json`` changed since that pass (a compile ran), when a
-    newer pass is still applied, or when the restored bytes would not match.
+    ``interrupted`` (a pass that raised or crashed mid-apply) also accepts a
+    ``graph.json`` still at its pre-pass bytes — the publish never happened —
+    and every other step is an idempotent write of a before-value.
     """
-    from .locking import compile_lock
     from .memory.associate import remove_links
     from .memory.store import set_memory_fields
     from .project import _publish_atomically, load_graph_file
     from .session_chunks import SessionChunksDB, chunks_db_path
 
+    graph_path = root / ".tesserae" / "graph.json"
+    before = journal["before"]
+    ops = journal["ops"]
+    current = _sha256(graph_path)
+    after_sha = journal["after"]["graph_sha256"]
+    allowed = {after_sha, before["graph_sha256"]} if interrupted else {after_sha}
+    if current not in allowed:
+        raise DreamError(
+            f"graph.json changed since dream pass {journal['pass_id']} (a compile or another writer "
+            "ran); its edges are already re-derived or gone, so it cannot be replayed backwards"
+        )
+    restored_graph: Optional[str] = None
+    if current != before["graph_sha256"]:
+        graph = load_graph_file(graph_path)
+        for op in (op for op in ops if op["op"] == "supersede"):
+            key = (op["edge"]["source"], op["edge"]["type"], op["edge"]["target"])
+            for i in range(len(graph.edges) - 1, -1, -1):
+                edge = graph.edges[i]
+                if (edge.source, edge.type, edge.target) == key:
+                    del graph.edges[i]
+                    break
+            else:
+                raise DreamError(f"undo: edge {key} is not in graph.json; refusing a partial undo")
+        restored_graph = _canonical_graph_text(graph)
+        if hashlib.sha256(restored_graph.encode("utf-8")).hexdigest() != before["graph_sha256"]:
+            raise DreamError("undo: the replayed graph.json would not match its pre-pass bytes; left untouched")
+
+    for agent, info in sorted(before.get("distill", {}).items()):
+        _undo_distill(root, agent, info)
+    if before.get("cursors"):
+        chunks_path = chunks_db_path(root)
+        if chunks_path.is_file():
+            SessionChunksDB(chunks_path).set_dream_cursors(before["cursors"])
+    associate = [(op["source"], op["target"], op["cosine"]) for op in ops if op["op"] == "associate"]
+    if associate:
+        remove_links(root, associate, delete_if_empty=not before["overlay_existed"])
+    if before["node_memory"]:
+        set_memory_fields(
+            root / ".tesserae" / "sqlite.db",
+            [(nid, v[0], v[1]) for nid, v in before["node_memory"].items()],
+        )
+    if restored_graph is not None:
+        _publish_atomically(graph_path, restored_graph)
+    _write_json(_state_path(root), before["state"])
+
+
+def undo_dream(project_root: Path | str, pass_id: str = "last", *, lock_wait: Optional[float] = None) -> Dict[str, Any]:
+    """Reverse-replay the newest live pass (``pass_id`` must name it, or ``last``).
+
+    "Newest" is the highest ``pass_index``. A pass left ``applying`` or
+    ``failed`` by a crash is live too, and undoing it is how its partial
+    writes come back out. Refuses when ``graph.json`` changed since that pass
+    (a compile ran) or when the restored bytes would not match.
+    """
+    from .locking import compile_lock
+
     root = Path(project_root).resolve()
     with compile_lock(root / ".tesserae", wait_seconds=lock_wait):
-        applied = []
-        for path in _journal_files(root):
-            payload = _read_json(path, {})
-            if payload.get("status") == "applied":
-                applied.append((path, payload))
-        if not applied:
+        live = _live_journals(root)
+        if not live:
             raise DreamError("no applied dream pass to undo")
-        path, journal = applied[-1]
+        path, journal = live[-1]
         if pass_id not in ("last", journal["pass_id"]):
             raise DreamError(
                 f"pass {pass_id} is not the newest applied pass ({journal['pass_id']}); undo is "
                 "reverse replay, so newer passes must be undone first"
             )
-        graph_path = root / ".tesserae" / "graph.json"
-        before = journal["before"]
-        ops = journal["ops"]
-        supersede = [op for op in ops if op["op"] == "supersede"]
-        if _sha256(graph_path) != journal["after"]["graph_sha256"]:
-            raise DreamError(
-                f"graph.json changed since dream pass {journal['pass_id']} (a compile or another writer "
-                "ran); its edges are already re-derived or gone, so it cannot be replayed backwards"
-            )
-        for agent, info in sorted(before.get("distill", {}).items()):
-            _undo_distill(root, agent, info)
-        if before.get("cursors"):
-            chunks_path = chunks_db_path(root)
-            if chunks_path.is_file():
-                SessionChunksDB(chunks_path).set_dream_cursors(before["cursors"])
-        associate = [(op["source"], op["target"]) for op in ops if op["op"] == "associate"]
-        if associate:
-            remove_links(root, associate, delete_if_empty=not before["overlay_existed"])
-        if before["node_memory"]:
-            set_memory_fields(
-                root / ".tesserae" / "sqlite.db",
-                [(nid, v[0], v[1]) for nid, v in before["node_memory"].items()],
-            )
-        if supersede:
-            graph = load_graph_file(graph_path)
-            drop = [(op["edge"]["source"], op["edge"]["type"], op["edge"]["target"]) for op in supersede]
-            for key in drop:
-                for i in range(len(graph.edges) - 1, -1, -1):
-                    edge = graph.edges[i]
-                    if (edge.source, edge.type, edge.target) == key:
-                        del graph.edges[i]
-                        break
-                else:
-                    raise DreamError(f"undo: edge {key} is not in graph.json; refusing a partial undo")
-            text = _canonical_graph_text(graph)
-            if hashlib.sha256(text.encode("utf-8")).hexdigest() != before["graph_sha256"]:
-                raise DreamError("undo: the replayed graph.json would not match its pre-pass bytes; left untouched")
-            _publish_atomically(graph_path, text)
-        _write_json(_state_path(root), before["state"])
+        _reverse(root, journal, interrupted=_is_interrupted(str(journal["status"])))
         journal["status"] = "undone"
         journal["undone_at"] = datetime.now(timezone.utc).isoformat()
         _write_json(path, journal)
-        return {"undone": journal["pass_id"], "journal": str(path), "op_counts": _op_counts(ops)}
+        return {"undone": journal["pass_id"], "journal": str(path), "op_counts": _op_counts(journal["ops"])}
 
 
 def _undo_distill(root: Path, agent: str, info: Mapping[str, Any]) -> None:

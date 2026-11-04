@@ -161,19 +161,26 @@ class SessionChunksDB:
             )
             """
         )
-        # Per-session "last turn the dream pass reviewed" (tesserae.dream).
-        # Additive CREATE IF NOT EXISTS, so no schema_version bump: a bump
-        # drops and rebuilds the store, which would throw away every turn to
-        # add one empty table.
+        # Per-session "last turn the dream pass reviewed" (tesserae.dream),
+        # plus a digest of that session's findings in graph.json at review
+        # time: the tailer stores turns before a compile turns them into
+        # findings, so the turn head alone would mark a session reviewed
+        # before its findings exist. Additive CREATE IF NOT EXISTS, so no
+        # schema_version bump: a bump drops and rebuilds the store, which
+        # would throw away every turn to add one small table.
         con.execute(
             """
             create table if not exists dream_cursor (
-                session_id text primary key,
-                last_ts    text not null,
-                updated_at text not null
+                session_id   text primary key,
+                last_ts      text not null,
+                findings_sha text not null default '',
+                updated_at   text not null
             )
             """
         )
+        cols = {row[1] for row in con.execute("pragma table_info(dream_cursor)")}
+        if "findings_sha" not in cols:  # a pre-release store from this branch
+            con.execute("alter table dream_cursor add column findings_sha text not null default ''")
 
     # ------------------------------------------------------------------ #
     # Writes                                                              #
@@ -278,26 +285,27 @@ class SessionChunksDB:
             ).fetchall()
         return {str(sid): str(ts) for sid, ts in rows if ts}
 
-    def dream_cursors(self) -> Dict[str, str]:
-        """``{session_id: last_ts}`` the dream pass has already reviewed."""
+    def dream_cursors(self) -> Dict[str, Tuple[str, str]]:
+        """``{session_id: (last_ts, findings_sha)}`` the dream pass has reviewed."""
         with self._connect() as con:
-            rows = con.execute("select session_id, last_ts from dream_cursor").fetchall()
-        return {str(sid): str(ts) for sid, ts in rows}
+            rows = con.execute("select session_id, last_ts, findings_sha from dream_cursor").fetchall()
+        return {str(sid): (str(ts), str(sha)) for sid, ts, sha in rows}
 
-    def set_dream_cursors(self, values: Dict[str, Optional[str]]) -> None:
-        """Upsert each cursor; a ``None`` value deletes it (the undo path)."""
+    def set_dream_cursors(self, values: Dict[str, Optional[Sequence[str]]]) -> None:
+        """Upsert each ``(last_ts, findings_sha)`` cursor; ``None`` deletes it (undo)."""
         if not values:
             return
         stamp = datetime.now(KST).isoformat()
         with self._connect() as con:
-            for sid, ts in sorted(values.items()):
-                if ts is None:
+            for sid, cursor in sorted(values.items()):
+                if cursor is None:
                     con.execute("delete from dream_cursor where session_id = ?", (str(sid),))
                 else:
+                    ts, sha = cursor
                     con.execute(
-                        "insert or replace into dream_cursor (session_id, last_ts, updated_at)"
-                        " values (?, ?, ?)",
-                        (str(sid), str(ts), stamp),
+                        "insert or replace into dream_cursor"
+                        " (session_id, last_ts, findings_sha, updated_at) values (?, ?, ?, ?)",
+                        (str(sid), str(ts), str(sha), stamp),
                     )
             con.commit()
 

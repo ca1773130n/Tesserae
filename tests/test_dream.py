@@ -176,8 +176,8 @@ def test_regressing_region_is_rejected_and_not_reproposed(tmp_path: Path, monkey
     root = _project(tmp_path)
     real = D._probe_scores
 
-    def worse_on_candidates(graph, probes, backend, top_k):
-        scores = real(graph, probes, backend, top_k)
+    def worse_on_candidates(graph, probes, backend, top_k, **kw):
+        scores = real(graph, probes, backend, top_k, **kw)
         is_candidate = any(e.type in ("supersedes", "shares_concept_with") for e in graph.edges)
         return [0.0 for _ in scores] if is_candidate else [1.0 for _ in scores]
 
@@ -209,14 +209,41 @@ def test_cursor_scopes_regions_and_undo_restores_it(tmp_path: Path) -> None:
     ])
     report = _run(root, dry_run=False)
     assert report["scope"] == "cursor"
-    assert report["reviewed_sessions"] == {"acct:s2": "2026-10-02T00:00:00Z"}
-    assert db.dream_cursors() == {"acct:s2": "2026-10-02T00:00:00Z"}
+    assert list(report["reviewed_sessions"]) == ["acct:s2"]
+    head, sha = report["reviewed_sessions"]["acct:s2"]
+    assert head == "2026-10-02T00:00:00Z"
+    assert db.dream_cursors() == {"acct:s2": (head, sha)}
     # only the region holding s2's finding was planned: the banana node is elsewhere
     assert not any(op.get("node_id") == "Concept:ban" for op in report["applied_ops"])
     nothing = _run(root, dry_run=True)
     assert nothing["regions"] == [] and nothing["reviewed_sessions"] == {}
     D.undo_dream(root, "last")
     assert db.dream_cursors() == {}
+
+
+def test_cursor_rereviews_a_session_whose_findings_arrive_after_its_turns(tmp_path: Path) -> None:
+    """The tailer stores turns before the compile mints their findings."""
+    from tesserae.session_chunks import SessionChunksDB, chunks_db_path
+
+    graph = _graph()
+    root = _project(tmp_path, graph)
+    db = SessionChunksDB(chunks_db_path(root))
+    db.record_turns("claude-code", "/x/s9.jsonl", "acct:s9", [
+        {"timestamp": "2026-10-03T00:00:00Z", "role": "user", "text": "hello"},
+    ])
+    first = _run(root, dry_run=False)
+    assert first["unmatched_sessions"] == ["acct:s9"]
+    assert "acct:s9" in db.dream_cursors()
+    # "the compile" now adds s9's two near-duplicate findings; no new turns
+    graph.nodes += [
+        _insight("n1", "Cursor must follow the compiled findings", "s9"),
+        _insight("n2", "Cursor must follow the compiled findings always", "s9"),
+    ]
+    (root / ".tesserae" / "graph.json").write_text(graph.to_json(indent=2) + "\n", encoding="utf-8")
+    again = _run(root, dry_run=True)
+    assert again["scope"] == "cursor" and "acct:s9" in again["reviewed_sessions"]
+    edges = {(op["edge"]["source"], op["edge"]["target"]) for op in again["promoted_ops"] if op["op"] == "supersede"}
+    assert ("SessionInsight:n2", "SessionInsight:n1") in edges or ("SessionInsight:n1", "SessionInsight:n2") in edges
 
 
 def test_probe_every_defers_writes_between_gated_passes(tmp_path: Path) -> None:
@@ -239,6 +266,99 @@ def test_undo_refuses_after_graph_changed(tmp_path: Path) -> None:
         D.undo_dream(root, "last")
 
 
+def test_failed_apply_rolls_back_every_write(tmp_path: Path, monkeypatch) -> None:
+    import tesserae.memory.associate as A
+
+    root = _project(tmp_path)
+    before = _snapshot(root)
+    real = A.persist_links
+
+    def boom(*_a, **_k):
+        raise OSError("ENOSPC")
+
+    monkeypatch.setattr(A, "persist_links", boom)
+    with pytest.raises(OSError, match="ENOSPC"):
+        _run(root, dry_run=False)
+    # graph.json and node_memory were written before the failure; both are back
+    assert _snapshot(root) == before
+    journal = next((root / ".tesserae" / "dream" / "journal").glob("*/*.json"))
+    assert json.loads(journal.read_text(encoding="utf-8"))["status"].startswith("rolled back")
+    assert json.loads((root / ".tesserae" / "dream" / "state.json").read_text(encoding="utf-8"))["passes"] == 0
+    monkeypatch.setattr(A, "persist_links", real)
+    report = _run(root, dry_run=False)  # the whole pass again, not its leftovers
+    assert report["op_counts"]["supersede"] == 1 and report["op_counts"]["associate"] >= 1
+    D.undo_dream(root, "last")
+    assert _snapshot(root) == before
+
+
+def test_interrupted_apply_blocks_new_passes_until_undone(tmp_path: Path, monkeypatch) -> None:
+    import tesserae.memory.associate as A
+
+    root = _project(tmp_path)
+    before = _snapshot(root)
+    monkeypatch.setattr(A, "persist_links", lambda *_a, **_k: (_ for _ in ()).throw(OSError("EIO")))
+    real_reverse = D._reverse
+    monkeypatch.setattr(D, "_reverse", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("disk gone")))
+    with pytest.raises(OSError, match="EIO"):
+        _run(root, dry_run=False)
+    monkeypatch.setattr(D, "_reverse", real_reverse)
+    assert _snapshot(root) != before  # partial writes remain, as after a crash
+    with pytest.raises(D.DreamError, match="interrupted mid-apply"):
+        _run(root, dry_run=False)
+    assert any("interrupted" in n for n in _run(root, dry_run=True)["notes"])
+    D.undo_dream(root, "last")
+    assert _snapshot(root) == before
+
+
+def test_undo_orders_by_pass_index_not_filename_clock(tmp_path: Path) -> None:
+    root = _project(tmp_path)
+    first = _run(root, dry_run=False, ops=("supersede",))
+    second = _run(root, dry_run=False, ops=("decay",))
+    # pass 0 ran on a host whose clock is ahead: its journal name sorts last
+    old = Path(first["journal"])
+    old.rename(old.with_name("99991231T000000000000Z-000000.json"))
+    assert D.undo_dream(root, "last")["undone"] == second["pass_id"]
+    assert D.undo_dream(root, "last")["undone"] == first["pass_id"]
+
+
+def test_probe_gate_uses_project_caches_and_a_local_backend(tmp_path: Path, monkeypatch) -> None:
+    import tesserae.context_compiler as C
+    import tesserae.retrieval.hybrid as H
+
+    root = _project(tmp_path)
+    seen: list = []
+    real = C.compile_context
+    monkeypatch.setattr(C, "compile_context", lambda *a, **k: seen.append(k) or real(*a, **k))
+    asked: list = []
+    monkeypatch.setattr(H, "active_embedding_backend", lambda prefer="auto": asked.append(prefer) or HashEmbeddingBackend())
+    monkeypatch.setenv("TESSERAE_EMBEDDING_PREFER", "gemini")
+    D.run_dream(root, dry_run=True, settings=D.DreamSettings(), backend=_FakeBackend(), cfg={}, env={})
+    assert seen and all(k["project_root"] == str(root.resolve()) for k in seen)
+    assert asked == ["model2vec"]  # never the active (possibly metered) backend
+
+
+def test_should_stop_defers_ungated_regions_without_rejecting(tmp_path: Path) -> None:
+    root = _project(tmp_path)
+    report = D.run_dream(
+        root, dry_run=False, settings=D.DreamSettings(), backend=_FakeBackend(),
+        probe_backend=HashEmbeddingBackend(), cfg={}, env={}, should_stop=lambda: True,
+    )
+    assert report["deferred_regions"] and report["reviewed_sessions"] == {}
+    assert not any(op["op"] in ("supersede", "associate") for op in report["applied_ops"])
+    assert report["skipped_rejected"] == 0 and not D._load_state(root.resolve())["rejected"]
+    assert _run(root, dry_run=True)["op_counts"]["supersede"] == 1  # still proposed next pass
+
+
+def test_remove_links_leaves_a_pair_another_writer_repersisted(tmp_path: Path) -> None:
+    from tesserae.memory.associate import _load_overlay_raw, persist_links, remove_links
+
+    root = _project(tmp_path)
+    persist_links(root, [("p", "q", 0.81), ("r", "s", 0.7)])
+    persist_links(root, [("p", "q", 0.9)])  # another host rediscovered it, stronger
+    remove_links(root, [("p", "q", 0.81), ("r", "s", 0.7)])
+    assert _load_overlay_raw(root) == [["p", "q", 0.9]]
+
+
 def test_lock_held_refuses(tmp_path: Path) -> None:
     from tesserae.locking import CompileLockHeldError, compile_lock, locking_unavailable
 
@@ -246,8 +366,10 @@ def test_lock_held_refuses(tmp_path: Path) -> None:
         pytest.skip("no flock on this platform")
     root = _project(tmp_path)
     with compile_lock(root / ".tesserae"):
+        # a preview only reads: it neither blocks nor fails behind a compile
+        assert _run(root, dry_run=True)["promoted_ops"]
         with pytest.raises(CompileLockHeldError):
-            _run(root, dry_run=True)
+            _run(root, dry_run=False)
 
 
 def test_cli_dry_run_json(tmp_path: Path, capsys, monkeypatch) -> None:

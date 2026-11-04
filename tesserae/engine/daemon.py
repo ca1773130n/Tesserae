@@ -1338,6 +1338,9 @@ class Daemon:
                 dry_run=False,
                 cfg=cfg,
                 backend=self._resolve_embedding_backend(),
+                # Step aside for a blocked pipeline run, as summarize and
+                # brief do: regions not yet gated wait for the next tick.
+                should_stop=self._pipeline_pending.is_set,
             )
             logger.info(
                 "dream for %s: pass %s promoted %s (journal %s)",
