@@ -74,6 +74,7 @@ from tesserae.graph_stores.sqlite import SqliteGraphStore
 from tesserae.research_graph import graph_from_payload
 from tesserae.retrieval.bm25_index import Bm25Index
 from tesserae.retrieval.hybrid import SentenceTransformersBackend, _tokenize, hybrid_search
+from tesserae.retrieval import ppr as ppr_mod
 from tesserae.retrieval.ppr import PROVENANCE_EDGE_DOWNWEIGHT, personalized_pagerank
 from tesserae.retrieval.vector_cache import VectorCache
 
@@ -128,6 +129,59 @@ def metrics(ranked, gold):
             "hit@10": float(bool(top10 & set(gold)))}
 
 
+# ---- PPR with the transition built once --------------------------------------
+class FrozenPPR:
+    """``personalized_pagerank`` over one fixed graph, transition built once.
+
+    The product function rebuilds the row-normalised transition from every
+    edge on each call, which costs seconds on a 28k-node graph and made a
+    400-query run take hours. The transition does not depend on the seeds, so
+    this captures the exact ``out_norm`` the product builds (by wrapping its
+    numpy power iteration for a single call) and then runs only the seed-
+    dependent part per query: the same personalization vector, the same
+    ``_power_iteration_numpy``, the same positive-score filter and ordering.
+    ``Bench.graph_arms`` asserts on the first queries that the result is
+    identical to calling ``personalized_pagerank`` directly.
+    """
+
+    def __init__(self, graph, **kwargs):
+        self.graph, self.kwargs = graph, kwargs
+        real, captured = ppr_mod._power_iteration_numpy, {}
+
+        def capture(n, out_norm, *args):
+            captured["out_norm"] = out_norm
+            return real(n, out_norm, *args)
+
+        ppr_mod._power_iteration_numpy = capture
+        try:
+            personalized_pagerank(graph, [graph.nodes[0].id], top_k=1, **kwargs)
+        finally:
+            ppr_mod._power_iteration_numpy = real
+        if "out_norm" not in captured:
+            raise SystemExit("numpy power iteration did not run: install the semantic extra")
+        self.out_norm = captured["out_norm"]
+        self.node_ids = [n.id for n in graph.nodes]
+        self.index = {nid: i for i, nid in enumerate(self.node_ids)}
+
+    def __call__(self, seed_weights, alpha):
+        n = len(self.node_ids)
+        surviving = [s for s in seed_weights if s in self.index]
+        total = sum(seed_weights[s] for s in surviving)
+        if not surviving or total <= 0.0:
+            return []
+        p = [0.0] * n
+        for s in surviving:
+            p[self.index[s]] += seed_weights[s] / total
+        seed_indices = [self.index[s] for s in surviving]
+        rank = ppr_mod._power_iteration_numpy(n, self.out_norm, p, seed_indices, alpha, 100, 1.0e-6)
+        return sorted(((self.node_ids[i], rank[i]) for i in range(n) if rank[i] > 0.0),
+                      key=lambda item: item[1], reverse=True)
+
+    def reference(self, seed_weights, alpha):
+        return personalized_pagerank(self.graph, list(seed_weights), alpha=alpha, top_k=len(self.graph.nodes),
+                                     seed_weights=seed_weights, **self.kwargs)
+
+
 # ---- corpus and graph -------------------------------------------------------
 class Bench:
     def __init__(self, project: pathlib.Path, out: pathlib.Path, corpus_dir: str, max_items: int):
@@ -153,6 +207,10 @@ class Bench:
         self.bge = SentenceTransformersBackend("BAAI/bge-base-en-v1.5")
         self.g_shipped = graph_from_payload(self.payload)
         self.g_density, self.doc_node = self._density_graph()
+        density_w = {"mentioned_in": 1.0 / PROVENANCE_EDGE_DOWNWEIGHT}
+        self.ppr_shipped = FrozenPPR(self.g_shipped, tame_hubs=True)
+        self.ppr_density = FrozenPPR(self.g_density, tame_hubs=True, edge_type_weights=density_w)
+        self.checks_left = 3  # queries on which FrozenPPR is checked against the product call
 
     def doc_of(self, node):
         sp = node.get("source_path") or ""
@@ -351,7 +409,7 @@ class Bench:
         return items
 
     # ---- graph arms -----------------------------------------------------------
-    def _ppr_docs(self, graph, node_seeds, doc_seeds, density, doc_mass=DOC_SEED_MASS):
+    def _ppr_docs(self, ppr, node_seeds, doc_seeds, doc_mass=DOC_SEED_MASS):
         weights = {}
         if node_seeds:
             tot = sum(s for _, s in node_seeds) or 1.0
@@ -366,10 +424,9 @@ class Bench:
                 weights[nid] = weights.get(nid, 0.0) + share * max(s, 0.0) / tot
         if not weights:
             return []
-        ranked = personalized_pagerank(
-            graph, list(weights), alpha=PPR_ALPHA, top_k=len(graph.nodes), tame_hubs=True,
-            seed_weights=weights,
-            edge_type_weights={"mentioned_in": 1.0 / PROVENANCE_EDGE_DOWNWEIGHT} if density else None)
+        ranked = ppr(weights, PPR_ALPHA)
+        if self.checks_left > 0 and ranked != ppr.reference(weights, PPR_ALPHA):
+            raise SystemExit("FrozenPPR diverged from personalized_pagerank: the cached transition is wrong")
         doc_name = {v: k for k, v in self.doc_node.items()}
         out = []
         for nid, _ in ranked:
@@ -393,13 +450,18 @@ class Bench:
                 base[d] += s.score
         node_seeds = [(s.node.id, float(s.score)) for s in res.scored[:SEEDS] if s.score > 0]
         doc_seeds = list(zip(it["dense"][:DOC_SEEDS], it["dense_sim"][:DOC_SEEDS]))
-        return {"tess_hybrid": [d for d, _ in base.most_common(10)],
-                "ppr_density": self._ppr_docs(self.g_density, node_seeds, doc_seeds, density=True),
-                "ppr_flat": self._ppr_docs(self.g_shipped, node_seeds, doc_seeds, density=False),
-                "ppr_density_nodes": self._ppr_docs(self.g_density, node_seeds, [], density=True),
-                "ppr_density_hr2": self._ppr_docs(self.g_density, node_seeds, doc_seeds, density=True,
-                                                  doc_mass=HR2_DOC_SEED_MASS),
-                "seeds": [(n, round(s, 6)) for n, s in node_seeds]}
+        out = {"tess_hybrid": [d for d, _ in base.most_common(10)],
+               "ppr_density": self._ppr_docs(self.ppr_density, node_seeds, doc_seeds),
+               "ppr_flat": self._ppr_docs(self.ppr_shipped, node_seeds, doc_seeds),
+               "ppr_density_nodes": self._ppr_docs(self.ppr_density, node_seeds, []),
+               "ppr_density_hr2": self._ppr_docs(self.ppr_density, node_seeds, doc_seeds,
+                                                 doc_mass=HR2_DOC_SEED_MASS),
+               "seeds": [(n, round(s, 6)) for n, s in node_seeds]}
+        if self.checks_left > 0:
+            self.checks_left -= 1
+            if self.checks_left == 0:
+                log("FrozenPPR matched personalized_pagerank exactly on 3 queries x 4 walks")
+        return out
 
 
 def log(*a):
