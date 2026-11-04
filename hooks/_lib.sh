@@ -85,6 +85,17 @@ hook_autocompile_enabled() {
   esac
 }
 
+# Opt-in gate for hooks/prompt-inject.sh. Either switch turns it on:
+# TESSERAE_HOOK_INJECT truthy (1 true yes on), or `prompt_inject: true` under
+# hooks: in .claude/tesserae.local.md. The env var is checked first so the
+# default (off) path costs no file read on every prompt and tool call.
+hook_inject_enabled() {
+  case "${TESSERAE_HOOK_INJECT:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+  esac
+  [[ "$(read_plugin_setting prompt_inject)" == "true" ]]
+}
+
 # --------------------------------------------------------------------
 # code_layer_enabled — is the OPT-IN code layer switched on here?
 #
@@ -126,7 +137,7 @@ PY
 # --------------------------------------------------------------------
 # read_plugin_setting <key> — parse the project's
 # .claude/tesserae.local.md frontmatter for one hooks.<key> value.
-# Recognises: hooks.session_start, hooks.session_end,
+# Recognises: hooks.session_start, hooks.session_end, hooks.prompt_inject,
 # hooks.posttooluse_edit, hooks.pretooluse_compile.
 # Echoes "true" or "false". Defaults applied when the file or the
 # key is missing:
@@ -157,6 +168,10 @@ read_plugin_setting() {
     # ``sync_code_on_edit: false`` in tesserae.local.md.
     sync_code_on_edit) default_value="true" ;;
     posttooluse_edit) default_value="false" ;;
+    # UserPromptSubmit / PreToolUse(Read|Grep|Edit) context injection. OFF:
+    # it adds tokens to every prompt and its task-success benefit is
+    # unmeasured. See ``hook_inject_enabled`` below.
+    prompt_inject) default_value="false" ;;
     *) default_value="false" ;;
   esac
 

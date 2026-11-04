@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Tesserae plugin — UserPromptSubmit + PreToolUse(Read|Grep|Edit) hook.
+#
+# Pushes the project's active decisions, gotchas and supersede warnings that
+# lexically match the prompt (or the file being read/grepped/edited) into the
+# agent's context, via `python -m tesserae.hook_inject`. Lexical only: no LLM,
+# no embedding call, read-only on .tesserae/sqlite.db. See that module's
+# docstring for the full contract.
+#
+# OFF by default — its benefit on task success has not been measured. Opt in
+# with either:
+#   TESSERAE_HOOK_INJECT=1                       (environment), or
+#   hooks.prompt_inject: true                    (.claude/tesserae.local.md)
+#
+# Fail-open: any failure prints nothing and exits 0, so a prompt or tool call
+# is never blocked. Failures are logged to .tesserae/.prompt-inject-hook.log.
+# A watchdog kills the injector at TESSERAE_HOOK_INJECT_TIMEOUT_MS (default
+# 300) wall-clock, interpreter start-up included.
+
+set -uo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_lib.sh
+. "${HERE}/_lib.sh"
+
+hook_inject_enabled || exit 0
+
+project_root="$(resolve_project_root)" || exit 0
+[[ -n "$project_root" && -f "${project_root}/.tesserae/sqlite.db" ]] || exit 0
+log_rel=".prompt-inject-hook.log"
+
+tesserae_bin=$(find_tesserae) || { log_to "$log_rel" "skipped: tesserae binary not found"; exit 0; }
+
+# Fast path: run the module with the interpreter the `tesserae` launcher uses.
+# `tesserae hook inject` is the same code but imports the whole CLI first
+# (~200 ms), which alone would spend most of the budget.
+cmd=("$tesserae_bin" hook inject)
+first_line=$(head -n 1 "$tesserae_bin" 2>/dev/null || true)
+if [[ "$first_line" == '#!'*python* ]]; then
+  read -r -a interp <<< "${first_line#\#!}"
+  cmd=("${interp[@]}" -m tesserae.hook_inject)
+fi
+
+timeout_ms="${TESSERAE_HOOK_INJECT_TIMEOUT_MS:-300}"
+[[ "$timeout_ms" =~ ^[0-9]+$ ]] || timeout_ms=300
+# Python's own deadline sits 50 ms under the watchdog so the usual slow case
+# is a logged timeout from inside the process, not an anonymous kill.
+py_timeout_ms=$(( timeout_ms > 100 ? timeout_ms - 50 : timeout_ms ))
+timeout_s=$(printf '%d.%03d' $(( timeout_ms / 1000 )) $(( timeout_ms % 1000 )))
+
+in_file=$(mktemp "${TMPDIR:-/tmp}/tesserae-inject-in.XXXXXX") || { log_to "$log_rel" "skipped: mktemp failed"; exit 0; }
+out_file=$(mktemp "${TMPDIR:-/tmp}/tesserae-inject-out.XXXXXX") || { rm -f "$in_file"; log_to "$log_rel" "skipped: mktemp failed"; exit 0; }
+trap 'rm -f "$in_file" "$out_file"' EXIT
+# A backgrounded command gets /dev/null as stdin when job control is off, so
+# the payload is spooled to a file first rather than inherited.
+cat > "$in_file"
+
+"${cmd[@]}" --project "$project_root" --timeout-ms "$py_timeout_ms" \
+  < "$in_file" > "$out_file" 2>> "${project_root}/.tesserae/${log_rel}" &
+pid=$!
+# Watchdog. It only ever signals the PID this script just launched, and is
+# itself killed as soon as the injector exits, before PID reuse is possible.
+( sleep "$timeout_s"; kill -TERM "$pid" 2>/dev/null ) &
+watchdog=$!
+wait "$pid"
+rc=$?
+kill "$watchdog" 2>/dev/null
+wait "$watchdog" 2>/dev/null
+
+if (( rc == 0 )); then
+  cat "$out_file"
+else
+  log_to "$log_rel" "injector exited rc=${rc} (143 = killed by the ${timeout_ms} ms watchdog); injected nothing"
+fi
+exit 0
