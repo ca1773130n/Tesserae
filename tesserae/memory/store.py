@@ -2,7 +2,8 @@
 
 Phase-5 KB-01 foundation. This is the SINGLE place project.py and
 mcp_server.py read/write mutable memory state — decay_score, access_count,
-last_accessed_at, confidence, superseded — so no call site embeds raw SQL.
+last_accessed_at, confidence, superseded, plus the reconciliation pass's
+proof evidence (``node_memory_proof``) — so no call site embeds raw SQL.
 All state lives in the ``node_memory`` table inside ``.tesserae/sqlite.db``
 (created on demand by :class:`SqliteGraphStore`); NOTHING mutable is written
 to ``graph.json``, which must stay byte-identical across compiles.
@@ -114,6 +115,38 @@ def bump_access(db_path: PathLike, node_id: str, accessed_at: str) -> None:
     layer that does.
     """
     _store(db_path).bump_access(node_id, accessed_at)
+
+
+@dataclass(frozen=True)
+class NodeProofRow:
+    """One piece of evidence that a later fact restated ``node_id`` (UPDATE).
+
+    ``evidence_key`` is a content hash of the evidence, so the same evidence
+    re-minted under a new node id is still ONE proof. Written only by the
+    opt-in reconciliation pass (:mod:`tesserae.memory.reconcile`).
+    """
+
+    node_id: str
+    evidence_key: str
+    evidence_node_id: Optional[str]
+    evidence_span: str
+    recorded_at: Optional[str] = None
+
+
+def append_proofs(db_path: PathLike, rows: Iterable[NodeProofRow]) -> int:
+    """Append proof rows to ``node_memory_proof``; returns how many were new."""
+    return _store(db_path).append_node_proof_many(
+        (r.node_id, r.evidence_key, r.evidence_node_id, r.evidence_span, r.recorded_at)
+        for r in rows
+    )
+
+
+def read_proofs(db_path: PathLike) -> Dict[str, List[NodeProofRow]]:
+    """``{node_id: [NodeProofRow, ...]}`` — a node's proof count is ``len()``."""
+    return {
+        node_id: [NodeProofRow(node_id=node_id, **item) for item in items]
+        for node_id, items in _store(db_path).read_node_proof().items()
+    }
 
 
 # --------------------------------------------------------------------------- #

@@ -1089,6 +1089,53 @@ class SqliteGraphStore:
             )
             con.commit()
 
+    def append_node_proof_many(
+        self,
+        rows: Iterable[Tuple[str, str, Optional[str], str, Optional[str]]],
+    ) -> int:
+        """Append evidence rows ``(node_id, evidence_key, evidence_node_id,
+        evidence_span, recorded_at)``; returns how many were NEW.
+
+        ``insert or ignore`` on ``(node_id, evidence_key)``: evidence already
+        on file is not appended again, which is what keeps a proof count
+        stable across recompiles of unchanged sources.
+        """
+        params = list(rows)
+        if not params:
+            return 0
+        with self._connect() as con:
+            before = con.total_changes
+            con.executemany(
+                """
+                insert or ignore into node_memory_proof
+                    (node_id, evidence_key, evidence_node_id, evidence_span, recorded_at)
+                values (?, ?, ?, ?, ?)
+                """,
+                params,
+            )
+            added = con.total_changes - before
+            con.commit()
+        return added
+
+    def read_node_proof(self) -> Dict[str, List[dict]]:
+        """``{node_id: [{evidence_key, evidence_node_id, evidence_span,
+        recorded_at}, ...]}``, spans ordered by ``evidence_key``."""
+        out: Dict[str, List[dict]] = {}
+        with self._connect() as con:
+            for node_id, key, ev_node, span, at in con.execute(
+                "select node_id, evidence_key, evidence_node_id, evidence_span,"
+                " recorded_at from node_memory_proof order by node_id, evidence_key"
+            ).fetchall():
+                out.setdefault(node_id, []).append(
+                    {
+                        "evidence_key": key,
+                        "evidence_node_id": ev_node,
+                        "evidence_span": span,
+                        "recorded_at": at,
+                    }
+                )
+        return out
+
     def bump_access(self, node_id: str, accessed_at: str) -> None:
         """ATOMIC access bump for ``node_id`` (Phase-5 KB-02).
 
@@ -1677,6 +1724,27 @@ class SqliteGraphStore:
                 confidence       text,
                 superseded       integer default 0,
                 updated_at       text
+            )
+            """
+        )
+        # node_memory_proof: the evidence half of node_memory, written by the
+        # OPT-IN write-time reconciliation pass (memory.reconcile) when a newer
+        # fact UPDATEs an existing one. One row per (node, evidence content),
+        # so re-running a compile re-asserts the same rows instead of counting
+        # the same evidence twice; a node's proof count is its row count. Same
+        # discipline as node_memory: SQLite-only, never in graph.json. A
+        # separate table rather than new node_memory columns because
+        # CREATE TABLE IF NOT EXISTS cannot add a column to an existing store,
+        # and one node carries many spans.
+        con.execute(
+            """
+            create table if not exists node_memory_proof (
+                node_id          text not null,
+                evidence_key     text not null,
+                evidence_node_id text,
+                evidence_span    text not null,
+                recorded_at      text,
+                primary key (node_id, evidence_key)
             )
             """
         )
