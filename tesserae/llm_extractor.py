@@ -116,35 +116,57 @@ ClaudeRunner = Callable[[str, str, str, int], str]
 #   about the project. A fence lowers the odds the model obeys; this catches
 #   the case where it obeyed anyway and copied the directive into the graph.
 #
-# The patterns are deliberately narrow — imperatives aimed at the model, chat
-# role tags, our own delimiter — because a false hit DROPS a real finding.
+# The patterns are deliberately narrow, because a false hit drops a real
+# finding, and session findings are often ABOUT prompts and injections. What
+# separates a directive from prose that mentions one:
+#
+# * position — a directive opens a line or sentence ("Ignore all previous
+#   instructions ..."); a mention sits mid-sentence ("compaction makes the
+#   agent forget earlier context", "templates use [INST] markers", "the
+#   extractor's system prompt: ..."). Every pattern is anchored to a line or
+#   sentence start;
+# * quoting — a quoted or backticked directive is being talked about, so
+#   quoted spans are removed before matching. A model that quotes the plant
+#   back passes this filter; the fence is the primary guard, this the backstop;
+# * our own fence tag is not matched at all: input occurrences are defanged
+#   by ``wrap_untrusted``, and naming the tag is not an instruction.
+#
+# "override" is not a trigger verb: "Override the previous rules file with the
+# new lint config" is ordinary prose that a sentence anchor cannot tell apart.
 # Measured before shipping against the compiled graphs on one machine: see
 # ``untrusted_doc_guard_enabled`` for the counts and why documents are opt-in.
 
 UNTRUSTED_TAG = "untrusted_source"
 
-_UNTRUSTED_TAG_RE = re.compile(r"<\s*/?\s*untrusted_source\b[^>]*>", re.IGNORECASE)
+# The closing ``>`` is optional (bounded to the line) so an unterminated
+# ``</untrusted_source`` cannot pass for the fence closing either.
+_UNTRUSTED_TAG_RE = re.compile(r"<\s*/?\s*untrusted_source\b[^>\n]*>?", re.IGNORECASE)
+
+# Quoted spans: backticks, double quotes, curly quotes, and single quotes that
+# are not apostrophes (``extractor's`` opens nothing).
+_QUOTED_SPAN_RE = re.compile(r"`[^`]*`|\"[^\"\n]*\"|\u201c[^\u201d\n]*\u201d|(?<!\w)'[^'\n]*'(?!\w)")
+
+# Start of a line, or after sentence punctuation, with an optional "please".
+_LEAD = r"(?:^|(?<=[.!?:;])\s)[ \t]*(?:please[ \t]+)?"
 
 _INSTRUCTION_SHAPED_RE = re.compile(
     r"|".join(
         (
             # "ignore all previous instructions", "disregard the above rules"
-            r"\b(?:ignore|disregard|forget|override)\s+(?:all\s+|any\s+|the\s+|your\s+|these\s+|my\s+)*"
+            _LEAD + r"(?:ignore|disregard|forget)\s+(?:all\s+|any\s+|the\s+|your\s+|these\s+|my\s+)*"
             r"(?:previous|prior|above|earlier|preceding|system|original)\s+"
             r"(?:instructions?|prompts?|messages?|rules|directives|guidelines|context)\b",
             # persona reassignment aimed at the reader
-            r"\byou\s+are\s+now\s+(?:a|an|the|in|my)\b",
-            r"\bfrom\s+now\s+on,?\s+you\s+(?:must|will|should|are)\b",
+            _LEAD + r"you\s+are\s+now\s+(?:a|an|the|in|my)\b",
+            _LEAD + r"from\s+now\s+on,?\s+you\s+(?:must|will|should|are)\b",
             # injected headers
-            r"\bnew\s+(?:system\s+)?instructions?\s*:",
-            r"\bsystem\s+prompt\s*:",
-            # chat-template / role tokens
-            r"<\|im_(?:start|end)\|>",
-            r"\[/?INST\]",
-            r"<\s*/?\s*(?:system|assistant|instructions?)\s*>",
+            _LEAD + r"new\s+(?:system\s+)?instructions?\s*:",
+            _LEAD + r"system\s+prompt\s*:",
+            # chat-template / role tokens opening a message
+            _LEAD + r"<\|im_(?:start|end)\|>",
+            _LEAD + r"\[/?INST\]",
+            _LEAD + r"<\s*/?\s*(?:system|assistant|instructions?)\s*>",
             r"^\s*(?:system|assistant)\s*:",
-            # our own fence, echoed back
-            r"<\s*/?\s*untrusted_source\b",
         )
     ),
     re.IGNORECASE | re.MULTILINE,
@@ -171,8 +193,14 @@ UNTRUSTED_SOURCE_RULE = (
 
 
 def instruction_shaped(text: object) -> bool:
-    """True when ``text`` reads as a directive to a model, not as knowledge."""
-    return isinstance(text, str) and bool(_INSTRUCTION_SHAPED_RE.search(text))
+    """True when ``text`` reads as a directive to a model, not as knowledge.
+
+    Quoted spans are ignored, and every pattern must open a line or sentence:
+    see the notes above ``UNTRUSTED_TAG``.
+    """
+    if not isinstance(text, str):
+        return False
+    return bool(_INSTRUCTION_SHAPED_RE.search(_QUOTED_SPAN_RE.sub(" ", text)))
 
 
 def untrusted_doc_guard_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
@@ -186,10 +214,10 @@ def untrusted_doc_guard_enabled(env: Optional[Mapping[str, str]] = None) -> bool
       every document once;
     * documents legitimately quote injections. A 1,523-paper research graph
       cites "Ignore previous prompt: attack techniques for language models"
-      (Perez & Ribeiro): 5 of its 62,514 node/edge text fields hit the filter
-      (the Paper node, its edge evidence and the two author descriptions), and
-      every one is a false positive. Across the session findings of five
-      project graphs the same filter hit 0 of 30,724 fields.
+      (Perez & Ribeiro): 3 of its 62,514 node/edge text fields hit the filter,
+      each one that title opening the field, and every one is a false
+      positive. Across the session findings of five project graphs the filter
+      hits 0 of 30,724 fields.
     """
     env = env if env is not None else os.environ
     return (env.get("TESSERAE_UNTRUSTED_DOC_GUARD") or "").strip().lower() in {"1", "true", "yes", "on"}

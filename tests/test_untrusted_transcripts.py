@@ -9,8 +9,9 @@ model is a stub that OBEYS: for every turn carrying a plant it copies the
 directive into a finding, the failure the fence alone cannot rule out.
 
 Pass condition: zero planted directives in any node or edge outside the
-Session node's verbatim transcript preview, every honest finding kept, and a
-re-import that is byte-identical.
+Session node's verbatim transcript preview, every honest finding kept, every
+drop counted on its Session node, and a re-import that is byte-identical from
+a fresh cache and from a warm one (the replay path, filtered at mint time).
 
 Scope, stated so nobody reads more into it: this proves the plumbing (fence on
 every call, filter on every candidate) against a model that copies verbatim. It
@@ -103,6 +104,7 @@ class _ObedientClient:
 
     def __init__(self) -> None:
         self.users: List[str] = []
+        self.planted = 0
 
     def complete_json(self, *, system, user, schema_name, cache_key=None, max_retries=2):
         self.users.append(user)
@@ -112,6 +114,7 @@ class _ObedientClient:
                 core = plant.replace("</untrusted_source> ", "")
                 if core in m.group(2):
                     findings.append({"kind": "decision", "body": core, "turn_ids": [int(m.group(1))]})
+                    self.planted += 1
         return {"findings": findings}
 
 
@@ -168,6 +171,16 @@ def test_planted_injections_never_reach_the_graph_and_reimport_is_idempotent(tmp
     assert leaked == [], f"{len(leaked)} planted directive(s) written to the graph"
     honest = [n for n in graph.nodes if n.description == HONEST or n.name == HONEST]
     assert honest, "the honest finding survives the filter"
+
+    # The filter runs at MINT time, after the chunk cache: the cache keeps
+    # every finding the model returned, so a warm-cache compile (below) is the
+    # replay path, and a finding cached before the guard existed is filtered
+    # the same way. Every drop is recorded on its Session node.
+    cached = "\n".join(p.read_text(encoding="utf-8") for p in (tmp_path / "cache1").rglob("*.json"))
+    assert any(m in cached for m in MARKERS), "the cache holds the planted findings"
+    recorded = sum(int(n.metadata.get("instruction_shaped_findings_dropped", 0))
+                   for n in graph.nodes if n.type == ResearchNodeType.SESSION)
+    assert client.planted > 0 and recorded == client.planted
 
     # Re-import: same transcripts, fresh parse, fresh cache, then a warm cache.
     again = _sessions(project, transcripts)

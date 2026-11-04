@@ -332,6 +332,39 @@ def extract_with_llm(
     return findings
 
 
+def drop_instruction_shaped(
+    findings: Sequence[Finding], *, session_id: str
+) -> Tuple[List[Finding], int]:
+    """Split off findings whose own text is a directive to a model (R6).
+
+    Such a finding is the injection succeeding, not knowledge about the
+    project: the whole finding goes, not the field, because a body that carried
+    one cannot be trusted to have been extracted honestly either. Counted,
+    never echoed, since the text is attacker-controlled.
+
+    Runs where findings are MINTED, not where they are extracted, so the chunk
+    cache keeps every finding the model returned. A finding that was cached
+    before this guard existed is still filtered, and one that a later, narrower
+    filter would keep comes back on the next compile with no re-extraction.
+    Measured before shipping: the first, broader version of these patterns
+    hit 0 of the 30,724 session-finding fields of five compiled project
+    graphs; the current patterns match a subset of what that version did.
+    """
+    kept: List[Finding] = []
+    for f in findings:
+        fields = (f.body, f.confidence_rationale, *f.revisit_signals)
+        if not any(instruction_shaped(t) for t in fields):
+            kept.append(f)
+    dropped = len(findings) - len(kept)
+    if dropped:
+        logger.warning(
+            "session %s: dropped %d finding(s) whose text is instruction-shaped "
+            "(possible prompt injection from the transcript)",
+            session_id, dropped,
+        )
+    return kept, dropped
+
+
 def _validate_finding(
     item,
     known_doc_ids: set,
@@ -389,19 +422,6 @@ def _validate_finding(
     elif not isinstance(raw_revisit, (list, tuple)):
         raw_revisit = []
     revisit_signals = [s for r in raw_revisit if (s := str(r or "").strip())]
-    # A finding whose own text is a directive to a model is the injection
-    # succeeding, not knowledge about the project: drop the whole finding
-    # rather than the field, because a body that carried one cannot be trusted
-    # to have been extracted honestly either. Counted, never echoed — the text
-    # is attacker-controlled. Measured before shipping: 0 hits across the
-    # 30,724 session-finding fields of five compiled project graphs.
-    if any(instruction_shaped(t) for t in (body, confidence_rationale, *revisit_signals)):
-        logger.warning(
-            "session %s: dropped a %s finding whose text is instruction-shaped "
-            "(possible prompt injection from the transcript)",
-            session_id, kind,
-        )
-        return None
     return Finding(
         kind=kind, body=body, turn_ids=turn_ids, references=references,
         confidence=confidence, confidence_rationale=confidence_rationale,
