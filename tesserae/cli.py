@@ -7955,6 +7955,9 @@ def _build_dream_parser() -> argparse.ArgumentParser:
             ".tesserae/dream/probes.jsonl to replace the sampled probes. The engine "
             "daemon runs this pass instead of its ungated distill + associate only "
             "when TESSERAE_DREAM=1 or config.json {\"dream\": {\"enabled\": true}}. "
+            "Supersede ops are advisory: the next compile's own (ungated) supersede pass "
+            "re-derives them, so a gate rejection or an undo of one lasts only until then. "
+            "--dry-run takes no lock. "
             "Exit codes: 0 ok, 1 refused (lock held, unsafe state), 2 usage / missing inputs."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
