@@ -475,6 +475,78 @@ def test_recover_judges_a_foreign_writer_by_age_not_pid(tmp_path):
     assert target.read_text() == "new"
 
 
+def _planted(tdir, *, target, tmp, payload=b"attacker bytes", host="other-host"):
+    """A record nobody's journaled_write wrote: planted on a shared disk or
+    shipped in a cloned repo's ``.tesserae/journal``."""
+    import hashlib
+    import json as _json
+
+    tmp.write_bytes(payload)
+    journal = tdir / locking.JOURNAL_DIRNAME
+    journal.mkdir(parents=True, exist_ok=True)
+    entry = journal / "1.aa.wal"
+    entry.write_text(_json.dumps({
+        "target": str(target), "tmp": str(tmp),
+        "sha256": hashlib.sha256(payload).hexdigest(), "prior_sha256": None,
+        "host": host, "pid": 1, "start_time": None, "created_at": 1,
+    }))
+    return entry
+
+
+def test_recover_refuses_a_target_outside_the_tesserae_dir(tmp_path):
+    """Review repro: a planted record must not make doctor write anywhere."""
+    tdir = tmp_path / "proj" / ".tesserae"
+    tdir.mkdir(parents=True)
+    outside = tmp_path / "outside" / "pwned.txt"
+    outside.parent.mkdir()
+    entry = _planted(tdir, target=outside, tmp=tdir / "x.tmp.1.aa")
+    actions = locking.recover_journal(tdir)
+    assert "refused" in actions[0] and "outside" in actions[0]
+    assert not outside.exists()
+    assert not entry.exists()  # dropped
+    assert (tdir / "x.tmp.1.aa").exists()  # but nothing it names is touched
+
+
+def test_recover_refuses_a_temp_file_it_did_not_name(tmp_path):
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    target = tdir / "graph.json"
+    elsewhere = tmp_path / "secret.txt"
+    elsewhere.write_text("not ours")
+    _planted(tdir, target=target, tmp=tdir / "notes.txt")
+    assert "not named like" in locking.recover_journal(tdir)[0]
+    _planted(tdir, target=target, tmp=tmp_path / "graph.tmp.1.aa")
+    assert "not beside its target" in locking.recover_journal(tdir)[0]
+    link = tdir / "graph.tmp.1.ab"
+    _planted(tdir, target=target, tmp=tdir / "graph.tmp.1.ac")
+    (tdir / "graph.tmp.1.ac").unlink()
+    link.symlink_to(elsewhere)
+    import json as _json
+
+    entry = locking.pending_journal(tdir)[0]
+    record = _json.loads(entry.read_text())
+    entry.write_text(_json.dumps({**record, "tmp": str(link)}))
+    assert "symlink" in locking.recover_journal(tdir)[0]
+    assert not target.exists() and elsewhere.read_text() == "not ours"
+
+
+def test_recover_waits_for_no_compile(tmp_path):
+    """A real recovery fails fast while a compile holds the lock; the dry run
+    (doctor's detect pass) does not need it."""
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    target = tdir / "graph.json"
+    target.write_text("old")
+    _tmp, entry = _interrupted(tdir, target, "new")
+    with locking.compile_lock(tdir):
+        assert locking.recover_journal(tdir, dry_run=True)[0].endswith("forward")
+        with pytest.raises(locking.CompileLockHeldError, match="journal recovery deferred"):
+            locking.recover_journal(tdir)
+    assert target.read_text() == "old" and entry.exists()
+    locking.recover_journal(tdir)
+    assert target.read_text() == "new"
+
+
 def test_recover_drops_a_torn_record(tmp_path):
     tdir = tmp_path / ".tesserae"
     (tdir / "journal").mkdir(parents=True)

@@ -995,10 +995,16 @@ def _detect_write_journal(ctx: DoctorContext) -> Optional[Finding]:
 
 
 def _fix_write_journal(ctx: DoctorContext) -> Optional[str]:
-    from .locking import recover_journal
+    from .locking import CompileLockHeldError, recover_journal
 
     # Re-run, not replayed from detect: a writer may have finished meanwhile.
-    done = [a for a in recover_journal(_tesserae_dir(ctx)) if not a.endswith("left alone")]
+    try:
+        actions = recover_journal(_tesserae_dir(ctx))
+    except CompileLockHeldError as exc:
+        # Not a crash: recovery waits for the compile, and the finding stays.
+        _LOG_DOCTOR.warning("write_journal: recovery deferred — %s", exc)
+        return None
+    done = [a for a in actions if not a.endswith("left alone")]
     return "; ".join(done) if done else None
 
 

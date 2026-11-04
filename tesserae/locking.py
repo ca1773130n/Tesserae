@@ -27,12 +27,13 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Dict, Iterator, List, Optional
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 try:
     import fcntl
@@ -448,8 +449,10 @@ def _journal_begin(target: Path, tmp: Path, new_sha: str) -> Path:
     directory = journal_dir_for(target)
     directory.mkdir(parents=True, exist_ok=True)
     record = {
-        "target": str(target),
-        "tmp": str(tmp),
+        # Absolute: recovery refuses any path it cannot confine to the
+        # ``.tesserae`` that owns the journal (see _confined_paths).
+        "target": os.path.abspath(target),
+        "tmp": os.path.abspath(tmp),
         "sha256": new_sha,
         "prior_sha256": sha256_of(target),
         "host": _host_tag(),
@@ -481,6 +484,44 @@ def _journal_writer_alive(record: Dict[str, object], entry: Path, now: float) ->
     )
 
 
+#: ``journaled_write``'s temp name after the target's stem: ``.tmp.<pid>.<hex>``.
+_JOURNAL_TMP_SUFFIX = r"\.tmp\.\d+\.[0-9a-f]+"
+
+
+def _confined_paths(
+    record: Dict[str, object], tesserae_dir: Path
+) -> Tuple[Optional[Tuple[Path, Path]], str]:
+    """``(target, tmp)`` from ``record`` if it could only have come from
+    :func:`journaled_write` for this ``.tesserae``; else ``(None, why)``.
+
+    A record is just a file in ``.tesserae/journal``, and whoever can write
+    there — another user on a shared disk, a cloned repo that ships one —
+    would otherwise choose what recovery renames over what. So both paths
+    must be absolute, the target's directory must resolve inside
+    ``tesserae_dir``, the temp file must sit beside the target under the
+    name ``journaled_write`` gives it, and it must not be a symlink.
+    The target's *directory* is resolved, not the target: a rename replaces
+    a symlinked target itself, never the file it points at.
+    """
+    target = Path(str(record.get("target") or ""))
+    tmp = Path(str(record.get("tmp") or ""))
+    if not (target.is_absolute() and tmp.is_absolute()):
+        return None, "paths are not absolute"
+    if target.name in ("", ".", ".."):
+        return None, "target names no file"
+    root = Path(tesserae_dir).resolve()
+    target_dir = target.parent.resolve()
+    if target_dir != root and root not in target_dir.parents:
+        return None, f"target {target} is outside {root}"
+    if tmp.parent.resolve() != target_dir:
+        return None, f"temp file {tmp} is not beside its target"
+    if not re.fullmatch(re.escape(target.stem) + _JOURNAL_TMP_SUFFIX, tmp.name):
+        return None, f"temp file {tmp.name} is not named like a journaled write's"
+    if tmp.is_symlink():
+        return None, f"temp file {tmp.name} is a symlink"
+    return (target_dir / target.name, target_dir / tmp.name), ""
+
+
 def pending_journal(tesserae_dir: str | Path) -> List[Path]:
     """Intent records under ``<tesserae_dir>/journal``, oldest name first."""
     directory = Path(tesserae_dir) / JOURNAL_DIRNAME
@@ -507,9 +548,30 @@ def recover_journal(
       creating it; drop the record.
 
     Records whose writer may still be running are left alone and reported.
+    A record naming paths that :func:`journaled_write` could not have written
+    for this ``.tesserae`` (see :func:`_confined_paths`) is dropped untouched.
     Returns one line per record describing what was (or, with ``dry_run``,
     would be) done.
+
+    A real run holds ``compile.lock``, failing fast with
+    :class:`CompileLockHeldError` while a compile runs: the compile is a
+    writer, and between this function's sha256 check and its rename it could
+    otherwise publish a graph that the stale temp then overwrites. Writers
+    that do not take the compile lock (``graph repair``, the ledgers) can
+    still race that window; it is seconds wide only for a SIGKILLed writer's
+    leftovers, which is what is being recovered.
     """
+    if dry_run or not pending_journal(tesserae_dir):
+        return _recover_journal_unlocked(Path(tesserae_dir), dry_run=dry_run, now=now)
+    with compile_lock(
+        tesserae_dir, wait_seconds=0, what="compile/refresh (journal recovery deferred)",
+    ):
+        return _recover_journal_unlocked(Path(tesserae_dir), dry_run=False, now=now)
+
+
+def _recover_journal_unlocked(
+    tesserae_dir: Path, *, dry_run: bool, now: Optional[float]
+) -> List[str]:
     clock = time.time() if now is None else now
     actions: List[str] = []
     for entry in pending_journal(tesserae_dir):
@@ -525,12 +587,18 @@ def recover_journal(
             if not dry_run:
                 entry.unlink(missing_ok=True)
             continue
+        paths, why = _confined_paths(record, tesserae_dir)
+        if paths is None:
+            logger.warning("journal record %s refused: %s", entry, why)
+            actions.append(f"{entry.name}: refused ({why}); record dropped, nothing renamed")
+            if not dry_run:
+                entry.unlink(missing_ok=True)
+            continue
         if _journal_writer_alive(record, entry, clock):
             actions.append(f"{entry.name}: writer may still be running; left alone")
             continue
-        target = Path(str(record.get("target") or ""))
-        tmp = Path(str(record.get("tmp") or ""))
-        if tmp.name and tmp.is_file():
+        target, tmp = paths
+        if tmp.is_file():
             complete = sha256_of(tmp) == record.get("sha256")
             if complete and sha256_of(target) == record.get("prior_sha256"):
                 actions.append(f"{entry.name}: rolled {target.name} forward")
