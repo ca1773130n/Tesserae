@@ -294,7 +294,7 @@ ATTRIBUTION_REASONS = (
     "no_checkable_figure",
     "subject_name_uncheckable",
     "benchmark_name_uncheckable",
-    "evidence_absent_uncheckable",
+    "evidence_absent_cannot_prove",
 )
 
 
@@ -335,6 +335,11 @@ def _attr_figures(answer: str, subject: str, obj: str) -> List[str]:
             continue
         out.append(f)
     return out
+
+
+# A packed block's "[Title]" header on a line of its own: what is left of a
+# block whose source session or document was pruned.
+_ATTR_HEADER_LINE = re.compile(r"^[ \t]*\[[^\]\n]+\][ \t]*$", re.MULTILINE)
 
 
 def _attr_blocks(evidence: str) -> List[Tuple[int, int, str]]:
@@ -393,8 +398,13 @@ def check_attribution(answer: str, evidence: str, *, subject: str, obj: str) -> 
     A name with no identity-bearing tokens ("The Dataset") matches nothing and
     would flag every answer (audit probe P6); those are refused as
     ``*_uncheckable`` with ``flagged`` False — could-not-check is not a flag.
-    So is empty evidence (``evidence_absent_uncheckable``): with the source
-    session or document absent, ownership cannot be proved either way.
+
+    Absent evidence is different (``evidence_absent_cannot_prove``): no text,
+    or only the ``[Title]`` headers of packed blocks whose source session or
+    document is gone. Ownership cannot be confirmed, so it IS flagged — a
+    caller gating on ``flagged`` must not wave through a figure nobody could
+    check — but under its own reason, not ``figure_absent_from_evidence``,
+    which would read as a checked negative.
     """
     detail: Dict[str, Any] = {"subject": subject, "object": obj, "figures": []}
     if not _attr_tokens(subject):
@@ -405,12 +415,8 @@ def check_attribution(answer: str, evidence: str, *, subject: str, obj: str) -> 
     detail["checked_figures"] = figs
     if not figs:
         return {"flagged": False, "reason": "no_checkable_figure", "detail": detail}
-    if not (evidence or "").strip():
-        # No evidence at all — the session or document the answer came from is
-        # absent. That is "cannot prove", not "the figure is missing from it":
-        # ``figure_absent_from_evidence`` would read as a checked negative and
-        # flag an answer nobody looked at.
-        return {"flagged": False, "reason": "evidence_absent_uncheckable", "detail": detail}
+    if not _ATTR_HEADER_LINE.sub("", evidence or "").strip():
+        return {"flagged": True, "reason": "evidence_absent_cannot_prove", "detail": detail}
 
     evidence = evidence or ""
     blocks = _attr_blocks(evidence)
