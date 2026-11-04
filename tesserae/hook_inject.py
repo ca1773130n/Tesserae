@@ -27,6 +27,10 @@ Contract, every clause of which is load-bearing:
 * **Bounded.** ~1.5k tokens (estimated at 4 chars/token) and a wall-clock
   deadline armed with ``SIGALRM``; the shell hook adds a hard 300 ms watchdog
   on top, which also covers interpreter start-up.
+* **Cold start is out of band.** The candidate pool is cached per graph
+  version (:func:`load_pool`); the first event after a compile injects
+  nothing and starts one detached ``--build-pool`` process
+  (:func:`spawn_pool_build`), so the expensive read never races the watchdog.
 * **Never reads transcripts.** ``transcript_path`` in the payload is ignored.
 * **No self-capture.** It spawns no LLM, so it writes no transcript of its own.
   Its output lands in the user's transcript as an ``attachment`` row of type
@@ -273,44 +277,114 @@ def _build_pool(db_path: Path) -> _Pool:
     )
 
 
-def load_pool(project_root: Path, cache_dir: Optional[Path] = None) -> _Pool:
-    """The candidate pool, from the per-project cache when it is current.
+class PoolCold(Exception):
+    """No current pool cache; a background build was requested instead."""
 
-    Reading ~800 findings out of a 1 GB SQLite file and tokenising half a
-    megabyte of their text costs 30-110 ms depending on the page cache, and the
-    answer only changes when a compile republishes the graph. So the pool is
-    cached under ``cache_dir`` keyed on ``graph.json``'s ``(st_mtime_ns,
-    st_size)``: a compile rewrites that file by atomic rename and then the
-    mirror, and the staleness guard refuses the window in between, so a pool
-    can only ever be built from a mirror that matches the graph it is keyed on.
-    ``sqlite.db``'s own mtime is no key — MCP reads write to it.
 
-    The cache is JSON, never pickle, because it lives in a temp directory;
-    :func:`_state_dir` refuses a directory another user owns. A corrupt or
-    unreadable cache is logged and rebuilt.
-    """
+def _pool_cache(project_root: Path, cache_dir: Path) -> Tuple[list, Path, Path]:
+    """``(key, cache_file, db_path)`` for this project's current graph."""
     graph_path, db_path = _mirror_paths(project_root)
     stat = graph_path.stat()
     key = [POOL_CACHE_VERSION, str(project_root.resolve()), stat.st_mtime_ns, stat.st_size]
-    cache_file = None
-    if cache_dir is not None:
-        digest = hashlib.sha256(key[1].encode("utf-8")).hexdigest()[:24]
-        cache_file = cache_dir / f"{digest}.pool.json"
-        try:
-            payload = json.loads(cache_file.read_bytes())
-            if payload.get("key") == key:
-                return _Pool(**payload["pool"])
-        except FileNotFoundError:
-            pass
-        except (OSError, ValueError, TypeError, KeyError) as exc:
-            _log(project_root, f"pool cache {cache_file} unreadable ({type(exc).__name__}: {exc}); rebuilding")
+    digest = hashlib.sha256(key[1].encode("utf-8")).hexdigest()[:24]
+    return key, cache_dir / f"{digest}.pool.json", db_path
+
+
+def load_pool(project_root: Path, cache_dir: Path, *, build: bool = False) -> _Pool:
+    """The candidate pool from the per-project cache; build it only if ``build``.
+
+    Reading ~800 findings out of a 1 GB SQLite file, tokenising half a megabyte
+    of their text and writing the result took 80-330 ms in-process on this
+    repo's mirror under load — over the hook's whole budget — and the answer
+    only changes when a compile republishes the graph. So the pool is cached
+    under ``cache_dir`` keyed on ``graph.json``'s ``(st_mtime_ns, st_size)``: a
+    compile rewrites that file by atomic rename and then the mirror, and the
+    staleness guard refuses the window in between, so a pool can only ever be
+    built from a mirror that matches the graph it is keyed on. ``sqlite.db``'s
+    own mtime is no key — MCP reads write to it.
+
+    Without ``build`` a miss raises :class:`PoolCold`; the hook then starts
+    :func:`spawn_pool_build` and injects nothing for that one event. Building
+    inline instead would get killed by the watchdog on exactly the machines
+    where it is slow, before it could write the cache, every time.
+
+    The cache is JSON, never pickle, because it lives in a temp directory;
+    :func:`_state_dir` refuses a directory another user owns. A corrupt cache
+    is logged and treated as a miss.
+    """
+    key, cache_file, db_path = _pool_cache(project_root, cache_dir)
+    try:
+        payload = json.loads(cache_file.read_bytes())
+        if payload.get("key") == key:
+            return _Pool(**payload["pool"])
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        _log(project_root, f"pool cache {cache_file} unreadable ({type(exc).__name__}: {exc}); treating as a miss")
+    if not build:
+        raise PoolCold(f"no current pool cache at {cache_file}")
     pool = _build_pool(db_path)
-    if cache_file is not None:
-        cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        tmp = cache_file.with_suffix(f".{os.getpid()}.tmp")
+    cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    tmp = cache_file.with_suffix(f".{os.getpid()}.tmp")
+    try:
         tmp.write_text(json.dumps({"key": key, "pool": pool.__dict__}, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, cache_file)
+    finally:
+        tmp.unlink(missing_ok=True)
     return pool
+
+
+#: A build lock older than this is presumed dead (its builder was killed).
+BUILD_LOCK_STALE_S = 60
+
+
+def spawn_pool_build(project_root: Path, cache_dir: Path) -> Optional[int]:
+    """Start ONE detached ``--build-pool`` process for this project; its pid.
+
+    ``None`` when a build is already running (a lock younger than
+    :data:`BUILD_LOCK_STALE_S`), so a burst of prompts after a compile starts
+    one builder, not one each. The builder deletes the lock when it finishes;
+    it runs in its own session so the harness reaping the hook's process group
+    cannot cut it short, and it ends by itself in about a second.
+    """
+    import subprocess
+
+    _, cache_file, _ = _pool_cache(project_root, cache_dir)
+    lock = cache_file.with_suffix(".building")
+    cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    for _attempt in range(2):
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            break
+        except FileExistsError:
+            if time.time() - lock.stat().st_mtime < BUILD_LOCK_STALE_S:
+                return None
+            lock.unlink(missing_ok=True)
+    else:
+        return None
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "tesserae.hook_inject", "--build-pool",
+             "--project", str(project_root), "--state-dir", str(cache_dir)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except BaseException:
+        os.close(fd)
+        lock.unlink(missing_ok=True)
+        raise
+    os.write(fd, str(proc.pid).encode("ascii"))
+    os.close(fd)
+    return proc.pid
+
+
+def _build_pool_now(project_root: Path, cache_dir: Path) -> None:
+    """The ``--build-pool`` body: build, then always release the lock."""
+    _, cache_file, _ = _pool_cache(project_root, cache_dir)
+    try:
+        load_pool(project_root, cache_dir, build=True)
+    finally:
+        cache_file.with_suffix(".building").unlink(missing_ok=True)
 
 
 def _replacement(node_id: str, edges: Sequence[ResearchEdge], by_id: Mapping[str, int], names: Sequence[str]) -> Optional[str]:
@@ -544,7 +618,15 @@ def run(
     if isinstance(session_id, str) and session_id:
         seen_file = _seen_path(state_dir, project_root.resolve(), session_id)
     seen = _read_seen(seen_file) if seen_file else set()
-    items = retrieve(load_pool(project_root, state_dir), query, seen=seen, anchors=file_anchors(event),
+    try:
+        pool = load_pool(project_root, state_dir)
+    except PoolCold:
+        pid = spawn_pool_build(project_root, state_dir)
+        raise PoolCold(
+            "pool cache cold (first use, or a compile republished the graph); "
+            + (f"building in background, pid {pid}" if pid else "a background build is already running")
+        ) from None
+    items = retrieve(pool, query, seen=seen, anchors=file_anchors(event),
                      strict=event.get("hook_event_name") == "PreToolUse")
     text, emitted = render(items, budget_tokens=budget_tokens,
                            elapsed_ms=(time.perf_counter() - t0) * 1000)
@@ -569,6 +651,9 @@ def add_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
                         help="Per-session dedupe + candidate-pool cache dir (default: <tmp>/tesserae-hook-inject)")
     parser.add_argument("--log-file", default=None,
                         help=f"Error log (default: <project>/.tesserae/{LOG_NAME})")
+    parser.add_argument("--build-pool", action="store_true",
+                        help="Build the candidate-pool cache now, without a deadline, and exit "
+                             "(what a cold hook starts in the background)")
     return parser
 
 
@@ -580,6 +665,12 @@ def run_args(args: argparse.Namespace, stdin=None) -> int:
     t0 = time.perf_counter()
     project_root = Path(args.project)
     log_file = Path(args.log_file) if args.log_file else None
+    if getattr(args, "build_pool", False):
+        try:
+            _build_pool_now(project_root, _state_dir(Path(args.state_dir) if args.state_dir else None))
+        except Exception as exc:  # detached: nobody reads stderr, so log it
+            _log(project_root, f"pool build failed: {type(exc).__name__}: {exc}", log_file)
+        return 0
     armed = hasattr(signal, "setitimer") and args.timeout_ms > 0
     event_name = "?"
     try:

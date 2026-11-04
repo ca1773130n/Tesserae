@@ -80,8 +80,37 @@ def _prompt(text, session_id=None, **extra):
     return event
 
 
-def _call(project: Path, event, tmp_path: Path, *extra_args):
+_REAL_SPAWN = {"test_cold_pool_starts_one_detached_build"}
+
+
+@pytest.fixture(autouse=True)
+def inline_pool_build(request, monkeypatch):
+    """Cold pools build synchronously in tests, not in a detached process.
+
+    The cold event itself still injects nothing — that is the behaviour — but
+    the next one finds the cache. Tests in ``_REAL_SPAWN`` opt out.
+    """
+    if request.node.name in _REAL_SPAWN:
+        return
+
+    def build(project_root, cache_dir):
+        hook_inject.load_pool(project_root, cache_dir, build=True)
+        return 0
+
+    monkeypatch.setattr(hook_inject, "spawn_pool_build", build)
+
+
+def _warm(project: Path, state_dir: Path) -> None:
+    hook_inject.load_pool(project, state_dir, build=True)
+
+
+def _call(project: Path, event, tmp_path: Path, *extra_args, warm=True):
     """Run the module entry point in-process; return (rc, stdout, log text)."""
+    if warm and (project / ".tesserae" / "sqlite.db").exists():
+        try:
+            _warm(project, tmp_path / "seen")
+        except RuntimeError:  # a deliberately stale mirror: the call must refuse it
+            pass
     log = tmp_path / "hook.log"
     args = ["--project", str(project), "--state-dir", str(tmp_path / "seen"),
             "--log-file", str(log), *extra_args]
@@ -188,7 +217,9 @@ def test_per_session_dedupe(project, tmp_path):
 def test_pool_cache_is_rebuilt_when_a_compile_republishes_the_graph(project, tmp_path):
     tdir = project / ".tesserae"
     prompt = _prompt("vacuum the session chunks database")
-    rc, out, _ = _call(project, prompt, tmp_path)
+    rc, out, _ = _call(project, prompt, tmp_path, warm=False)
+    assert out == ""  # cold: nothing injected, build requested
+    rc, out, _ = _call(project, prompt, tmp_path, warm=False)
     assert out == "" and list((tmp_path / "seen").glob("*.pool.json"))
     # A "compile": new finding in the mirror, graph.json rewritten, mirror after it.
     SqliteGraphStore(tdir / "sqlite.db").upsert_node(_node(
@@ -197,8 +228,24 @@ def test_pool_cache_is_rebuilt_when_a_compile_republishes_the_graph(project, tmp
     (tdir / "graph.json").write_text('{"nodes": [], "edges": [] }\n', encoding="utf-8")
     later = time.time() + 10
     os.utime(tdir / "sqlite.db", (later, later))
-    rc, out, _ = _call(project, prompt, tmp_path)
+    rc, out, log = _call(project, prompt, tmp_path, warm=False)
+    assert out == "" and "pool cache cold" in log  # the old pool is not served
+    rc, out, _ = _call(project, prompt, tmp_path, warm=False)
     assert "SessionDecision:s3:vacuum" in _context(out)
+
+
+def test_cold_pool_starts_one_detached_build(project, tmp_path):
+    state = tmp_path / "seen"
+    first = hook_inject.spawn_pool_build(project, state)
+    second = hook_inject.spawn_pool_build(project, state)
+    assert isinstance(first, int) and second is None  # the lock holds a burst to one builder
+    lock = next(state.glob("*.building"))
+    deadline = time.time() + 20
+    while lock.exists() and time.time() < deadline:
+        time.sleep(0.05)
+    assert not lock.exists(), "builder never released its lock"
+    rc, out, _ = _call(project, _prompt("compile exclusive lock"), tmp_path, warm=False)
+    assert D_LOCK in _context(out)
 
 
 def test_never_writes_the_mirror_and_never_opens_the_transcript(project, tmp_path, monkeypatch):
@@ -269,6 +316,7 @@ def test_deadline_fails_open_and_logs_timeout(project, tmp_path, monkeypatch):
 def test_cli_route_matches_module(project, tmp_path, monkeypatch, capsys):
     from tesserae.cli import main
 
+    _warm(project, tmp_path / "s")
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(_prompt("compile exclusive lock"))))
     rc = main(["hook", "inject", "--project", str(project), "--state-dir", str(tmp_path / "s"),
                "--log-file", str(tmp_path / "l.log")])
@@ -319,7 +367,9 @@ def _hook_env(tmp_path: Path, stub: str, **env):
     return base
 
 
-def _run_hook(project: Path, env, event):
+def _run_hook(project: Path, env, event, warm=True):
+    if warm:
+        _warm(project, Path(env["TMPDIR"]) / "tesserae-hook-inject")
     return subprocess.run(["bash", str(HOOK)], input=json.dumps(event), capture_output=True,
                           text=True, cwd=project, env=env, timeout=10)
 
