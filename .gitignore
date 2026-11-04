@@ -22,6 +22,7 @@ evals/*
 !evals/locomo/
 !evals/tck/
 !evals/selfimprove/
+!evals/bridge/
 
 # Un-ignoring evals/qa/ re-exposes anything a run drops in it. The QA runner
 # defaults --out to ~/.blackhole/ instead, so this only catches the operator who
