@@ -12,7 +12,9 @@ Two datasets, one scoring rule:
   sessions, ordered by session. Every ``is_update`` point is paired with each
   of its ``original_memories``; an original that is not itself an earlier
   memory point verbatim (2,868 of 3,788 are paraphrases) is minted as its own
-  node just before the updating session.
+  node just before the updating node. A pair whose "newer" point is not
+  later in session order (an update restating an earlier point) is set aside
+  as ``inverted_gold``, not scored: recency cannot order it.
 * **FactConsolidation** — one node per numbered fact, ordered by index, gold
   pairs from :func:`evals.lifecycle.datasets.conflict_pairs` (silver: derived,
   not shipped by MemoryAgentBench).
@@ -42,7 +44,7 @@ data it would need to resolve is a finding, not a bug in this harness.
 from __future__ import annotations
 
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -56,12 +58,17 @@ class UpdateCase:
     unit: str  # user uuid or FactConsolidation source
     nodes: List[Tuple[str, str, str]]  # (node id, text, session-order key)
     gold: List[Tuple[str, str]]  # (newer id, older id)
+    #: gold pairs whose "newer" node is not later in session order — set
+    #: aside unscored, since no recency rule could get them right
+    inverted: List[Tuple[str, str]] = field(default_factory=list)
 
 
 def halumem_case(user: HaluUser, *, max_sessions: Optional[int] = None) -> UpdateCase:
     nodes: List[Tuple[str, str, str]] = []
     by_text: Dict[str, str] = {}
+    order: Dict[str, str] = {}
     gold: List[Tuple[str, str]] = []
+    inverted: Set[Tuple[str, str]] = set()
     sessions = user.sessions[:max_sessions] if max_sessions else user.sessions
     for session in sessions:
         si = session.index
@@ -77,17 +84,32 @@ def halumem_case(user: HaluUser, *, max_sessions: Optional[int] = None) -> Updat
                 new_id = f"m-{si:04d}-{pos:03d}"
                 nodes.append((new_id, mp.content, f"s{si:04d}b"))
                 by_text[mp.content] = new_id
+                order[new_id] = f"s{si:04d}b"
             if not mp.is_update:
                 continue
             for k, original in enumerate(mp.original_memories):
                 old_id = by_text.get(original)
                 if old_id is None:
+                    # Just before the NEWER node, not before this session: a
+                    # restated update reuses an earlier session's node, and an
+                    # original minted after it would make the gold pair point
+                    # backwards in time.
+                    key = order[new_id]
+                    key = key[:-1] + "a" if key.endswith("b") else key
                     old_id = f"o-{si:04d}-{pos:03d}-{k}"
-                    nodes.append((old_id, original, f"s{si:04d}a"))
+                    nodes.append((old_id, original, key))
                     by_text[original] = old_id
-                if old_id != new_id:
+                    order[old_id] = key
+                if old_id == new_id:
+                    continue
+                if order[new_id] <= order[old_id]:
+                    # HaluMem says new_id updates old_id, but old_id was stated
+                    # no earlier: the recency arbiter cannot be right here,
+                    # so the pair is set aside and counted, not scored.
+                    inverted.add((new_id, old_id))
+                else:
                     gold.append((new_id, old_id))
-    return UpdateCase(unit=user.uuid, nodes=nodes, gold=sorted(set(gold)))
+    return UpdateCase(unit=user.uuid, nodes=nodes, gold=sorted(set(gold)), inverted=sorted(inverted))
 
 
 def factconsolidation_case(group: FactGroup) -> UpdateCase:
@@ -142,13 +164,18 @@ def run_case(case: UpdateCase, client: Any = None, *, threshold: float = 0.55) -
         else:
             label = "omitted"
         labels[f"{case.unit}:{newer}>{older}"] = label
-    spurious = sum(1 for e in edges if e not in gold_undirected)
+    # An edge either way across a set-aside pair is neither spurious nor
+    # wrongly hiding anything: that pair is unscored, not absent.
+    aside = set(case.inverted) | {(b, a) for a, b in case.inverted}
+    scored_edges = [e for e in edges if e not in aside]
+    spurious = sum(1 for e in scored_edges if e not in gold_undirected)
     gold_older = {older for _, older in case.gold}
-    wrongly_hidden = len({target for _, target in edges} - gold_older)
+    wrongly_hidden = len({target for _, target in scored_edges} - gold_older)
     return {
         "unit": case.unit,
         "nodes": len(case.nodes),
         "gold_pairs": len(case.gold),
+        "inverted_gold": len(case.inverted),
         "edges_minted": len(edges),
         "spurious": spurious,
         "wrongly_hidden": wrongly_hidden,
@@ -172,6 +199,7 @@ def aggregate(per_unit: Sequence[dict]) -> dict:
         "units": len(per_unit),
         "nodes": sum(u["nodes"] for u in per_unit),
         "gold_pairs": gold,
+        "inverted_gold_set_aside": sum(u["inverted_gold"] for u in per_unit),
         "correct_rate": ratio(counts["correct"], gold),
         "hallucination_rate": ratio(counts["reversed"], gold),
         "omission_rate": ratio(counts["omitted"], gold),
