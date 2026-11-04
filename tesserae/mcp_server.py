@@ -1079,6 +1079,11 @@ class LLMWikiMCPServer:
         # descent calls against. In-memory by design: staleness is a property
         # of the map THIS server handed out, not a persisted artifact.
         self._fed_digests: Dict[str, Dict[str, str]] = {}
+        # Full results of enveloped calls that paged, so later pages come from
+        # the same snapshot (tesserae.mcp_envelope). Per server, in memory.
+        from .mcp_envelope import PageStore
+
+        self._pages = PageStore()
 
     def list_tools(self) -> List[JSONDict]:
         graph_path_prop = {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to the project you are in (cwd), then server --graph."}
@@ -2941,8 +2946,16 @@ class LLMWikiMCPServer:
 
     # --------------------------------------------------------------- Tool dispatch
 
-    def call_tool(self, name: str, arguments: Optional[JSONDict] = None) -> JSONDict:
+    def call_tool(
+        self, name: str, arguments: Optional[JSONDict] = None, *, envelope: bool = False
+    ) -> JSONDict:
         """Dispatch one tool call, attributing every read it performs.
+
+        ``envelope=True`` is what the MCP transport passes: the response goes
+        through :mod:`tesserae.mcp_envelope` (hard caps, ``page_cursor`` /
+        ``max_items`` paging, ``est_tokens`` / ``truncated`` / ``next_cursor``)
+        and the call's audit rows carry its token estimate. Off for in-process
+        callers, whose payloads stay exactly as they were.
 
         The tool name and the actor are known HERE and nowhere below: the
         ``bump_access`` writes they explain happen several frames down, inside
@@ -2956,7 +2969,47 @@ class LLMWikiMCPServer:
         from .memory.store import reading_as
 
         with reading_as(name, self._resolve_read_actor(arguments or {})):
+            if envelope:
+                return self._call_enveloped(name, arguments or {})
             return self._dispatch_tool(name, arguments)
+
+    def _call_enveloped(self, name: str, args: JSONDict) -> JSONDict:
+        """One tool call through the response envelope (see ``call_tool``)."""
+        from .mcp_envelope import ENVELOPE_ARGS, apply_envelope, caps_for, serve_page
+        from .memory.store import deferred_reads, flush_deferred_reads
+
+        if args.get("page_cursor"):
+            # A follow-up page is served from the first call's snapshot: no
+            # re-run, so no second access bump and no second audit row.
+            return serve_page(
+                name, args["page_cursor"], max_items=args.get("max_items"), pages=self._pages
+            )
+        tool_args = {k: v for k, v in args.items() if k not in ENVELOPE_ARGS}
+        est_tokens = 0
+        with deferred_reads() as pending:
+            try:
+                started = time.monotonic()
+                payload = self._dispatch_tool(name, tool_args)
+                elapsed = time.monotonic() - started
+                if not isinstance(payload, dict):
+                    return payload
+                out = apply_envelope(
+                    name, payload, max_items=args.get("max_items"), pages=self._pages
+                )
+                timeout_s = caps_for(name).timeout_s
+                if timeout_s and elapsed > timeout_s:
+                    # Advisory, not preemptive — see tesserae.mcp_envelope.
+                    _LOG.warning(
+                        "MCP tool %s took %.1fs, over its %.0fs timeout", name, elapsed, timeout_s
+                    )
+                    out["timeout_exceeded"] = True
+                est_tokens = int(out.get("est_tokens") or 0)
+                return out
+            finally:
+                try:
+                    flush_deferred_reads(pending, est_tokens)
+                except Exception as exc:  # noqa: BLE001 — a read must survive its audit
+                    _LOG.warning("read audit write failed (%s)", exc)
 
     @staticmethod
     def _resolve_read_actor(args: JSONDict) -> str:
@@ -5148,6 +5201,7 @@ class LLMWikiMCPServer:
                     "node_ids": list(row.node_ids),
                     "tesserae_version": row.tesserae_version,
                     "schema_version": row.schema_version,
+                    "est_tokens": row.est_tokens,
                 }
                 for row in rows
             ],
@@ -6359,12 +6413,16 @@ class MCPRequestHandler:
                     },
                 )
             if method == "tools/list":
-                return self._result(request_id, {"tools": self.server.list_tools()})
+                from .mcp_envelope import with_envelope_schema
+
+                return self._result(
+                    request_id, {"tools": with_envelope_schema(self.server.list_tools())}
+                )
             if method == "tools/call":
                 params = message.get("params") or {}
                 tool_name = params.get("name")
                 arguments = params.get("arguments") or {}
-                payload = self.server.call_tool(str(tool_name), arguments)
+                payload = self.server.call_tool(str(tool_name), arguments, envelope=True)
                 return self._result(
                     request_id,
                     {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}], "isError": False},

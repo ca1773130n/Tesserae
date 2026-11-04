@@ -341,8 +341,8 @@ def test_the_actor_tally_answers_whose_demand_it_was(tmp_path: Path, audit_on: N
 
     tally = read_audit_actors(read_audit_rows(db))
     assert tally == [
-        {"actor": "chatty", "reads": 2, "nodes": 2, "tools": ["ask", "query"]},
-        {"actor": "human", "reads": 1, "nodes": 1, "tools": ["ask"]},
+        {"actor": "chatty", "reads": 2, "nodes": 2, "tools": ["ask", "query"], "est_tokens": 0},
+        {"actor": "human", "reads": 1, "nodes": 1, "tools": ["ask"], "est_tokens": 0},
     ]
 
 
@@ -364,7 +364,13 @@ def test_read_audit_tool_reports_rows_and_actors(
     assert [read["tool"] for read in payload["reads"]] == ["find_session_findings"]
     assert payload["reads"][0]["tesserae_version"]
     assert payload["actors"] == [
-        {"actor": "alice", "reads": 1, "nodes": 2, "tools": ["find_session_findings"]}
+        {
+            "actor": "alice",
+            "reads": 1,
+            "nodes": 2,
+            "tools": ["find_session_findings"],
+            "est_tokens": 0,
+        }
     ]
 
 
