@@ -2,7 +2,8 @@
 
 Ported from the 2026-09-02 scratch benchmark (``~/.blackhole/Tesserae/2026-09-02/
 bridge/bridge_bench.py``) so the roadmap R4 arm, mention-weighted passage nodes
-in PPR, is measured on exactly the same items. Items are built mechanically from
+in PPR, is measured with the same item construction (the 2026-09-02 graphs
+themselves no longer exist). Items are built mechanically from
 a compiled graph, and ground truth comes from RAW TEXT, never from the graph:
 
   * take an edge ``a -rel-> b`` extracted from document A, where the bridge

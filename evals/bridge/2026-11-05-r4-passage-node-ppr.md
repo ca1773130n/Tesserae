@@ -71,6 +71,10 @@ bar.
 
 Passage-node PPR adds nothing measurable over the retrieval that already ships.
 
+The bench does not print this table, because its summary compares only against
+`dense_2hop`. It was computed afterwards from each run's `items.jsonl`, using the
+bench's own `metrics` and `paired_permutation_p`.
+
 ## Reading
 
 1. **R4 as specified loses.** The kept stratum is, by construction, the items
@@ -80,7 +84,10 @@ Passage-node PPR adds nothing measurable over the retrieval that already ships.
    (genai bridge-doc@5 0.263 vs `dense_2hop` 0.099), but that stratum is not the
    question.
 2. **Density weighting itself contributes nothing.** `ppr_density` and `ppr_flat`
-   are within 0.012 of each other in every cell of both strata.
+   are within 0.012 of each other in every cell of both strata. One confound:
+   the 6 (genai) and 15 (3d) synthetic document nodes exist only in the density
+   graph, so `ppr_flat` cannot seed or rank them. The comparison is null either
+   way.
 3. **Without dense seeds, the walk beats `dense_2hop` on one corpus.** It does not
    beat the shipped hybrid retrieval anywhere.
 4. Absolute levels are low: the best kept-stratum bridge-doc@5 is 0.093 on
@@ -110,7 +117,8 @@ Chunk embedding (bge-base-en-v1.5) takes about 25-50 minutes per corpus on CPU
 and is cached in the output directory. The graph arms take 15-30 minutes.
 
 Provenance: the 3d-reconstruction run used commit `71aaa03b`, which calls
-`personalized_pagerank` directly. The generative-ai run used `FrozenPPR`, which
-caches the transition matrix. Its output was checked to equal the direct call
-exactly on the first 3 queries × 4 walks, so the arm definitions are the same in
-both runs.
+`personalized_pagerank` directly. The generative-ai run resumed partway: its
+first 20 queries came from a direct-call launch, and the other 380 used
+`FrozenPPR`, which caches the transition matrix. `FrozenPPR` was checked to equal
+the direct call exactly on its first 3 queries × 4 walks, so the arm definitions
+are the same throughout.
