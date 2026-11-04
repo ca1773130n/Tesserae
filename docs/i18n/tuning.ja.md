@@ -372,6 +372,9 @@ export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face
 | `TESSERAE_NO_FEDERATION_CACHE` | オフ | フェデレーション グラフ LRU を無効化 |
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | オフ | 結合されたクロスプロジェクトグラフを出力 |
 | `TESSERAE_FLEET_PIDFILE` | — | エンジンフリート pidfile |
+| `TESSERAE_LEASE_TTL` | `120` | エンジン pidfile のリースが更新なしで有効な秒数。10 未満は 10 に引き上げます。他のホストはリースが切れていない間だけこのホストのエンジンを生きているとみなすので、ホスト間の時計のずれより十分大きくしてください |
+| `TESSERAE_LEASE_STRICT_VERSION` | オフ | `1` にすると、同じ `.tesserae` に別の Tesserae バージョンを記した生きているエンジンのリースがある間、`tesserae engine` は起動を拒否します。オフなら警告を出して起動するので、ローリングアップグレードを妨げません |
+| `TESSERAE_JOURNALED_WRITES` | オフ | `1` にすると、アトミックな公開が一時ファイルとそのディレクトリも fsync し、rename が終わるまで `.tesserae/journal` に意図の記録を残します。これで `tesserae doctor --recover` が、書き手が死んだ書き込みを完了または破棄できます。オフなら公開はアトミックな rename だけです |
 | `TESSERAE_CLIP_TOKEN` | — | Web クリッパーの共有シークレット |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | オフ | `.tesserae/schema-drift-proposals.json` の**承認済み**レコードをコンパイル時に適用（決定論的、LLM なし）。`tesserae schema-drift` で提案を記述し、承認は `ResearchNodeType` を先に編集してから `"approved": true` に設定することを意味する — 解決不可能な名前は何も再型付けしない。 |
 

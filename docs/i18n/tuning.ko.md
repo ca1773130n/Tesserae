@@ -386,6 +386,9 @@ export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face
 | `TESSERAE_NO_FEDERATION_CACHE` | off | federated-graph LRU 비활성화 |
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | off | combined cross-project graph emit |
 | `TESSERAE_FLEET_PIDFILE` | — | Engine fleet pidfile |
+| `TESSERAE_LEASE_TTL` | `120` | 엔진 pidfile의 lease가 갱신 없이 유효한 시간(초). 10보다 작은 값은 10으로 올립니다. 다른 호스트는 lease가 만료되지 않은 동안에만 이 호스트의 엔진을 살아 있다고 보므로, 호스트 간 시계 차이보다 충분히 크게 두세요 |
+| `TESSERAE_LEASE_STRICT_VERSION` | off | `1`이면 같은 `.tesserae`에 다른 Tesserae 버전을 적은 살아 있는 엔진 lease가 있을 때 `tesserae engine`이 시작을 거부합니다. 꺼져 있으면 경고만 남기고 시작하므로 롤링 업그레이드를 막지 않습니다 |
+| `TESSERAE_JOURNALED_WRITES` | off | `1`이면 원자적 게시가 임시 파일과 그 디렉터리도 fsync하고, rename이 끝날 때까지 `.tesserae/journal`에 의도 기록을 남겨 `tesserae doctor --recover`가 작성자가 죽은 쓰기를 마무리하거나 버릴 수 있게 합니다. 꺼져 있으면 게시는 원자적 rename뿐입니다 |
 | `TESSERAE_CLIP_TOKEN` | — | web clipper용 shared secret |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | off | `.tesserae/schema-drift-proposals.json`의 **approved** 레코드를 컴파일 시점에 적용합니다 (결정론적, LLM 없음). `tesserae schema-drift`로 제안을 작성하며, 하나를 승인한다는 것은 먼저 `ResearchNodeType`을 편집하고 그다음 `"approved": true`로 설정하는 것을 의미합니다 — 해석할 수 없는 이름은 아무것도 다시 타이핑하지 않습니다. |
 

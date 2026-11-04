@@ -44,7 +44,7 @@ tesserae doctor --project ~/src/other
 | `compile_lock` | processes | 是否有活动的编译锁被持有，以及被哪个 pid **和哪台主机**持有 | 仅报告 —— doctor **绝不杀掉进程也绝不移除活动锁** |
 | `filesystem_locking` | processes | `.tesserae/` 是否位于网络文件系统上——在那里 `flock(2)` 可能是一个静默的空操作 | 仅报告（它无法证明跨主机的强制生效——见下文） |
 | `daemon_pid` | processes | `daemon.<host>.pid` 指向一个存活的 engine 进程 | **SAFE**：当持有者已死亡时删除**本机自己的** pidfile；其他机器的只报告，绝不触碰 |
-| `write_journal` | processes | `.tesserae/journal` 中没有写入者在 rename 之前死亡的写入 | **SAFE**：若写入开始后目标未变，则把完整的临时文件前滚到位，否则丢弃；可能仍在运行的写入者的记录不碰。`--recover` 只运行这一项检查；仅在 `TESSERAE_JOURNALED_WRITES=1` 时才会写入记录 |
+| `write_journal` | processes | `.tesserae/journal` 中没有写入者在 rename 之前死亡的写入 | **SAFE**：若写入开始后目标未变，则把完整的临时文件前滚到位，否则丢弃；可能仍在运行的写入者的记录不碰。路径落在 `.tesserae` 之外的记录直接删除、不做任何操作；编译持有 `compile.lock` 期间推迟恢复。`--recover` 只运行这一项检查；仅在 `TESSERAE_JOURNALED_WRITES=1` 时才会写入记录 |
 | `llm_login` | environment | 项目真正会用到的那些配置目录是否存在 | 仅报告 —— **不验证凭据**（见下文） |
 | `optional_deps` | environment | 可选依赖的状态（memex、raganything） | 仅报告（安装需要联网） |
 | `embedding_backend` | environment | 有真正的语义嵌入后端可用 | 仅报告（建议 `pip install tesserae[semantic]`） |

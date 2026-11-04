@@ -413,6 +413,9 @@ which is keyed on the backend, so switching models never serves stale vectors.
 | `TESSERAE_NO_FEDERATION_CACHE` | off | Disables the federated-graph LRU |
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | off | Emits the combined cross-project graph |
 | `TESSERAE_FLEET_PIDFILE` | — | Engine fleet pidfile |
+| `TESSERAE_LEASE_TTL` | `120` | Seconds an engine pidfile's lease stays valid without a renewal; values below 10 are raised to 10. Another host reads this host's engine as alive only while the lease is unexpired, so keep it well above the clock skew between hosts |
+| `TESSERAE_LEASE_STRICT_VERSION` | off | With `1`, `tesserae engine` refuses to start while a live engine lease on the same `.tesserae` names a different Tesserae version. Off, it logs a warning and starts, so a rolling upgrade is not blocked |
+| `TESSERAE_JOURNALED_WRITES` | off | With `1`, atomic publishes also fsync the temp file and its directory, and keep an intent record in `.tesserae/journal` until the rename lands, so `tesserae doctor --recover` can finish or discard a write whose writer died. Off, a publish is the atomic rename alone |
 | `TESSERAE_CLIP_TOKEN` | — | Shared secret for the web clipper |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | off | Applies the **approved** records in `.tesserae/schema-drift-proposals.json` at compile time (deterministic, no LLM). Write proposals with `tesserae schema-drift`; approving one means editing `ResearchNodeType` first, then setting `"approved": true` — an unresolvable name retypes nothing. |
 

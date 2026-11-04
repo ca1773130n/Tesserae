@@ -431,6 +431,9 @@ das Backend ist, sodass ein Modellwechsel nie veraltete Vektoren liefert.
 | `TESSERAE_NO_FEDERATION_CACHE` | aus | Deaktiviert die föderale Graph-LRU |
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | aus | Gibt den kombinierten Cross-Project-Graph aus |
 | `TESSERAE_FLEET_PIDFILE` | — | Engine-Fleet-Pidfile |
+| `TESSERAE_LEASE_TTL` | `120` | Sekunden, die der Lease im Pidfile einer Engine ohne Erneuerung gilt; Werte unter 10 werden auf 10 angehoben. Ein anderer Host hält die Engine dieses Hosts nur für lebendig, solange der Lease nicht abgelaufen ist, also deutlich über dem Uhrenversatz zwischen den Hosts halten |
+| `TESSERAE_LEASE_STRICT_VERSION` | aus | Mit `1` verweigert `tesserae engine` den Start, solange ein lebender Engine-Lease auf demselben `.tesserae` eine andere Tesserae-Version nennt. Aus, protokolliert es eine Warnung und startet, damit ein schrittweises Upgrade nicht blockiert wird |
+| `TESSERAE_JOURNALED_WRITES` | aus | Mit `1` führen atomare Veröffentlichungen zusätzlich ein fsync der Temp-Datei und ihres Verzeichnisses aus und halten bis zum Abschluss des rename einen Absichtsdatensatz in `.tesserae/journal`, damit `tesserae doctor --recover` einen Schreibvorgang, dessen Schreiber gestorben ist, zu Ende führen oder verwerfen kann. Aus, ist eine Veröffentlichung nur das atomare rename |
 | `TESSERAE_CLIP_TOKEN` | — | Gemeinsames Secret für den Web-Clipper |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | aus | Wendet die **genehmigten** Einträge in `.tesserae/schema-drift-proposals.json` zur Kompilierungszeit an (deterministisch, kein LLM). Schreiben Sie Vorschläge mit `tesserae schema-drift`; einen genehmigen bedeutet zunächst `ResearchNodeType` zu editieren, dann `"approved": true` zu setzen — ein nicht auflösbarer Name retypisiert nichts. |
 
