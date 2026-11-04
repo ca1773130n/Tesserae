@@ -251,6 +251,21 @@ def test_a_failed_judge_or_extraction_excludes_the_session_instead_of_scoring_it
     out = extraction.run_once(user.sessions[:1], DeadExtractor(), extraction.LexicalJudge())
     assert out["excluded"][0]["reason"] == "every extraction call failed"
 
+    class HalfDeadExtractor(FakeClient):
+        """Answers the first chunk, fails every later one."""
+
+        def complete_json(self, **kw):
+            self.calls.append(kw["schema_name"])
+            return None if len(self.calls) > 1 else super().complete_json(**kw)
+    long_session = datasets.HaluSession(
+        "u-ana", 0, "", tuple({"role": "user", "content": f"turn {i} " + "word " * 400, "timestamp": "",
+                               "dialogue_turn": i} for i in range(40)),
+        user.sessions[0].memory_points)
+    out = extraction.run_once([long_session], HalfDeadExtractor(), extraction.LexicalJudge())
+    assert out["metrics"]["sessions"] == 0 and out["metrics"]["excluded"] == 1
+    assert out["excluded"][0]["reason"].endswith("extraction calls failed")
+    assert out["extraction_calls"]["calls"] > out["extraction_calls"]["failed"] > 0
+
 
 def test_sample_sessions_is_seeded_and_stable():
     users = _users()
@@ -274,6 +289,42 @@ def test_halumem_case_mints_paraphrased_originals_and_pairs_them():
         ("Ana works as a senior nurse at Porto General Hospital", "Ana works as a nurse at a clinic"),
     }
     assert "Ana owns a red bicycle" not in text.values()  # interference is never a node
+
+
+def _point(content, *, update=False, originals=()):
+    return datasets.MemoryPoint(0, content, "Persona Memory", "secondary", update, tuple(originals), 1.0)
+
+
+def _halu_user(*sessions):
+    return datasets.HaluUser("u-x", tuple(
+        datasets.HaluSession("u-x", i, "", (), tuple(points)) for i, points in enumerate(sessions)))
+
+
+def test_a_restated_update_mints_its_original_before_the_reused_node():
+    # Session 2 restates session 0's point verbatim as an update of an
+    # original never seen before: the original must sort before session 0's
+    # node, or the recency arbiter's right answer is scored as reversed.
+    user = _halu_user([_point("Ana lives in Porto now")], [_point("Ana likes tea")],
+                      [_point("Ana lives in Porto now", update=True, originals=["Ana lives in Lisbon now"])])
+    case = update.halumem_case(user)
+    order = {nid: o for nid, _, o in case.nodes}
+    ((newer, older),) = case.gold
+    assert order[older] < order[newer] and case.inverted == []
+    out = update.run_once([case])
+    assert out["metrics"]["hallucination_rate"] == 0.0 and out["metrics"]["correct_rate"] == 1.0
+
+
+def test_a_gold_pair_that_points_back_in_time_is_set_aside_not_scored():
+    # Session 1 states the original, session 2 restates session 0's point as
+    # its update: HaluMem's pair has the "newer" node first in session order.
+    user = _halu_user([_point("Ana lives in Porto now")], [_point("Ana lives in Lisbon now")],
+                      [_point("Ana lives in Porto now", update=True, originals=["Ana lives in Lisbon now"])])
+    case = update.halumem_case(user)
+    assert case.gold == [] and len(case.inverted) == 1
+    out = update.run_once([case])
+    m = out["metrics"]
+    assert m["gold_pairs"] == 0 and m["inverted_gold_set_aside"] == 1
+    assert m["hallucination_rate"] is None and m["spurious_edges"] == 0 and m["wrongly_hidden_nodes"] == 0
 
 
 def test_update_stage_labels_correct_omitted_and_spurious_deterministically():
@@ -353,6 +404,22 @@ def test_e2e_excludes_failed_reader_calls():
     assert out["metrics"]["questions"] == 0 and len(out["excluded"]) == 2
 
 
+def test_e2e_lifecycle_excludes_a_question_whose_extraction_failed():
+    qs = datasets.load_lme(FIXTURES / "lme_tiny.json")
+
+    class DeadExtractor(FakeClient):
+        def complete_json(self, **kw):
+            return None
+    reader = FakeClient()  # always abstains, and the judge always says yes
+    out = end_to_end.run_once_lme(qs, reader=reader, judge=reader, memory="lifecycle",
+                                  extractor=DeadExtractor())
+    # Without the exclusion the abstention question scores 1.0 off empty memory.
+    assert out["metrics"]["questions"] == 0 and out["metrics"]["abstention_accuracy"] is None
+    assert out["metrics"]["excluded"] == 2
+    assert all("extraction calls failed" in e["reason"] for e in out["excluded"])
+    assert reader.calls == []
+
+
 def test_fc_qa_lifecycle_arm_hides_the_older_fact_and_grades_by_substring():
     group = datasets.FactGroup("factconsolidation_mh_6k",
                                ("Ann is married to Bob.", "Ann is married to Carl."),
@@ -396,7 +463,7 @@ def test_runner_writes_a_dated_result_that_doctor_report_surfaces(tmp_path, monk
     monkeypatch.delenv("CI", raising=False)
     _seed_cache(tmp_path, monkeypatch, "halumem-medium", FIXTURES / "halumem_tiny.jsonl")
     assert run.main(["update", "--dataset", "halumem-medium", "--runs", "2", *_common_args(tmp_path)]) == 0
-    (result,) = (tmp_path / "results").glob("*-lifecycle-update-halumem-medium.json")
+    (result,) = (tmp_path / "results").glob("*-lifecycle-update-halumem-medium-deterministic_*.json")
     payload = json.loads(result.read_text())
     assert payload["schema"] == "tesserae.lifecycle-eval/1" and len(payload["runs"]) == 2
     assert payload["summary"]["correct_rate"] == 0.5
@@ -408,7 +475,55 @@ def test_runner_writes_a_dated_result_that_doctor_report_surfaces(tmp_path, monk
     assert latest["stages"]["update:halumem-medium:deterministic"]["summary"]["correct_rate"] == 0.5
     report = LLMWikiMCPServer().doctor_report(tmp_path)
     assert report["exists"] is False
-    assert report["lifecycle_eval"]["stages"]["update:halumem-medium:deterministic"]["agreement"] == "gate"
+    surfaced = report["lifecycle_eval"]["stages"]["update:halumem-medium:deterministic"]
+    assert surfaced["agreement"] == "gate"
+    # the caveat travels with the verdict, so a by-construction gate is visible as one
+    assert any("by construction" in n for n in surfaced["notes"])
+
+
+def test_failed_llm_calls_are_noted_and_withhold_the_gate(tmp_path):
+    from tesserae.eval_results import latest_lifecycle_results
+
+    class Dead:
+        def complete_json(self, **kw):
+            return None
+    budget = llm.CallBudget(None)
+    client = llm.BudgetedClient(Dead(), budget, "update")
+    cases = [update.halumem_case(u) for u in _users()]
+    path = run.execute("update", "halumem-medium", {}, lambda: update.run_once(cases, client),
+                       arm="llm:dead", runs=2, budget=budget, out_dir=tmp_path)
+    payload = json.loads(path.read_text())
+    # every LLM verdict fell back to the deterministic arbiter: kappa 1.0, a
+    # "gate" by agreement alone — which must not survive to the verdict
+    assert payload["agreement"]["verdict"] == "gate"
+    assert payload["verdict"] == "contaminated"
+    assert payload["llm"]["failed"] == {"update": 4} and payload["llm"]["unanswered_fraction"] == 1.0
+    assert any("LLM calls failed" in n for n in payload["notes"])
+    (latest,) = latest_lifecycle_results(tmp_path)["stages"].values()
+    assert latest["agreement"] == "contaminated" and latest["llm_failed"] == {"update": 4}
+
+
+def test_two_arms_finishing_in_the_same_second_never_share_a_file(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+
+    from tesserae.eval_results import latest_lifecycle_results
+
+    frozen = datetime(2026, 11, 5, 12, 0, 0, tzinfo=timezone.utc)
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen
+    monkeypatch.setattr(run, "datetime", Frozen)
+    one = lambda: {"metrics": {"accuracy": 1.0}, "labels": {"a": "yes"}, "unit_rates": None}
+    paths = {run.execute("e2e", "lme-oracle", {}, one, arm=arm, runs=1, budget=llm.CallBudget(None),
+                         out_dir=tmp_path) for arm in ("raw@haiku", "lifecycle@haiku", "raw@haiku")}
+    assert len(paths) == 3
+    stages = latest_lifecycle_results(tmp_path)["stages"]
+    assert set(stages) == {"e2e:lme-oracle:raw@haiku", "e2e:lme-oracle:lifecycle@haiku"}
+    assert not list(tmp_path.glob(".*.tmp"))
+    with pytest.raises(FileExistsError):
+        run._write_new(next(iter(paths)), "{}")
 
 
 def test_llm_stages_refuse_without_consent_and_ci_skips_everything(tmp_path, monkeypatch, capsys):
@@ -455,6 +570,58 @@ def test_unreadable_results_are_reported_not_fatal(tmp_path, caplog):
     assert len(out["errors"]) == 2
     assert out["stages"]["e2e:lme-oracle:raw"]["summary"] == {"accuracy": 0.2}
     assert "unreadable" in caplog.text
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"schema":"tesserae.lifecycle-eval/1","note":"caf\xc3',  # cut mid multi-byte char
+    b'{"schema":"tesserae.lifecycle-eval/1","dataset":"lme"}',  # wrong shape
+    b'{"schema":"tesserae.lifecycle-eval/1","agreement":[1]}',
+    b'{"schema":"tesserae.lifecycle-eval/1","runs":3}',
+])
+def test_a_malformed_result_never_takes_doctor_report_down(tmp_path, monkeypatch, raw):
+    from tesserae.eval_results import latest_lifecycle_results
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "2026-01-05T000000Z-lifecycle-update-x-a_000000.ab.json").write_bytes(raw)
+    out = latest_lifecycle_results(results)
+    assert out["stages"] == {} and len(out["errors"]) == 1
+    monkeypatch.setenv("TESSERAE_LIFECYCLE_RESULTS_DIR", str(results))
+    report = LLMWikiMCPServer().doctor_report(tmp_path)
+    assert report["lifecycle_eval"]["errors"]
+
+
+def test_doctor_report_survives_a_crash_in_the_results_reader(tmp_path, monkeypatch, caplog):
+    from tesserae import eval_results
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    def boom(results_dir=None):
+        raise RuntimeError("disk went away")
+    monkeypatch.setattr(eval_results, "latest_lifecycle_results", boom)
+    report = LLMWikiMCPServer().doctor_report(tmp_path)
+    assert report["exists"] is False
+    assert report["lifecycle_eval"]["errors"] == [{"error": "RuntimeError: disk went away"}]
+    assert "lifecycle eval results unreadable" in caplog.text
+
+
+def test_only_the_newest_readable_file_of_a_series_is_parsed(tmp_path, monkeypatch):
+    from tesserae import eval_results
+
+    def result(stamp, rate):
+        return json.dumps({"schema": "tesserae.lifecycle-eval/1", "stage": "update", "arm": "deterministic",
+                           "generated_at": stamp, "dataset": {"name": "x"}, "summary": {"r": rate}})
+    for day, rate in ((1, 0.1), (2, 0.2), (3, 0.3)):
+        (tmp_path / f"2026-01-0{day}T000000Z-lifecycle-update-x-deterministic_abc123.0{day}.json").write_text(
+            result(f"2026-01-0{day}T00:00:00+00:00", rate))
+    (tmp_path / "2026-01-04T000000Z-lifecycle-update-x-deterministic_abc123.04.json").write_text("{cut")
+    opened = []
+    real = eval_results._read_result
+    monkeypatch.setattr(eval_results, "_read_result", lambda p: (opened.append(p.name), real(p))[1])
+    out = eval_results.latest_lifecycle_results(tmp_path)
+    # the corrupt newest file is reported, the next one serves, day 1 and 2 stay closed
+    assert out["stages"]["update:x:deterministic"]["summary"] == {"r": 0.3}
+    assert len(out["errors"]) == 1 and len(opened) == 2
 
 
 # ---------------------------------------------------------------------------

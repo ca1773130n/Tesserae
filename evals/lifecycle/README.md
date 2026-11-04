@@ -30,6 +30,14 @@ A deterministic arm (the update stage without `--llm`) agrees with itself by
 construction, and the result file says so; its kappa checks the harness, not a
 judge.
 
+Failed LLM calls push kappa the wrong way: an update verdict that fails falls
+back to the deterministic arbiter, which agrees with itself. So when more than
+2% of an invocation's LLM calls fail or are refused over budget, the result's
+`verdict` is `contaminated` whatever the kappa says, and every failure is
+counted in `notes`. Extraction sessions and e2e questions with any failed
+extraction call are excluded and listed rather than scored: missing memory reads
+as omission, and on an abstention question as a correct "I don't know".
+
 ## Data
 
 Pinned to a Hugging Face revision and the file's LFS sha256 (see
@@ -86,11 +94,13 @@ not a background shell job.
 
 One JSON per invocation in `~/.tesserae/evals/lifecycle/`
 (`TESSERAE_LIFECYCLE_RESULTS_DIR` overrides), named
-`<UTC date>T<time>Z-lifecycle-<stage>-<dataset>.json`. It carries the dataset
-revision and sha256, the protocol (models, client identity, rubric source,
-sample), the per-run metrics and labels, the mean summary, the agreement verdict
-and the LLM call tally. The MCP `doctor_report` tool returns the newest result
-per stage, dataset and arm as `lifecycle_eval`.
+`<UTC stamp>-lifecycle-<stage>-<dataset>-<arm>.<token>.json`, written atomically
+and never over an existing file. It carries the dataset revision and sha256, the
+protocol (models, client identity, rubric source, sample), the per-run metrics
+and labels, the mean summary, the agreement verdict, the overall `verdict` and
+the LLM call tally. The MCP `doctor_report` tool returns the newest result per
+stage, dataset and arm as `lifecycle_eval`, with its notes and failure tally,
+parsing only the newest file of each series.
 
 ## What these numbers are not
 
@@ -100,6 +110,10 @@ per stage, dataset and arm as `lifecycle_eval`.
   extractor. Do not set it beside MemOS's self-reported numbers without saying so.
 - FactConsolidation ships no conflict pairs. `datasets.conflict_pairs` derives
   them (161 in the 6k context); they are silver labels.
+- HaluMem gold pairs whose "newer" point is not later in session order (an
+  update that restates an earlier point) are set aside as
+  `inverted_gold_set_aside`, not scored: no recency rule can order them. 6 of
+  HaluMem-Medium's 3,775.
 - The update stage feeds gold memories, not extracted ones, so it measures the
   supersede pass alone. The e2e stage is where extraction and update errors
   compound.
