@@ -26,17 +26,23 @@ by every role in the invocation.
 
 Every stage is run ``--runs`` times with the CLI response cache off, and the
 per-item labels of those runs decide whether the stage is a gate (see
-``agreement.py``). The result lands in ``tesserae.eval_results``'s directory as
-``<UTC date>T<time>Z-lifecycle-<stage>-<dataset>.json``, which is what the MCP
-``doctor_report`` tool surfaces.
+``agreement.py``) — unless more than :data:`UNANSWERED_BOUND` of its LLM calls
+failed or were refused, which makes it ``contaminated``. The result lands in
+``tesserae.eval_results``'s directory as
+``<UTC stamp>-lifecycle-<stage>-<dataset>-<arm>.<token>.json`` (see
+:func:`result_filename`), which is what the MCP ``doctor_report`` tool
+surfaces.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
+import re
+import secrets
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -50,6 +56,10 @@ from .llm import BudgetedClient, CallBudget, build_client, client_identity, fres
 logger = logging.getLogger("evals.lifecycle")
 
 CONSENT_FLAG = "--i-know-this-costs-money"
+
+#: Above this share of failed + over-budget LLM calls a result is
+#: ``contaminated`` whatever its kappa: the fallbacks agree with themselves.
+UNANSWERED_BOUND = 0.02
 
 
 def _git_head() -> Optional[str]:
@@ -106,17 +116,34 @@ def execute(stage: str, dataset: str, protocol: dict, run_fn: Callable[[], dict]
     )
     notes: List[str] = []
     tally = budget.tally()
-    if tally["refused_over_budget"]:
+    failed_n = sum(tally["failed"].values())
+    refused_n = sum(tally["refused_over_budget"].values())
+    attempted = sum(tally["calls"].values()) + refused_n
+    tally["unanswered_fraction"] = round((failed_n + refused_n) / attempted, 4) if attempted else None
+    if refused_n:
         notes.append(
-            "the LLM budget ran out mid-stage: refused calls were scored as failures "
+            f"the LLM budget ran out mid-stage: {refused_n} refused calls were excluded "
             "(extraction/e2e) or fell back to the deterministic arbiter (update) — "
             "this result mixes arms and is not a measurement of either"
+        )
+    if failed_n:
+        notes.append(
+            f"{failed_n} of {attempted} LLM calls failed: those items were excluded "
+            "(extraction/e2e) or fell back to the deterministic arbiter (update) — "
+            "this result mixes arms"
         )
     if deterministic:
         notes.append("deterministic arm: no LLM is called, so test-retest agreement is 1.0 by "
                      "construction — it checks the harness, not a judge")
     if agree.degenerate:
         notes.append("some run pairs labelled every item identically; kappa is 1.0 by convention there")
+    verdict = agree.verdict
+    if tally["unanswered_fraction"] is not None and tally["unanswered_fraction"] > UNANSWERED_BOUND:
+        # A deterministic fallback agrees with itself, so failed calls push
+        # kappa UP: an outage must not read as a gate.
+        verdict = "contaminated"
+        notes.append(f"verdict {agree.verdict!r} withheld: more than {UNANSWERED_BOUND:.0%} of "
+                     "LLM calls went unanswered")
     now = datetime.now(timezone.utc)
     payload = {
         "schema": "tesserae.lifecycle-eval/1",
@@ -131,15 +158,44 @@ def execute(stage: str, dataset: str, protocol: dict, run_fn: Callable[[], dict]
         "protocol": protocol,
         "summary": _mean_metrics([r["metrics"] for r in results]),
         "agreement": agree.to_dict(),
+        #: the agreement verdict, or ``contaminated`` when too many LLM calls
+        #: went unanswered for the run to measure the arm it names
+        "verdict": verdict,
         "llm": tally,
         "notes": notes,
         "runs": results,
     }
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{now:%Y-%m-%dT%H%M%SZ}-lifecycle-{stage}-{dataset}.json"
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-                    encoding="utf-8")
+    path = out_dir / result_filename(now, stage, dataset, arm)
+    _write_new(path, json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
     return path
+
+
+def result_filename(now: datetime, stage: str, dataset: str, arm: str) -> str:
+    """``<UTC stamp>-lifecycle-<stage>-<dataset>-<arm slug>.<token>.json``.
+
+    The arm is in the name (slug plus a short hash of the exact string, so two
+    arms never share a slug) because two arms of one stage can finish in the
+    same second, and ``eval_results`` picks the newest file per name stem
+    without parsing the rest. The random token keeps two same-second runs of
+    one arm apart."""
+    slug = re.sub(r"[^A-Za-z0-9-]+", "_", arm).strip("_") or "arm"
+    digest = hashlib.sha256(arm.encode("utf-8")).hexdigest()[:6]
+    return f"{now:%Y-%m-%dT%H%M%SZ}-lifecycle-{stage}-{dataset}-{slug}_{digest}.{secrets.token_hex(4)}.json"
+
+
+def _write_new(path: Path, text: str) -> None:
+    """Write ``path`` atomically and never over an existing file.
+
+    Through a tmp file, so a reader (another server on the shared disk, or a
+    run killed mid-write) never sees half a JSON; published with ``os.link``,
+    which raises ``FileExistsError`` instead of replacing a result."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.link(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +415,8 @@ def main(argv: Optional[Sequence[str]] = None, *, client_factory: Optional[Calla
         return skip.emit()
     payload = json.loads(path.read_text(encoding="utf-8"))
     print(json.dumps({"result": str(path), "summary": payload["summary"],
-                      "agreement": payload["agreement"], "llm": payload["llm"],
+                      "agreement": payload["agreement"], "verdict": payload["verdict"],
+                      "llm": payload["llm"],
                       "notes": payload["notes"]}, indent=2))
     return 0
 
