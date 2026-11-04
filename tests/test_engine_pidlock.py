@@ -312,3 +312,35 @@ def test_daemon_refuses_under_strict_version_guard(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="refusing to start"):
         d._write_pidfile()
     assert not d._pidfile.exists()
+
+
+def test_once_run_keeps_its_lease_alive_past_one_heartbeat(tmp_path, monkeypatch):
+    """A once-run is one compile, and a compile can outlive the lease TTL.
+
+    Without a heartbeat its lease expires mid-compile and another host on the
+    shared disk reads it as dead and starts a second compile. The pipeline
+    here holds the run open until the on-disk lease has been renewed.
+    """
+    import time
+
+    monkeypatch.setenv("TESSERAE_LEASE_TTL", "10")  # the floor: renewal every ~3.3 s
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    (tdir / "graph.json").write_text(json.dumps({"nodes": [], "edges": []}))
+    seen: dict = {}
+
+    def slow_pipeline(paths):
+        pidfile = next(tdir.glob("*.pid"))
+        first = pidlock.read_owner(pidfile)["renewed_at"]
+        deadline = time.monotonic() + 8.0
+        while time.monotonic() < deadline:
+            seen["renewed"] = pidlock.read_owner(pidfile)["renewed_at"] > first
+            if seen["renewed"]:
+                return
+            time.sleep(0.1)
+
+    d = Daemon(tmp_path, debounce=0.0, enable_watch=False, enable_vault=False,
+               enable_session_tail=False, install_signal_handlers=False,
+               run_pipeline=slow_pipeline)
+    assert d.run(once=True) == 0
+    assert seen.get("renewed") is True, "once-run lease was never renewed"

@@ -373,12 +373,15 @@ class Daemon:
         self._pipeline_failed = False
         heartbeat: Optional[pidlock.LeaseHeartbeat] = None
         try:
+            # Keeps this host's lease live for the other hosts reading it, in
+            # BOTH modes: a once-run is one compile, and a compile can run for
+            # hours. Without renewal its lease expires after lease_ttl() and a
+            # second host would start a concurrent compile on the shared disk.
+            # (once mode still starts no poller, consolidation or serve thread.)
+            heartbeat = pidlock.LeaseHeartbeat(self._pidfile).start()
             if once:
                 loop.run_until_complete(self._drain_once())
             else:
-                # Keeps this host's lease live for the other hosts reading it;
-                # a once-run is bounded and must not start a thread.
-                heartbeat = pidlock.LeaseHeartbeat(self._pidfile).start()
                 if self._install_signal_handlers:
                     for sig in (signal.SIGTERM, signal.SIGINT):
                         try:

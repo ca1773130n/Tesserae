@@ -26,8 +26,8 @@ The pidfile also keeps the legacy bare-integer format readable for back-compat.
 ``.tesserae/``, and a pid only means something in the process table of the
 machine that wrote it. So the record also carries ``host`` (the persisted
 ``local_host_id``), ``hostname``, ``boot_id``, the package ``version``, the
-record ``schema`` and ``lease_expires`` (epoch seconds), which a long-running
-owner renews through :class:`LeaseHeartbeat`. :func:`owner_is_alive` never
+record ``schema`` and ``lease_expires`` (epoch seconds), which every engine
+run, ``--once`` included, renews through :class:`LeaseHeartbeat`. :func:`owner_is_alive` never
 probes a pid recorded by another host: it reads that host's lease, and an
 absent lease field answers "alive" (conservative, as above). On the writer's
 own host a ``boot_id`` that changed means the machine rebooted since, which
