@@ -5,8 +5,14 @@ Each :class:`tesserae.research_graph.ResearchNode` whose type is one of the
 populated by :class:`tesserae.session_graph.SessionGraphExtractor`:
 
 * ``first_seen_at`` — ISO-8601 timestamp the finding was first minted.
-* ``last_accessed_at`` — ISO-8601 of the most recent read (currently the
-  same as ``first_seen_at`` until an access-recording surface lands).
+* ``last_accessed_at`` — ISO-8601 of the most recent read. Reads ARE
+  recorded: MCP read tools and CLI read commands call
+  :func:`tesserae.memory.store.bump_access`, which stamps it (and
+  ``access_count``) in the ``node_memory`` SQLite sidecar — never in
+  ``graph.json``. Compile carries those sidecar values into the copied
+  metadata this module scores (``project.py``'s node_memory pass); until a
+  node has been read, the sidecar has no stamp and decay anchors on
+  ``first_seen_at``.
 * ``access_count`` — integer bump-on-read counter.
 
 This module computes a single ``decay_score`` in ``[0, 1]`` from those

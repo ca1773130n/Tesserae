@@ -5714,9 +5714,10 @@ class LLMWikiMCPServer:
         """Atomically bump access_count/last_accessed_at for a read node.
 
         Delegates to the SQLite sidecar accessor (05-01); writes node_memory
-        only, never graph.json. Degrades silently when the project root or
-        sidecar db cannot be resolved — a read must never fail because the
-        memory layer is unavailable.
+        only, never graph.json. Skips when no project root resolves; any other
+        failure is logged at WARNING and swallowed — a read must never fail
+        because the memory layer is unavailable, and must never fail quietly
+        either.
 
         Its caller (``fresh_insights``) bumps inside its own loop, so with the
         read audit enabled this surface records one row per surfaced node
@@ -5734,9 +5735,10 @@ class LLMWikiMCPServer:
             now = datetime.now(timezone.utc).isoformat()
             _bump_access(db_path, node_id, now)
             self._record_read_audit(db_path, [node_id], now)
-        except Exception:
-            # Best-effort signal; never propagate sidecar failures to a read.
-            _LOG.debug("bump_access failed for node %s", node_id, exc_info=True)
+        except Exception as exc:  # noqa: BLE001 — a read must survive its bump
+            # Never propagate sidecar failures to a read, but never hide them:
+            # a lost bump silently starves forgetting-by-disuse of its signal.
+            _LOG.warning("bump_access failed for node %s (%s)", node_id, exc)
 
     def _bump_nodes_access(
         self, project_root: Optional[Path], node_ids: Iterable[Optional[str]]
@@ -5748,7 +5750,7 @@ class LLMWikiMCPServer:
         drill_down). Dedups ids and bumps each through the sidecar accessor
         (one connection per distinct id). Writes the ``node_memory`` sidecar
         ONLY, never ``graph.json``. Best-effort: a
-        sidecar failure is logged at debug and swallowed so a read never breaks.
+        sidecar failure is logged at WARNING and swallowed so a read never breaks.
 
         One read event here is ONE audit row naming every id it bumped — the
         list is what makes a row explain the access counts it produced, so it
@@ -5773,11 +5775,11 @@ class LLMWikiMCPServer:
                 try:
                     _bump_access(db_path, nid, now)
                     bumped.append(nid)
-                except Exception:
-                    _LOG.debug("bump_access failed for node %s", nid, exc_info=True)
+                except Exception as exc:  # noqa: BLE001 — a read must survive its bump
+                    _LOG.warning("bump_access failed for node %s (%s)", nid, exc)
             self._record_read_audit(db_path, bumped, now)
-        except Exception:
-            _LOG.debug("bump_nodes_access setup failed", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 — a read must survive its bump
+            _LOG.warning("bump_nodes_access setup failed (%s)", exc)
 
     @staticmethod
     def _record_read_audit(db_path: Path, node_ids: Sequence[str], at: str) -> None:
@@ -5788,9 +5790,9 @@ class LLMWikiMCPServer:
         move would make it one that misleads. ``at`` is the instant those bumps
         were stamped with, so the two never disagree.
 
-        Failure is logged at WARNING, not debug, and deliberately louder than
-        the bump above it: the audit is off unless someone asked for it, so a
-        row that silently fails to appear is an answer that is quietly wrong.
+        Failure is logged at WARNING, the same level as a failed bump: the
+        audit is off unless someone asked for it, so a row that silently fails
+        to appear is an answer that is quietly wrong.
         """
         if not node_ids:
             return
