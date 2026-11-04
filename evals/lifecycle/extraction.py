@@ -263,9 +263,10 @@ def aggregate(scores: Sequence[SessionScore]) -> dict:
 def run_once(sessions: Sequence[HaluSession], extractor: Any, judge: Any) -> dict:
     """One full pass: extract every session, judge it, score it.
 
-    A session whose extraction call failed outright, or whose judge call
-    failed, is EXCLUDED and listed — scoring it would count an outage as
-    omission, which is the failure mode that made the old metric unusable.
+    A session any of whose extraction calls failed, or whose judge call
+    failed, is EXCLUDED and listed — scoring it would count an outage (even
+    one chunk's) as omission, which is the failure mode that made the old
+    metric unusable.
     """
     scores: List[SessionScore] = []
     excluded: List[dict] = []
@@ -275,9 +276,11 @@ def run_once(sessions: Sequence[HaluSession], extractor: Any, judge: Any) -> dic
         findings, stats = extract_session(session, extractor)
         calls += stats.get("calls", 0)
         failed += stats.get("failed", 0)
-        if stats.get("calls") and stats.get("failed") == stats.get("calls"):
-            excluded.append({"session": session.key, "reason": "every extraction call failed"})
-            logger.warning("extraction: every call failed for %s; excluded", session.key)
+        if stats.get("failed"):
+            reason = ("every extraction call failed" if stats["failed"] == stats.get("calls")
+                      else f"{stats['failed']} of {stats.get('calls', 0)} extraction calls failed")
+            excluded.append({"session": session.key, "reason": reason})
+            logger.warning("extraction: %s for %s; excluded", reason, session.key)
             continue
         labels = judge.match(session, findings)
         if labels is None:
@@ -289,11 +292,9 @@ def run_once(sessions: Sequence[HaluSession], extractor: Any, judge: Any) -> dic
     for s in scores:
         labels_out.update(s.items)
     if failed:
-        # Some chunks of a scored session never answered: their findings are
-        # missing, which reads as omission. Counted so it cannot hide.
         logger.warning("extraction: %d of %d extraction calls failed in this run", failed, calls)
     return {
-        "metrics": aggregate(scores),
+        "metrics": {**aggregate(scores), "excluded": len(excluded)},
         "extraction_calls": {"calls": calls, "failed": failed},
         "judge_unlabelled_findings": getattr(judge, "unparseable", 0) - unparseable_before,
         "excluded": excluded,

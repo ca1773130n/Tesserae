@@ -172,6 +172,14 @@ def run_once_lme(
             items, mem_stats = raw_memory(q), {}
         elif memory == "lifecycle":
             items, mem_stats = lifecycle_memory(q, extractor, update_client)
+            if mem_stats.get("failed"):
+                # Missing memory makes the reader abstain, and the abstention
+                # rubric grades that as correct: an outage would read as a win.
+                excluded.append({"question_id": q.question_id,
+                                 "reason": f"{mem_stats['failed']} of {mem_stats.get('calls', 0)} "
+                                           "extraction calls failed"})
+                logger.warning("e2e: extraction failed for %s; excluded", q.question_id)
+                continue
         else:
             raise ValueError(f"unknown memory arm {memory!r}")
         context = retrieve(items, q.question, top_k)
@@ -191,8 +199,8 @@ def run_once_lme(
         rows.append({"question_id": q.question_id, "subsets": list(q.subsets),
                      "memory_items": len(items), "context_items": len(context),
                      "correct": correct, "response": response[:300], **mem_stats})
-    return {"metrics": _lme_metrics(rows), "rows": rows, "labels": labels, "excluded": excluded,
-            "unit_rates": None}
+    return {"metrics": {**_lme_metrics(rows), "excluded": len(excluded)}, "rows": rows,
+            "labels": labels, "excluded": excluded, "unit_rates": None}
 
 
 def _lme_metrics(rows: Sequence[dict]) -> dict:
@@ -259,5 +267,6 @@ def run_once_fc(group: FactGroup, *, reader: Any, memory: str, update_client: An
         rows.append({"question_id": qid, "correct": correct, "response": response[:200]})
     accuracy = round(sum(r["correct"] for r in rows) / len(rows), 4) if rows else None
     return {"metrics": {"source": group.source, "hops": group.hops, "questions": len(rows),
+                        "excluded": len(excluded),
                         "facts_live": len(live), "facts_retired": retired_n, "accuracy": accuracy},
             "rows": rows, "labels": labels, "excluded": excluded, "unit_rates": None}
