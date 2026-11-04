@@ -110,6 +110,8 @@ vacuum, en lugar de borrando la base de datos.
 | `compile.lock` | `scratch` | el mutex de compilación. **Nunca** lo elimina ninguna vía automática — el fallo registrado son las acumulaciones de compilaciones en SessionEnd, y la comprobación `compile_lock` de doctor es de sólo informe por lo mismo |
 | `.recompile.lock.d` | `scratch` | mutex de hooks basado en mkdir; borrar uno retenido deja que dos recompilaciones compitan |
 | `session_chunks.lock` | `scratch` | el flock de «saltar si está tomado» del backfill; borrar uno retenido deja que dos backfills escriban el mismo día |
+| `sessions-import.lock` | `scratch` | el mutex de `sessions discover --import`; borrar uno retenido deja que dos importaciones escaneen y reescriban a la vez el almacén de sesiones |
+| `journal` | `scratch` | registros de intención de las escrituras con diario en curso. Uno que sobrevive a su escritor apunta a un archivo temporal completo que `doctor --recover` aún puede completar; borrarlo convierte ese archivo en simple residuo |
 | `daemon*.pid` | `scratch` | pidfile del motor, con ámbito de host como `daemon.<host>.pid`. Doctor sólo lo elimina tras confirmar que el propietario registrado está muerto **en esta máquina** |
 | `graph.json.bak-*` | `scratch` | ninguna ruta de código de Tesserae los escribe. Son copias hechas a mano en una sesión de restauración: se informan, nunca se eliminan, porque las hizo una persona |
 | `*.tmp*` | `scratch` | la mitad huérfana de una escritura tmp+replace, con nombre `<target>.tmp.<pid>.<hex>`. Sólo se puede borrar cuando el pid propietario ya no existe: un escritor vivo está a mitad del rename |
@@ -133,6 +135,7 @@ proyectos de la máquina.
 | `wiki` | `derived` | scratch de serve con ámbito de máquina — seguro de borrar |
 | `engine.pid` | `scratch` | pidfile de la flota; uno obsoleto llegó a retener un pid muerto desde hacía seis días, por eso pidlock valida en vez de confiar |
 | `engine.pid.lock` | `scratch` | mutex del pidfile de la flota; borrar uno retenido deja arrancar dos flotas |
+| `journal` | `scratch` | registros de intención de las escrituras con diario al almacén de sesiones de toda la máquina, como en la tabla del proyecto |
 | `*.bak*` | `scratch` | copias previas a la migración de `registry.json` y `config.json`. Ninguna ruta de código las escribe, así que existen porque alguien quiso conservarlas |
 
 ## Ver la clasificación real

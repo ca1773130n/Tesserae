@@ -112,6 +112,8 @@ Datenbank zu löschen.
 | `compile.lock` | `scratch` | der Kompilierungs-Mutex. Wird von **keinem** automatischen Pfad entfernt — der dokumentierte Fehlerfall sind aufgestaute SessionEnd-Kompilierungen, und doctors `compile_lock`-Check ist aus demselben Grund nur meldend |
 | `.recompile.lock.d` | `scratch` | mkdir-basierter Hook-Mutex; einen gehaltenen zu entfernen lässt zwei Rekompilierungen kollidieren |
 | `session_chunks.lock` | `scratch` | der „überspringen, wenn gehalten"-flock des Backfills; einen gehaltenen zu entfernen lässt zwei Backfills denselben Tag schreiben |
+| `sessions-import.lock` | `scratch` | der Mutex von `sessions discover --import`; einen gehaltenen zu entfernen lässt zwei Importe gleichzeitig scannen und den Sitzungsspeicher neu schreiben |
+| `journal` | `scratch` | Absichtsdatensätze für laufende journalisierte Schreibvorgänge. Einer, der seinen Schreiber überlebt, zeigt auf eine vollständige Temp-Datei, die `doctor --recover` noch zu Ende führen kann; ihn zu löschen macht aus dieser Datei bloßen Schutt |
 | `daemon*.pid` | `scratch` | Engine-Pidfile, host-bezogen als `daemon.<host>.pid`. Doctor entfernt eines erst, nachdem der eingetragene Besitzer **auf dieser Maschine** als tot bestätigt ist |
 | `graph.json.bak-*` | `scratch` | kein Tesserae-Codepfad schreibt sie. Es sind handgemachte Kopien aus einer Wiederherstellungssitzung — gemeldet, nie entfernt, weil ein Mensch sie angelegt hat |
 | `*.tmp*` | `scratch` | die verwaiste Hälfte eines tmp+replace-Schreibvorgangs, benannt `<target>.tmp.<pid>.<hex>`. Erst entfernbar, wenn die besitzende pid weg ist: Ein lebender Schreiber steckt mitten im rename |
@@ -135,6 +137,7 @@ der Maschine.
 | `wiki` | `derived` | maschinenweiter serve-Scratch — gefahrlos löschbar |
 | `engine.pid` | `scratch` | Flotten-Pidfile; ein veraltetes hielt einmal eine seit sechs Tagen tote pid, weshalb pidlock validiert statt zu vertrauen |
 | `engine.pid.lock` | `scratch` | Mutex des Flotten-Pidfiles; einen gehaltenen zu entfernen lässt zwei Flotten starten |
+| `journal` | `scratch` | Absichtsdatensätze für journalisierte Schreibvorgänge in den maschinenweiten Sitzungsspeicher, wie in der Projekttabelle |
 | `*.bak*` | `scratch` | Kopien von `registry.json` und `config.json` von vor einer Migration. Kein Codepfad schreibt sie, sie existieren also, weil jemand sie behalten wollte |
 
 ## Die reale Klassifikation ansehen

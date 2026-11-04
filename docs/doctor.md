@@ -48,6 +48,7 @@ The checks, grouped by category:
 | `compile_lock` | processes | whether a live compile lock is held, and by which pid **and host** | report-only — doctor **never kills or removes a live lock** |
 | `filesystem_locking` | processes | whether `.tesserae/` sits on a network filesystem, where `flock(2)` may be a silent no-op | report-only (it cannot prove cross-host enforcement — see below) |
 | `daemon_pid` | processes | `daemon.<host>.pid` points at a live engine process | **SAFE**: removes **this host's** pidfile when its owner is dead; another machine's is reported, never touched |
+| `write_journal` | processes | `.tesserae/journal` holds no write whose writer died before its rename | **SAFE**: rolls a complete temp file forward when the target is unchanged since the write began, otherwise discards it; a writer that may still be running is left alone. `--recover` runs this check alone |
 | `llm_login` | environment | whether the config dirs the project would actually use exist | report-only — **does not verify credentials** (see below) |
 | `optional_deps` | environment | status of optional dependencies (memex, raganything) | report-only (installs are networked) |
 | `embedding_backend` | environment | a real semantic embedding backend is available | report-only (suggests `pip install tesserae[semantic]`) |

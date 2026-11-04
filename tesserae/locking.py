@@ -23,13 +23,16 @@ still read; see :func:`read_holder`.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import os
+import secrets
 import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Dict, Iterator, Optional
+from typing import Callable, Dict, Iterator, List, Optional
 
 try:
     import fcntl
@@ -51,6 +54,8 @@ _LOCK_OFFSET = 0
 _LOCK_BYTES = 1
 
 _warned_unlockable = False
+
+logger = logging.getLogger(__name__)
 
 
 def locking_unavailable() -> bool:
@@ -197,6 +202,7 @@ def compile_lock(
     wait_seconds: Optional[float] = None,
     name: str = "compile.lock",
     on_wait: Optional[Callable[[float, Optional[Dict[str, object]]], None]] = None,
+    what: str = "compile/refresh",
 ) -> Iterator[None]:
     """Hold ``<tesserae_dir>/<name>`` exclusively for the block.
 
@@ -215,6 +221,9 @@ def compile_lock(
     instead of queueing behind a multi-minute compile: ``agent_write`` takes
     ``agent-writes.lock`` for a read-dedupe-append that costs ~1 ms. No cycle
     is possible — the write path never takes ``compile.lock``.
+
+    ``what`` names the holder in the "already running" error, so a lock that
+    is not the compile's (``sessions-import.lock``) does not claim to be.
     """
     directory = Path(tesserae_dir)
     if locking_unavailable():
@@ -239,7 +248,7 @@ def compile_lock(
             now = time.monotonic()
             if now >= deadline:
                 raise CompileLockHeldError(
-                    "another tesserae compile/refresh is already running for "
+                    f"another tesserae {what} is already running for "
                     f"this project{describe_holder(read_holder(lock_path))}; "
                     "retry when it finishes, pass --wait to queue behind it, "
                     "or set TESSERAE_COMPILE_LOCK_WAIT=<seconds>"
@@ -271,3 +280,240 @@ def compile_lock(
             unlock_exclusive(handle)
     finally:
         handle.close()
+
+
+# --------------------------------------------------------------------------- #
+# Journaled atomic writes                                                      #
+# --------------------------------------------------------------------------- #
+
+#: Directory, beside the files it protects, that holds one intent record per
+#: write in flight. Each record is its own file rather than a line in a shared
+#: log on purpose: several hosts mount one ``.tesserae``, and an append from
+#: two of them over a network filesystem is exactly the torn-write hazard the
+#: journal exists to remove.
+JOURNAL_DIRNAME = "journal"
+#: A record whose writer runs on ANOTHER host is only judged abandoned after
+#: this long. Its pid means nothing here (see :mod:`tesserae.engine.pidlock`),
+#: so age is the only machine-independent signal; a publish takes seconds.
+JOURNAL_FOREIGN_STALE_S = 600.0
+
+
+class WriteConflictError(RuntimeError):
+    """The target changed since the caller read it; the write was not made."""
+
+
+def sha256_of(path: str | Path) -> Optional[str]:
+    """Hex sha256 of ``path``'s bytes, or ``None`` when it does not exist."""
+
+    try:
+        data = Path(path).read_bytes()
+    except FileNotFoundError:
+        return None
+    return hashlib.sha256(data).hexdigest()
+
+
+def journal_dir_for(target: str | Path) -> Path:
+    """``<nearest .tesserae ancestor>/journal``, else ``<target dir>/journal``.
+
+    One journal per ``.tesserae`` keeps ``doctor --recover`` to a single
+    directory however deep the target sits (``harness_sessions/<h>/x.json``).
+    """
+    parent = Path(target).parent
+    for candidate in (parent, *parent.parents):
+        if candidate.name == ".tesserae":
+            return candidate / JOURNAL_DIRNAME
+    return parent / JOURNAL_DIRNAME
+
+
+def _fsync_dir(directory: Path) -> None:
+    """Persist a rename. POSIX only: Windows cannot open a directory, and its
+    ``MoveFileEx`` replace is not made durable this way anyway."""
+    if os.name != "posix":
+        return
+    fd = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def journaled_write(
+    target: str | Path,
+    content: str,
+    *,
+    expected_sha256: Optional[str] = None,
+    durable: bool = True,
+) -> str:
+    """Replace ``target`` with ``content`` atomically; return the new sha256.
+
+    The sequence is: check ``expected_sha256`` against the bytes on disk →
+    record intent (target, temp path, new sha256, the target's current
+    sha256) in the journal → write a private temp file → fsync it → rename
+    over the target → fsync the directory → drop the intent record. Intent
+    goes first so that every temp file a killed writer can leave behind is
+    named by a record that says whose it was and what it should hash to.
+
+    * ``expected_sha256`` — the sha256 of the bytes the caller read; omit it
+      to skip the check. A mismatch raises :class:`WriteConflictError` before anything is
+      written: a read-modify-write that does not hold the compile lock would
+      otherwise silently erase whatever landed in between. The check and the
+      rename are not one atomic step, so it narrows that window rather than
+      closing it — the lock is still what excludes writers.
+    * ``durable=False`` skips the fsyncs and the journal, keeping only the
+      atomic rename. For records a later run re-derives anyway, where an fsync
+      per file would multiply the cost of a bulk import.
+
+    The temp name is ``<stem>.tmp.<pid>.<hex>``, the shape the sidecar
+    registry and ``doctor``'s orphan sweep already know. A writer killed before
+    the rename leaves a record plus a temp file that is either complete (its
+    sha256 matches) or not; :func:`recover_journal` rolls a complete one
+    forward when the target has not moved on since, and discards the rest.
+    """
+
+    path = Path(target)
+    if expected_sha256 is not None:
+        current = sha256_of(path)
+        if current != expected_sha256:
+            raise WriteConflictError(
+                f"{path} changed since it was read (expected sha256 "
+                f"{expected_sha256[:12]}…, found {(current or 'nothing')[:12]}…); "
+                "re-read it and retry"
+            )
+    data = content.encode("utf-8")
+    new_sha = hashlib.sha256(data).hexdigest()
+    tmp = path.with_suffix(f".tmp.{os.getpid()}.{secrets.token_hex(4)}")
+    entry: Optional[Path] = None
+    try:
+        if durable:
+            entry = _journal_begin(path, tmp, new_sha)
+        with open(tmp, "wb") as handle:
+            handle.write(data)
+            if durable:
+                handle.flush()
+                os.fsync(handle.fileno())
+        os.replace(tmp, path)
+        if durable:
+            _fsync_dir(path.parent)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError as exc:
+                logger.warning("could not remove temp file %s: %s", tmp, exc)
+        if entry is not None:
+            try:
+                entry.unlink()
+            except OSError as exc:
+                # A leftover record is harmless — recovery finds the temp gone
+                # and drops it — but say so rather than hide it.
+                logger.warning("journal record %s left behind: %s", entry, exc)
+    return new_sha
+
+
+def _journal_begin(target: Path, tmp: Path, new_sha: str) -> Path:
+    """Write the intent record for one in-flight replace; return its path."""
+
+    from .engine import pidlock
+
+    directory = journal_dir_for(target)
+    directory.mkdir(parents=True, exist_ok=True)
+    record = {
+        "target": str(target),
+        "tmp": str(tmp),
+        "sha256": new_sha,
+        "prior_sha256": sha256_of(target),
+        "host": _host_tag(),
+        "pid": os.getpid(),
+        "start_time": pidlock.own_start_time(),
+        "created_at": time.time(),
+    }
+    entry = directory / f"{os.getpid()}.{secrets.token_hex(6)}.wal"
+    with open(entry, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True))
+        handle.flush()
+        os.fsync(handle.fileno())
+    return entry
+
+
+def _journal_writer_alive(record: Dict[str, object], entry: Path, now: float) -> bool:
+    """Could the writer of ``record`` still be between journal and rename?"""
+    from .engine import pidlock
+
+    host = str(record.get("host") or "")
+    if host and host != _host_tag():
+        try:
+            age = now - float(record.get("created_at") or entry.stat().st_mtime)
+        except (OSError, TypeError, ValueError):
+            return True
+        return age < JOURNAL_FOREIGN_STALE_S
+    return pidlock.owner_is_alive(
+        {"pid": record.get("pid"), "start_time": record.get("start_time")}
+    )
+
+
+def pending_journal(tesserae_dir: str | Path) -> List[Path]:
+    """Intent records under ``<tesserae_dir>/journal``, oldest name first."""
+    directory = Path(tesserae_dir) / JOURNAL_DIRNAME
+    if not directory.is_dir():
+        return []
+    return sorted(directory.glob("*.wal"))
+
+
+def recover_journal(
+    tesserae_dir: str | Path, *, dry_run: bool = False, now: Optional[float] = None
+) -> List[str]:
+    """Finish or discard every write whose writer died mid-publish.
+
+    For each intent record whose writer is gone (dead pid on this host, or
+    older than :data:`JOURNAL_FOREIGN_STALE_S` on another one):
+
+    * temp file complete (its sha256 matches the record) and the target still
+      holds the bytes it held when the write began → **roll forward**: only
+      the rename was missing;
+    * temp file incomplete, or the target has moved on (another writer
+      published since) → **discard** the temp: a partial file is not a
+      graph, and rolling a stale one forward would erase the newer publish;
+    * temp file gone → the rename happened, or the writer died before
+      creating it; drop the record.
+
+    Records whose writer may still be running are left alone and reported.
+    Returns one line per record describing what was (or, with ``dry_run``,
+    would be) done.
+    """
+    clock = time.time() if now is None else now
+    actions: List[str] = []
+    for entry in pending_journal(tesserae_dir):
+        try:
+            record = json.loads(entry.read_text(encoding="utf-8"))
+            if not isinstance(record, dict):
+                raise ValueError("not an object")
+        except (OSError, ValueError) as exc:
+            # Torn record: the writer died while writing it, i.e. before it
+            # created its temp file, so neither the target nor any temp file
+            # was touched.
+            actions.append(f"{entry.name}: unreadable record ({exc}); dropped")
+            if not dry_run:
+                entry.unlink(missing_ok=True)
+            continue
+        if _journal_writer_alive(record, entry, clock):
+            actions.append(f"{entry.name}: writer may still be running; left alone")
+            continue
+        target = Path(str(record.get("target") or ""))
+        tmp = Path(str(record.get("tmp") or ""))
+        if tmp.name and tmp.is_file():
+            complete = sha256_of(tmp) == record.get("sha256")
+            if complete and sha256_of(target) == record.get("prior_sha256"):
+                actions.append(f"{entry.name}: rolled {target.name} forward")
+                if not dry_run:
+                    os.replace(tmp, target)
+                    _fsync_dir(target.parent)
+            else:
+                why = f"{target.name} moved on since" if complete else "temp file incomplete"
+                actions.append(f"{entry.name}: {why}; discarded {tmp.name}")
+                if not dry_run:
+                    tmp.unlink(missing_ok=True)
+        else:
+            actions.append(f"{entry.name}: no temp file for {target.name}; record dropped")
+        if not dry_run:
+            entry.unlink(missing_ok=True)
+    return actions

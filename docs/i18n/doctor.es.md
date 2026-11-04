@@ -49,6 +49,7 @@ Las comprobaciones, agrupadas por categoría:
 | `compile_lock` | processes | si hay un lock de compilación vivo retenido, y por qué pid **y qué host** | solo informe — doctor **nunca mata ni elimina un lock vivo** |
 | `filesystem_locking` | processes | si `.tesserae/` está sobre un sistema de archivos de red, donde `flock(2)` puede ser un no-op silencioso | solo informe (no puede probar que se aplique entre hosts — ver abajo) |
 | `daemon_pid` | processes | `daemon.<host>.pid` apunta a un proceso de engine vivo | **SAFE**: elimina el pidfile **de este host** cuando su propietario está muerto; el de otra máquina se reporta, nunca se toca |
+| `write_journal` | processes | `.tesserae/journal` no guarda ninguna escritura cuyo escritor murió antes del rename | **SAFE**: completa el archivo temporal (roll forward) si el destino no cambió desde que empezó la escritura y, si cambió, lo descarta; no toca la de un escritor que quizá siga en marcha. `--recover` ejecuta solo esta comprobación |
 | `llm_login` | environment | si existen los directorios de configuración que el proyecto usaría de verdad | solo informe — **no verifica credenciales** (ver abajo) |
 | `optional_deps` | environment | estado de las dependencias opcionales (memex, raganything) | solo informe (las instalaciones usan red) |
 | `embedding_backend` | environment | hay disponible un backend real de embeddings semánticos | solo informe (sugiere `pip install tesserae[semantic]`) |

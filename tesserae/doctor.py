@@ -947,6 +947,46 @@ def _fix_daemon_pid(ctx: DoctorContext) -> Optional[str]:
     return f"{', '.join(removed)}: removed stale pidfile (owner dead)"
 
 
+def _detect_write_journal(ctx: DoctorContext) -> Optional[Finding]:
+    """Journaled writes whose writer died before its rename.
+
+    Each intent record in ``.tesserae/journal`` belongs to one in-flight
+    publish (:func:`tesserae.locking.journaled_write`). One that outlives its
+    writer is either a complete temp file waiting to be rolled forward or one
+    that a newer publish has made obsolete; the dry run says which. A record
+    whose writer may still be running — alive here, or written on another
+    host less than ten minutes ago — is reported and never touched.
+    """
+    if ctx.wiki is None:
+        return None
+    from .locking import pending_journal, recover_journal
+
+    tdir = _tesserae_dir(ctx)
+    if not pending_journal(tdir):
+        return _f("write_journal", "processes", OK, "no interrupted writes in the journal")
+    actions = recover_journal(tdir, dry_run=True)
+    actionable = [a for a in actions if not a.endswith("left alone")]
+    if not actionable:
+        return _f(
+            "write_journal", "processes", OK,
+            f"{len(actions)} journaled write(s) in flight — doctor will not touch them",
+        )
+    return _f(
+        "write_journal", "processes", WARN,
+        f"{len(actionable)} interrupted write(s): " + "; ".join(actionable[:3]),
+        suggestion="tesserae doctor --recover (rolls complete writes forward, discards obsolete ones)",
+        fixable=True,
+    )
+
+
+def _fix_write_journal(ctx: DoctorContext) -> Optional[str]:
+    from .locking import recover_journal
+
+    # Re-run, not replayed from detect: a writer may have finished meanwhile.
+    done = [a for a in recover_journal(_tesserae_dir(ctx)) if not a.endswith("left alone")]
+    return "; ".join(done) if done else None
+
+
 def _detect_llm_login(ctx: DoctorContext) -> Optional[Finding]:
     """Report that an LLM CLI is CONFIGURED — never that it is logged in.
 
@@ -2414,6 +2454,7 @@ CHECKS: List[Check] = [
     Check("compile_lock", "processes", _detect_compile_lock, manual=_DESTRUCTIVE),  # NEVER kill
     Check("filesystem_locking", "processes", _detect_filesystem_locking, manual=_ENVIRONMENTAL),
     Check("daemon_pid", "processes", _detect_daemon_pid, fix=_fix_daemon_pid, safe=True),
+    Check("write_journal", "processes", _detect_write_journal, fix=_fix_write_journal, safe=True),
     Check("llm_login", "environment", _detect_llm_login, fix=_fix_llm_login, safe=True,
           manual=_CREDENTIALS + " — `tesserae test` proves whether the backend answers"),
     Check("optional_deps", "environment", _detect_optional_deps, manual=_NETWORKED),

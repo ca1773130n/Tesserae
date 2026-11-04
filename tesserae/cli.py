@@ -2670,7 +2670,33 @@ def _handle_export_obsidian(args: argparse.Namespace) -> int:
     return 0
 
 
+#: Held for the whole of ``sessions discover --import``, scan included.
+SESSIONS_IMPORT_LOCK = "sessions-import.lock"
+
+
 def _handle_sessions(args: argparse.Namespace) -> int:
+    """``sessions discover --import`` runs under ``sessions-import.lock``.
+
+    It used to take no lock at all: three concurrent runs each scanned for
+    ~133 s and rewrote the store over one another, which is how a burst of
+    SessionEnd hooks stacks imports. The lock fails fast like the compile
+    lock (``TESSERAE_COMPILE_LOCK_WAIT`` queues instead), and it is its own
+    file so an import never waits behind a multi-minute compile. Discovery
+    without ``--import`` only reads, so it stays unlocked.
+    """
+    if getattr(args, "sessions_command", None) == "discover" and getattr(args, "import_sessions", False):
+        from .locking import compile_lock
+
+        with compile_lock(
+            ProjectWiki.load(args.project).root,
+            name=SESSIONS_IMPORT_LOCK,
+            what="`sessions discover --import`",
+        ):
+            return _handle_sessions_unlocked(args)
+    return _handle_sessions_unlocked(args)
+
+
+def _handle_sessions_unlocked(args: argparse.Namespace) -> int:
     if True:
         wiki = ProjectWiki.load(args.project)
         store = HarnessSessionStore(wiki.paths.harness_sessions)
@@ -7194,7 +7220,8 @@ def _build_doctor_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--all", dest="all_projects", action="store_true", help="Doctor every registered project (ignores --project)")
     parser.add_argument("--apply", action="store_true", help="With migrate-code-scope: actually delete. Without it the verb reports what it would remove and touches nothing.")
-    parser.add_argument("--fix", action="store_true", help="Apply the safe fixes only: registry prune, site rebuild, lint trivial fixes, stale daemon-pidfile removal (THIS host's only — another machine's pidfile is never touched), build-history trim, hook-log rotation, vault mkdir, git worktree prune. Never kills or removes a live compile lock.")
+    parser.add_argument("--fix", action="store_true", help="Apply the safe fixes only: registry prune, site rebuild, lint trivial fixes, stale daemon-pidfile removal (THIS host's only — another machine's pidfile is never touched), interrupted journaled-write recovery (see --recover), build-history trim, hook-log rotation, vault mkdir, git worktree prune. Never kills or removes a live compile lock.")
+    parser.add_argument("--recover", action="store_true", help="Only finish or discard journaled writes whose writer died mid-publish (.tesserae/journal): a complete temp file is rolled forward when the target has not changed since, an obsolete one is discarded. Records whose writer may still be running are left alone.")
     parser.add_argument("--deep", action="store_true", help="With --fix: also apply the SLOW local repairs (session-chunk backfill). Still credential-free and LLM-free — just minutes rather than seconds.")
     parser.add_argument("--json", dest="doctor_json", action="store_true", help="Print the JSON report to stdout instead of the markdown checklist")
     return parser
@@ -7245,6 +7272,18 @@ def _handle_doctor(args: argparse.Namespace) -> int:
     if getattr(args, "deep", False) and not args.fix:
         print("doctor: --deep only means something with --fix", file=sys.stderr)
         return 2
+    if getattr(args, "recover", False):
+        from .doctor import CHECKS
+
+        if args.all_projects:
+            print("doctor: --recover runs per project; pass --project", file=sys.stderr)
+            return 2
+        # No write_report: a one-check run must not overwrite the full report.
+        report = run_doctor(
+            args.project, fix=True, checks=[c for c in CHECKS if c.id == "write_journal"]
+        )
+        sys.stdout.write(to_json(report) if args.doctor_json else render_markdown(report))
+        return report.exit_code
     if args.all_projects:
         from .mcp_server import ProjectRegistry
 
@@ -7547,12 +7586,27 @@ def _handle_graph_repair(args: argparse.Namespace) -> int:
     if not wiki.paths.graph.exists():
         print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
         return 2
-    graph = graph_from_payload(_json.loads(wiki.paths.graph.read_text(encoding="utf-8")))
+    import hashlib
+
+    from .locking import WriteConflictError
+
+    raw = wiki.paths.graph.read_bytes()
+    graph = graph_from_payload(_json.loads(raw.decode("utf-8")))
     repaired, report = repair_graph(graph)
     changed = report["anchors_collapsed"] + report["entities_merged"] > 0
     if changed and not args.dry_run:
-        # the compile's own writer, byte for byte: indent=2 and a trailing newline
-        _publish_atomically(wiki.paths.graph, repaired.to_json(indent=2) + "\n")
+        # the compile's own writer, byte for byte: indent=2 and a trailing newline.
+        # This read-modify-write holds no compile lock, so it publishes only if
+        # graph.json still holds the bytes it repaired — otherwise a compile that
+        # landed in between would be silently overwritten with the older graph.
+        try:
+            _publish_atomically(
+                wiki.paths.graph, repaired.to_json(indent=2) + "\n",
+                expected_sha256=hashlib.sha256(raw).hexdigest(),
+            )
+        except WriteConflictError as exc:
+            print(f"error: {exc} (a compile published while repair ran)", file=sys.stderr)
+            return 2
     report["written"] = bool(changed and not args.dry_run)
     if args.json:
         print(_json.dumps(report, indent=2, sort_keys=True))

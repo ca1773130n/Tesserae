@@ -29,10 +29,12 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 # How long to wait on the `ps` fallback before giving up (identity = unknown).
 _PS_TIMEOUT_S = 5.0
+
+_own_start_time_cache: Dict[int, Optional[str]] = {}
 
 
 def process_start_time(pid: int) -> Optional[str]:
@@ -100,6 +102,19 @@ def process_cmdline(pid: int) -> Optional[str]:
         return None
     line = result.stdout.strip()
     return line or None
+
+
+def own_start_time() -> Optional[str]:
+    """:func:`process_start_time` for THIS process, computed once per pid.
+
+    A process's start time never changes, and on macOS each lookup forks
+    ``ps`` — too slow for a per-write journal record. Keyed by pid so a forked
+    child does not inherit its parent's answer.
+    """
+    pid = os.getpid()
+    if pid not in _own_start_time_cache:
+        _own_start_time_cache[pid] = process_start_time(pid)
+    return _own_start_time_cache[pid]
 
 
 def current_identity() -> dict:
