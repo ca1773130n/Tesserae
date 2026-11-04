@@ -1387,6 +1387,35 @@ class LLMWikiMCPServer:
                 },
             },
             {
+                "name": "dream",
+                "description": (
+                    "Preview (default) or run one gated consolidation pass — the "
+                    "CLI's `tesserae dream`. Returns the planned supersede / "
+                    "associate / decay / distill ops per community region, each "
+                    "region's probe-gate verdict (paired bootstrap over retrieval "
+                    "reciprocal rank; promoted only on no regression), and the "
+                    "sessions it would mark reviewed. dry_run=false writes the "
+                    "promoted ops and a dated journal under .tesserae/dream/ and is "
+                    "OPT-IN: refused unless TESSERAE_DREAM=1 or config.json "
+                    "{\"dream\": {\"enabled\": true}}. undo='last' reverse-replays "
+                    "the newest applied pass (same opt-in)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                        "dry_run": {"type": "boolean", "default": True, "description": "Plan only; write nothing."},
+                        "all_regions": {"type": "boolean", "default": False, "description": "Ignore the per-session cursor; plan every region."},
+                        "regions": {"type": "array", "items": {"type": "string"}, "description": "Only these region ids (from a previous report)."},
+                        "ops": {"type": "array", "items": {"type": "string", "enum": ["supersede", "associate", "decay", "distill"]}, "description": "Subset of op kinds (default all)."},
+                        "gate": {"type": "boolean", "default": True, "description": "Run the probe gate. false promotes every region."},
+                        "undo": {"type": "string", "description": "'last' or a pass id: reverse-replay the newest applied pass instead of planning."},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
                 "name": "read_audit",
                 "description": (
                     "Who has been reading this graph. Returns recorded read events "
@@ -3024,6 +3053,8 @@ class LLMWikiMCPServer:
             return result
         if name == "embedding_status":
             return self.embedding_status(self._resolve_project_root_quiet(args))
+        if name == "dream":
+            return self._mcp_dream(args)
         if name == "read_audit":
             return self.read_audit(
                 self._resolve_project_root_quiet(args),
@@ -5800,6 +5831,36 @@ class LLMWikiMCPServer:
             record_read(db_path, node_ids, at)
         except Exception as exc:  # noqa: BLE001 — a read must survive its audit
             _LOG.warning("read audit write failed (%s)", exc)
+
+    def _mcp_dream(self, args: JSONDict) -> JSONDict:
+        """``dream`` tool: preview freely; write or undo only under the opt-in."""
+        from .dream import DreamSettings, load_project_config, dream_enabled, resolve_backend, run_dream, undo_dream
+
+        root = self._resolve_project_root_for_ask(args)
+        cfg = load_project_config(root)
+        writes = bool(args.get("undo")) or not bool(args.get("dry_run", True))
+        if writes and not dream_enabled(cfg):
+            raise ValueError(
+                "dream: writing (dry_run=false or undo) over MCP is opt-in — set "
+                "TESSERAE_DREAM=1 on the server or config.json {\"dream\": {\"enabled\": true}}; "
+                "a dry run needs no opt-in"
+            )
+        if args.get("undo"):
+            return undo_dream(root, str(args["undo"]))
+        settings = DreamSettings.from_config(
+            cfg,
+            ops=tuple(args["ops"]) if args.get("ops") else None,
+            gate=bool(args.get("gate", True)),
+            all_regions=bool(args.get("all_regions", False)),
+            regions=tuple(args["regions"]) if args.get("regions") else None,
+        )
+        return run_dream(
+            root,
+            dry_run=bool(args.get("dry_run", True)),
+            settings=settings,
+            backend=resolve_backend(),
+            cfg=cfg,
+        )
 
     def _resolve_project_root_quiet(self, args: JSONDict) -> Optional[Path]:
         """Project root for a tool that needs a sidecar but NOT a graph.
