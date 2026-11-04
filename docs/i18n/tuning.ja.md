@@ -279,6 +279,7 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | オン | セッション洞察をコードシンボルにリンク |
 | `TESSERAE_SUPERSEDE_PASS` | オン | 修正されたクレーム間の `superseded_by` エッジ |
 | `TESSERAE_PROMPT_SIGNATURES` | オフ | ドリフト検出のためのプロンプトシグネチャの記録 |
+| `TESSERAE_CONTEXT_TIERS` | オフ | コンパイル時に `.tesserae/context_tiers.json` を書き出します。ノードごとに、説明から抽出した L0 の 1 行（約 25 トークン）と L1 の概要（約 150 トークン）です。`tiers: true` を指定した `compile_context` がこれを読み、ファイルがなければ階層を自分で計算します。階層化したバンドルが少ないトークンで回答の正確さを保てるかは、まだ測定されていません |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | `.tesserae/compile.lock` を待つまでの秒数 |
 
 **コミュニティサマリーについて：** コンパイルパスは最も粗い粒度を積極的にカバーします；
@@ -390,6 +391,14 @@ export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face
 のためです: アクセス回数が何を吸収し何を降格させるかを駆動しており、アクターが
 なければ、あるノードをポーリングし続けるおしゃべりなエージェントと、それを一度
 読んだ人間とが同じ入力になってしまいます。
+
+MCP トランスポート経由では、すべてのツール応答に `est_tokens`（応答の文字数を 4 で
+割った値で、トークナイザーによる計数ではなく推定値）、`truncated`、`next_cursor` も
+含まれます。長いリストはページ単位で届きます。`next_cursor` を `page_cursor` として
+渡すと次のページが返り、ページサイズはツールの上限の範囲で `max_items` で指定します。
+読み取りとして数えるのは、そのページが実際に届けたノードだけです。監査行には、その行が
+属する応答の `est_tokens` が記録されます。プロセス内の呼び出しと CLI は以前とまったく
+同じものを返します。
 
 ---
 

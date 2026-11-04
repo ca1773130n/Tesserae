@@ -316,6 +316,7 @@ now" is a wrong yes. `tesserae doctor` never spends a call at all.
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | on | Links session insights to code symbols |
 | `TESSERAE_SUPERSEDE_PASS` | on | `superseded_by` edges between revised claims |
 | `TESSERAE_PROMPT_SIGNATURES` | off | Records prompt signatures for drift detection |
+| `TESSERAE_CONTEXT_TIERS` | off | Writes `.tesserae/context_tiers.json` at compile time: an L0 line (~25 tokens) and an L1 overview (~150 tokens) per node, extracted from its description. `compile_context` with `tiers: true` reads it, and computes the tiers itself when the file is absent. Whether tiered bundles keep answer accuracy at fewer tokens has not been measured |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | Seconds to wait for `.tesserae/compile.lock` before giving up |
 
 **On community summaries:** the compile pass eagerly covers the coarsest level;
@@ -430,6 +431,14 @@ already recorded, and it takes effect without restarting the server. What the
 audit is *for* is [forgetting by disuse](agent-memory.md#forgetting--never-deletion):
 access counts drive what gets absorbed or demoted, and without an actor one
 chatty agent polling a node and a human reading it once are the same input.
+
+Over the MCP transport every tool response also carries `est_tokens` (its size
+in characters divided by 4, an estimate rather than a tokenizer count),
+`truncated` and `next_cursor`. A long list arrives in pages: pass `next_cursor`
+back as `page_cursor` for the next one, and set the page size with `max_items`,
+up to the tool's cap. Only the nodes a page delivers count as reads, and an
+audit row records the `est_tokens` of the response it belongs to. In-process
+calls and the CLI return exactly what they did before.
 
 ---
 
