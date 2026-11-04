@@ -388,8 +388,9 @@ def _seed_cache(tmp_path, monkeypatch, name, source_file):
     dest.write_bytes(payload)
 
 
-def test_runner_writes_a_dated_result_the_latest_reader_finds(tmp_path, monkeypatch, capsys):
+def test_runner_writes_a_dated_result_that_doctor_report_surfaces(tmp_path, monkeypatch, capsys):
     from tesserae.eval_results import latest_lifecycle_results
+    from tesserae.mcp_server import LLMWikiMCPServer
 
     monkeypatch.delenv("CI", raising=False)
     _seed_cache(tmp_path, monkeypatch, "halumem-medium", FIXTURES / "halumem_tiny.jsonl")
@@ -404,6 +405,9 @@ def test_runner_writes_a_dated_result_the_latest_reader_finds(tmp_path, monkeypa
     monkeypatch.setenv("TESSERAE_LIFECYCLE_RESULTS_DIR", str(tmp_path / "results"))
     latest = latest_lifecycle_results()
     assert latest["stages"]["update:halumem-medium:deterministic"]["summary"]["correct_rate"] == 0.5
+    report = LLMWikiMCPServer().doctor_report(tmp_path)
+    assert report["exists"] is False
+    assert report["lifecycle_eval"]["stages"]["update:halumem-medium:deterministic"]["agreement"] == "gate"
 
 
 def test_llm_stages_refuse_without_consent_and_ci_skips_everything(tmp_path, monkeypatch, capsys):
