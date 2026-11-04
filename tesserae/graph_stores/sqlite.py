@@ -1089,6 +1089,31 @@ class SqliteGraphStore:
             )
             con.commit()
 
+    def update_node_memory_fields(
+        self, rows: Iterable[Tuple[str, float, int]]
+    ) -> int:
+        """Set ``decay_score`` / ``superseded`` on rows that ALREADY exist.
+
+        Each row is ``(node_id, decay_score, superseded)``. The dream pass's
+        write path, and also its undo path: it never inserts (the compile owns
+        row creation) and never touches ``access_count`` /
+        ``last_accessed_at`` / ``updated_at``, so replaying the before-values
+        restores the row exactly while reads recorded in between survive.
+        Returns the number of rows updated.
+        """
+        params = [(float(d), int(s), str(n)) for n, d, s in rows]
+        if not params:
+            return 0
+        with self._connect() as con:
+            before = con.total_changes
+            con.executemany(
+                "update node_memory set decay_score = ?, superseded = ? where node_id = ?",
+                params,
+            )
+            changed = con.total_changes - before
+            con.commit()
+        return int(changed)
+
     def bump_access(self, node_id: str, accessed_at: str) -> None:
         """ATOMIC access bump for ``node_id`` (Phase-5 KB-02).
 

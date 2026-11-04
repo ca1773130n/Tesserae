@@ -240,6 +240,11 @@ def persist_links(
         prev = by_pair.get((source, target))
         by_pair[(source, target)] = value if prev is None else max(prev, value)
 
+    return _write_overlay(project_root, by_pair)
+
+
+def _write_overlay(project_root: PathLike, by_pair: Dict[Tuple[str, str], float]) -> int:
+    """The one overlay writer: sorted, compact, atomic (tmp + ``replace``)."""
     payload = sorted([source, target, cosine] for (source, target), cosine in by_pair.items())
 
     path = _overlay_path(project_root)
@@ -248,6 +253,33 @@ def persist_links(
     tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     tmp.replace(path)  # atomic: no torn-file read by a concurrent reader
     return len(payload)
+
+
+def remove_links(
+    project_root: PathLike,
+    pairs: Sequence[Tuple[str, str]],
+    *,
+    delete_if_empty: bool = False,
+) -> int:
+    """Drop ``(source, target)`` pairs from the overlay; return its new size.
+
+    The inverse of :func:`persist_links` for links that were NEW when persisted
+    (the dream pass's undo). It goes through the same writer, so removing what
+    was added restores the previous bytes. ``delete_if_empty`` removes the
+    file instead of leaving ``[]`` when the overlay did not exist before.
+    """
+    drop = {(str(s), str(t)) for s, t in pairs}
+    by_pair: Dict[Tuple[str, str], float] = {
+        (source, target): float(cosine)
+        for source, target, cosine in _load_overlay_raw(project_root)
+        if (source, target) not in drop
+    }
+    if not by_pair and delete_if_empty:
+        path = _overlay_path(project_root)
+        if path.is_file():
+            path.unlink()
+        return 0
+    return _write_overlay(project_root, by_pair)
 
 
 # --------------------------------------------------------------------------- #

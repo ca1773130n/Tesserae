@@ -103,6 +103,21 @@ def write_memory(db_path: PathLike, rows: Iterable[NodeMemoryRow]) -> None:
     _store(db_path).write_node_memory_many(payload)
 
 
+def set_memory_fields(
+    db_path: PathLike, rows: Iterable[Tuple[str, float, bool]]
+) -> int:
+    """Set ``decay_score`` / ``superseded`` on EXISTING ``node_memory`` rows.
+
+    ``rows`` is ``(node_id, decay_score, superseded)``. Used by the dream pass
+    to apply an op and, with the recorded before-values, to undo it. Missing
+    rows are left missing (compile creates rows); the return value says how
+    many were updated so a caller can tell.
+    """
+    return _store(db_path).update_node_memory_fields(
+        (node_id, decay, 1 if superseded else 0) for node_id, decay, superseded in rows
+    )
+
+
 def bump_access(db_path: PathLike, node_id: str, accessed_at: str) -> None:
     """Atomically record one read of ``node_id`` (the MCP-read write path).
 

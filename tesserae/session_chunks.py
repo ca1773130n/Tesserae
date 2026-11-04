@@ -161,6 +161,19 @@ class SessionChunksDB:
             )
             """
         )
+        # Per-session "last turn the dream pass reviewed" (tesserae.dream).
+        # Additive CREATE IF NOT EXISTS, so no schema_version bump: a bump
+        # drops and rebuilds the store, which would throw away every turn to
+        # add one empty table.
+        con.execute(
+            """
+            create table if not exists dream_cursor (
+                session_id text primary key,
+                last_ts    text not null,
+                updated_at text not null
+            )
+            """
+        )
 
     # ------------------------------------------------------------------ #
     # Writes                                                              #
@@ -256,6 +269,37 @@ class SessionChunksDB:
                 (*wanted, len(wanted)),
             ).fetchall()
         return {str(day) for (day,) in rows}
+
+    def session_heads(self) -> Dict[str, str]:
+        """``{session_id: latest stored turn ts}`` over every stored session."""
+        with self._connect() as con:
+            rows = con.execute(
+                "select session_id, max(ts) from turns group by session_id"
+            ).fetchall()
+        return {str(sid): str(ts) for sid, ts in rows if ts}
+
+    def dream_cursors(self) -> Dict[str, str]:
+        """``{session_id: last_ts}`` the dream pass has already reviewed."""
+        with self._connect() as con:
+            rows = con.execute("select session_id, last_ts from dream_cursor").fetchall()
+        return {str(sid): str(ts) for sid, ts in rows}
+
+    def set_dream_cursors(self, values: Dict[str, Optional[str]]) -> None:
+        """Upsert each cursor; a ``None`` value deletes it (the undo path)."""
+        if not values:
+            return
+        stamp = datetime.now(KST).isoformat()
+        with self._connect() as con:
+            for sid, ts in sorted(values.items()):
+                if ts is None:
+                    con.execute("delete from dream_cursor where session_id = ?", (str(sid),))
+                else:
+                    con.execute(
+                        "insert or replace into dream_cursor (session_id, last_ts, updated_at)"
+                        " values (?, ?, ?)",
+                        (str(sid), str(ts), stamp),
+                    )
+            con.commit()
 
     def coverage_rows(self) -> List[dict]:
         with self._connect() as con:
