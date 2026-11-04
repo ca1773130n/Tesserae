@@ -7585,6 +7585,8 @@ def _build_verify_attribution_parser() -> argparse.ArgumentParser:
             "  no_checkable_figure                 the answer reports no number\n"
             "  subject_name_uncheckable /          a name with no identity tokens; the check\n"
             "  benchmark_name_uncheckable            cannot run (flagged=false)\n"
+            "  evidence_absent_uncheckable         no evidence given (source session/document\n"
+            "                                        absent): cannot prove (flagged=false)\n"
             "\n"
             "flagged=true means ownership could not be confirmed, not that the figure is\n"
             "false. exit 0 = checked (flagged or not), 2 = could not check.\n"

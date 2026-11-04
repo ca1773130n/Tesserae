@@ -294,6 +294,7 @@ ATTRIBUTION_REASONS = (
     "no_checkable_figure",
     "subject_name_uncheckable",
     "benchmark_name_uncheckable",
+    "evidence_absent_uncheckable",
 )
 
 
@@ -392,6 +393,8 @@ def check_attribution(answer: str, evidence: str, *, subject: str, obj: str) -> 
     A name with no identity-bearing tokens ("The Dataset") matches nothing and
     would flag every answer (audit probe P6); those are refused as
     ``*_uncheckable`` with ``flagged`` False — could-not-check is not a flag.
+    So is empty evidence (``evidence_absent_uncheckable``): with the source
+    session or document absent, ownership cannot be proved either way.
     """
     detail: Dict[str, Any] = {"subject": subject, "object": obj, "figures": []}
     if not _attr_tokens(subject):
@@ -402,6 +405,12 @@ def check_attribution(answer: str, evidence: str, *, subject: str, obj: str) -> 
     detail["checked_figures"] = figs
     if not figs:
         return {"flagged": False, "reason": "no_checkable_figure", "detail": detail}
+    if not (evidence or "").strip():
+        # No evidence at all — the session or document the answer came from is
+        # absent. That is "cannot prove", not "the figure is missing from it":
+        # ``figure_absent_from_evidence`` would read as a checked negative and
+        # flag an answer nobody looked at.
+        return {"flagged": False, "reason": "evidence_absent_uncheckable", "detail": detail}
 
     evidence = evidence or ""
     blocks = _attr_blocks(evidence)
