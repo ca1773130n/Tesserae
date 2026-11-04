@@ -113,7 +113,7 @@ supprimant la base.
 | `.recompile.lock.d` | `scratch` | mutex de hook basé sur mkdir ; en supprimer un qui est tenu laisse deux recompilations entrer en course |
 | `session_chunks.lock` | `scratch` | le flock « passer si tenu » du backfill ; en supprimer un qui est tenu laisse deux backfills écrire la même journée |
 | `sessions-import.lock` | `scratch` | le mutex de `sessions discover --import` ; en supprimer un qui est tenu laisse deux imports scanner et réécrire en même temps le stock de sessions |
-| `journal` | `scratch` | les enregistrements d'intention des écritures journalisées en cours. Un enregistrement qui survit à son auteur désigne un fichier temporaire complet que `doctor --recover` peut encore achever ; le supprimer fait de ce fichier un simple débris |
+| `journal` | `scratch` | les enregistrements d'intention des écritures journalisées en cours. Un enregistrement qui survit à son auteur désigne un fichier temporaire complet que `doctor --recover` peut encore achever ; le supprimer fait de ce fichier un simple débris. N'est écrit qu'avec `TESSERAE_JOURNALED_WRITES=1` |
 | `daemon*.pid` | `scratch` | pidfile du moteur, à portée d'hôte sous la forme `daemon.<host>.pid`. Doctor n'en supprime un qu'après avoir confirmé que le propriétaire enregistré est mort **sur cette machine** |
 | `graph.json.bak-*` | `scratch` | aucun chemin de code Tesserae ne les écrit. Ce sont des copies faites à la main lors d'une restauration : signalées, jamais supprimées, parce qu'un humain les a faites |
 | `*.tmp*` | `scratch` | la moitié orpheline d'une écriture tmp+replace, nommée `<target>.tmp.<pid>.<hex>`. Supprimable seulement une fois le pid propriétaire disparu : un écrivain vivant est au milieu de son rename |

@@ -311,7 +311,8 @@ SIDECARS: Tuple[Sidecar, ...] = (
     Sidecar("journal", "tesserae.locking", KIND_SCRATCH, False,
             "intent records for journaled writes in flight. One that outlives "
             "its writer points at a complete temp file `doctor --recover` can "
-            "still roll forward; deleting it turns that into plain debris"),
+            "still roll forward; deleting it turns that into plain debris. Only "
+            "written under TESSERAE_JOURNALED_WRITES=1"),
     Sidecar("sessions-import.lock", "tesserae.cli", KIND_SCRATCH, False,
             "`sessions discover --import` mutex; removing a held one lets two "
             "imports scan and rewrite the session store at once"),

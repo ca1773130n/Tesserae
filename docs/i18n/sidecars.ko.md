@@ -109,7 +109,7 @@ LLM 호출 비용을 치러야 하며, 무엇이 그 무엇으로도 재구성�
 | `.recompile.lock.d` | `scratch` | mkdir 기반 훅 뮤텍스. 잡혀 있는 것을 지우면 두 개의 재컴파일이 경합합니다 |
 | `session_chunks.lock` | `scratch` | 백필의 "잡혀 있으면 건너뛰기" flock. 잡혀 있는 것을 지우면 두 백필이 같은 날짜에 씁니다 |
 | `sessions-import.lock` | `scratch` | `sessions discover --import`의 뮤텍스. 잡혀 있는 것을 지우면 두 가져오기가 동시에 스캔하고 세션 저장소를 다시 씁니다 |
-| `journal` | `scratch` | 진행 중인 저널 쓰기의 의도 기록. 작성자보다 오래 남은 기록은 `doctor --recover`가 아직 앞으로 적용할 수 있는 완성된 임시 파일을 가리킵니다. 지우면 그 파일은 그냥 잔해가 됩니다 |
+| `journal` | `scratch` | 진행 중인 저널 쓰기의 의도 기록. 작성자보다 오래 남은 기록은 `doctor --recover`가 아직 앞으로 적용할 수 있는 완성된 임시 파일을 가리킵니다. 지우면 그 파일은 그냥 잔해가 됩니다. `TESSERAE_JOURNALED_WRITES=1`일 때만 쓰입니다 |
 | `daemon*.pid` | `scratch` | 엔진 pid 파일. `daemon.<host>.pid` 형태로 호스트 범위를 가집니다. doctor는 기록된 소유자가 **이 머신에서** 죽었음을 확인한 뒤에만 지웁니다 |
 | `graph.json.bak-*` | `scratch` | Tesserae의 어떤 코드 경로도 이것을 쓰지 않습니다. 복구 작업 중 사람이 손으로 만든 사본이므로, 보고만 하고 절대 지우지 않습니다 |
 | `*.tmp*` | `scratch` | tmp+replace 쓰기의 고아가 된 반쪽으로, 이름은 `<target>.tmp.<pid>.<hex>`입니다. 소유 pid가 사라진 뒤에만 지울 수 있습니다. 살아 있는 기록자는 rename 도중이기 때문입니다 |

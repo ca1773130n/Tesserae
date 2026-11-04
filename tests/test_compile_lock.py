@@ -357,7 +357,8 @@ def _interrupted(tdir, target, new_text, *, pid=_DEAD_PID, host=None, age=0.0, w
     return tmp, entry
 
 
-def test_journaled_write_publishes_and_leaves_nothing_behind(tmp_path):
+def test_journaled_write_publishes_and_leaves_nothing_behind(tmp_path, monkeypatch):
+    monkeypatch.setenv("TESSERAE_JOURNALED_WRITES", "1")
     tdir = tmp_path / ".tesserae"
     tdir.mkdir()
     target = tdir / "graph.json"
@@ -366,6 +367,15 @@ def test_journaled_write_publishes_and_leaves_nothing_behind(tmp_path):
     assert sha == locking.sha256_of(target)
     assert locking.pending_journal(tdir) == []
     assert sorted(p.name for p in tdir.iterdir()) == ["graph.json", "journal"]
+
+
+def test_journaling_is_opt_in(tmp_path, monkeypatch):
+    """Off by default: the same atomic rename as before, and no journal dir."""
+    monkeypatch.delenv("TESSERAE_JOURNALED_WRITES", raising=False)
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    locking.journaled_write(tdir / "graph.json", "{}")
+    assert sorted(p.name for p in tdir.iterdir()) == ["graph.json"]
 
 
 def test_journal_lives_in_the_nearest_tesserae_dir(tmp_path):
@@ -411,6 +421,7 @@ def test_recover_discards_a_half_written_temp_file(tmp_path):
 def test_journal_record_precedes_the_temp_file(tmp_path, monkeypatch):
     """A SIGKILL anywhere before the rename leaves a record naming the temp
     file, so recovery never has to guess whose a temp file is."""
+    monkeypatch.setenv("TESSERAE_JOURNALED_WRITES", "1")
     tdir = tmp_path / ".tesserae"
     tdir.mkdir()
     seen = []

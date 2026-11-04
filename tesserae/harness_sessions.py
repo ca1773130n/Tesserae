@@ -441,7 +441,7 @@ class HarnessSessionStore:
     def _publish_manifest(self) -> List[HarnessSession]:
         """Rebuild ``manifest.json`` from the records on disk; return them.
 
-        Journaled rather than ``write_text``: that truncates in place, and the
+        Atomic (``journaled_write``) rather than ``write_text``: that truncates in place, and the
         3-writer soak (``tests/test_soak_concurrency.py``) caught readers
         parsing a half-written manifest 65-309 times per 300 imports.
         """

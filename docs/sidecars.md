@@ -108,7 +108,7 @@ deleting the database.
 | `.recompile.lock.d` | `scratch` | mkdir-based hook mutex; removing a held one lets two recompiles race |
 | `session_chunks.lock` | `scratch` | backfill's skip-if-held flock; removing a held one lets two backfills write the same day |
 | `sessions-import.lock` | `scratch` | `sessions discover --import` mutex; removing a held one lets two imports scan and rewrite the session store at once |
-| `journal` | `scratch` | intent records for journaled writes in flight. One that outlives its writer points at a complete temp file `doctor --recover` can still roll forward; deleting it turns that file into plain debris |
+| `journal` | `scratch` | intent records for journaled writes in flight. One that outlives its writer points at a complete temp file `doctor --recover` can still roll forward; deleting it turns that file into plain debris. Only written under `TESSERAE_JOURNALED_WRITES=1` |
 | `daemon*.pid` | `scratch` | engine pidfile, host-scoped as `daemon.<host>.pid`. Doctor removes one only after confirming the recorded owner is dead **on this machine** |
 | `graph.json.bak-*` | `scratch` | no Tesserae code path writes these. They are hand-made copies from a restore session — reported, never removed, because a human made them |
 | `*.tmp*` | `scratch` | the orphaned half of a tmp+replace write, named `<target>.tmp.<pid>.<hex>`. Removable only once the owning pid is gone: a live writer is mid-rename |

@@ -297,6 +297,22 @@ JOURNAL_DIRNAME = "journal"
 #: so age is the only machine-independent signal; a publish takes seconds.
 JOURNAL_FOREIGN_STALE_S = 600.0
 
+_warned_dir_fsync: set = set()
+
+
+def journaling_enabled() -> bool:
+    """``TESSERAE_JOURNALED_WRITES=1`` turns on the fsyncs and the journal.
+
+    Opt-in: on local disk the soak measured no torn or lost write that the
+    atomic rename alone does not already prevent, so what the journal buys —
+    surviving power loss, and exact cleanup after a SIGKILL instead of the
+    day-old-orphan sweep — is argued from design, not yet measured, and its
+    fsync cost on a network mount is unknown.
+    """
+    return os.environ.get("TESSERAE_JOURNALED_WRITES", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
 
 class WriteConflictError(RuntimeError):
     """The target changed since the caller read it; the write was not made."""
@@ -330,11 +346,22 @@ def _fsync_dir(directory: Path) -> None:
     ``MoveFileEx`` replace is not made durable this way anyway."""
     if os.name != "posix":
         return
-    fd = os.open(directory, os.O_RDONLY)
     try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+        fd = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        # Some network and FUSE mounts reject fsync on a directory. The rename
+        # has already happened, so failing the publish would report a write
+        # that landed as lost; say once per directory that it is not durable.
+        if str(directory) not in _warned_dir_fsync:
+            _warned_dir_fsync.add(str(directory))
+            logger.warning(
+                "cannot fsync directory %s (%s): renames there may not survive "
+                "a power loss on this filesystem", directory, exc,
+            )
 
 
 def journaled_write(
@@ -361,7 +388,9 @@ def journaled_write(
       closing it — the lock is still what excludes writers.
     * ``durable=False`` skips the fsyncs and the journal, keeping only the
       atomic rename. For records a later run re-derives anyway, where an fsync
-      per file would multiply the cost of a bulk import.
+      per file would multiply the cost of a bulk import. ``durable=True`` is
+      itself only honoured when :func:`journaling_enabled` (opt-in); without
+      it every write is the atomic rename alone.
 
     The temp name is ``<stem>.tmp.<pid>.<hex>``, the shape the sidecar
     registry and ``doctor``'s orphan sweep already know. A writer killed before
@@ -379,6 +408,7 @@ def journaled_write(
                 f"{expected_sha256[:12]}…, found {(current or 'nothing')[:12]}…); "
                 "re-read it and retry"
             )
+    durable = durable and journaling_enabled()
     data = content.encode("utf-8")
     new_sha = hashlib.sha256(data).hexdigest()
     tmp = path.with_suffix(f".tmp.{os.getpid()}.{secrets.token_hex(4)}")

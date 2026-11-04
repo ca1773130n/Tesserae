@@ -113,7 +113,7 @@ Datenbank zu löschen.
 | `.recompile.lock.d` | `scratch` | mkdir-basierter Hook-Mutex; einen gehaltenen zu entfernen lässt zwei Rekompilierungen kollidieren |
 | `session_chunks.lock` | `scratch` | der „überspringen, wenn gehalten"-flock des Backfills; einen gehaltenen zu entfernen lässt zwei Backfills denselben Tag schreiben |
 | `sessions-import.lock` | `scratch` | der Mutex von `sessions discover --import`; einen gehaltenen zu entfernen lässt zwei Importe gleichzeitig scannen und den Sitzungsspeicher neu schreiben |
-| `journal` | `scratch` | Absichtsdatensätze für laufende journalisierte Schreibvorgänge. Einer, der seinen Schreiber überlebt, zeigt auf eine vollständige Temp-Datei, die `doctor --recover` noch zu Ende führen kann; ihn zu löschen macht aus dieser Datei bloßen Schutt |
+| `journal` | `scratch` | Absichtsdatensätze für laufende journalisierte Schreibvorgänge. Einer, der seinen Schreiber überlebt, zeigt auf eine vollständige Temp-Datei, die `doctor --recover` noch zu Ende führen kann; ihn zu löschen macht aus dieser Datei bloßen Schutt. Wird nur mit `TESSERAE_JOURNALED_WRITES=1` geschrieben |
 | `daemon*.pid` | `scratch` | Engine-Pidfile, host-bezogen als `daemon.<host>.pid`. Doctor entfernt eines erst, nachdem der eingetragene Besitzer **auf dieser Maschine** als tot bestätigt ist |
 | `graph.json.bak-*` | `scratch` | kein Tesserae-Codepfad schreibt sie. Es sind handgemachte Kopien aus einer Wiederherstellungssitzung — gemeldet, nie entfernt, weil ein Mensch sie angelegt hat |
 | `*.tmp*` | `scratch` | die verwaiste Hälfte eines tmp+replace-Schreibvorgangs, benannt `<target>.tmp.<pid>.<hex>`. Erst entfernbar, wenn die besitzende pid weg ist: Ein lebender Schreiber steckt mitten im rename |

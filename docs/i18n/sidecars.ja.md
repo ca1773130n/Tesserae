@@ -105,7 +105,7 @@
 | `.recompile.lock.d` | `scratch` | mkdir ベースのフックミューテックス。保持中のものを消すと二つの再コンパイルが競合します |
 | `session_chunks.lock` | `scratch` | バックフィルの「保持中ならスキップ」flock。保持中のものを消すと二つのバックフィルが同じ日を書きます |
 | `sessions-import.lock` | `scratch` | `sessions discover --import` のミューテックス。保持中のものを消すと二つのインポートが同時にスキャンしてセッションストアを書き換えます |
-| `journal` | `scratch` | 進行中のジャーナル書き込みの意図記録。書き手より長く残った記録は、`doctor --recover` がまだロールフォワードできる完成した一時ファイルを指しています。消すとそのファイルはただの残骸になります |
+| `journal` | `scratch` | 進行中のジャーナル書き込みの意図記録。書き手より長く残った記録は、`doctor --recover` がまだロールフォワードできる完成した一時ファイルを指しています。消すとそのファイルはただの残骸になります。`TESSERAE_JOURNALED_WRITES=1` のときだけ書かれます |
 | `daemon*.pid` | `scratch` | エンジンの pid ファイル。`daemon.<host>.pid` の形でホスト単位です。doctor は記録された所有者が**このマシンで**死んでいると確認した後にのみ削除します |
 | `graph.json.bak-*` | `scratch` | Tesserae のどのコード経路もこれを書きません。復旧作業中に人が手で作ったコピーなので、報告するだけで決して削除しません |
 | `*.tmp*` | `scratch` | tmp+replace 書き込みの孤児となった片割れで、名前は `<target>.tmp.<pid>.<hex>` です。所有 pid が消えた後にのみ削除できます: 生きている書き手は rename の途中だからです |

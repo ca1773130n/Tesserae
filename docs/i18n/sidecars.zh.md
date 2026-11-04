@@ -98,7 +98,7 @@
 | `.recompile.lock.d` | `scratch` | 基于 mkdir 的钩子互斥锁；删掉一个正被持有的，会让两次重编译互相竞争 |
 | `session_chunks.lock` | `scratch` | 回填用的「被持有就跳过」flock；删掉一个正被持有的，会让两次回填写入同一天 |
 | `sessions-import.lock` | `scratch` | `sessions discover --import` 的互斥锁；删掉一个正被持有的，会让两次导入同时扫描并改写会话存储 |
-| `journal` | `scratch` | 进行中的日志式写入的意图记录。写入者死后留下的记录指向一个完整的临时文件，`doctor --recover` 仍可将其前滚；删掉它，那个文件就只是残留垃圾 |
+| `journal` | `scratch` | 进行中的日志式写入的意图记录。写入者死后留下的记录指向一个完整的临时文件，`doctor --recover` 仍可将其前滚；删掉它，那个文件就只是残留垃圾。仅在 `TESSERAE_JOURNALED_WRITES=1` 时写入 |
 | `daemon*.pid` | `scratch` | 引擎 pid 文件，按主机划分，形如 `daemon.<host>.pid`。只有在确认记录的持有者**在本机**已经死亡之后，doctor 才会删除 |
 | `graph.json.bak-*` | `scratch` | Tesserae 没有任何代码路径会写出它们。它们是某次恢复作业中手工复制的副本 —— 只报告，绝不删除，因为那是人做的 |
 | `*.tmp*` | `scratch` | tmp+replace 写入留下的孤儿一半，命名为 `<target>.tmp.<pid>.<hex>`。只有在持有它的 pid 消失之后才可删除：活着的写入方正处在 rename 中途 |

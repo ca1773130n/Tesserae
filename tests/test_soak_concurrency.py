@@ -26,6 +26,8 @@ is exactly the open question for the shared-disk deployment. Point
 ``TESSERAE_SOAK_DIR`` at a network mount to measure that.
 
 Gated behind ``TESSERAE_SOAK=1`` because it takes minutes; CI never runs it.
+Run it once plain and once with ``TESSERAE_JOURNALED_WRITES=1`` to compare
+the opt-in journal against the default atomic rename.
 ``TESSERAE_SOAK_ITERS`` (default 500) and ``TESSERAE_SOAK_WRITERS`` (default
 3) size it; ``TESSERAE_SOAK_REPORT=<path>`` also writes the counters as JSON.
 """
@@ -345,7 +347,8 @@ def test_soak_shared_tesserae_writers(monkeypatch):
     # different host id would (correctly) wait out their leases instead.
     monkeypatch.setenv("TESSERAE_HOST_ID", SOAK_HOST)
     base = os.environ.get("TESSERAE_SOAK_DIR") or None
-    report: dict = {"iters": ITERS, "writers": WRITERS, "filesystem": base or "local tmp"}
+    report: dict = {"iters": ITERS, "writers": WRITERS, "filesystem": base or "local tmp",
+                    "journaled_writes": os.environ.get("TESSERAE_JOURNALED_WRITES", "")}
     with tempfile.TemporaryDirectory(prefix="tesserae-soak-", dir=base) as raw:
         root = Path(raw)
         for name, measure in (("agent_write", _measure_agent_write), ("graph_rmw", _measure_graph_rmw),

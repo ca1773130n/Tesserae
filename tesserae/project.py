@@ -164,10 +164,11 @@ def _publish_atomically(
     The ``finally`` unlink matters because without it a failed write leaves the
     scratch file behind forever — a fixed name was at least reused.
 
-    The write itself is :func:`tesserae.locking.journaled_write`: the temp file
-    is fsynced and recorded in ``.tesserae/journal`` before the rename, so a
-    writer SIGKILLed between the two leaves a complete file that
-    ``doctor --recover`` rolls forward instead of debris. ``expected_sha256``
+    The write itself is :func:`tesserae.locking.journaled_write`. With
+    ``TESSERAE_JOURNALED_WRITES=1`` (opt-in) the write is recorded in
+    ``.tesserae/journal`` and fsynced, so a writer SIGKILLed before the rename
+    leaves a record ``doctor --recover`` resolves instead of anonymous debris;
+    without it this is the plain tmp+rename it always was. ``expected_sha256``
     passes through for read-modify-write callers that do not hold the compile
     lock (``graph repair``).
     """
