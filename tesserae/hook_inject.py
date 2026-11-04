@@ -359,9 +359,16 @@ def spawn_pool_build(project_root: Path, cache_dir: Path) -> Optional[int]:
     one builder, not one each. The builder deletes the lock when it finishes;
     it runs in its own session so the harness reaping the hook's process group
     cannot cut it short, and it ends by itself in about a second.
+
+    It runs ``python -I`` from the temp dir, not the hook's cwd (the user's
+    project): a project ``json.py`` must not shadow the stdlib in it. Its
+    stderr goes to the hook log, so a builder that cannot even import fails
+    loudly rather than leaving every event cold.
     """
     import subprocess
+    import tempfile
 
+    project_root, cache_dir = project_root.resolve(), cache_dir.resolve()
     _, cache_file, _ = _pool_cache(project_root, cache_dir)
     lock = cache_file.with_suffix(".building")
     cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -376,12 +383,13 @@ def spawn_pool_build(project_root: Path, cache_dir: Path) -> Optional[int]:
     else:
         return None
     try:
-        proc = subprocess.Popen(
-            [sys.executable, "-m", "tesserae.hook_inject", "--build-pool",
-             "--project", str(project_root), "--state-dir", str(cache_dir)],
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        with (project_root / ".tesserae" / LOG_NAME).open("ab") as log:
+            proc = subprocess.Popen(
+                [sys.executable, "-I", "-m", "tesserae.hook_inject", "--build-pool",
+                 "--project", str(project_root), "--state-dir", str(cache_dir)],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log,
+                cwd=tempfile.gettempdir(), start_new_session=True,
+            )
     except BaseException:
         os.close(fd)
         lock.unlink(missing_ok=True)

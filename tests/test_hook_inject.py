@@ -439,6 +439,29 @@ def test_shell_hook_injects_when_opted_in(project, tmp_path, switch):
     assert D_LOCK in _context(proc.stdout)
 
 
+def test_project_files_cannot_shadow_the_injector_modules(project, tmp_path):
+    """The hook runs with the user's project as cwd; a ``json.py`` there must
+    not be imported in place of the stdlib, by the injector or its builder."""
+    marker = tmp_path / "shadowed"
+    for name in ("json.py", "hashlib.py"):
+        (project / name).write_text(f"open({str(marker)!r}, 'a').write({name!r})\n", encoding="utf-8")
+    env = _hook_env(tmp_path, PY_STUB, TESSERAE_HOOK_INJECT="1", TESSERAE_HOOK_INJECT_TIMEOUT_MS="5000")
+    proc = _run_hook(project, env, _prompt("compile exclusive lock"))
+    assert proc.returncode == 0, proc.stderr
+    assert D_LOCK in _context(proc.stdout)
+    assert not marker.exists(), marker.read_text()
+    # The detached cold-pool builder, started from a process whose cwd is the project.
+    state = tmp_path / "builder-state"
+    script = ("import sys; from pathlib import Path; from tesserae import hook_inject; "
+              f"print(hook_inject.spawn_pool_build(Path('.'), Path({str(state)!r})))")
+    subprocess.run([sys.executable, "-I", "-c", script], cwd=project, check=True, timeout=10)
+    deadline = time.time() + 20
+    while list(state.glob("*.building")) and time.time() < deadline:
+        time.sleep(0.05)
+    assert list(state.glob("*.pool.json")), "builder wrote no pool"
+    assert not marker.exists(), marker.read_text()
+
+
 def test_shell_hook_is_a_noop_inside_tesserae_own_llm_call(project, tmp_path):
     env = _hook_env(tmp_path, PY_STUB, TESSERAE_HOOK_INJECT="1", TESSERAE_INTERNAL_LLM="1")
     proc = _run_hook(project, env, _prompt("compile exclusive lock"))

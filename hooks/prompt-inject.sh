@@ -37,11 +37,15 @@ tesserae_bin=$(find_tesserae) || { log_to "$log_rel" "skipped: tesserae binary n
 # Fast path: run the module with the interpreter the `tesserae` launcher uses.
 # `tesserae hook inject` is the same code but imports the whole CLI first
 # (~200 ms), which alone would spend most of the budget.
+# `-I` is load-bearing: `python -m` puts the cwd — the user's project, which
+# may be a cloned untrusted repo — first on sys.path, so a `json.py` there
+# would run in place of the stdlib on every prompt. `-I` drops the cwd,
+# PYTHON* env vars and user site-packages, but keeps the venv's own.
 cmd=("$tesserae_bin" hook inject)
 first_line=$(head -n 1 "$tesserae_bin" 2>/dev/null || true)
 if [[ "$first_line" == '#!'*python* ]]; then
   read -r -a interp <<< "${first_line#\#!}"
-  cmd=("${interp[@]}" -m tesserae.hook_inject)
+  cmd=("${interp[@]}" -I -m tesserae.hook_inject)
 fi
 
 timeout_ms="${TESSERAE_HOOK_INJECT_TIMEOUT_MS:-300}"
