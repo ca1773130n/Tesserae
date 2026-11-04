@@ -18,6 +18,10 @@
 # 300) wall-clock, interpreter start-up included.
 
 set -uo pipefail
+# Tesserae's own `claude -p` calls (compile extraction, synthesis) load plugin
+# hooks too and inherit the opt-in switches; the spawners mark them with this
+# variable. Injecting there would feed the KB its own decisions as "new" input.
+[[ -n "${TESSERAE_INTERNAL_LLM:-}" ]] && exit 0
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_lib.sh
 . "${HERE}/_lib.sh"

@@ -37,7 +37,10 @@ Contract, every clause of which is load-bearing:
   ``hook_additional_context``, which session import never turns into turn text
   (``harness_sessions._claude_turns`` reads ``user``/``assistant`` rows only;
   pinned by ``tests/test_hook_inject.py``), so injected decisions are not
-  re-extracted as new ones.
+  re-extracted as new ones. Nor does it inject into Tesserae's OWN ``claude
+  -p`` calls: those inherit the opt-in env and cwd and still load plugin
+  hooks, so the spawners set :data:`INTERNAL_LLM_ENV` and both the shell hook
+  and :func:`run_args` exit before doing anything when it is set.
 
 Benefit is unmeasured: the roadmap's A/B on task success was not run. That is
 why it ships off — see ``hooks/prompt-inject.sh`` for the switches.
@@ -106,6 +109,9 @@ MAX_ITEM_CHARS = 320
 #: scoring, which bounds the per-document cost.
 MAX_QUERY_TERMS = 64
 LOG_NAME = ".prompt-inject-hook.log"
+#: Same name as ``llm_json.INTERNAL_LLM_ENV`` (pinned by a test). Restated, not
+#: imported: ``llm_json`` is a large module and this one runs on every prompt.
+INTERNAL_LLM_ENV = "TESSERAE_INTERNAL_LLM"
 #: Bump when the cached pool's shape or the text it is built from changes.
 POOL_CACHE_VERSION = 1
 TOOL_EVENTS = frozenset({"Read", "Grep", "Edit"})
@@ -670,6 +676,8 @@ def run_args(args: argparse.Namespace, stdin=None) -> int:
     Always returns 0. Prints the hook JSON on success, nothing otherwise.
     """
     t0 = time.perf_counter()
+    if os.environ.get(INTERNAL_LLM_ENV):
+        return 0  # Tesserae's own LLM call: never inject (see the module docstring)
     project_root = Path(args.project)
     log_file = Path(args.log_file) if args.log_file else None
     if getattr(args, "build_pool", False):

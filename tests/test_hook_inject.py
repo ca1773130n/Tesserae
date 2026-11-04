@@ -352,6 +352,38 @@ def test_injected_context_never_becomes_session_turn_text():
     assert not any("tesserae-context" in str(t.get("text")) for t in turns)
 
 
+def test_tesserae_own_claude_calls_carry_the_internal_marker(monkeypatch):
+    """Both ``claude -p`` spawners mark the child env, so an opted-in hook
+    firing inside a compile's extraction call can tell it is not the user's."""
+    import tesserae.llm_json as lj
+    from tesserae import llm_extractor
+
+    assert hook_inject.INTERNAL_LLM_ENV == lj.INTERNAL_LLM_ENV
+    monkeypatch.delenv(lj.INTERNAL_LLM_ENV, raising=False)
+    seen = []
+
+    def fake_cli(cmd, prompt=None, env=None, timeout=None):
+        seen.append(env)
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="ok")
+
+    monkeypatch.setattr(lj, "_run_cli", fake_cli)
+    assert lj.ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude"]).complete_text(system="s", user="u") == "ok"
+
+    def fake_run(cmd, **kwargs):
+        seen.append(kwargs["env"])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="{}")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm_extractor.run_claude_cli("p", "/tmp/fake-claude", "sonnet", 5)
+    assert [env.get(lj.INTERNAL_LLM_ENV) for env in seen] == ["1", "1"]
+
+
+def test_internal_llm_call_never_injects(project, tmp_path, monkeypatch):
+    monkeypatch.setenv(hook_inject.INTERNAL_LLM_ENV, "1")
+    rc, out, log = _call(project, _prompt("why does compile take an exclusive lock?"), tmp_path)
+    assert rc == 0 and out == "" and log == ""
+
+
 # ----------------------------------------------------------- shell hook ---
 
 
@@ -405,6 +437,13 @@ def test_shell_hook_injects_when_opted_in(project, tmp_path, switch):
     assert time.perf_counter() - started < 3.0, "hook waited on its watchdog"
     assert proc.returncode == 0, proc.stderr
     assert D_LOCK in _context(proc.stdout)
+
+
+def test_shell_hook_is_a_noop_inside_tesserae_own_llm_call(project, tmp_path):
+    env = _hook_env(tmp_path, PY_STUB, TESSERAE_HOOK_INJECT="1", TESSERAE_INTERNAL_LLM="1")
+    proc = _run_hook(project, env, _prompt("compile exclusive lock"))
+    assert proc.returncode == 0 and proc.stdout == ""
+    assert not (project / ".tesserae" / hook_inject.LOG_NAME).exists()
 
 
 def test_shell_hook_watchdog_kills_a_hung_injector(project, tmp_path):
