@@ -146,6 +146,11 @@ def test_query_from_prompt_and_tool_events():
     bash = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}}
     assert hook_inject.query_from_event(bash) == ""
     assert hook_inject.file_anchors(read) == ["session-end.sh"]
+    # A directory is not a file name: anchoring on it would match everything.
+    assert hook_inject.file_anchors(grep) == []
+    # Only PreToolUse is a tool event here.
+    post = dict(grep, hook_event_name="PostToolUse")
+    assert hook_inject.query_from_event(post) == "" and hook_inject.file_anchors(post) == []
 
 
 # ------------------------------------------------------------ retrieval ---

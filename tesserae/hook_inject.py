@@ -178,13 +178,14 @@ def query_from_event(event: Mapping[str, object]) -> str:
     if event.get("hook_event_name") == "UserPromptSubmit":
         prompt = event.get("prompt")
         return prompt if isinstance(prompt, str) else ""
-    paths = _tool_paths(event)
-    tool_input = event.get("tool_input")
-    if not paths and not isinstance(tool_input, Mapping):
+    if event.get("hook_event_name") != "PreToolUse" or event.get("tool_name") not in TOOL_EVENTS:
         return ""
-    parts = [_path_terms(path) for path in paths]
-    pattern = tool_input.get("pattern") if isinstance(tool_input, Mapping) else None
-    if isinstance(pattern, str) and event.get("tool_name") in TOOL_EVENTS:
+    tool_input = event.get("tool_input")
+    if not isinstance(tool_input, Mapping):
+        return ""
+    parts = [_path_terms(path) for path in _tool_paths(event)]
+    pattern = tool_input.get("pattern")
+    if isinstance(pattern, str):
         parts.append(pattern)
     return " ".join(part for part in parts if part)
 
@@ -194,11 +195,13 @@ def file_anchors(event: Mapping[str, object]) -> List[str]:
 
     A node that spells out the very file being opened is relevant however few
     query terms it shares, so these bypass the relevance floor in
-    :func:`retrieve`. Names shorter than 4 characters are dropped: ``a.py``
-    would match half the corpus by substring.
+    :func:`retrieve`. Only names with a suffix count — Grep's ``path`` is
+    usually a directory, and ``tesserae`` as a substring matches nearly every
+    finding in this repo. Names of 4 characters or fewer (``a.py``) are
+    dropped for the same reason.
     """
-    names = [Path(path).name.casefold() for path in _tool_paths(event)]
-    return [name for name in dict.fromkeys(names) if len(name) >= 4]
+    names = [Path(path).name.casefold() for path in _tool_paths(event) if Path(path).suffix]
+    return [name for name in dict.fromkeys(names) if len(name) > 4]
 
 
 def _informative_terms(query: str) -> List[str]:
