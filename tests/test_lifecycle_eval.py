@@ -223,6 +223,7 @@ def test_extraction_scores_recall_fabrication_and_fmr_with_lexical_judge():
     assert m["false_memory_resistance"] == 0.0
     assert out["labels"]["u-ana:0000:T0"] == "covered" and out["labels"]["u-ana:0000:T1"] == "missed"
     assert out["unit_rates"]["u-ana:0002"] == 0.0
+    assert out["extraction_calls"] == {"calls": 3, "failed": 0}
 
 
 def test_llm_extraction_judge_parses_matches_and_counts_gaps():

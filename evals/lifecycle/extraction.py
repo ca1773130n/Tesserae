@@ -269,8 +269,12 @@ def run_once(sessions: Sequence[HaluSession], extractor: Any, judge: Any) -> dic
     """
     scores: List[SessionScore] = []
     excluded: List[dict] = []
+    calls = failed = 0
+    unparseable_before = getattr(judge, "unparseable", 0)
     for session in sessions:
         findings, stats = extract_session(session, extractor)
+        calls += stats.get("calls", 0)
+        failed += stats.get("failed", 0)
         if stats.get("calls") and stats.get("failed") == stats.get("calls"):
             excluded.append({"session": session.key, "reason": "every extraction call failed"})
             logger.warning("extraction: every call failed for %s; excluded", session.key)
@@ -284,8 +288,14 @@ def run_once(sessions: Sequence[HaluSession], extractor: Any, judge: Any) -> dic
     labels_out: Dict[str, str] = {}
     for s in scores:
         labels_out.update(s.items)
+    if failed:
+        # Some chunks of a scored session never answered: their findings are
+        # missing, which reads as omission. Counted so it cannot hide.
+        logger.warning("extraction: %d of %d extraction calls failed in this run", failed, calls)
     return {
         "metrics": aggregate(scores),
+        "extraction_calls": {"calls": calls, "failed": failed},
+        "judge_unlabelled_findings": getattr(judge, "unparseable", 0) - unparseable_before,
         "excluded": excluded,
         "labels": labels_out,
         "unit_rates": {s.key: round(s.recall, 4) for s in scores},
