@@ -39,6 +39,9 @@ project_root="$(resolve_project_root)" || exit 0
 log_rel=".prompt-inject-hook.log"
 
 tesserae_bin=$(find_tesserae) || { log_to "$log_rel" "skipped: tesserae binary not found"; exit 0; }
+# Absolute before the `cd` below: a relative PATH entry makes `command -v`
+# return a relative path, which would no longer resolve from bin_dir.
+[[ "$tesserae_bin" == /* ]] || tesserae_bin="${PWD}/${tesserae_bin}"
 
 # Fast path: run the module with the interpreter the `tesserae` launcher uses.
 # `tesserae hook inject` is the same code but imports the whole CLI first
@@ -46,8 +49,9 @@ tesserae_bin=$(find_tesserae) || { log_to "$log_rel" "skipped: tesserae binary n
 # It runs from the launcher's own bin dir (the `cd` below), not the hook's
 # cwd: `python -m` puts the cwd — the user's project, which may be a cloned
 # untrusted repo — first on sys.path, so a `json.py` there would run in place
-# of the stdlib on every prompt. That gives it the console script's own
-# sys.path[0]. Not `-I`: that also drops user site-packages, where a
+# of the stdlib on every prompt. bin_dir is the launcher's directory as found
+# (for a pipx/uv/Homebrew symlink, the symlink's dir: user-owned, not the
+# project). Not `-I`: that also drops user site-packages, where a
 # `pip install --user` tesserae lives (find_tesserae probes those).
 cmd=("$tesserae_bin" hook inject)
 first_line=$(head -n 1 "$tesserae_bin" 2>/dev/null || true)

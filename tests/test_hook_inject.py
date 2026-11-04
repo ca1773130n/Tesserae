@@ -477,6 +477,24 @@ def test_injector_imports_a_package_outside_the_interpreters_own_site(project, t
     assert D_LOCK in _context(proc.stdout), log.read_text() if log.exists() else "no log"
 
 
+def test_launcher_found_through_a_relative_path_entry_still_runs(project, tmp_path):
+    """`command -v` returns `bin/tesserae` for a relative PATH entry; the hook
+    `cd`s to the launcher's dir before exec, so it must make it absolute first."""
+    rel_bin = project / "bin"
+    rel_bin.mkdir()
+    launcher = rel_bin / "tesserae"
+    # Not a python shebang, so the hook execs the launcher itself.
+    launcher.write_text(f'#!/usr/bin/env bash\nshift 2\nexec {sys.executable} -m tesserae.hook_inject "$@"\n',
+                        encoding="utf-8")
+    launcher.chmod(0o755)
+    env = _hook_env(tmp_path, PY_STUB, TESSERAE_HOOK_INJECT="1", TESSERAE_HOOK_INJECT_TIMEOUT_MS="5000")
+    env["PATH"] = "bin:" + env["PATH"]
+    proc = _run_hook(project, env, _prompt("compile exclusive lock"))
+    log = project / ".tesserae" / hook_inject.LOG_NAME
+    assert proc.stdout, log.read_text() if log.exists() else "no log"
+    assert D_LOCK in _context(proc.stdout)
+
+
 def test_shell_hook_is_a_noop_inside_tesserae_own_llm_call(project, tmp_path):
     env = _hook_env(tmp_path, PY_STUB, TESSERAE_HOOK_INJECT="1", TESSERAE_INTERNAL_LLM="1")
     proc = _run_hook(project, env, _prompt("compile exclusive lock"))
