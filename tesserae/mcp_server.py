@@ -2051,6 +2051,24 @@ class LLMWikiMCPServer:
                                 "Default false = single-pool."
                             ),
                         },
+                        "tiers": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Progressive disclosure (opt-in, accuracy effect "
+                                "unmeasured): full bodies for the top "
+                                "tier_full_ranks nodes, then one ~25-token L0 line "
+                                "plus node id per further ranked node while the "
+                                "budget lasts. Adds tail_node_ids, tokens_by_layer "
+                                "and tier_source. Default false = whole bodies only."
+                            ),
+                        },
+                        "tier_full_ranks": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "default": 5,
+                            "description": "With tiers: how many top-ranked nodes get full bodies.",
+                        },
                         "preview": {
                             "type": "integer",
                             "minimum": 0,
@@ -3424,6 +3442,18 @@ class LLMWikiMCPServer:
             recency_now = (
                 datetime.now(timezone.utc) if recency_weight > 0 else None
             )
+            tiers = bool(args.get("tiers", False))
+            tier_kwargs: JSONDict = {}
+            tier_source = None
+            if tiers:
+                from .context_tiers import tier_lookup
+
+                lookup, tier_source = tier_lookup(project_root)
+                tier_kwargs = {
+                    "tiers": True,
+                    "tier_full_ranks": int(args.get("tier_full_ranks", 5)),
+                    "tier_lookup": lookup,
+                }
             try:
                 bundle = compile_context(
                     graph,
@@ -3443,6 +3473,7 @@ class LLMWikiMCPServer:
                     recency_now=recency_now,
                     recency_weight=recency_weight,
                     explain=bool(args.get("explain", False)),
+                    **tier_kwargs,
                 )
             except ValueError as exc:
                 # An unknown strategy/scope/view, or a scope with no hierarchy
@@ -3468,6 +3499,15 @@ class LLMWikiMCPServer:
                 "multi_pool": multi_pool,
                 "pool_reservations": bundle.pool_reservations,
             }
+            # Tiered keys only when tiers ran, so the default shape is untouched.
+            tiered: JSONDict = {}
+            if tiers:
+                knobs["tiers"] = {"tier_full_ranks": tier_kwargs["tier_full_ranks"]}
+                tiered = {
+                    "tail_node_ids": bundle.tail_nodes,
+                    "tokens_by_layer": bundle.tokens_by_layer,
+                    "tier_source": tier_source,
+                }
             # One profile per seed search, in the order they ran. Added only
             # under ``explain`` so the default response shape is untouched —
             # the same discipline `via_views` follows.
@@ -3495,6 +3535,7 @@ class LLMWikiMCPServer:
                 }
                 if profiles is not None:
                     previewed["profile"] = profiles
+                previewed.update(tiered)
                 return previewed
             # preview disabled (or body already short): EXACT original shape,
             # body first — back-compat for byte/order-sensitive callers.
@@ -3508,6 +3549,7 @@ class LLMWikiMCPServer:
             }
             if profiles is not None:
                 compiled["profile"] = profiles
+            compiled.update(tiered)
             return compiled
         if name == "get_handle":
             handle = str(args.get("handle") or "")

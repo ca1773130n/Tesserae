@@ -180,6 +180,13 @@ class ContextBundle:
     #: ``strategy='hierarchical'`` each run several searches, and a summed
     #: profile would hide which sub-query was the expensive one.
     retrieval_profiles: Optional[List[RetrievalProfile]] = None
+    #: Tiered mode only (``tiers=True``): the ranked nodes past the full-body
+    #: ranks that made it into the bundle as one L0 line each, in rank order.
+    #: Not in ``selected_nodes`` — their bodies were not delivered.
+    tail_nodes: List[str] = field(default_factory=list)
+    #: Tiered mode only: estimated tokens spent per layer, ``{"full", "l0"}``.
+    #: ``None`` means tiers were off, never "both layers were empty".
+    tokens_by_layer: Optional[Dict[str, int]] = None
 
 
 def _pool_order() -> Tuple[ResearchNodeType, ...]:
@@ -676,6 +683,9 @@ def compile_context(
     local: Optional[LocalScope] = None,
     content_resolver: Optional[ContentResolver] = None,
     include_edge_statuses: Optional[Sequence[str]] = None,
+    tiers: bool = False,
+    tier_full_ranks: int = 5,
+    tier_lookup: Optional[Callable[[ResearchNode], Dict[str, str]]] = None,
 ) -> ContextBundle:
     """Compile a tailored, cited context bundle for ``query`` / ``seeds``.
 
@@ -758,6 +768,15 @@ def compile_context(
     A node whose body came from the resolver does not also get the raw source
     excerpt (that would pay for the same document twice), and its citation
     carries the refs in ``content_refs``.
+
+    ``tiers=True`` (R7, default off, byte-identical unset) packs full bodies
+    for at most ``tier_full_ranks`` nodes and then, instead of stopping, one L0
+    line plus the node id for each further ranked node while the budget lasts
+    (:mod:`tesserae.context_tiers`; ``tier_lookup`` supplies the lines, from
+    the sidecar when the caller has one). A full body that would overflow the
+    budget also switches the walk to L0 lines rather than ending it. Tail
+    nodes are reported in :attr:`ContextBundle.tail_nodes`, not
+    ``selected_nodes``, and per-layer cost in ``tokens_by_layer``.
 
     ``include_edge_statuses`` (0.42, T4) is forwarded to PPR: edge statuses
     from ``candidate`` / ``refuted`` / ``retracted`` the walk may cross. Unset,
@@ -996,6 +1015,7 @@ def compile_context(
             # nothing") on top of its documented one ("multi_pool was off").
             pool_reservations=_empty_pool_reservations() if multi_pool else None,
             retrieval_profiles=retrieval_profiles,
+            tokens_by_layer={"full": 0, "l0": 0} if tiers else None,
         )
 
     # First-stage relevance mass for the walk's personalization vector. A
@@ -1269,9 +1289,26 @@ def compile_context(
     if _per_node < _MIN_NODE_SHARE:
         _per_node = 0  # too tight to split; first body takes what it needs
     _refs_for: Dict[str, Tuple[str, ...]] = {}
+    tail: List[Tuple[ResearchNode, str]] = []
+    if tiers:
+        from .context_tiers import compute_tiers
+
+        _tier_of = tier_lookup or compute_tiers
+        tier_full_ranks = max(0, int(tier_full_ranks))
+
+    def _tail_line(n: ResearchNode) -> str:
+        return f"- {_tier_of(n)['l0']} `{n.id}`\n"
+
     for node_id, _score in ranked:
         node = node_index.get(node_id)
         if node is None:
+            continue
+        if tiers and (tail or len(selected) >= tier_full_ranks):
+            line = _tail_line(node)
+            if budget > 0 and chars_used + len(line) > budget:
+                break
+            tail.append((node, line))
+            chars_used += len(line)
             continue
         _node_refs: List[str] = []
         body = _fetch_body(
@@ -1315,6 +1352,13 @@ def compile_context(
                 truncated = _truncate_to_budget(body, budget) if budget > 0 else body
                 selected.append((node, truncated))
                 chars_used += len(truncated)
+            elif tiers:
+                # Tiered: a body that does not fit becomes a line that might.
+                line = _tail_line(node)
+                if chars_used + len(line) <= budget:
+                    tail.append((node, line))
+                    chars_used += len(line)
+                    continue
             break
         selected.append((node, body))
         chars_used += len(body)
@@ -1362,6 +1406,12 @@ def compile_context(
                 content_refs=_refs_for.get(node.id, ()),
             )
         )
+    if tail:
+        sections.append(
+            "\n## Also relevant (L0, one line each; node_context(node_id) "
+            "for the full body)\n\n"
+        )
+        sections.extend(line for _n, line in tail)
     sections.append("\n---\n## Citations\n")
     for i, c in enumerate(citations, 1):
         target = c.source_path or c.node_id
@@ -1416,4 +1466,17 @@ def compile_context(
         char_budget_total=budget,
         pool_reservations=pool_reservations,
         retrieval_profiles=retrieval_profiles,
+        tail_nodes=[n.id for n, _line in tail],
+        tokens_by_layer=_tokens_by_layer(selected, tail) if tiers else None,
     )
+
+
+def _tokens_by_layer(
+    selected: Sequence[Tuple[ResearchNode, str]], tail: Sequence[Tuple[ResearchNode, str]]
+) -> Dict[str, int]:
+    from .mcp_envelope import estimate_tokens
+
+    return {
+        "full": estimate_tokens("".join(body for _n, body in selected)),
+        "l0": estimate_tokens("".join(line for _n, line in tail)),
+    }
