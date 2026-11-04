@@ -749,6 +749,9 @@ _TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
     "You decide whether one research-session finding obsoletes another",
     "You arbitrate a contradiction between two research performance claims",
     "You split a single retrieval question into a short list",
+    # memory/reconcile.py — the opt-in write-time reconciliation pass; up to
+    # TESSERAE_RECONCILE_MAX_CALLS calls per compile.
+    "You reconcile a NEW fact against an EXISTING fact",
     # agent_distill (per-agent L1 distillation, §5.3) map/reduce/fold prompts:
     "You distill a cluster of related agent-session findings",
     "You merge partial distilled notes over ONE cluster",
