@@ -58,8 +58,18 @@ cat > "$in_file"
   < "$in_file" > "$out_file" 2>> "${project_root}/.tesserae/${log_rel}" &
 pid=$!
 # Watchdog. It only ever signals the PID this script just launched, and is
-# itself killed as soon as the injector exits, before PID reuse is possible.
-( sleep "$timeout_s"; kill -TERM "$pid" 2>/dev/null ) &
+# itself stopped as soon as the injector exits, before PID reuse is possible.
+# Two details are load-bearing. Its stdio goes to /dev/null: a `sleep` still
+# holding the hook's stdout keeps the pipe open, and Claude Code (like any
+# caller) waits for EOF, so every prompt would pay the full timeout. And its
+# TERM trap kills its own `sleep`, so stopping it leaves no orphan behind.
+(
+  trap 'kill "$sleeper" 2>/dev/null; exit 0' TERM
+  sleep "$timeout_s" &
+  sleeper=$!
+  wait "$sleeper"
+  kill -TERM "$pid" 2>/dev/null
+) > /dev/null 2>&1 &
 watchdog=$!
 wait "$pid"
 rc=$?

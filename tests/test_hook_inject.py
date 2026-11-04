@@ -185,6 +185,22 @@ def test_per_session_dedupe(project, tmp_path):
     assert D_LOCK in _context(other)
 
 
+def test_pool_cache_is_rebuilt_when_a_compile_republishes_the_graph(project, tmp_path):
+    tdir = project / ".tesserae"
+    prompt = _prompt("vacuum the session chunks database")
+    rc, out, _ = _call(project, prompt, tmp_path)
+    assert out == "" and list((tmp_path / "seen").glob("*.pool.json"))
+    # A "compile": new finding in the mirror, graph.json rewritten, mirror after it.
+    SqliteGraphStore(tdir / "sqlite.db").upsert_node(_node(
+        "SessionDecision:s3:vacuum", ResearchNodeType.SESSION_DECISION,
+        "Vacuum the session chunks database after pruning; sqlite does not shrink on delete."))
+    (tdir / "graph.json").write_text('{"nodes": [], "edges": [] }\n', encoding="utf-8")
+    later = time.time() + 10
+    os.utime(tdir / "sqlite.db", (later, later))
+    rc, out, _ = _call(project, prompt, tmp_path)
+    assert "SessionDecision:s3:vacuum" in _context(out)
+
+
 def test_never_writes_the_mirror_and_never_opens_the_transcript(project, tmp_path, monkeypatch):
     db = project / ".tesserae" / "sqlite.db"
     before = hashlib.sha256(db.read_bytes()).hexdigest(), db.stat().st_mtime
@@ -326,7 +342,12 @@ def test_shell_hook_injects_when_opted_in(project, tmp_path, switch):
         (project / ".claude").mkdir()
         (project / ".claude" / "tesserae.local.md").write_text(
             "---\nhooks:\n  prompt_inject: true\n---\n", encoding="utf-8")
+    # A generous watchdog, so a hook that waits on it (e.g. a sleep holding
+    # stdout open) shows up as ~5 s instead of passing.
+    env["TESSERAE_HOOK_INJECT_TIMEOUT_MS"] = "5000"
+    started = time.perf_counter()
     proc = _run_hook(project, env, _prompt("compile exclusive lock"))
+    assert time.perf_counter() - started < 3.0, "hook waited on its watchdog"
     assert proc.returncode == 0, proc.stderr
     assert D_LOCK in _context(proc.stdout)
 

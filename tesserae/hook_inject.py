@@ -17,9 +17,10 @@ Contract, every clause of which is load-bearing:
   WRITES on a miss, and the candidate pool here is a few hundred nodes, which
   tokenise in memory in milliseconds.
 * **Read-only.** The mirror is opened ``mode=ro`` with a 100 ms busy timeout
-  (:meth:`SqliteGraphStore.open_readonly`). The only file written is the
-  per-session dedupe list under the system temp dir, plus the hook log on
-  error.
+  (:meth:`SqliteGraphStore.open_readonly`). The only files written are under
+  the system temp dir — the per-session dedupe list and a JSON cache of the
+  tokenised candidate pool keyed on ``graph.json`` (see :func:`load_pool`) —
+  plus the hook log on error.
 * **Fail-open.** Any error, including the deadline below, prints nothing and
   exits 0 — a broken memory layer must never block a prompt or a tool call —
   but the error is appended to ``.tesserae/.prompt-inject-hook.log``.
@@ -43,10 +44,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import signal
 import sys
-import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -54,8 +55,7 @@ from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .graph_filters import retracted_ids, superseded_ids
-from .graph_stores.sqlite import SqliteGraphStore
-from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
+from .research_graph import ResearchEdge, ResearchGraph, ResearchNodeType
 from .retrieval.grounding import STOPWORDS
 from .retrieval.hybrid import _bm25_scores, _node_text, _tokenize
 
@@ -97,6 +97,8 @@ MAX_ITEM_CHARS = 320
 #: scoring, which bounds the per-document cost.
 MAX_QUERY_TERMS = 64
 LOG_NAME = ".prompt-inject-hook.log"
+#: Bump when the cached pool's shape or the text it is built from changes.
+POOL_CACHE_VERSION = 1
 TOOL_EVENTS = frozenset({"Read", "Grep", "Edit"})
 
 #: What gets injected, and the label it is injected under. Decisions are what
@@ -211,46 +213,119 @@ def _informative_terms(query: str) -> List[str]:
 # --------------------------------------------------------------------------- #
 
 
-def open_mirror(project_root: Path) -> SqliteGraphStore:
-    """The project's SQLite mirror, read-only, or raise.
+def _mirror_paths(project_root: Path) -> Tuple[Path, Path]:
+    """``(graph.json, sqlite.db)``, or raise when the mirror cannot be trusted.
 
     Same staleness rule as the MCP keyed read (``_keyed_store``): a
     ``graph.json`` NEWER than ``sqlite.db`` means the two did not come from the
     same compile, and the mirror may serve knowledge the graph has since
-    dropped. Refuse rather than inject it.
+    dropped. Refuse rather than inject it. Checked on every call, cache or not.
     """
     tdir = project_root / ".tesserae"
     graph_path = tdir / "graph.json"
     db_path = tdir / "sqlite.db"
     if not db_path.is_file():
         raise FileNotFoundError(f"no SQLite mirror at {db_path}; run `tesserae compile`")
-    if graph_path.is_file() and graph_path.stat().st_mtime > db_path.stat().st_mtime:
+    if not graph_path.is_file():
+        raise FileNotFoundError(f"no graph at {graph_path}; run `tesserae compile`")
+    if graph_path.stat().st_mtime > db_path.stat().st_mtime:
         raise RuntimeError(f"{graph_path} is newer than {db_path}; mirror may be stale, recompile")
-    return SqliteGraphStore.open_readonly(db_path)
+    return graph_path, db_path
 
 
-def _candidates(store: SqliteGraphStore) -> Tuple[List[ResearchNode], ResearchGraph]:
-    nodes: List[ResearchNode] = []
+@dataclass
+class _Pool:
+    """The candidate corpus, pre-tokenised, in mirror order.
+
+    Parallel lists rather than nodes: this is what gets cached, and a cache hit
+    must not pay for rebuilding ResearchNode objects it never needed.
+    """
+
+    ids: List[str]
+    labels: List[str]
+    names: List[str]
+    tokens: List[List[str]]
+    #: Casefolded ``_node_text``, for exact file-name mentions.
+    folded: List[str]
+    #: Suppression edges touching the pool: ``[source, target, type]``.
+    edges: List[List[str]]
+
+
+def _build_pool(db_path: Path) -> _Pool:
+    # Imported here, not at module scope: a cache hit never opens the store,
+    # and on a loaded machine the import is a measurable share of the budget.
+    from .graph_stores.sqlite import SqliteGraphStore
+
+    store = SqliteGraphStore.open_readonly(db_path)
+    nodes = []
     for node_type in INJECT_TYPES:
         nodes.extend(store.iterate_nodes(node_type.value))
     edges = store.read_suppression_edges(node.id for node in nodes)
-    return nodes, ResearchGraph(nodes=nodes, edges=edges)
+    texts = [_node_text(node) for node in nodes]
+    return _Pool(
+        ids=[node.id for node in nodes],
+        labels=[INJECT_TYPES[node.type] for node in nodes],
+        names=[node.name for node in nodes],
+        tokens=[_tokenize(text) for text in texts],
+        folded=[text.casefold() for text in texts],
+        edges=[[edge.source, edge.target, edge.type] for edge in edges],
+    )
 
 
-def _replacement(node_id: str, graph: ResearchGraph, by_id: Mapping[str, ResearchNode]) -> Optional[str]:
+def load_pool(project_root: Path, cache_dir: Optional[Path] = None) -> _Pool:
+    """The candidate pool, from the per-project cache when it is current.
+
+    Reading ~800 findings out of a 1 GB SQLite file and tokenising half a
+    megabyte of their text costs 30-110 ms depending on the page cache, and the
+    answer only changes when a compile republishes the graph. So the pool is
+    cached under ``cache_dir`` keyed on ``graph.json``'s ``(st_mtime_ns,
+    st_size)``: a compile rewrites that file by atomic rename and then the
+    mirror, and the staleness guard refuses the window in between, so a pool
+    can only ever be built from a mirror that matches the graph it is keyed on.
+    ``sqlite.db``'s own mtime is no key — MCP reads write to it.
+
+    The cache is JSON, never pickle, because it lives in a temp directory;
+    :func:`_state_dir` refuses a directory another user owns. A corrupt or
+    unreadable cache is logged and rebuilt.
+    """
+    graph_path, db_path = _mirror_paths(project_root)
+    stat = graph_path.stat()
+    key = [POOL_CACHE_VERSION, str(project_root.resolve()), stat.st_mtime_ns, stat.st_size]
+    cache_file = None
+    if cache_dir is not None:
+        digest = hashlib.sha256(key[1].encode("utf-8")).hexdigest()[:24]
+        cache_file = cache_dir / f"{digest}.pool.json"
+        try:
+            payload = json.loads(cache_file.read_bytes())
+            if payload.get("key") == key:
+                return _Pool(**payload["pool"])
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            _log(project_root, f"pool cache {cache_file} unreadable ({type(exc).__name__}: {exc}); rebuilding")
+    pool = _build_pool(db_path)
+    if cache_file is not None:
+        cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        tmp = cache_file.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"key": key, "pool": pool.__dict__}, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, cache_file)
+    return pool
+
+
+def _replacement(node_id: str, edges: Sequence[ResearchEdge], by_id: Mapping[str, int], names: Sequence[str]) -> Optional[str]:
     """Text of the newest node in ``node_id``'s supersede chain, if known."""
-    winners = {edge.target: edge.source for edge in graph.edges if edge.type == "supersedes"}
+    winners = {edge.target: edge.source for edge in edges if edge.type == "supersedes"}
     current, seen = node_id, {node_id}
     while current in winners and winners[current] not in seen:
         current = winners[current]
         seen.add(current)
     if current == node_id or current not in by_id:
         return None
-    return by_id[current].name
+    return names[by_id[current]]
 
 
 def retrieve(
-    store: SqliteGraphStore,
+    pool: _Pool,
     query: str,
     *,
     seen: Optional[Set[str]] = None,
@@ -275,16 +350,14 @@ def retrieve(
     terms = _informative_terms(query)
     if not terms:
         return []
-    nodes, graph = _candidates(store)
-    if not nodes:
+    if not pool.ids:
         return []
-    texts = [_node_text(node) for node in nodes]
-    corpus = [_tokenize(text) for text in texts]
+    corpus = pool.tokens
     n_docs = len(corpus)
     doc_sets = [set(doc) for doc in corpus]
     anchored = {
-        idx for idx, text in enumerate(texts)
-        if anchors and any(anchor in text.casefold() for anchor in anchors)
+        idx for idx, text in enumerate(pool.folded)
+        if anchors and any(anchor in text for anchor in anchors)
     }
     df = {term: sum(1 for doc in doc_sets if term in doc) for term in terms}
     # A term in half the pool or more has non-positive classical (Robertson)
@@ -305,33 +378,34 @@ def retrieve(
 
     ranked = sorted(
         ((score, idx) for idx, score in enumerate(scores) if (score > 0 or idx in anchored) and passes(idx)),
-        key=lambda pair: (-(pair[1] in anchored), -pair[0], nodes[pair[1]].id),
+        key=lambda pair: (-(pair[1] in anchored), -pair[0], pool.ids[pair[1]]),
     )
     if not ranked:
         return []
     unanchored = [score for score, idx in ranked if idx not in anchored]
     top = unanchored[0] if unanchored else 0.0
+    edges = [ResearchEdge(source=src, target=dst, type=etype) for src, dst, etype in pool.edges]
+    graph = ResearchGraph(nodes=[], edges=edges)
     superseded = superseded_ids(graph)
     retracted = retracted_ids(graph)
-    by_id = {node.id: node for node in nodes}
+    by_id = {node_id: idx for idx, node_id in enumerate(pool.ids)}
 
     items: List[InjectItem] = []
     for score, idx in ranked:
         if len(items) >= max_items or (idx not in anchored and score < relative_floor * top):
             break
-        node = nodes[idx]
-        if node.id in seen:
+        node_id, label, name = pool.ids[idx], pool.labels[idx], pool.names[idx]
+        if node_id in seen:
             continue
-        label = INJECT_TYPES[node.type]
-        if node.id in retracted:
-            items.append(InjectItem(node.id, label, node.name, score, warning="retracted"))
-        elif node.id in superseded:
+        if node_id in retracted:
+            items.append(InjectItem(node_id, label, name, score, warning="retracted"))
+        elif node_id in superseded:
             items.append(
-                InjectItem(node.id, label, node.name, score, warning="superseded",
-                           replaced_by=_replacement(node.id, graph, by_id))
+                InjectItem(node_id, label, name, score, warning="superseded",
+                           replaced_by=_replacement(node_id, edges, by_id, pool.names))
             )
         else:
-            items.append(InjectItem(node.id, label, node.name, score))
+            items.append(InjectItem(node_id, label, name, score))
     return items
 
 
@@ -389,6 +463,20 @@ def render(items: Sequence[InjectItem], *, budget_tokens: int, elapsed_ms: float
 # --------------------------------------------------------------------------- #
 
 
+def _state_dir(explicit: Optional[Path]) -> Path:
+    """Where dedupe lists and the pool cache live; refuse one we do not own.
+
+    On a shared ``/tmp`` another user could create this directory first and
+    plant a pool cache, i.e. choose the text injected into this user's agent.
+    """
+    import tempfile
+
+    path = explicit or Path(tempfile.gettempdir()) / "tesserae-hook-inject"
+    if path.exists() and hasattr(os, "getuid") and path.stat().st_uid != os.getuid():
+        raise PermissionError(f"{path} is owned by uid {path.stat().st_uid}, not this user; refusing it")
+    return path
+
+
 def _seen_path(state_dir: Path, project_root: Path, session_id: str) -> Path:
     key = hashlib.sha256(f"{project_root}\x00{session_id}".encode("utf-8")).hexdigest()[:24]
     return state_dir / f"{key}.seen"
@@ -403,7 +491,7 @@ def _read_seen(path: Path) -> Set[str]:
 def _append_seen(path: Path, ids: Sequence[str]) -> None:
     if not ids:
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write("".join(f"{node_id}\n" for node_id in ids))
 
@@ -449,13 +537,13 @@ def run(
     query = query_from_event(event)
     if not query.strip():
         return ""
+    state_dir = _state_dir(state_dir)
     session_id = event.get("session_id")
     seen_file = None
     if isinstance(session_id, str) and session_id:
-        seen_file = _seen_path(state_dir or Path(tempfile.gettempdir()) / "tesserae-hook-inject",
-                               project_root.resolve(), session_id)
+        seen_file = _seen_path(state_dir, project_root.resolve(), session_id)
     seen = _read_seen(seen_file) if seen_file else set()
-    items = retrieve(open_mirror(project_root), query, seen=seen, anchors=file_anchors(event),
+    items = retrieve(load_pool(project_root, state_dir), query, seen=seen, anchors=file_anchors(event),
                      strict=event.get("hook_event_name") == "PreToolUse")
     text, emitted = render(items, budget_tokens=budget_tokens,
                            elapsed_ms=(time.perf_counter() - t0) * 1000)
@@ -477,7 +565,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument("--timeout-ms", type=int, default=DEFAULT_TIMEOUT_MS,
                         help=f"Wall-clock deadline; on expiry print nothing and exit 0 (default {DEFAULT_TIMEOUT_MS})")
     parser.add_argument("--state-dir", default=None,
-                        help="Per-session dedupe dir (default: <tmp>/tesserae-hook-inject)")
+                        help="Per-session dedupe + candidate-pool cache dir (default: <tmp>/tesserae-hook-inject)")
     parser.add_argument("--log-file", default=None,
                         help=f"Error log (default: <project>/.tesserae/{LOG_NAME})")
     return parser
