@@ -289,6 +289,7 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_AGENT_DISTILL` | off | Per-agent L1 expertise artifacts (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | off | Runbook/Gotcha distilled-memory nodes |
 | `TESSERAE_SESSION_EVENT_PASS` | **on** | 세션 트랜스크립트의 턴별 `Event` 노드. LLM을 쓰지 않고 바이트 단위로 결정적이지만, 유의미한 턴마다 노드 하나씩 — 긴 코퍼스에서는 규모가 커집니다. `false`/`0`/`no`/`off`로 비활성화 |
+| `TESSERAE_UNTRUSTED_DOC_GUARD` | off | 추출 prompt에서 문서 텍스트를 신뢰할 수 없는 데이터로 감싸고, 텍스트가 지시문 형태인 노드와 엣지를 버립니다. 세션 트랜스크립트에는 두 가드가 항상 적용됩니다. 켜면 prompt가 캐시 키에 포함되므로 모든 문서를 한 번 다시 추출하며, 인젝션을 인용하는 문서는 해당 노드를 잃습니다 |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | on | session insights를 code symbols에 link |
 | `TESSERAE_SUPERSEDE_PASS` | on | 수정된 claims 사이의 `superseded_by` edges |
 | `TESSERAE_PROMPT_SIGNATURES` | off | drift detection을 위한 prompt signatures 기록 |
