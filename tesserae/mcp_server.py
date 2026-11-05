@@ -55,6 +55,7 @@ from .research_graph import (
     ResearchGraph,
     ResearchNode,
     ResearchNodeType,
+    _edge_optional_fields,
     is_public_research_node,
 )
 from .retrieval.ppr import personalized_pagerank
@@ -187,6 +188,11 @@ def load_graph(path: str | Path) -> ResearchGraph:
             type=str(raw["type"]),
             evidence=raw.get("evidence"),
             metadata=dict(raw.get("metadata") or {}),
+            # The 0.42 lifecycle fields (status, invalid_at, ...). Dropping
+            # them here made every MCP read see a ``refuted`` or invalidated
+            # edge as plain attested — the project loader kept them, this
+            # reimplementation did not.
+            **_edge_optional_fields(raw),
         )
         for raw in payload.get("edges", [])
     ]
@@ -903,6 +909,7 @@ def _project_root_for_graph_path(graph_path: str | Path) -> Optional[Path]:
 from .graph_filters import retracted_ids as _retracted_ids
 from .graph_filters import superseded_ids as _superseded_ids
 from .graph_filters import suppressed_ids as _suppressed_ids
+from .graph_filters import invalidations as _invalidations
 from .merge_ledger import load_merge_ledger
 
 
@@ -1658,7 +1665,9 @@ class LLMWikiMCPServer:
                 "name": "raw_source",
                 "description": (
                     "Return the raw markdown contents of a project-relative source path "
-                    "(capped at 16 KB). Used to inspect the original document behind a node."
+                    "(capped at 16 KB). Used to inspect the original document behind a node. "
+                    "Facts from this source that a newer fact invalidated are listed in "
+                    "invalidated_facts; the body is never withheld."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -3288,8 +3297,8 @@ class LLMWikiMCPServer:
             source_path = args.get("source_path")
             if not source_path:
                 raise ValueError("raw_source requires 'source_path'")
-            _, project_root = self._load_requested_graph_with_root(args)
-            return self.raw_source(project_root, str(source_path))
+            graph, project_root = self._load_requested_graph_with_root(args)
+            return self.raw_source(project_root, str(source_path), graph=graph)
         if name == "lint_report":
             _, project_root = self._load_requested_graph_with_root(args)
             return self.lint_report(project_root)
@@ -5341,7 +5350,12 @@ class LLMWikiMCPServer:
             "truncated": truncated_flag,
         }
 
-    def raw_source(self, project_root: Optional[Path], source_path: str) -> JSONDict:
+    def raw_source(
+        self,
+        project_root: Optional[Path],
+        source_path: str,
+        graph: Optional[ResearchGraph] = None,
+    ) -> JSONDict:
         if project_root is None:
             raise ValueError(
                 "raw_source requires a project root — pass graph_path or project, or set a default graph."
@@ -5392,13 +5406,30 @@ class LLMWikiMCPServer:
                 "'asset_path' (read it from disk) and 'asset_site_path' "
                 "(fetch it from a running `tesserae serve`)."
             )
-        return {
-            "source_path": str(target.relative_to(project_root.resolve())),
+        rel_path = str(target.relative_to(project_root.resolve()))
+        payload: JSONDict = {
+            "source_path": rel_path,
             "body": body,
             "byte_count": len(raw),
             "truncated": truncated,
             "cap_bytes": RAW_SOURCE_BYTE_CAP,
         }
+        # DEMOTE, never filter: the body is served whole, and facts from this
+        # source that a newer fact INVALIDATED (opt-in memory.reconcile) are
+        # named beside it. Present only when non-empty, so the payload is
+        # unchanged for every graph without invalidations.
+        if graph is not None:
+            invalidated = _invalidations(graph)
+            if invalidated:
+                spellings = {rel_path, str(target)}
+                hits = {
+                    node.id: invalidated[node.id]
+                    for node in graph.nodes
+                    if node.id in invalidated and node.source_path in spellings
+                }
+                if hits:
+                    payload["invalidated_facts"] = dict(sorted(hits.items()))
+        return payload
 
     def lint_report(self, project_root: Optional[Path]) -> JSONDict:
         if project_root is None:

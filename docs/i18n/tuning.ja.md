@@ -279,6 +279,8 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_UNTRUSTED_DOC_GUARD` | オフ | 抽出プロンプト内で文書テキストを信頼できないデータとして囲み、テキストが指示文の形をしたノードとエッジを破棄します。セッショントランスクリプトには 2 つのガードが常に適用されます。有効にするとプロンプトがキャッシュキーの一部であるため全文書を 1 回再抽出し、インジェクションを引用する文書はそのノードを失います |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | オン | セッション洞察をコードシンボルにリンク |
 | `TESSERAE_SUPERSEDE_PASS` | オン | 修正されたクレーム間の `superseded_by` エッジ |
+| `TESSERAE_RECONCILE_PASS` | オフ | 書き込み時の照合：各セッションの発見と各クレームを最も近い embedding の近傍と比べ、`ADD`、`UPDATE`、`INVALIDATE`、`NOOP` のいずれかを決める。`TESSERAE_ENABLE_LLM_PASSES` とセマンティック embedding バックエンド（`tesserae[semantic]`）が必要で、ない場合は警告を出してスキップする。`INVALIDATE` は `invalid_at` を持つ `supersedes` エッジを作成し、両方の事実にソースのタイムスタンプがある場合に限る。`UPDATE` は `node_memory_proof` サイドカーに行を追加する。`raw_source` はこれらの事実を `invalidated_facts` に、`verify_claim` は `advisory.invalidated_endpoints` に列挙し、どちらも隠さない。デフォルトでオフ：`INVALIDATE` の精度は監査されておらず、誤った判定は正しい事実を検索から隠す |
+| `TESSERAE_RECONCILE_MAX_CALLS` | 200 | `TESSERAE_RECONCILE_PASS` のコンパイルごとの分類器呼び出し回数。判定は内容でキャッシュされるため、大きなグラフは複数回のコンパイルにわたって照合され、キャッシュのウォーミングが終わるまで `graph.json` は毎回変わりうる |
 | `TESSERAE_PROMPT_SIGNATURES` | オフ | ドリフト検出のためのプロンプトシグネチャの記録 |
 | `TESSERAE_CONTEXT_TIERS` | オフ | コンパイル時に `.tesserae/context_tiers.json` を書き出します。ノードごとに、説明から抽出した L0 の 1 行（約 25 トークン）と L1 の概要（約 150 トークン）です。`tiers: true` を指定した `compile_context` がこれを読み、ファイルがなければ階層を自分で計算します。階層化したバンドルが少ないトークンで回答の正確さを保てるかは、まだ測定されていません |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | `.tesserae/compile.lock` を待つまでの秒数 |

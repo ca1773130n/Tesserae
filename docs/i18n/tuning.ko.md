@@ -292,6 +292,8 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_UNTRUSTED_DOC_GUARD` | off | 추출 prompt에서 문서 텍스트를 신뢰할 수 없는 데이터로 감싸고, 텍스트가 지시문 형태인 노드와 엣지를 버립니다. 세션 트랜스크립트에는 두 가드가 항상 적용됩니다. 켜면 prompt가 캐시 키에 포함되므로 모든 문서를 한 번 다시 추출하며, 인젝션을 인용하는 문서는 해당 노드를 잃습니다 |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | on | session insights를 code symbols에 link |
 | `TESSERAE_SUPERSEDE_PASS` | on | 수정된 claims 사이의 `superseded_by` edges |
+| `TESSERAE_RECONCILE_PASS` | off | 쓰기 시점 reconciliation: 각 세션 finding과 claim을 가장 가까운 embedding 이웃과 비교해 `ADD`, `UPDATE`, `INVALIDATE`, `NOOP` 중 하나를 정합니다. `TESSERAE_ENABLE_LLM_PASSES`와 시맨틱 embedding 백엔드(`tesserae[semantic]`)가 필요하며, 없으면 경고와 함께 건너뜁니다. `INVALIDATE`는 `invalid_at`을 담은 `supersedes` edge를 만들며, 두 사실 모두 소스 타임스탬프가 있을 때만 그렇게 합니다. `UPDATE`는 `node_memory_proof` 사이드카에 행을 하나 추가합니다. `raw_source`는 이런 사실을 `invalidated_facts`에, `verify_claim`은 `advisory.invalidated_endpoints`에 나열하며, 둘 다 숨기지 않습니다. 기본값 off: `INVALIDATE`의 정밀도는 감사되지 않았고, 잘못된 판정은 올바른 사실을 검색에서 숨깁니다 |
+| `TESSERAE_RECONCILE_MAX_CALLS` | 200 | `TESSERAE_RECONCILE_PASS`의 컴파일당 분류기 호출 수. 판정은 내용 기준으로 캐시되므로 큰 그래프는 여러 번의 컴파일에 걸쳐 reconcile되고, 캐시 예열이 끝날 때까지 `graph.json`은 매번 바뀔 수 있습니다 |
 | `TESSERAE_PROMPT_SIGNATURES` | off | drift detection을 위한 prompt signatures 기록 |
 | `TESSERAE_CONTEXT_TIERS` | off | 컴파일 시 `.tesserae/context_tiers.json`을 씁니다: 노드마다 설명에서 추출한 L0 한 줄(~25 토큰)과 L1 개요(~150 토큰). `tiers: true`를 준 `compile_context`가 이 파일을 읽고, 파일이 없으면 티어를 직접 계산합니다. 티어로 나눈 번들이 더 적은 토큰으로 답의 정확도를 유지하는지는 측정되지 않았습니다 |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | `.tesserae/compile.lock`을 기다릴 초 단위의 초 |

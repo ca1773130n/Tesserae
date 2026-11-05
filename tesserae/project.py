@@ -4072,8 +4072,10 @@ class ProjectWiki:
         # the documented ``TESSERAE_ENABLE_LLM_PASSES`` env gate is set — in
         # which case we build the best-effort default. Otherwise they are
         # skipped entirely and the default path stays deterministic and
-        # credential-free. Either way graph.json is byte-idempotent (the
-        # content-keyed disk caches keep warm LLM reruns byte-stable).
+        # credential-free. Either way graph.json is byte-idempotent once the
+        # content-keyed disk caches are warm. The opt-in reconcile pass (4b) has
+        # a per-run call budget, so on a large graph it needs several compiles
+        # to warm and graph.json can change on each of them until it is.
         if json_client is None and _env_truthy("TESSERAE_ENABLE_LLM_PASSES"):
             try:
                 # Provider-aware (honors llm_provider=codex), same as the
@@ -4152,6 +4154,37 @@ class ProjectWiki:
             except Exception:  # pragma: no cover — defensive
                 logger.exception("phase5 contradiction resolution failed")
                 conf_map = {}
+
+        # (4b) Write-time reconciliation (R3) — OPT-IN (TESSERAE_RECONCILE_PASS)
+        # and LLM-gated like (4). INVALIDATE mints dated ``supersedes`` edges
+        # into graph.json (so step 6 below flags their targets); UPDATE proofs
+        # go to the node_memory_proof sidecar only, and only when this compile
+        # owns the default sqlite.db (an injected store keeps it untouched).
+        from .memory.reconcile import reconcile_pass_enabled
+
+        if reconcile_pass_enabled():
+            if json_client is None:
+                logger.warning(
+                    "memory.reconcile: TESSERAE_RECONCILE_PASS is set but no LLM "
+                    "passes client is available (set TESSERAE_ENABLE_LLM_PASSES); skipped"
+                )
+            else:
+                try:
+                    from .memory.reconcile import LLMReconcileClassifier, run_reconcile_pass
+                    from .retrieval.hybrid import active_embedding_backend
+                    from .retrieval.vector_cache import VectorCache
+
+                    graph, _reconcile_stats = run_reconcile_pass(
+                        graph,
+                        classifier=LLMReconcileClassifier(json_client),
+                        embedder=active_embedding_backend(),
+                        cache_dir=self.paths.root / "reconcile_cache",
+                        proof_db_path=self.paths.sqlite if store is None else None,
+                        recorded_at=reference_iso,
+                        vector_cache=VectorCache(self.paths.sqlite) if store is None else None,
+                    )
+                except Exception:
+                    logger.exception("memory.reconcile: pass failed; continuing without it")
 
 
         # (5) Recurring-insight reinforcement (KB-05): confidence -> node_memory

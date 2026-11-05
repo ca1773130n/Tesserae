@@ -46,8 +46,9 @@ CLAIM_TYPES = {
 # candidate generation plus session-id ordering (memory/supersede.py
 # _deterministic_verdict), no LLM. Ceiling: a token-overlap heuristic decides
 # when a fact stopped being true. Upgrade path, in order: (1) the already-wired
-# LLM verdict path in the same pass, (2) the embedding candidates
-# supersede.py deliberately deferred. Item (3), turn-level granularity, is DONE:
+# LLM verdict path in the same pass, (2) embedding candidates —
+# shipped OPT-IN as memory/reconcile.py, whose INVALIDATE edges also carry
+# ``invalid_at``; default-off until its precision audit is done. Item (3), turn-level granularity, is DONE:
 # ``session_graph._finding_first_seen_at`` dates a finding from its own turns'
 # timestamps, so findings in one long-running session no longer share a
 # boundary.

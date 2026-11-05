@@ -398,10 +398,12 @@ def _finding_groups(
     return groups
 
 
-# NOTE (Phase 5.1): candidate generation stays Jaccard-only. Model2Vec
-# embedding-based candidate enrichment (retrieval/hybrid.active_embedding_backend,
-# backend_is_semantic) is DEFERRED to Phase 6+ — Jaccard is deterministic
-# and byte-idempotent; embedding candidates add a model-version dependency.
+# NOTE: THIS pass's candidate generation stays Jaccard-only — Jaccard is
+# deterministic and byte-idempotent, and the default-on deterministic verdict
+# relies on that. Embedding candidates (:func:`embedding_candidate_pairs`
+# below) feed only the OPT-IN write-time reconciliation pass in
+# :mod:`tesserae.memory.reconcile`, which carries the model-version dependency
+# on purpose and only runs with an LLM classifier and a semantic backend.
 def _candidate_pairs(
     nodes: Sequence[ResearchNode],
     threshold: float,
@@ -435,6 +437,93 @@ def _candidate_pairs(
         if sim > threshold:
             pairs.append((a, b, sim))
     return pairs
+
+
+#: Rows of the cosine matrix computed at once. Bounds peak memory to
+#: ``_SIM_ROW_CHUNK * group_size`` floats instead of ``group_size ** 2`` — a
+#: 20k-finding group would otherwise need a 3.2 GB matrix for one pass.
+_SIM_ROW_CHUNK = 256
+
+
+def embedding_candidate_pairs(
+    nodes: Sequence[ResearchNode],
+    backend: Any,
+    *,
+    top_s: int = 5,
+    min_similarity: float = 0.4,
+    vector_cache: Any = None,
+) -> List[Tuple[ResearchNode, ResearchNode, float]]:
+    """Top-``s`` embedding neighbours per node, within the same core type.
+
+    The recall extension Mem0 and Graphiti use for reconciliation: a pair of
+    findings that restate or contradict each other in different words shares
+    few name tokens, so :func:`_candidate_pairs` never sees it. Here every
+    node is paired with its ``top_s`` nearest neighbours by cosine over
+    :func:`~tesserae.retrieval.vector_cache.node_embedding_text`, keeping only
+    neighbours at or above ``min_similarity``.
+
+    ``top_s`` is the real cost bound; ``min_similarity`` only cuts noise. The
+    0.4 default is NOT tuned: on a six-sentence smoke check with
+    ``potion-base-8M`` unrelated decisions scored <= 0.22, while a restatement
+    scored 0.46 and a "moved X from A to B" contradiction 0.58 — both of
+    which a 0.6 floor would never have shown the classifier.
+
+    Grouped by ``node.type`` — the node's core type. A registry subtype lives
+    in ``metadata.subtype`` and :meth:`ResearchNode.with_subtype` refuses one
+    whose ``core_parent`` differs from ``node.type``, so grouping on the core
+    type IS grouping on ``core_parent``.
+
+    Returns ``(a, b, cosine)`` with ``a.id < b.id``, each unordered pair once
+    (at its highest cosine), sorted by ``(a.id, b.id)`` so the caller's order
+    is a function of content alone. Vectors go through ``vector_cache`` when
+    one is given, so an unchanged node is never re-embedded.
+
+    Raises :class:`ImportError` when numpy is missing; the caller decides
+    whether that is a skip. Callers must refuse the hash-stub backend BEFORE
+    calling — its "neighbours" are token-bucket collisions, not meaning.
+    """
+    import numpy as np
+
+    from ..retrieval.vector_cache import embed_texts, node_embedding_text
+
+    if top_s < 1:
+        return []
+    groups: Dict[str, List[ResearchNode]] = {}
+    for node in nodes:
+        groups.setdefault(node.type.value, []).append(node)
+
+    best: Dict[Tuple[str, str], Tuple[ResearchNode, ResearchNode, float]] = {}
+    for type_value in sorted(groups):
+        block = sorted(groups[type_value], key=lambda n: n.id)
+        if len(block) < 2:
+            continue
+        vectors = np.asarray(
+            embed_texts(backend, [node_embedding_text(n) for n in block], vector_cache),
+            dtype="float64",
+        )
+        # EmbeddingBackend does not promise unit vectors; a raw dot product
+        # above 1 would fake a near-duplicate.
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        unit = vectors / norms
+        for start in range(0, len(block), _SIM_ROW_CHUNK):
+            sims = unit[start : start + _SIM_ROW_CHUNK] @ unit.T
+            for offset, row in enumerate(sims):
+                i = start + offset
+                row[i] = -np.inf  # never your own neighbour
+                hits = np.nonzero(row >= min_similarity)[0]
+                if hits.size == 0:
+                    continue
+                # Highest cosine first, ties broken by sorted-id position so
+                # the cut at top_s never depends on float noise in ordering.
+                order = np.lexsort((hits, -row[hits]))[:top_s]
+                for j in hits[order]:
+                    sim = float(row[j])
+                    a, b = (block[i], block[j]) if i < j else (block[j], block[i])
+                    key = (a.id, b.id)
+                    if key not in best or sim > best[key][2]:
+                        best[key] = (a, b, sim)
+    return [best[key] for key in sorted(best)]
 
 
 def run_supersede_pass(

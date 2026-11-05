@@ -274,6 +274,8 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_UNTRUSTED_DOC_GUARD` | 关闭 | 在提取 prompt 中将文档文本包裹为不可信数据，并丢弃文本呈指令形态的节点和边。会话记录始终启用这两项防护。开启后，由于 prompt 是缓存键的一部分，每个文档都会重新提取一次；引用了注入内容的文档会失去这些节点 |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | 打开 | 将会话洞察链接到代码符号 |
 | `TESSERAE_SUPERSEDE_PASS` | 打开 | 修订声明之间的 `superseded_by` 边 |
+| `TESSERAE_RECONCILE_PASS` | 关闭 | 写入时调和：将每条会话发现和声明与其最近的 embedding 邻居比对，结果为 `ADD`、`UPDATE`、`INVALIDATE` 或 `NOOP`。需要 `TESSERAE_ENABLE_LLM_PASSES` 和语义 embedding 后端（`tesserae[semantic]`），否则会带警告跳过。`INVALIDATE` 会创建带 `invalid_at` 的 `supersedes` 边，且仅在两条事实都带有来源时间戳时才创建；`UPDATE` 会向 `node_memory_proof` 边车追加一行。`raw_source` 在 `invalidated_facts` 中、`verify_claim` 在 `advisory.invalidated_endpoints` 中列出这些事实，两者都不会隐藏它们。默认关闭：`INVALIDATE` 的精度尚未审计，一次错误的判定会让正确的事实在搜索中消失 |
+| `TESSERAE_RECONCILE_MAX_CALLS` | 200 | `TESSERAE_RECONCILE_PASS` 每次编译的分类器调用次数。判定按内容缓存，因此大型图谱需要多次编译才能完成调和，在缓存预热完成之前，`graph.json` 每次都可能变化 |
 | `TESSERAE_PROMPT_SIGNATURES` | 关闭 | 记录提示签名以进行漂移检测 |
 | `TESSERAE_CONTEXT_TIERS` | 关闭 | 在编译时写入 `.tesserae/context_tiers.json`：为每个节点从其描述中抽取一行 L0（约 25 个 token）和一段 L1 概述（约 150 个 token）。带 `tiers: true` 的 `compile_context` 会读取它，文件不存在时自行计算各层。分层打包能否以更少的 token 保持答案准确率，尚未测量 |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | 在放弃前等待 `.tesserae/compile.lock` 的秒数 |
