@@ -483,3 +483,28 @@ def test_dream_enabled_resolution() -> None:
     assert D.dream_enabled({"dream": {"enabled": True}}, {})
     assert not D.dream_enabled({"dream": {"enabled": True}}, {"TESSERAE_DREAM": "0"})
     assert D.dream_enabled({}, {"TESSERAE_DREAM": "yes"})
+
+
+def test_undo_ignores_a_journal_artifact_path_outside_the_agent_dir(tmp_path: Path):
+    """A journal is project data, and a cloned repo can ship one. Undo must
+    restore the agent's own artifact, never write or delete the file path the
+    journal happens to name."""
+    import base64
+
+    from tesserae.agent_distill import agent_artifact_path
+
+    root = tmp_path / "proj"
+    (root / ".tesserae").mkdir(parents=True)
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me")
+
+    D._undo_distill(root, "claude:me:dev", {"artifact": str(victim), "artifact_b64": None, "watermark": ""})
+    assert victim.read_text() == "keep me"
+
+    D._undo_distill(
+        root,
+        "claude:me:dev",
+        {"artifact": str(victim), "artifact_b64": base64.b64encode(b"restored").decode(), "watermark": ""},
+    )
+    assert victim.read_text() == "keep me"
+    assert agent_artifact_path(root, "claude:me:dev").read_bytes() == b"restored"

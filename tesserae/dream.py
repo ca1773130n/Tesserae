@@ -1155,9 +1155,13 @@ def undo_dream(project_root: Path | str, pass_id: str = "last", *, lock_wait: Op
 
 
 def _undo_distill(root: Path, agent: str, info: Mapping[str, Any]) -> None:
-    from .agent_distill import DistillStateStore, _state_db_path
+    from .agent_distill import DistillStateStore, _state_db_path, agent_artifact_path
 
-    artifact = Path(info["artifact"])
+    # Re-derived, never read from info["artifact"]: the journal is project data
+    # (a cloned repo can ship one), so trusting its path would let an undo
+    # write or delete any file the user can. agent_artifact_path sanitizes the
+    # key, which keeps the target inside .tesserae/agents/.
+    artifact = agent_artifact_path(root, agent)
     if info.get("artifact_b64") is None:
         if artifact.is_file():
             artifact.unlink()
