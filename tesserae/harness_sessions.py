@@ -752,6 +752,12 @@ _TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
     # memory/reconcile.py — the opt-in write-time reconciliation pass; up to
     # TESSERAE_RECONCILE_MAX_CALLS calls per compile.
     "You reconcile a NEW fact against an EXISTING fact",
+    # evals/lifecycle (R1) judge and reader prompts. Not in the package, so the
+    # AST scan in test_harness_self_capture cannot see them;
+    # tests/test_lifecycle_eval.py asserts each one is covered here instead.
+    "You grade a memory extractor against gold memory points",
+    "You answer a question from a user's stored memories",
+    "You grade an answer against the LongMemEval rubric",
     # agent_distill (per-agent L1 distillation, §5.3) map/reduce/fold prompts:
     "You distill a cluster of related agent-session findings",
     "You merge partial distilled notes over ONE cluster",
