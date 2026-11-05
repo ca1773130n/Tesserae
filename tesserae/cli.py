@@ -84,11 +84,15 @@ def _bump_read_access(project_root, node_ids: Iterable[Optional[str]]) -> None:
     Records a read of each id in the ``node_memory`` sidecar (never
     ``graph.json``), mirroring the MCP read path so CLI-driven reads keep the
     same findings alive against forgetting-by-disuse. Opens the sidecar once,
-    dedups ids, and swallows every failure so a read never breaks when the
-    memory layer is unavailable.
+    dedups ids, and never lets a failure break the read — but every failure
+    is logged at WARNING, because a bump that silently fails to land starves
+    forgetting-by-disuse of the very signal it exists to provide.
     """
     if project_root is None:
         return
+    import logging
+
+    log = logging.getLogger(__name__)
     try:
         from datetime import datetime, timezone
 
@@ -106,10 +110,10 @@ def _bump_read_access(project_root, node_ids: Iterable[Optional[str]]) -> None:
             seen.add(nid)
             try:
                 _bump_access(db_path, nid, now)
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as exc:  # noqa: BLE001 — a read must survive its bump
+                log.warning("bump_access failed for node %s (%s)", nid, exc)
+    except Exception as exc:  # noqa: BLE001 — a read must survive its bump
+        log.warning("bump_read_access setup failed (%s)", exc)
 
 
 def _envelope_hit_ids(envelope) -> List[str]:

@@ -275,6 +275,7 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | 打开 | 将会话洞察链接到代码符号 |
 | `TESSERAE_SUPERSEDE_PASS` | 打开 | 修订声明之间的 `superseded_by` 边 |
 | `TESSERAE_PROMPT_SIGNATURES` | 关闭 | 记录提示签名以进行漂移检测 |
+| `TESSERAE_CONTEXT_TIERS` | 关闭 | 在编译时写入 `.tesserae/context_tiers.json`：为每个节点从其描述中抽取一行 L0（约 25 个 token）和一段 L1 概述（约 150 个 token）。带 `tiers: true` 的 `compile_context` 会读取它，文件不存在时自行计算各层。分层打包能否以更少的 token 保持答案准确率，尚未测量 |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | 在放弃前等待 `.tesserae/compile.lock` 的秒数 |
 
 **关于社区摘要：** 编译通道急切地覆盖最粗粒度；
@@ -374,6 +375,8 @@ export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face
 | `TESSERAE_ACTOR` | — | 当调用不带 agent view 时，将一次读归属于谁。actor 是调用解析的 `agent` 参数，否则就是这个；未设置则将读记录为匿名而不是虚拟一个名字 |
 
 关掉 `TESSERAE_READ_AUDIT` 会停止记录，而不擦除已记录的东西，无需重启服务器即可生效。审计的*目的*是[由于不用而遗忘](agent-memory.zh.md#遗忘--永不删除)：访问计数驱动了什么被吸收或降级，没有 actor 的情况下，一个闹腾 agent 轮询节点与一个人读一次是同样的输入。
+
+通过 MCP 传输时，每个工具响应还会带上 `est_tokens`（响应的字符数除以 4，是估计值而不是分词器计数）、`truncated` 和 `next_cursor`。长列表分页到达：把 `next_cursor` 作为 `page_cursor` 传回即可取得下一页，用 `max_items` 设定页大小，最大不超过该工具的上限。只有某一页实际交付的节点才计为读取，审计行记录它所属响应的 `est_tokens`。进程内调用和 CLI 的返回与以前完全相同。
 
 ---
 

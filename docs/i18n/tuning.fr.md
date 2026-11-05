@@ -335,6 +335,7 @@ dépense aucun appel.
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | activé | Lie les insights de session aux symboles de code |
 | `TESSERAE_SUPERSEDE_PASS` | activé | Arêtes `superseded_by` entre affirmations révisées |
 | `TESSERAE_PROMPT_SIGNATURES` | désactivé | Enregistre les signatures de requête pour la détection de dérive |
+| `TESSERAE_CONTEXT_TIERS` | désactivé | Écrit `.tesserae/context_tiers.json` à la compilation : pour chaque nœud, une ligne L0 (~25 tokens) et un aperçu L1 (~150 tokens) extraits de sa description. `compile_context` avec `tiers: true` le lit, et calcule lui-même les niveaux quand le fichier est absent. On n'a pas mesuré si les paquets par niveaux gardent la justesse des réponses avec moins de tokens |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | Secondes à attendre `.tesserae/compile.lock` avant d'abandonner |
 
 **À propos des résumés de communauté :** la passe de compilation couvre
@@ -453,6 +454,15 @@ a déjà été enregistré, et ça prend effet sans redémarrer le serveur. Ce p
 l'audit existe *est* [oublier par non-utilisation](agent-memory.fr.md#oubli--jamais-suppression):
 les compteurs d'accès pilotent ce qui est absorbé ou rétrogradé, et sans acteur un
 agent bavard qui sonde un nœud et un humain le lisant une fois sont la même entrée.
+
+Via le transport MCP, chaque réponse d'outil porte aussi `est_tokens` (sa taille
+en caractères divisée par 4, une estimation et non un décompte du tokenizer),
+`truncated` et `next_cursor`. Une longue liste arrive par pages : renvoyez
+`next_cursor` comme `page_cursor` pour obtenir la suivante, et fixez la taille de
+page avec `max_items`, dans la limite du plafond de l'outil. Seuls les nœuds qu'une
+page livre comptent comme lectures, et une ligne d'audit enregistre le `est_tokens`
+de la réponse à laquelle elle appartient. Les appels en processus et la CLI
+renvoient exactement ce qu'ils renvoyaient avant.
 
 ---
 

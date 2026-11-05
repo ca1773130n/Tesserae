@@ -18,6 +18,7 @@ import secrets
 import sys
 import time
 from collections import Counter
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
@@ -85,6 +86,13 @@ from .wiki_store import WikiPageStore
 JSONDict = Dict[str, Any]
 
 _LOG = logging.getLogger(__name__)
+
+#: Access bumps held while an enveloped call runs (see ``_call_enveloped``):
+#: ``(project_root, node_ids)`` per bump call, applied once the envelope knows
+#: which nodes the response actually delivers. ``None`` outside such a call.
+_HELD_BUMPS: ContextVar[Optional[List[Tuple[Path, List[str]]]]] = ContextVar(
+    "tesserae_held_bumps", default=None
+)
 
 
 # Cap raw payload sizes returned to MCP clients so a malicious / huge file
@@ -1079,6 +1087,11 @@ class LLMWikiMCPServer:
         # descent calls against. In-memory by design: staleness is a property
         # of the map THIS server handed out, not a persisted artifact.
         self._fed_digests: Dict[str, Dict[str, str]] = {}
+        # Full results of enveloped calls that paged, so later pages come from
+        # the same snapshot (tesserae.mcp_envelope). Per server, in memory.
+        from .mcp_envelope import PageStore
+
+        self._pages = PageStore()
 
     def list_tools(self) -> List[JSONDict]:
         graph_path_prop = {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to the project you are in (cwd), then server --graph."}
@@ -2049,6 +2062,24 @@ class LLMWikiMCPServer:
                                 "Default false = single-pool."
                             ),
                         },
+                        "tiers": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Progressive disclosure (opt-in, accuracy effect "
+                                "unmeasured): full bodies for the top "
+                                "tier_full_ranks nodes, then one ~25-token L0 line "
+                                "plus node id per further ranked node while the "
+                                "budget lasts. Adds tail_node_ids, tokens_by_layer "
+                                "and tier_source. Default false = whole bodies only."
+                            ),
+                        },
+                        "tier_full_ranks": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "default": 5,
+                            "description": "With tiers: how many top-ranked nodes get full bodies.",
+                        },
                         "preview": {
                             "type": "integer",
                             "minimum": 0,
@@ -2944,8 +2975,16 @@ class LLMWikiMCPServer:
 
     # --------------------------------------------------------------- Tool dispatch
 
-    def call_tool(self, name: str, arguments: Optional[JSONDict] = None) -> JSONDict:
+    def call_tool(
+        self, name: str, arguments: Optional[JSONDict] = None, *, envelope: bool = False
+    ) -> JSONDict:
         """Dispatch one tool call, attributing every read it performs.
+
+        ``envelope=True`` is what the MCP transport passes: the response goes
+        through :mod:`tesserae.mcp_envelope` (hard caps, ``page_cursor`` /
+        ``max_items`` paging, ``est_tokens`` / ``truncated`` / ``next_cursor``)
+        and the call's audit rows carry its token estimate. Off for in-process
+        callers, whose payloads stay exactly as they were.
 
         The tool name and the actor are known HERE and nowhere below: the
         ``bump_access`` writes they explain happen several frames down, inside
@@ -2959,7 +2998,70 @@ class LLMWikiMCPServer:
         from .memory.store import reading_as
 
         with reading_as(name, self._resolve_read_actor(arguments or {})):
+            if envelope:
+                return self._call_enveloped(name, arguments or {})
             return self._dispatch_tool(name, arguments)
+
+    def _call_enveloped(self, name: str, args: JSONDict) -> JSONDict:
+        """One tool call through the response envelope (see ``call_tool``).
+
+        The tool's access bumps are held while it runs and applied only for
+        the nodes the envelope's page delivers; the rest wait with the paging
+        snapshot until a follow-up page delivers them (``mcp_envelope``). A
+        call that fails or returns a non-dict applies every bump it made, as
+        it did before the envelope existed.
+        """
+        from .mcp_envelope import ENVELOPE_ARGS, apply_envelope, caps_for, serve_page
+        from .memory.store import deferred_reads, flush_deferred_reads
+
+        est_tokens = 0
+        release: List[Tuple[Path, List[str]]] = []
+        with deferred_reads() as pending:
+            try:
+                if args.get("page_cursor"):
+                    # Served from the first call's snapshot, never a re-run:
+                    # the only reads it records are nodes this page delivers
+                    # for the first time.
+                    out, release = serve_page(
+                        name, args["page_cursor"], max_items=args.get("max_items"), pages=self._pages
+                    )
+                    est_tokens = int(out.get("est_tokens") or 0)
+                    return out
+                tool_args = {k: v for k, v in args.items() if k not in ENVELOPE_ARGS}
+                held: List[Tuple[Path, List[str]]] = []
+                token = _HELD_BUMPS.set(held)
+                try:
+                    started = time.monotonic()
+                    payload = self._dispatch_tool(name, tool_args)
+                    elapsed = time.monotonic() - started
+                finally:
+                    _HELD_BUMPS.reset(token)
+                    release = held
+                if not isinstance(payload, dict):
+                    return payload
+                out, release = apply_envelope(
+                    name,
+                    payload,
+                    max_items=args.get("max_items"),
+                    pages=self._pages,
+                    reads=held,
+                )
+                timeout_s = caps_for(name).timeout_s
+                if timeout_s and elapsed > timeout_s:
+                    # Advisory, not preemptive — see tesserae.mcp_envelope.
+                    _LOG.warning(
+                        "MCP tool %s took %.1fs, over its %.0fs timeout", name, elapsed, timeout_s
+                    )
+                    out["timeout_exceeded"] = True
+                est_tokens = int(out.get("est_tokens") or 0)
+                return out
+            finally:
+                for root, ids in release:
+                    self._bump_nodes_access(root, ids)
+                try:
+                    flush_deferred_reads(pending, est_tokens)
+                except Exception as exc:  # noqa: BLE001 — a read must survive its audit
+                    _LOG.warning("read audit write failed (%s)", exc)
 
     @staticmethod
     def _resolve_read_actor(args: JSONDict) -> str:
@@ -3374,6 +3476,18 @@ class LLMWikiMCPServer:
             recency_now = (
                 datetime.now(timezone.utc) if recency_weight > 0 else None
             )
+            tiers = bool(args.get("tiers", False))
+            tier_kwargs: JSONDict = {}
+            tier_source = None
+            if tiers:
+                from .context_tiers import tier_lookup
+
+                lookup, tier_source = tier_lookup(project_root)
+                tier_kwargs = {
+                    "tiers": True,
+                    "tier_full_ranks": int(args.get("tier_full_ranks", 5)),
+                    "tier_lookup": lookup,
+                }
             try:
                 bundle = compile_context(
                     graph,
@@ -3393,6 +3507,7 @@ class LLMWikiMCPServer:
                     recency_now=recency_now,
                     recency_weight=recency_weight,
                     explain=bool(args.get("explain", False)),
+                    **tier_kwargs,
                 )
             except ValueError as exc:
                 # An unknown strategy/scope/view, or a scope with no hierarchy
@@ -3418,6 +3533,15 @@ class LLMWikiMCPServer:
                 "multi_pool": multi_pool,
                 "pool_reservations": bundle.pool_reservations,
             }
+            # Tiered keys only when tiers ran, so the default shape is untouched.
+            tiered: JSONDict = {}
+            if tiers:
+                knobs["tiers"] = {"tier_full_ranks": tier_kwargs["tier_full_ranks"]}
+                tiered = {
+                    "tail_node_ids": bundle.tail_nodes,
+                    "tokens_by_layer": bundle.tokens_by_layer,
+                    "tier_source": tier_source,
+                }
             # One profile per seed search, in the order they ran. Added only
             # under ``explain`` so the default response shape is untouched —
             # the same discipline `via_views` follows.
@@ -3445,6 +3569,7 @@ class LLMWikiMCPServer:
                 }
                 if profiles is not None:
                     previewed["profile"] = profiles
+                previewed.update(tiered)
                 return previewed
             # preview disabled (or body already short): EXACT original shape,
             # body first — back-compat for byte/order-sensitive callers.
@@ -3458,6 +3583,7 @@ class LLMWikiMCPServer:
             }
             if profiles is not None:
                 compiled["profile"] = profiles
+            compiled.update(tiered)
             return compiled
         if name == "get_handle":
             handle = str(args.get("handle") or "")
@@ -5151,6 +5277,7 @@ class LLMWikiMCPServer:
                     "node_ids": list(row.node_ids),
                     "tesserae_version": row.tesserae_version,
                     "schema_version": row.schema_version,
+                    "est_tokens": row.est_tokens,
                 }
                 for row in rows
             ],
@@ -5730,9 +5857,10 @@ class LLMWikiMCPServer:
         """Atomically bump access_count/last_accessed_at for a read node.
 
         Delegates to the SQLite sidecar accessor (05-01); writes node_memory
-        only, never graph.json. Degrades silently when the project root or
-        sidecar db cannot be resolved — a read must never fail because the
-        memory layer is unavailable.
+        only, never graph.json. Skips when no project root resolves; any other
+        failure is logged at WARNING and swallowed — a read must never fail
+        because the memory layer is unavailable, and must never fail quietly
+        either.
 
         Its caller (``fresh_insights``) bumps inside its own loop, so with the
         read audit enabled this surface records one row per surfaced node
@@ -5740,6 +5868,10 @@ class LLMWikiMCPServer:
         each row still explains exactly the access count it produced.
         """
         if project_root is None:
+            return
+        held = _HELD_BUMPS.get()
+        if held is not None:
+            held.append((project_root, [str(node_id)]))
             return
         try:
             from datetime import datetime, timezone
@@ -5750,9 +5882,10 @@ class LLMWikiMCPServer:
             now = datetime.now(timezone.utc).isoformat()
             _bump_access(db_path, node_id, now)
             self._record_read_audit(db_path, [node_id], now)
-        except Exception:
-            # Best-effort signal; never propagate sidecar failures to a read.
-            _LOG.debug("bump_access failed for node %s", node_id, exc_info=True)
+        except Exception as exc:  # noqa: BLE001 — a read must survive its bump
+            # Never propagate sidecar failures to a read, but never hide them:
+            # a lost bump silently starves forgetting-by-disuse of its signal.
+            _LOG.warning("bump_access failed for node %s (%s)", node_id, exc)
 
     def _bump_nodes_access(
         self, project_root: Optional[Path], node_ids: Iterable[Optional[str]]
@@ -5764,13 +5897,19 @@ class LLMWikiMCPServer:
         drill_down). Dedups ids and bumps each through the sidecar accessor
         (one connection per distinct id). Writes the ``node_memory`` sidecar
         ONLY, never ``graph.json``. Best-effort: a
-        sidecar failure is logged at debug and swallowed so a read never breaks.
+        sidecar failure is logged at WARNING and swallowed so a read never breaks.
 
         One read event here is ONE audit row naming every id it bumped — the
         list is what makes a row explain the access counts it produced, so it
         is not split per node.
         """
         if project_root is None:
+            return
+        held = _HELD_BUMPS.get()
+        if held is not None:
+            # Inside an enveloped call: hold the bump until the envelope knows
+            # which of these nodes the response delivers (_call_enveloped).
+            held.append((project_root, [str(raw) for raw in node_ids if raw]))
             return
         try:
             from datetime import datetime, timezone
@@ -5789,11 +5928,11 @@ class LLMWikiMCPServer:
                 try:
                     _bump_access(db_path, nid, now)
                     bumped.append(nid)
-                except Exception:
-                    _LOG.debug("bump_access failed for node %s", nid, exc_info=True)
+                except Exception as exc:  # noqa: BLE001 — a read must survive its bump
+                    _LOG.warning("bump_access failed for node %s (%s)", nid, exc)
             self._record_read_audit(db_path, bumped, now)
-        except Exception:
-            _LOG.debug("bump_nodes_access setup failed", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 — a read must survive its bump
+            _LOG.warning("bump_nodes_access setup failed (%s)", exc)
 
     @staticmethod
     def _record_read_audit(db_path: Path, node_ids: Sequence[str], at: str) -> None:
@@ -5804,9 +5943,9 @@ class LLMWikiMCPServer:
         move would make it one that misleads. ``at`` is the instant those bumps
         were stamped with, so the two never disagree.
 
-        Failure is logged at WARNING, not debug, and deliberately louder than
-        the bump above it: the audit is off unless someone asked for it, so a
-        row that silently fails to appear is an answer that is quietly wrong.
+        Failure is logged at WARNING, the same level as a failed bump: the
+        audit is off unless someone asked for it, so a row that silently fails
+        to appear is an answer that is quietly wrong.
         """
         if not node_ids:
             return
@@ -6373,12 +6512,16 @@ class MCPRequestHandler:
                     },
                 )
             if method == "tools/list":
-                return self._result(request_id, {"tools": self.server.list_tools()})
+                from .mcp_envelope import with_envelope_schema
+
+                return self._result(
+                    request_id, {"tools": with_envelope_schema(self.server.list_tools())}
+                )
             if method == "tools/call":
                 params = message.get("params") or {}
                 tool_name = params.get("name")
                 arguments = params.get("arguments") or {}
-                payload = self.server.call_tool(str(tool_name), arguments)
+                payload = self.server.call_tool(str(tool_name), arguments, envelope=True)
                 return self._result(
                     request_id,
                     {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}], "isError": False},
