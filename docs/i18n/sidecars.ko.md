@@ -83,6 +83,7 @@ LLM 호출 비용을 치러야 하며, 무엇이 그 무엇으로도 재구성�
 | `charter` | `derived` | 컴파일마다 `graph.json`에서 파생되지만 다시 빌드해도 같은 것이 나오지 않습니다. 슬러그는 재빌드가 그때그때 고른 앵커에서 만들어지므로, 지우면 모든 도메인이 새 이름으로 다시 창설되고 고정해 둔 attach 경로가 전부 끊기며, 옛 이름이 어디로 갔는지 알려주던 tombstone도 사라집니다 |
 | `agents` | `accumulated` | 에이전트별 `registry.json`과 손으로 쓴 `purpose.md` |
 | `discovered_links.json` | `accumulated` | 연관 오버레이는 여러 실행에 걸쳐 점수가 매겨진 링크를 누적합니다. 한 번의 실행으로는 복원되지 않습니다 |
+| `dream` | `accumulated` | dream 패스의 저널은 undo가 재생하는 변경 전 값과 거부된 연산 기록을 담습니다. 삭제하면 적용된 모든 패스가 되돌릴 수 없게 되고, 게이트가 이미 거부한 연산이 다시 제안됩니다 |
 | `extraction-feedback.jsonl` | `accumulated` | vault 오버레이와 review-apply 과정에서 수집된 사람의 교정 |
 | `extraction-guidance.md` | `accumulated` | 손으로 편집한 지침이며, evolve 패스가 여기에 병합해 넣습니다 |
 | `harness_sessions` | `accumulated` | 가져온 세션 상태 |

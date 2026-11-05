@@ -229,17 +229,37 @@ def persist_links(
     re-persisting an unchanged set is a no-op at the byte level. The write is
     atomic (tmp + ``replace``) so a concurrent MCP reader never sees a torn file.
     """
-    by_pair: Dict[Tuple[str, str], float] = {}
-    for source, target, cosine in _load_overlay_raw(project_root):
-        by_pair[(source, target)] = float(cosine)
-    for source, target, cosine in links:
-        source, target = str(source), str(target)
-        if source == target:
-            continue  # never a self-link
-        value = round(float(cosine), 4)
-        prev = by_pair.get((source, target))
-        by_pair[(source, target)] = value if prev is None else max(prev, value)
+    with _overlay_lock(project_root):
+        by_pair: Dict[Tuple[str, str], float] = {}
+        for source, target, cosine in _load_overlay_raw(project_root):
+            by_pair[(source, target)] = float(cosine)
+        for source, target, cosine in links:
+            source, target = str(source), str(target)
+            if source == target:
+                continue  # never a self-link
+            value = round(float(cosine), 4)
+            prev = by_pair.get((source, target))
+            by_pair[(source, target)] = value if prev is None else max(prev, value)
 
+        return _write_overlay(project_root, by_pair)
+
+
+#: Short lock around every read-modify-write of the overlay. The ungated
+#: daemon associate step writes it without ``compile.lock`` while a dream
+#: undo (which holds ``compile.lock``) removes from it; without one shared
+#: lock either can lose the other's write.
+OVERLAY_LOCK = "associate-overlay.lock"
+_OVERLAY_LOCK_WAIT = 30.0
+
+
+def _overlay_lock(project_root: PathLike):
+    from ..locking import compile_lock
+
+    return compile_lock(Path(project_root) / ".tesserae", wait_seconds=_OVERLAY_LOCK_WAIT, name=OVERLAY_LOCK)
+
+
+def _write_overlay(project_root: PathLike, by_pair: Dict[Tuple[str, str], float]) -> int:
+    """The one overlay writer: sorted, compact, atomic (tmp + ``replace``)."""
     payload = sorted([source, target, cosine] for (source, target), cosine in by_pair.items())
 
     path = _overlay_path(project_root)
@@ -248,6 +268,37 @@ def persist_links(
     tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     tmp.replace(path)  # atomic: no torn-file read by a concurrent reader
     return len(payload)
+
+
+def remove_links(
+    project_root: PathLike,
+    links: Sequence[Tuple[str, str, float]],
+    *,
+    delete_if_empty: bool = False,
+) -> int:
+    """Drop ``(source, target, cosine)`` links from the overlay; return its new size.
+
+    The inverse of :func:`persist_links` for links that were NEW when persisted
+    (the dream pass's undo). A pair is dropped only while its stored cosine is
+    still the one being removed: a higher cosine means another writer has
+    re-persisted it since, and that write is not ours to undo. It goes through
+    the same lock and writer, so removing what was added restores the previous
+    bytes. ``delete_if_empty`` removes the file instead of leaving ``[]`` when
+    the overlay did not exist before.
+    """
+    drop = {(str(s), str(t)): round(float(c), 4) for s, t, c in links}
+    with _overlay_lock(project_root):
+        by_pair: Dict[Tuple[str, str], float] = {
+            (source, target): float(cosine)
+            for source, target, cosine in _load_overlay_raw(project_root)
+            if drop.get((source, target)) != float(cosine)
+        }
+        if not by_pair and delete_if_empty:
+            path = _overlay_path(project_root)
+            if path.is_file():
+                path.unlink()
+            return 0
+        return _write_overlay(project_root, by_pair)
 
 
 # --------------------------------------------------------------------------- #

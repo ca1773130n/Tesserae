@@ -74,6 +74,7 @@
 | `charter` | `derived` | 每次编译都会从 `graph.json` 派生它，但重建并不能还原它：slug 由重建当时选中的锚点铸成，删掉它就会让每个 domain 以新名字重新创设，弄断所有已固定的挂载路径，并丢掉唯一记录旧名去向的墓碑 |
 | `agents` | `accumulated` | 每个智能体的 `registry.json`，以及手写的 `purpose.md` |
 | `discovered_links.json` | `accumulated` | 关联叠加层跨多次运行累积带评分的链接；单次运行重构不出来 |
+| `dream` | `accumulated` | dream 流程的日志保存撤销时回放的修改前取值，以及被拒绝操作的记录；删除它会让每一次已应用的流程无法撤销，并重新提出门控已经拒绝的操作 |
 | `extraction-feedback.jsonl` | `accumulated` | 在 vault 叠加与 review-apply 过程中收集的人工修正 |
 | `extraction-guidance.md` | `accumulated` | 手工编辑的指引，evolve 流程会往里合并 |
 | `harness_sessions` | `accumulated` | 导入的会话状态 |

@@ -85,6 +85,7 @@ datos, no una demora.
 | `charter` | `derived` | cada compilación lo deriva de `graph.json`, pero ninguna reconstrucción lo reproduce: los slugs se acuñan a partir de las anclas que la reconstrucción escoja, así que borrarlo refunda cada dominio con otro nombre, rompe toda ruta de anclaje fijada y descarta las lápidas que eran el único registro de adónde fueron los nombres viejos |
 | `agents` | `accumulated` | el `registry.json` por agente y el `purpose.md` escrito a mano |
 | `discovered_links.json` | `accumulated` | la capa de asociación acumula enlaces puntuados a lo largo de varias ejecuciones; una sola no la reconstruye |
+| `dream` | `accumulated` | el diario de la pasada dream guarda los valores previos que reproduce la reversión y el registro de operaciones rechazadas; borrarlo vuelve permanente cada pasada aplicada y hace que se vuelvan a proponer operaciones que la compuerta ya rechazó |
 | `extraction-feedback.jsonl` | `accumulated` | correcciones humanas capturadas durante la superposición del vault y review-apply |
 | `extraction-guidance.md` | `accumulated` | guía editada a mano en la que una pasada de evolve fusiona lo suyo |
 | `harness_sessions` | `accumulated` | estado de sesiones importadas |

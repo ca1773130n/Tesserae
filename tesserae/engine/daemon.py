@@ -1275,6 +1275,33 @@ class Daemon:
 
         graph = load_graph_file(graph_path)
         cfg = self._load_config()
+        # Opt-in (TESSERAE_DREAM / config dream.enabled): the gated, journaled
+        # dream pass replaces the ungated distill + associate below.
+        if not self._dream_once(cfg):
+            self._distill_and_associate(graph, cfg)
+
+        # Summarize runs LAST, on the same graph, under the same gate.
+        # _summarize_once already degrades every failure mode to a summary
+        # dict, but the wrap covers injected stubs and import edges anyway.
+        try:
+            warm = self._summarize_once(graph)
+            logger.info("summarize for %s: %s", self.project_root.name, warm)
+        except Exception as exc:  # noqa: BLE001 - summarize never kills the tick
+            logger.error("summarize raised (daemon survives): %s", exc)
+
+        # Brief runs LAST, on the same graph, under the same gate, and spends
+        # its OWN budget — sharing summarize's would let a busy dendrogram
+        # starve the charter (or the reverse), and the two populations differ
+        # by orders of magnitude. _brief_once already degrades every failure
+        # mode to a summary dict; the wrap covers injected stubs anyway.
+        try:
+            briefed = self._brief_once(graph)
+            logger.info("brief for %s: %s", self.project_root.name, briefed)
+        except Exception as exc:  # noqa: BLE001 - brief never kills the tick
+            logger.error("brief raised (daemon survives): %s", exc)
+
+    def _distill_and_associate(self, graph, cfg: Optional[dict]) -> None:
+        """The default (ungated) ops 1 and 2 of :meth:`_consolidate_once`."""
         if self._distill_override is not None:
             distill = self._distill_override
         else:
@@ -1300,25 +1327,43 @@ class Daemon:
         except Exception as exc:  # noqa: BLE001 - associate never kills the tick
             logger.error("association raised (daemon survives): %s", exc)
 
-        # Summarize runs LAST, on the same graph, under the same gate.
-        # _summarize_once already degrades every failure mode to a summary
-        # dict, but the wrap covers injected stubs and import edges anyway.
-        try:
-            warm = self._summarize_once(graph)
-            logger.info("summarize for %s: %s", self.project_root.name, warm)
-        except Exception as exc:  # noqa: BLE001 - summarize never kills the tick
-            logger.error("summarize raised (daemon survives): %s", exc)
+    def _dream_once(self, cfg: Optional[dict]) -> bool:
+        """Run one gated dream pass when opted in; ``False`` when not.
 
-        # Brief runs LAST, on the same graph, under the same gate, and spends
-        # its OWN budget — sharing summarize's would let a busy dendrogram
-        # starve the charter (or the reverse), and the two populations differ
-        # by orders of magnitude. _brief_once already degrades every failure
-        # mode to a summary dict; the wrap covers injected stubs anyway.
+        :func:`tesserae.dream.run_dream` takes ``compile.lock`` itself (this
+        tick already holds the in-process gate, which a CLI compile in another
+        process cannot see). A held lock skips the pass with a warning; any
+        other failure is logged and the tick survives, like every other op.
+        """
+        from ..dream import dream_enabled
+
+        if not dream_enabled(cfg, os.environ):
+            return False
+        from ..dream import run_dream
+        from ..locking import CompileLockHeldError
+
         try:
-            briefed = self._brief_once(graph)
-            logger.info("brief for %s: %s", self.project_root.name, briefed)
-        except Exception as exc:  # noqa: BLE001 - brief never kills the tick
-            logger.error("brief raised (daemon survives): %s", exc)
+            report = run_dream(
+                self.project_root,
+                dry_run=False,
+                cfg=cfg,
+                backend=self._resolve_embedding_backend(),
+                # Step aside for a blocked pipeline run, as summarize and
+                # brief do: regions not yet gated wait for the next tick.
+                should_stop=self._pipeline_pending.is_set,
+            )
+            logger.info(
+                "dream for %s: pass %s promoted %s (journal %s)",
+                self.project_root.name,
+                report.get("pass_index"),
+                report.get("op_counts"),
+                report.get("journal"),
+            )
+        except CompileLockHeldError as exc:
+            logger.warning("dream skipped for %s: %s", self.project_root.name, exc)
+        except Exception as exc:  # noqa: BLE001 - dream never kills the tick
+            logger.error("dream raised (daemon survives): %s", exc)
+        return True
 
     def _summarize_once(self, graph) -> dict:
         """Pre-warm community-summary caches by demand (SUMMARIZE, Descent §6.4).
@@ -1821,15 +1866,9 @@ class Daemon:
         resolution failure degrades to ``None`` (never raises).
         """
         try:
-            from ..retrieval.hybrid import (
-                HashEmbeddingBackend,
-                active_embedding_backend,
-            )
+            from ..dream import resolve_backend
 
-            backend = active_embedding_backend()
-            if isinstance(backend, HashEmbeddingBackend):
-                return None
-            return backend
+            return resolve_backend()
         except Exception as exc:  # noqa: BLE001 - unavailable backend -> honest skip
             logger.debug("no semantic backend for association: %s", exc)
             return None

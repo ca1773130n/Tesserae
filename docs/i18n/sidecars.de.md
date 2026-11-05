@@ -86,6 +86,7 @@ Datenverlust, keine Verzögerung.
 | `charter` | `derived` | jede Kompilierung leitet sie aus `graph.json` ab, doch kein Neuaufbau stellt sie wieder her: Slugs entstehen aus den Ankern, die ein Neuaufbau gerade wählt — wer sie löscht, gründet jede Domain unter neuem Namen neu, zerstört jeden gepinnten Attach-Pfad und verwirft die Tombstones, die als Einzige festhielten, wohin die alten Namen gingen |
 | `agents` | `accumulated` | die `registry.json` je Agent und die handgeschriebene `purpose.md` |
 | `discovered_links.json` | `accumulated` | das Assoziations-Overlay sammelt bewertete Verknüpfungen über Läufe hinweg; ein einzelner Lauf rekonstruiert es nicht |
+| `dream` | `accumulated` | das Journal des Dream-Durchlaufs enthält die vorherigen Werte, die das Rückgängigmachen wieder einspielt, sowie das Register abgelehnter Operationen; wer es löscht, macht jeden angewendeten Durchlauf endgültig, und bereits vom Gate abgelehnte Operationen werden erneut vorgeschlagen |
 | `extraction-feedback.jsonl` | `accumulated` | menschliche Korrekturen aus Vault-Overlay und review-apply |
 | `extraction-guidance.md` | `accumulated` | handgepflegte Guidance, in die ein evolve-Durchlauf hineinmergt |
 | `harness_sessions` | `accumulated` | importierter Sitzungszustand |

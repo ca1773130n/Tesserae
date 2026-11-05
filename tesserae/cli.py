@@ -8065,6 +8065,94 @@ def _handle_distill(args: argparse.Namespace) -> int:
     return 1 if totals.get("failed") else 0
 
 
+def _build_dream_parser() -> argparse.ArgumentParser:
+    from .dream import OP_KINDS
+
+    parser = argparse.ArgumentParser(
+        prog="tesserae dream",
+        description=(
+            "One gated, region-scoped consolidation pass (supersede / associate / "
+            "decay / distill) under compile.lock. Each Louvain region's ops are "
+            "promoted only if a probe set shows no retrieval regression (paired "
+            "bootstrap); the pass is journaled under .tesserae/dream/journal/ and "
+            "--undo reverse-replays it. Put {\"query\", \"gold\": [ids]} lines in "
+            ".tesserae/dream/probes.jsonl to replace the sampled probes. The engine "
+            "daemon runs this pass instead of its ungated distill + associate only "
+            "when TESSERAE_DREAM=1 or config.json {\"dream\": {\"enabled\": true}}. "
+            "Supersede ops are advisory: the next compile's own (ungated) supersede pass "
+            "re-derives them, so a gate rejection or an undo of one lasts only until then. "
+            "--dry-run takes no lock. "
+            "Exit codes: 0 ok, 1 refused (lock held, unsafe state), 2 usage / missing inputs."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae dream --dry-run\n"
+            "  tesserae dream --dry-run --json --all-regions\n"
+            "  tesserae dream\n"
+            "  tesserae dream --undo last\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--dry-run", action="store_true", help="Print the planned ops and gate verdicts; write nothing.")
+    parser.add_argument("--json", action="store_true", help="Print the full report as JSON.")
+    parser.add_argument("--undo", metavar="PASS_ID", default=None, help="Reverse-replay the newest applied pass ('last' or its pass id).")
+    parser.add_argument("--ops", default=None, help=f"Comma-separated subset of {','.join(OP_KINDS)} (default: all).")
+    parser.add_argument("--all-regions", action="store_true", help="Ignore the per-session cursor and plan every region.")
+    parser.add_argument("--region", dest="regions", action="append", default=None, metavar="ID", help="Plan only this region id (repeatable); cursors are left alone.")
+    parser.add_argument("--no-gate", action="store_true", help="Promote every region without running the probe gate.")
+    parser.add_argument("--probes", type=int, default=None, metavar="N", help="Probes to sample (default 50, or config dream.probes).")
+    parser.add_argument("--probe-every", type=int, default=None, metavar="N", help="Gate (and write) only every Nth pass (default 1).")
+    parser.add_argument("--max-drop", type=float, default=None, metavar="F", help="Largest tolerated mean reciprocal-rank drop per region (default 0.02).")
+    parser.add_argument("--max-regions", type=int, default=None, metavar="N", help="Regions evaluated per pass (default 16).")
+    parser.add_argument("--wait", type=float, default=None, metavar="SECONDS", help="Wait this long for compile.lock instead of failing fast.")
+    parser.set_defaults(_handler="_handle_dream")
+    return parser
+
+
+def _handle_dream(args: argparse.Namespace) -> int:
+    from .dream import DreamError, DreamSettings, format_report, resolve_backend, run_dream, undo_dream
+    from .locking import CompileLockHeldError
+
+    wiki = ProjectWiki.load(args.project)
+    if not wiki.paths.graph.is_file():
+        print("error: no compiled graph yet — run `tesserae compile` first.", file=sys.stderr)
+        return 2
+    try:
+        if args.undo:
+            report = undo_dream(wiki.project_root, args.undo, lock_wait=args.wait)
+        else:
+            settings = DreamSettings.from_config(
+                wiki.config(),
+                ops=tuple(o.strip() for o in args.ops.split(",") if o.strip()) if args.ops else None,
+                gate=False if args.no_gate else None,
+                probes=args.probes,
+                probe_every=args.probe_every,
+                max_drop=args.max_drop,
+                max_regions=args.max_regions,
+                all_regions=True if args.all_regions else None,
+                regions=tuple(args.regions) if args.regions else None,
+            )
+            report = run_dream(
+                wiki.project_root,
+                dry_run=args.dry_run,
+                settings=settings,
+                backend=resolve_backend(),
+                cfg=wiki.config(),
+                lock_wait=args.wait,
+            )
+    except (DreamError, CompileLockHeldError) as exc:
+        print(f"dream: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False) if args.json else format_report(report))
+    return 0
+
+
+def _route_dream(rest: List[str]) -> int:
+    args = _build_dream_parser().parse_args(rest)
+    return _resolve_handler("_handle_dream")(args)
+
+
 def _route_distill(rest: List[str]) -> int:
     args = _build_distill_parser().parse_args(rest)
     return _resolve_handler("_handle_distill")(args)
@@ -8148,6 +8236,8 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "graph-repair": _route_graph_repair,
     # layered agent KG (Phase 2): per-agent L1 distillation
     "distill": _route_distill,
+    # gated, journaled, undoable sleep-cycle consolidation (opt-in in the daemon)
+    "dream": _route_dream,
     # the one command that spends a real LLM call on purpose, to prove the
     # configured backend answers — doctor and `config status` never do
     "test": _route_test,
