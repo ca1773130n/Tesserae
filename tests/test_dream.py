@@ -508,3 +508,46 @@ def test_undo_ignores_a_journal_artifact_path_outside_the_agent_dir(tmp_path: Pa
     )
     assert victim.read_text() == "keep me"
     assert agent_artifact_path(root, "claude:me:dev").read_bytes() == b"restored"
+
+
+@pytest.mark.parametrize("link", ["file", "dir"])
+def test_undo_refuses_a_symlinked_agent_artifact(tmp_path: Path, link: str):
+    """A cloned repo can ship .tesserae/agents/<key>/distilled.graph.json (or
+    the <key> dir) as a symlink to a file outside the project. Undo must
+    refuse before writing anything, not write through the link."""
+    import base64
+
+    from tesserae.agent_distill import agent_artifact_path
+
+    root = tmp_path / "proj"
+    (root / ".tesserae").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    victim = outside / "distilled.graph.json"
+    victim.write_text("keep me")
+    artifact = agent_artifact_path(root, "claude:me:dev")
+    artifact.parent.parent.mkdir(parents=True)
+    if link == "file":
+        artifact.parent.mkdir()
+        artifact.symlink_to(victim)
+    else:
+        artifact.parent.symlink_to(outside, target_is_directory=True)
+
+    journal = {
+        "pass_id": "p1",
+        "ops": [],
+        "before": {
+            "graph_sha256": None,  # no graph.json before or after: skip the graph replay
+            "node_memory": {},
+            "overlay_existed": False,
+            "cursors": {},
+            "state": {},
+            "distill": {
+                "claude:me:dev": {"artifact": "", "artifact_b64": base64.b64encode(b"pwned").decode(), "watermark": ""}
+            },
+        },
+        "after": {"graph_sha256": None},
+    }
+    with pytest.raises(D.DreamError, match="symlink"):
+        D._reverse(root, journal, interrupted=True)
+    assert victim.read_text() == "keep me"
