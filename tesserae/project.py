@@ -4332,6 +4332,14 @@ class ProjectWiki:
         self._published_node_ids = {node.id for node in graph.nodes}
 
         _publish_atomically(self.paths.graph, research_graph.to_json(indent=2) + "\n")
+        # Progressive-disclosure tiers (R7, opt-in): L0/L1 per node in a
+        # content-keyed sidecar beside graph.json, never inside it.
+        from .context_tiers import CONTEXT_TIERS_ENV, SIDECAR_NAME, render_sidecar
+
+        if _env_truthy(CONTEXT_TIERS_ENV):
+            _publish_atomically(
+                self.paths.graph.parent / SIDECAR_NAME, render_sidecar(research_graph)
+            )
         # ``code-graph.json`` follows the opt-in, and follows it in BOTH
         # directions — same shape as ``combined_graph`` below, for the same
         # reason. Writing it unconditionally left an empty artifact on every

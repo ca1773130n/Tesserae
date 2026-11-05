@@ -276,9 +276,11 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_AGENT_DISTILL` | オフ | エージェントごとの L1 専門知識アーティファクト（`tesserae distill`） |
 | `TESSERAE_RUNBOOK_DISTILLATION` | オフ | Runbook/Gotcha 蒸留メモリノード |
 | `TESSERAE_SESSION_EVENT_PASS` | **オン** | セッショントランスクリプトからターンごとに生成する `Event` ノード。LLM を使わずバイト単位で決定的ですが、有意なターンごとに 1 ノード — 長いコーパスでは規模が大きくなります。`false`/`0`/`no`/`off` で無効化 |
+| `TESSERAE_UNTRUSTED_DOC_GUARD` | オフ | 抽出プロンプト内で文書テキストを信頼できないデータとして囲み、テキストが指示文の形をしたノードとエッジを破棄します。セッショントランスクリプトには 2 つのガードが常に適用されます。有効にするとプロンプトがキャッシュキーの一部であるため全文書を 1 回再抽出し、インジェクションを引用する文書はそのノードを失います |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | オン | セッション洞察をコードシンボルにリンク |
 | `TESSERAE_SUPERSEDE_PASS` | オン | 修正されたクレーム間の `superseded_by` エッジ |
 | `TESSERAE_PROMPT_SIGNATURES` | オフ | ドリフト検出のためのプロンプトシグネチャの記録 |
+| `TESSERAE_CONTEXT_TIERS` | オフ | コンパイル時に `.tesserae/context_tiers.json` を書き出します。ノードごとに、説明から抽出した L0 の 1 行（約 25 トークン）と L1 の概要（約 150 トークン）です。`tiers: true` を指定した `compile_context` がこれを読み、ファイルがなければ階層を自分で計算します。階層化したバンドルが少ないトークンで回答の正確さを保てるかは、まだ測定されていません |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | `.tesserae/compile.lock` を待つまでの秒数 |
 
 **コミュニティサマリーについて：** コンパイルパスは最も粗い粒度を積極的にカバーします；
@@ -393,6 +395,14 @@ export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face
 のためです: アクセス回数が何を吸収し何を降格させるかを駆動しており、アクターが
 なければ、あるノードをポーリングし続けるおしゃべりなエージェントと、それを一度
 読んだ人間とが同じ入力になってしまいます。
+
+MCP トランスポート経由では、すべてのツール応答に `est_tokens`（応答の文字数を 4 で
+割った値で、トークナイザーによる計数ではなく推定値）、`truncated`、`next_cursor` も
+含まれます。長いリストはページ単位で届きます。`next_cursor` を `page_cursor` として
+渡すと次のページが返り、ページサイズはツールの上限の範囲で `max_items` で指定します。
+読み取りとして数えるのは、そのページが実際に届けたノードだけです。監査行には、その行が
+属する応答の `est_tokens` が記録されます。プロセス内の呼び出しと CLI は以前とまったく
+同じものを返します。
 
 ---
 

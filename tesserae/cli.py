@@ -84,11 +84,15 @@ def _bump_read_access(project_root, node_ids: Iterable[Optional[str]]) -> None:
     Records a read of each id in the ``node_memory`` sidecar (never
     ``graph.json``), mirroring the MCP read path so CLI-driven reads keep the
     same findings alive against forgetting-by-disuse. Opens the sidecar once,
-    dedups ids, and swallows every failure so a read never breaks when the
-    memory layer is unavailable.
+    dedups ids, and never lets a failure break the read — but every failure
+    is logged at WARNING, because a bump that silently fails to land starves
+    forgetting-by-disuse of the very signal it exists to provide.
     """
     if project_root is None:
         return
+    import logging
+
+    log = logging.getLogger(__name__)
     try:
         from datetime import datetime, timezone
 
@@ -106,10 +110,10 @@ def _bump_read_access(project_root, node_ids: Iterable[Optional[str]]) -> None:
             seen.add(nid)
             try:
                 _bump_access(db_path, nid, now)
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as exc:  # noqa: BLE001 — a read must survive its bump
+                log.warning("bump_access failed for node %s (%s)", nid, exc)
+    except Exception as exc:  # noqa: BLE001 — a read must survive its bump
+        log.warning("bump_read_access setup failed (%s)", exc)
 
 
 def _envelope_hit_ids(envelope) -> List[str]:
@@ -4842,6 +4846,46 @@ def _route_code(rest: List[str]) -> int:
     return _resolve_handler(args._handler)(args)
 
 
+# ----- hook -----------------------------------------------------------------
+def _build_hook_parser() -> argparse.ArgumentParser:
+    from .hook_inject import add_arguments as _add_inject_arguments
+
+    parser = argparse.ArgumentParser(
+        prog="tesserae hook",
+        description="Entry points for the Claude Code plugin hooks.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  echo '{\"hook_event_name\":\"UserPromptSubmit\",\"prompt\":\"why is compile locked\"}' | tesserae hook inject\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="hook_command", required=True)
+    p_inject = sub.add_parser(
+        "inject",
+        help="Read a UserPromptSubmit/PreToolUse payload on stdin; print matching decisions, gotchas and supersede warnings as hook JSON",
+        description=(
+            "Lexical (BM25) lookup over .tesserae/sqlite.db: no LLM, no embedding call, read-only. "
+            "Fail-open: any error prints nothing, exits 0 and is logged to .tesserae/.prompt-inject-hook.log. "
+            "hooks/prompt-inject.sh runs this as `python -m tesserae.hook_inject` to skip CLI start-up."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  echo '{\"hook_event_name\":\"UserPromptSubmit\",\"prompt\":\"why is compile locked\"}' | tesserae hook inject\n"
+            "  tesserae hook inject --budget-tokens 800 < payload.json\n"
+        ),
+    )
+    _add_inject_arguments(p_inject)
+    return parser
+
+
+def _route_hook(rest: List[str]) -> int:
+    from .hook_inject import run_args
+
+    args = _build_hook_parser().parse_args(rest)
+    return run_args(args)
+
+
 # ----- ingest ---------------------------------------------------------------
 def _build_ingest_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -7662,6 +7706,8 @@ def _build_verify_attribution_parser() -> argparse.ArgumentParser:
             "  no_checkable_figure                 the answer reports no number\n"
             "  subject_name_uncheckable /          a name with no identity tokens; the check\n"
             "  benchmark_name_uncheckable            cannot run (flagged=false)\n"
+            "  evidence_absent_cannot_prove        no evidence text (source session/document\n"
+            "                                        absent): flagged=true, exit 2\n"
             "\n"
             "flagged=true means ownership could not be confirmed, not that the figure is\n"
             "false. exit 0 = checked (flagged or not), 2 = could not check.\n"
@@ -7748,7 +7794,8 @@ def _handle_verify_attribution(args: argparse.Namespace) -> int:
     out = check_attribution(args.answer, args.evidence, subject=args.subject, obj=args.object_)
     print(json.dumps(out, ensure_ascii=False, sort_keys=True))
     # Could-not-check is the only non-zero exit, as for verify-claim: a flag is an answer.
-    return 2 if str(out.get("reason", "")).endswith("_uncheckable") else 0
+    reason = str(out.get("reason", ""))
+    return 2 if reason.endswith("_uncheckable") or reason == "evidence_absent_cannot_prove" else 0
 
 
 def _route_verify_claim(rest: List[str]) -> int:
@@ -8072,6 +8119,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "vault": _route_vault,
     "export": _route_export,
     "code": _route_code,
+    "hook": _route_hook,
     "ingest": _route_ingest,
     "config": _route_config,
     "setup": _route_setup,

@@ -145,6 +145,10 @@ SIDECARS: Tuple[Sidecar, ...] = (
             "code-symbol graph; re-extracted from the working tree"),
     Sidecar("combined-graph.json", "tesserae.project", KIND_DERIVED, True,
             "research graph unioned with the code graph"),
+    Sidecar("context_tiers.json", "tesserae.context_tiers", KIND_DERIVED, True,
+            "opt-in (TESSERAE_CONTEXT_TIERS=1) L0/L1 lines per node, keyed on "
+            "node content; a compile rewrites it and tiered packing recomputes "
+            "a missing one"),
     Sidecar("diverged-fields.md", "tesserae.vault_pull", KIND_DERIVED, True,
             "per-compile audit of vault divergences; the next compile rewrites it"),
     Sidecar("doctor-report.json", "tesserae.doctor", KIND_DERIVED, True,

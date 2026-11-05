@@ -303,9 +303,11 @@ ninguna llamada.
 | `TESSERAE_AGENT_DISTILL` | desactivado | Artefactos de pericia L1 por agente (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | desactivado | Nodos de memoria destilada Runbook/Gotcha |
 | `TESSERAE_SESSION_EVENT_PASS` | **activado** | Nodos `Event` por turno a partir de las transcripciones de sesión. Sin LLM y determinista byte a byte, pero un nodo por cada turno significativo: considerable en un corpus largo. `false`/`0`/`no`/`off` lo desactiva |
+| `TESSERAE_UNTRUSTED_DOC_GUARD` | desactivado | Delimita el texto del documento como datos no confiables en el prompt de extracción y descarta los nodos y aristas cuyo texto tiene forma de instrucción. Las transcripciones de sesión siempre reciben ambas protecciones. Activarlo vuelve a extraer cada documento una vez, porque el prompt forma parte de la clave de caché, y un documento que cita una inyección pierde esos nodos |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | activado | Vincula ideas de sesión a símbolos de código |
 | `TESSERAE_SUPERSEDE_PASS` | activado | Aristas `superseded_by` entre reclamaciones revisadas |
 | `TESSERAE_PROMPT_SIGNATURES` | desactivado | Registra firmas de prompt para detección de deriva |
+| `TESSERAE_CONTEXT_TIERS` | desactivado | Escribe `.tesserae/context_tiers.json` al compilar: por cada nodo, una línea L0 (~25 tokens) y un resumen L1 (~150 tokens) extraídos de su descripción. `compile_context` con `tiers: true` lo lee, y calcula los niveles por su cuenta cuando el archivo no existe. No se ha medido si los paquetes por niveles mantienen la precisión de las respuestas con menos tokens |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | Segundos a esperar `.tesserae/compile.lock` antes de rendirse |
 
 **Sobre resúmenes de comunidades:** la pasada de compilación cubre ansiosamente
@@ -426,6 +428,15 @@ ya fue registrado, y toma efecto sin reiniciar el servidor. Lo que la
 auditoría es *para* es [olvido por desuso](agent-memory.es.md#olvido--nunca-eliminación):
 los recuentos de acceso impulsan lo que se absorbe o se degrada, y sin un actor un
 agente locuaz polleando un nodo y un humano leyéndolo una vez son la misma entrada.
+
+A través del transporte MCP cada respuesta de herramienta lleva además `est_tokens`
+(su tamaño en caracteres dividido entre 4, una estimación y no un recuento del
+tokenizador), `truncated` y `next_cursor`. Una lista larga llega por páginas:
+devuelve `next_cursor` como `page_cursor` para obtener la siguiente, y fija el
+tamaño de página con `max_items`, hasta el tope de la herramienta. Solo cuentan como
+lecturas los nodos que una página entrega, y una fila de auditoría registra el
+`est_tokens` de la respuesta a la que pertenece. Las llamadas en proceso y la CLI
+devuelven exactamente lo mismo que antes.
 
 ---
 

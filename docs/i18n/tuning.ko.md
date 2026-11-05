@@ -289,9 +289,11 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_AGENT_DISTILL` | off | Per-agent L1 expertise artifacts (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | off | Runbook/Gotcha distilled-memory nodes |
 | `TESSERAE_SESSION_EVENT_PASS` | **on** | 세션 트랜스크립트의 턴별 `Event` 노드. LLM을 쓰지 않고 바이트 단위로 결정적이지만, 유의미한 턴마다 노드 하나씩 — 긴 코퍼스에서는 규모가 커집니다. `false`/`0`/`no`/`off`로 비활성화 |
+| `TESSERAE_UNTRUSTED_DOC_GUARD` | off | 추출 prompt에서 문서 텍스트를 신뢰할 수 없는 데이터로 감싸고, 텍스트가 지시문 형태인 노드와 엣지를 버립니다. 세션 트랜스크립트에는 두 가드가 항상 적용됩니다. 켜면 prompt가 캐시 키에 포함되므로 모든 문서를 한 번 다시 추출하며, 인젝션을 인용하는 문서는 해당 노드를 잃습니다 |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | on | session insights를 code symbols에 link |
 | `TESSERAE_SUPERSEDE_PASS` | on | 수정된 claims 사이의 `superseded_by` edges |
 | `TESSERAE_PROMPT_SIGNATURES` | off | drift detection을 위한 prompt signatures 기록 |
+| `TESSERAE_CONTEXT_TIERS` | off | 컴파일 시 `.tesserae/context_tiers.json`을 씁니다: 노드마다 설명에서 추출한 L0 한 줄(~25 토큰)과 L1 개요(~150 토큰). `tiers: true`를 준 `compile_context`가 이 파일을 읽고, 파일이 없으면 티어를 직접 계산합니다. 티어로 나눈 번들이 더 적은 토큰으로 답의 정확도를 유지하는지는 측정되지 않았습니다 |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | `.tesserae/compile.lock`을 기다릴 초 단위의 초 |
 
 **커뮤니티 요약 정보:** compile pass는 가장 coarse level을 eagerly cover합니다;
@@ -406,6 +408,14 @@ export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face
 것인지*는 [사용하지 않음에 의한 망각](agent-memory.ko.md#망각--절대-삭제-아님)입니다:
 접근 횟수가 무엇이 흡수되거나 강등되는지를 결정하며, actor가 없으면 한 노드를
 계속 폴링하는 수다스러운 agent와 그것을 한 번 읽은 사람이 똑같은 입력이 됩니다.
+
+MCP 전송을 거치면 모든 도구 응답에 `est_tokens`(응답 크기를 문자 수로 재어 4로
+나눈 값이며, 토크나이저로 센 값이 아닌 추정치), `truncated`, `next_cursor`가 함께
+담깁니다. 긴 목록은 페이지 단위로 도착합니다: `next_cursor`를 `page_cursor`로
+돌려주면 다음 페이지를 받고, 페이지 크기는 도구의 상한 안에서 `max_items`로
+정합니다. 한 페이지가 실제로 전달한 노드만 읽기로 세며, 감사 행에는 그 행이 속한
+응답의 `est_tokens`가 기록됩니다. 프로세스 내부 호출과 CLI는 예전과 똑같은 것을
+반환합니다.
 
 ---
 
