@@ -1676,7 +1676,8 @@ class LLMWikiMCPServer:
                 "description": (
                     "Return the contents of .tesserae/doctor-report.md for the resolved/given "
                     "project (capped at 64 KB). Empty if the report does not exist — run "
-                    "`tesserae doctor` to (re)generate it."
+                    "`tesserae doctor` to (re)generate it. Also returns `lifecycle_eval`: the "
+                    "newest evals/lifecycle result per stage (headline metrics + test-retest verdict)."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -5302,7 +5303,18 @@ class LLMWikiMCPServer:
             raise ValueError(
                 "doctor_report requires a project root — pass graph_path or project, or set a default graph."
             )
+        from .eval_results import latest_lifecycle_results
+
         report_path = project_root / ".tesserae" / "doctor-report.md"
+        # Machine-wide, not per project: it scores the extraction and update
+        # code itself, so it is served whether or not this project has a report.
+        # An auxiliary field: whatever goes wrong reading it is reported in
+        # it, never allowed to take the project's report down.
+        try:
+            lifecycle_eval = latest_lifecycle_results()
+        except Exception as exc:
+            _LOG.warning("doctor_report: lifecycle eval results unreadable: %s", exc)
+            lifecycle_eval = {"stages": {}, "errors": [{"error": f"{type(exc).__name__}: {exc}"}]}
         if not report_path.exists():
             return {
                 "exists": False,
@@ -5310,6 +5322,7 @@ class LLMWikiMCPServer:
                 "body": "",
                 "byte_count": 0,
                 "truncated": False,
+                "lifecycle_eval": lifecycle_eval,
             }
         raw = report_path.read_bytes()
         truncated = len(raw) > DOCTOR_REPORT_BYTE_CAP
@@ -5321,6 +5334,7 @@ class LLMWikiMCPServer:
             "byte_count": len(raw),
             "truncated": truncated,
             "cap_bytes": DOCTOR_REPORT_BYTE_CAP,
+            "lifecycle_eval": lifecycle_eval,
         }
 
     def _resolve_project_root_for_ask(self, args: JSONDict) -> Path:

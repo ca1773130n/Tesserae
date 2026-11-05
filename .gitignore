@@ -22,6 +22,7 @@ evals/*
 !evals/locomo/
 !evals/tck/
 !evals/selfimprove/
+!evals/lifecycle/
 !evals/bridge/
 # bridge_bench's output dir is a free argument; one pointed inside the repo
 # holds bm25.sqlite, chunks.npz and per-item JSONL that must not ride a `git add -A`.
