@@ -21,18 +21,56 @@ Conservatism rule: if the start time cannot be read (permission, unsupported
 platform, transient error) we fall back to treating a live PID as live — better
 to occasionally refuse a start than to ever run two engines against one project.
 The pidfile also keeps the legacy bare-integer format readable for back-compat.
+
+**The pidfile is a lease.** Several servers share one disk and therefore one
+``.tesserae/``, and a pid only means something in the process table of the
+machine that wrote it. So the record also carries ``host`` (the persisted
+``local_host_id``), ``hostname``, ``boot_id``, the package ``version``, the
+record ``schema`` and ``lease_expires`` (epoch seconds), which every engine
+run, ``--once`` included, renews through :class:`LeaseHeartbeat`. :func:`owner_is_alive` never
+probes a pid recorded by another host: it reads that host's lease, and an
+absent lease field answers "alive" (conservative, as above). On the writer's
+own host a ``boot_id`` that changed means the machine rebooted since, which
+kills every pid it recorded — decisive on Linux, where ``/proc`` start times
+restart at every boot; only a tiebreaker on macOS, where the start time is an
+absolute timestamp and already rules out a pid recycled across a reboot. :func:`version_conflicts` is what lets an engine
+notice that another host runs a different Tesserae version against the same
+project — the stale-code failure mode, one machine removed.
+
+Lease timing is wall-clock across hosts, so it assumes clocks agree to well
+inside :data:`DEFAULT_LEASE_TTL_S`; NTP-level skew is fine, a host minutes off
+is not.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
+import socket
 import subprocess
+import threading
+import time
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Iterable, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # How long to wait on the `ps` fallback before giving up (identity = unknown).
 _PS_TIMEOUT_S = 5.0
+
+#: Version of the lease record's own shape; bump when a field changes meaning.
+LEASE_SCHEMA = 1
+#: How long a lease stays valid without a renewal. The heartbeat renews at a
+#: third of it, so two missed beats still leave the lease live.
+DEFAULT_LEASE_TTL_S = 120.0
+#: Below this, clock skew between hosts is a large fraction of the lease.
+_MIN_LEASE_TTL_S = 10.0
+
+_BOOT_ID_UNSET = object()
+_boot_id_cache: object = _BOOT_ID_UNSET
+_own_start_time_cache: Dict[int, Optional[str]] = {}
 
 
 def process_start_time(pid: int) -> Optional[str]:
@@ -61,13 +99,15 @@ def process_start_time(pid: int) -> Optional[str]:
     # under a Korean-locale shell and a checker under an English one would
     # otherwise disagree about the SAME instant and misread a live owner as
     # PID reuse (doctor would then offer to delete a live daemon's pidfile).
+    # TZ=UTC0 for the same reason: lstart is rendered in the caller's local
+    # zone, so a launchd daemon and a shell with TZ exported disagree too.
     try:
         result = subprocess.run(
             ["ps", "-o", "lstart=", "-p", str(pid)],
             capture_output=True,
             text=True,
             timeout=_PS_TIMEOUT_S,
-            env={**os.environ, "LC_ALL": "C"},
+            env={**os.environ, "LC_ALL": "C", "TZ": "UTC0"},
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -102,13 +142,117 @@ def process_cmdline(pid: int) -> Optional[str]:
     return line or None
 
 
-def current_identity() -> dict:
-    """Identity payload for the CURRENT process, to be written into a pidfile."""
+def own_start_time() -> Optional[str]:
+    """:func:`process_start_time` for THIS process, computed once per pid.
+
+    A process's start time never changes, and on macOS each lookup forks
+    ``ps`` — too slow for a per-write journal record. Keyed by pid so a forked
+    child does not inherit its parent's answer.
+    """
     pid = os.getpid()
+    if pid not in _own_start_time_cache:
+        _own_start_time_cache[pid] = process_start_time(pid)
+    return _own_start_time_cache[pid]
+
+
+def boot_id() -> Optional[str]:
+    """An opaque token that changes on every reboot of this machine, or None.
+
+    Linux: ``/proc/sys/kernel/random/boot_id``. macOS / BSD: the ``sec``
+    field of ``sysctl -n kern.boottime`` — only that integer, because the rest
+    of the line is a date rendered in the caller's timezone, and two processes
+    on one boot that run under different ``TZ`` would otherwise disagree. A
+    pid recorded before a reboot names nothing, whatever process holds that
+    number now.
+    """
+    global _boot_id_cache
+    if _boot_id_cache is not _BOOT_ID_UNSET:
+        return _boot_id_cache  # type: ignore[return-value]
+    value: Optional[str] = None
+    linux = Path("/proc/sys/kernel/random/boot_id")
+    try:
+        if linux.exists():
+            value = linux.read_text().strip() or None
+        else:
+            result = subprocess.run(
+                ["sysctl", "-n", "kern.boottime"], capture_output=True, text=True,
+                timeout=_PS_TIMEOUT_S, env={**os.environ, "LC_ALL": "C"},
+            )
+            value = _boot_token(result.stdout.strip()) or None
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.debug("boot id unavailable: %s", exc)
+    _boot_id_cache = value
+    return value
+
+
+_BOOTTIME_SEC = re.compile(r"\bsec\s*=\s*(\d+)")
+
+
+def _boot_token(raw: str) -> str:
+    """``kern.boottime`` text → its ``sec`` integer; anything else unchanged.
+
+    Applied to recorded values too, so a pidfile written before this fix (the
+    whole line, local-time date included) still compares equal on the same
+    boot.
+    """
+    match = _BOOTTIME_SEC.search(raw)
+    return match.group(1) if match else raw
+
+
+def _start_time_survives_reboot() -> bool:
+    """Whether a matching start time alone proves the pid was not recycled.
+
+    ``ps -o lstart`` (macOS / BSD) is a wall-clock timestamp: a process started
+    after a reboot cannot match one recorded before it. ``/proc`` ``starttime``
+    counts clock ticks since boot, so after a reboot a recycled pid can match
+    by coincidence — there the boot id has to decide.
+    """
+    return not Path("/proc/self/stat").exists()
+
+
+def local_host() -> str:
+    """This machine's persisted id (``local_host_id``), or ``""``."""
+    try:
+        from ..harness_sessions import local_host_id
+
+        return local_host_id()
+    except Exception as exc:  # noqa: BLE001 — identity must not block a start
+        logger.warning("no host id available (%s); lease records name no host", exc)
+        return ""
+
+
+def package_version() -> str:
+    from ..cli_tree import package_version as _version
+
+    return _version()
+
+
+def lease_ttl() -> float:
+    """``TESSERAE_LEASE_TTL`` seconds (default :data:`DEFAULT_LEASE_TTL_S`)."""
+    raw = os.environ.get("TESSERAE_LEASE_TTL", "")
+    try:
+        ttl = float(raw) if raw else DEFAULT_LEASE_TTL_S
+    except ValueError:
+        logger.warning("TESSERAE_LEASE_TTL=%r is not a number; using %s", raw, DEFAULT_LEASE_TTL_S)
+        ttl = DEFAULT_LEASE_TTL_S
+    return max(_MIN_LEASE_TTL_S, ttl)
+
+
+def current_identity() -> dict:
+    """Lease payload for the CURRENT process, to be written into a pidfile."""
+    pid = os.getpid()
+    now = time.time()
     return {
         "pid": pid,
         "start_time": process_start_time(pid),
         "cmdline": process_cmdline(pid),
+        "host": local_host(),
+        "hostname": socket.gethostname(),
+        "boot_id": boot_id(),
+        "version": package_version(),
+        "schema": LEASE_SCHEMA,
+        "renewed_at": now,
+        "lease_expires": now + lease_ttl(),
     }
 
 
@@ -153,6 +297,22 @@ def owner_is_alive(payload: Optional[dict]) -> bool:
     if not payload or not isinstance(payload.get("pid"), int):
         return False
     pid = payload["pid"]
+    host = str(payload.get("host") or "")
+    if host and host != local_host():
+        # Another machine's pid: probing it here would interrogate an
+        # unrelated local process. Only its lease can say whether it is live.
+        expires = payload.get("lease_expires")
+        if isinstance(expires, (int, float)):
+            return time.time() < expires
+        return True  # no lease recorded: cannot judge, so never call it stale
+    recorded_boot = payload.get("boot_id")
+    live_boot = boot_id() if recorded_boot else None
+    boot_changed = bool(live_boot and _boot_token(str(recorded_boot)) != live_boot)
+    if boot_changed and not _start_time_survives_reboot():
+        return False  # this machine rebooted since; every recorded pid died
+    # Where start times are absolute (macOS), the boot id only breaks a tie
+    # the start time cannot: kern.boottime is the least trustworthy signal
+    # here, and a wrong "stale" lets a second engine start beside a live one.
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -164,12 +324,14 @@ def owner_is_alive(payload: Optional[dict]) -> bool:
 
     recorded = payload.get("start_time")
     if not recorded:
-        return True  # no recorded identity (legacy) — can't detect reuse
+        return not boot_changed  # no recorded identity (legacy) — can't detect reuse
     live = process_start_time(pid)
     if live is None:
-        return True  # can't read identity now — don't risk a double start
+        return not boot_changed  # can't read identity now — don't risk a double start
     if live == recorded:
         return True
+    if boot_changed:
+        return False
     # Start-time render can differ for the SAME instant when writer and
     # reader ran under different locales (pre-fix pidfiles; ps localizes
     # lstart on macOS). A matching full cmdline rescues the alive verdict —
@@ -186,3 +348,90 @@ def read_owner(path: Path) -> Optional[dict]:
         return parse(Path(path).read_text())
     except (OSError, ValueError):
         return None
+
+
+def renew(path: Path) -> bool:
+    """Push this process's lease at ``path`` forward by :func:`lease_ttl`.
+
+    Renews only a record that is still ours (same pid, same host): a lease
+    another process reclaimed must not be overwritten with ours. The static
+    fields are carried over from disk rather than recomputed, so a heartbeat
+    never forks ``ps``. Returns False, with a warning, when it did not renew.
+    """
+    from ..locking import journaled_write
+
+    owner = read_owner(path)
+    if not owner or owner.get("pid") != os.getpid() or str(owner.get("host") or "") != local_host():
+        logger.warning("lease %s is no longer held by this process; not renewing", path)
+        return False
+    now = time.time()
+    owner.update(renewed_at=now, lease_expires=now + lease_ttl())
+    journaled_write(Path(path), json.dumps(owner), durable=False)
+    return True
+
+
+class LeaseHeartbeat:
+    """Background renewal of one lease file until :meth:`stop`.
+
+    A daemon thread: it must never be what keeps an exiting engine alive. A
+    failed renewal is logged and retried on the next beat — an expired lease
+    makes other hosts treat this owner as gone, so it is worth a warning.
+    """
+
+    def __init__(self, path: Path, *, interval: Optional[float] = None) -> None:
+        self._path = Path(path)
+        self._interval = interval if interval is not None else lease_ttl() / 3.0
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> "LeaseHeartbeat":
+        self._thread = threading.Thread(
+            target=self._run, name=f"tesserae-lease-{self._path.name}", daemon=True
+        )
+        self._thread.start()
+        return self
+
+    def _run(self) -> None:
+        while not self._stop.wait(self._interval):
+            try:
+                if not renew(self._path):
+                    return  # not ours any more; renewing again cannot fix that
+            except OSError as exc:
+                logger.warning("lease %s renewal failed: %s", self._path, exc)
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5.0)
+            self._thread = None
+
+
+def strict_version_guard() -> bool:
+    """True when ``TESSERAE_LEASE_STRICT_VERSION`` asks to refuse, not warn."""
+    return os.environ.get("TESSERAE_LEASE_STRICT_VERSION", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def version_conflicts(paths: Iterable[Path]) -> List[dict]:
+    """Live leases among ``paths`` that name a different Tesserae version.
+
+    A record without a ``version`` (written before leases) is not a conflict:
+    nothing is known about it.
+    """
+    mine = package_version()
+    out: List[dict] = []
+    for path in paths:
+        owner = read_owner(path)
+        if not owner:
+            continue
+        theirs = owner.get("version")
+        if theirs and theirs != mine and owner_is_alive(owner):
+            out.append({**owner, "path": str(path)})
+    return out
+
+
+def describe_conflicts(conflicts: List[dict]) -> str:
+    """``"0.41.8 (pid 4711 on srv-b)"``-style list for a log line or error."""
+    return ", ".join(
+        f"{c.get('version')} (pid {c.get('pid')} on {c.get('hostname') or c.get('host') or '?'})"
+        for c in conflicts
+    )

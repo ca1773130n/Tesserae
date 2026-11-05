@@ -454,3 +454,58 @@ def test_backfill_resumes_from_last_covered_day(tmp_path, monkeypatch):
     assert not second.skipped
     assert second.days == [max(first.days)]  # resume window, not epoch
     assert DAY not in second.days or DAY == max(first.days)
+
+
+class _LockedOnFirstWalSwitch:
+    """A connection whose first ``journal_mode = WAL`` reports a held lock —
+    what a second process sees while another one converts a fresh store."""
+
+    def __init__(self, con, failures):
+        self._con, self._failures = con, failures
+
+    def execute(self, sql, *args):
+        if "journal_mode" in sql and self._failures:
+            self._failures.pop()
+            raise sqlite3.OperationalError("database is locked")
+        return self._con.execute(sql, *args)
+
+    def __getattr__(self, name):
+        return getattr(self._con, name)
+
+    def __enter__(self):
+        return self._con.__enter__()
+
+    def __exit__(self, *exc):
+        return self._con.__exit__(*exc)
+
+
+def test_concurrent_first_open_waits_out_the_wal_switch(tmp_path, monkeypatch):
+    """Three processes opening a fresh store lost one to "database is locked"
+    at the WAL pragma (16 of 180 opens in a direct repro); the open must wait
+    the conversion out inside the busy timeout instead."""
+    import tesserae.session_chunks as sc
+
+    real_connect = sqlite3.connect
+    failures = [1, 1]
+    monkeypatch.setattr(
+        sc.sqlite3, "connect",
+        lambda *a, **k: _LockedOnFirstWalSwitch(real_connect(*a, **k), failures),
+    )
+    db = SessionChunksDB(tmp_path / "chunks.db")
+    assert failures == []  # both injected failures were retried through
+    assert db.covered_days() == set()
+
+
+def test_wal_switch_still_raises_errors_that_are_not_a_lock(tmp_path, monkeypatch):
+    import tesserae.session_chunks as sc
+
+    class _Broken(_LockedOnFirstWalSwitch):
+        def execute(self, sql, *args):
+            if "journal_mode" in sql:
+                raise sqlite3.OperationalError("disk I/O error")
+            return self._con.execute(sql, *args)
+
+    real_connect = sqlite3.connect
+    monkeypatch.setattr(sc.sqlite3, "connect", lambda *a, **k: _Broken(real_connect(*a, **k), []))
+    with pytest.raises(sqlite3.OperationalError, match="disk I/O"):
+        SessionChunksDB(tmp_path / "chunks.db")

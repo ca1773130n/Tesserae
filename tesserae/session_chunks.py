@@ -42,6 +42,7 @@ import hashlib
 import json
 import logging
 import sqlite3
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -113,8 +114,23 @@ class SessionChunksDB:
     def _connect(self) -> sqlite3.Connection:
         con = sqlite3.connect(self.path, timeout=self._BUSY_TIMEOUT_S)
         con.execute("pragma busy_timeout = %d" % int(self._BUSY_TIMEOUT_S * 1000))
-        con.execute("pragma journal_mode = WAL")
-        return con
+        # Converting a FRESH file to WAL needs an exclusive lock, and when
+        # several processes open the new store at once SQLite reports "database
+        # is locked" here without waiting out busy_timeout. Measured: 16 of 180
+        # concurrent opens of a fresh store failed, and the 3-writer soak
+        # (tests/test_soak_concurrency.py) lost one writer's 500 turns to it.
+        # Once the file is WAL the pragma is a no-op read, so this retry only
+        # runs while the store is first being created.
+        deadline = time.monotonic() + self._BUSY_TIMEOUT_S
+        while True:
+            try:
+                con.execute("pragma journal_mode = WAL")
+                return con
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc) or time.monotonic() >= deadline:
+                    con.close()
+                    raise
+                time.sleep(0.05)
 
     @staticmethod
     def _ensure_schema(con: sqlite3.Connection) -> None:

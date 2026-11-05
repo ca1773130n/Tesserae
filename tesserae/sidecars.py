@@ -145,6 +145,10 @@ SIDECARS: Tuple[Sidecar, ...] = (
             "code-symbol graph; re-extracted from the working tree"),
     Sidecar("combined-graph.json", "tesserae.project", KIND_DERIVED, True,
             "research graph unioned with the code graph"),
+    Sidecar("context_tiers.json", "tesserae.context_tiers", KIND_DERIVED, True,
+            "opt-in (TESSERAE_CONTEXT_TIERS=1) L0/L1 lines per node, keyed on "
+            "node content; a compile rewrites it and tiered packing recomputes "
+            "a missing one"),
     Sidecar("diverged-fields.md", "tesserae.vault_pull", KIND_DERIVED, True,
             "per-compile audit of vault divergences; the next compile rewrites it"),
     Sidecar("doctor-report.json", "tesserae.doctor", KIND_DERIVED, True,
@@ -308,6 +312,16 @@ SIDECARS: Tuple[Sidecar, ...] = (
             "engine pidfile, host-scoped as daemon.<host>.pid. Only doctor's "
             "daemon_pid fix removes one, and only after confirming the recorded "
             "owner is dead ON THIS machine"),
+    Sidecar("journal", "tesserae.locking", KIND_SCRATCH, False,
+            "intent records for journaled writes in flight. One that outlives "
+            "its writer points at a complete temp file `doctor --recover` can "
+            "still roll forward; deleting it turns that into plain debris. Only "
+            "written under TESSERAE_JOURNALED_WRITES=1"),
+    Sidecar("sessions-import.lock", "tesserae.cli", KIND_SCRATCH, False,
+            "mutex for every session-store import (`sessions discover --import`, "
+            "`sessions import`, the `sessions-import` step of `refresh`); removing "
+            "a held one lets two "
+            "imports scan and rewrite the session store at once"),
     Sidecar("graph.json.bak-*", "operator (manual backup)", KIND_SCRATCH, False,
             "no Tesserae code path writes these; they are hand-made copies from "
             "a restore session. Reported, never removed — a human made them"),
@@ -330,6 +344,9 @@ SIDECARS: Tuple[Sidecar, ...] = (
             "cross-project link and vector caches", SCOPE_USER),
     Sidecar("harness_sessions", "tesserae.harness_sessions", KIND_ACCUMULATED, False,
             "machine-wide session import state", SCOPE_USER),
+    Sidecar("journal", "tesserae.locking", KIND_SCRATCH, False,
+            "intent records for journaled writes to the machine-wide session "
+            "store; see the project-scope entry", SCOPE_USER),
     Sidecar("host_id", "tesserae.harness_sessions", KIND_ACCUMULATED, False,
             "this machine's identity. Regenerating it makes every host-scoped "
             "pidfile and session record on shared storage look foreign", SCOPE_USER),

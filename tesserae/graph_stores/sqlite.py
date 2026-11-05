@@ -70,6 +70,11 @@ def _decode_vector(blob: bytes) -> List[float]:
     return list(struct.unpack(f"<{count}d", blob[: count * 8]))
 
 
+def _table_columns(con: sqlite3.Connection, table: str) -> set:
+    """Column names of ``table`` as the schema says right now."""
+    return {row[1] for row in con.execute(f"pragma table_info({table})")}
+
+
 class SqliteGraphStore:
     """Local SQLite-backed :class:`GraphStore` adapter.
 
@@ -82,10 +87,32 @@ class SqliteGraphStore:
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
+        self._readonly_timeout: Optional[float] = None
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as con:
             self._ensure_schema(con)
             con.commit()
+
+    @classmethod
+    def open_readonly(cls, path: str | Path, *, timeout: float = 0.1) -> "SqliteGraphStore":
+        """Open an EXISTING store for reads only — no schema DDL, no commit.
+
+        ``__init__`` runs ``CREATE TABLE IF NOT EXISTS`` and commits, which is a
+        write transaction on the user's database. A latency-bound reader (the
+        prompt-time hook, :mod:`tesserae.hook_inject`) must neither take that
+        lock nor wait 5 s (sqlite3's default) behind a compile that holds one,
+        so this connects with ``mode=ro`` and a short busy ``timeout``. Any
+        write attempted through the returned store fails with
+        ``sqlite3.OperationalError`` instead of silently succeeding. A missing
+        file raises ``FileNotFoundError`` rather than being created.
+        """
+        target = Path(path)
+        if not target.is_file():
+            raise FileNotFoundError(f"SQLite store not found: {target}")
+        store = cls.__new__(cls)
+        store.path = target
+        store._readonly_timeout = float(timeout)
+        return store
 
     # ------------------------------------------------------------------ #
     # GraphStore protocol surface                                         #
@@ -1167,8 +1194,13 @@ class SqliteGraphStore:
         node_ids: Sequence[str],
         tesserae_version: str,
         schema_version: int,
+        est_tokens: int = 0,
     ) -> None:
         """Append ONE read-audit row: who read which nodes, through which tool.
+
+        ``est_tokens`` is the estimated size of the tool response this read
+        belongs to (see :mod:`tesserae.mcp_envelope`); 0 when nothing measured
+        it, e.g. a read made outside an MCP tool call.
 
         Append-only and never updated — an audit row that can be rewritten is
         not an audit row. The caller supplies ``at`` (the same instant it
@@ -1184,8 +1216,8 @@ class SqliteGraphStore:
                 """
                 insert into read_audit
                     (at, tool, actor, node_ids_json, node_count,
-                     tesserae_version, schema_version)
-                values (?, ?, ?, ?, ?, ?, ?)
+                     tesserae_version, schema_version, est_tokens)
+                values (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     at,
@@ -1195,6 +1227,7 @@ class SqliteGraphStore:
                     len(node_ids),
                     tesserae_version,
                     int(schema_version),
+                    max(0, int(est_tokens)),
                 ),
             )
             con.commit()
@@ -1206,11 +1239,11 @@ class SqliteGraphStore:
         actor: str = "",
         tool: str = "",
         node_id: str = "",
-    ) -> List[Tuple[int, str, str, str, str, int, str, int]]:
+    ) -> List[Tuple[int, str, str, str, str, int, str, int, int]]:
         """Most-recent-first audit rows, optionally narrowed.
 
         Row shape: ``(id, at, tool, actor, node_ids_json, node_count,
-        tesserae_version, schema_version)``.
+        tesserae_version, schema_version, est_tokens)``.
 
         ``node_id`` is a PREFILTER in SQL and nothing more: the ids live in a
         JSON array column, so ``like`` can only say "these bytes appear
@@ -1235,7 +1268,7 @@ class SqliteGraphStore:
             with self._connect() as con:
                 cur = con.execute(
                     "select id, at, tool, actor, node_ids_json, node_count,"
-                    " tesserae_version, schema_version from read_audit"
+                    " tesserae_version, schema_version, est_tokens from read_audit"
                     f"{where} order by id desc limit ?",
                     params,
                 )
@@ -1609,6 +1642,12 @@ class SqliteGraphStore:
     # ------------------------------------------------------------------ #
 
     def _connect(self) -> sqlite3.Connection:
+        if self._readonly_timeout is not None:
+            return sqlite3.connect(
+                f"{self.path.resolve().as_uri()}?mode=ro",
+                uri=True,
+                timeout=self._readonly_timeout,
+            )
         return sqlite3.connect(self.path)
 
     @staticmethod
@@ -1836,10 +1875,29 @@ class SqliteGraphStore:
                 node_ids_json    text not null default '[]',
                 node_count       integer not null default 0,
                 tesserae_version text not null default '',
-                schema_version   integer not null default 1
+                schema_version   integer not null default 1,
+                est_tokens       integer not null default 0
             )
             """
         )
+        # ``est_tokens`` (row shape 2) arrived after the table shipped, so a
+        # sidecar created by an older release lacks it. ADD COLUMN with a
+        # default is the one migration SQLite does in place; old rows read 0,
+        # which is the truth — nobody measured them.
+        #
+        # Check-then-ALTER races on a shared disk: two processes opening the
+        # same old sidecar both see the column missing, and the loser's ALTER
+        # raises "duplicate column name". That outcome is the one we wanted,
+        # so it is accepted — but only after re-reading the schema proves the
+        # column is really there; any other failure propagates.
+        if "est_tokens" not in _table_columns(con, "read_audit"):
+            try:
+                con.execute(
+                    "alter table read_audit add column est_tokens integer not null default 0"
+                )
+            except sqlite3.OperationalError:
+                if "est_tokens" not in _table_columns(con, "read_audit"):
+                    raise
         con.execute("create index if not exists idx_read_audit_actor on read_audit(actor)")
 
         # fact_observed sidecar (transaction time). Same discipline as

@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import re
-import secrets
 import shutil
 import sys
 import time
@@ -144,7 +143,9 @@ def _recompile_note(limit: Optional[int], corpus_size: int) -> str:
     return "re-extracting the whole corpus."
 
 
-def _publish_atomically(target: Path, content: str) -> None:
+def _publish_atomically(
+    target: Path, content: str, *, expected_sha256: Optional[str] = None
+) -> None:
     """Write ``content`` to ``target`` via a temp file no other writer can share.
 
     The graph publishes used to go through ``target.with_suffix(".tmp")``, and
@@ -162,17 +163,18 @@ def _publish_atomically(target: Path, content: str) -> None:
     which is atomic: the loser publishes a whole graph, just not the last one.
     The ``finally`` unlink matters because without it a failed write leaves the
     scratch file behind forever — a fixed name was at least reused.
+
+    The write itself is :func:`tesserae.locking.journaled_write`. With
+    ``TESSERAE_JOURNALED_WRITES=1`` (opt-in) the write is recorded in
+    ``.tesserae/journal`` and fsynced, so a writer SIGKILLed before the rename
+    leaves a record ``doctor --recover`` resolves instead of anonymous debris;
+    without it this is the plain tmp+rename it always was. ``expected_sha256``
+    passes through for read-modify-write callers that do not hold the compile
+    lock (``graph repair``).
     """
-    tmp = target.with_suffix(f".tmp.{os.getpid()}.{secrets.token_hex(4)}")
-    try:
-        tmp.write_text(content, encoding="utf-8")
-        os.replace(tmp, target)
-    finally:
-        if tmp.exists():
-            try:
-                tmp.unlink()
-            except OSError:
-                pass
+    from .locking import journaled_write
+
+    journaled_write(target, content, expected_sha256=expected_sha256)
 
 
 @dataclass(frozen=True)
@@ -4363,6 +4365,14 @@ class ProjectWiki:
         self._published_node_ids = {node.id for node in graph.nodes}
 
         _publish_atomically(self.paths.graph, research_graph.to_json(indent=2) + "\n")
+        # Progressive-disclosure tiers (R7, opt-in): L0/L1 per node in a
+        # content-keyed sidecar beside graph.json, never inside it.
+        from .context_tiers import CONTEXT_TIERS_ENV, SIDECAR_NAME, render_sidecar
+
+        if _env_truthy(CONTEXT_TIERS_ENV):
+            _publish_atomically(
+                self.paths.graph.parent / SIDECAR_NAME, render_sidecar(research_graph)
+            )
         # ``code-graph.json`` follows the opt-in, and follows it in BOTH
         # directions — same shape as ``combined_graph`` below, for the same
         # reason. Writing it unconditionally left an empty artifact on every

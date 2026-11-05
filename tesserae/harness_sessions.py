@@ -18,6 +18,7 @@ from dataclasses import asdict, dataclass, field, replace as replace_dc
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
+from .locking import journaled_write
 from .redaction import redact_home_paths, redact_published_text
 
 logger = logging.getLogger(__name__)
@@ -358,9 +359,12 @@ class HarnessSessionStore:
                     host=host or session.host,
                 )
             payload = session.to_dict()
-            json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            # Atomic so a compile reading the store never parses half a record;
+            # not durable (no fsync per file) because the next import re-derives
+            # every record from its transcript anyway.
+            journaled_write(json_path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", durable=False)
             md_path = harness_dir / f"{session.filename}.md"
-            md_path.write_text(render_session_markdown(session), encoding="utf-8")
+            journaled_write(md_path, render_session_markdown(session), durable=False)
             written.update((json_path, md_path))
         removed = 0
         if replace:
@@ -385,12 +389,7 @@ class HarnessSessionStore:
                     removed += 1
         # Rebuild the manifest from disk so records this write did not touch —
         # and did not prune — survive.
-        merged = sorted(
-            self.list_sessions(),
-            key=lambda s: (s.started_at or "", s.harness, s.slug),
-        )
-        manifest = {"version": "1", "sessions": [_manifest_entry(s) for s in merged]}
-        self.manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        merged = self._publish_manifest()
         return {"path": str(self.root), "sessions": len(written) // 2, "total": len(merged),
                 "removed": removed, "preserved": preserved}
 
@@ -436,16 +435,26 @@ class HarnessSessionStore:
                 except OSError:
                     pass
         if not dry_run and removed:
-            merged = sorted(
-                self.list_sessions(),
-                key=lambda s: (s.started_at or "", s.harness, s.slug),
-            )
-            manifest = {"version": "1", "sessions": [_manifest_entry(s) for s in merged]}
-            self.manifest_path.write_text(
-                json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
+            self._publish_manifest()
         return {"removed": removed, "kept": kept, "unreadable": unreadable, "dry_run": dry_run}
+
+    def _publish_manifest(self) -> List[HarnessSession]:
+        """Rebuild ``manifest.json`` from the records on disk; return them.
+
+        Atomic (``journaled_write``) rather than ``write_text``: that truncates in place, and the
+        3-writer soak (``tests/test_soak_concurrency.py``) caught readers
+        parsing a half-written manifest 65-309 times per 300 imports.
+        """
+        merged = sorted(
+            self.list_sessions(),
+            key=lambda s: (s.started_at or "", s.harness, s.slug),
+        )
+        manifest = {"version": "1", "sessions": [_manifest_entry(s) for s in merged]}
+        journaled_write(
+            self.manifest_path,
+            json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        return merged
 
     def list_sessions(self) -> List[HarnessSession]:
         if not self.root.exists():

@@ -307,11 +307,15 @@ class FleetDaemon:
 
     def run(self, *, once: bool = False) -> int:
         self._write_pidfile()
+        heartbeat: Optional[pidlock.LeaseHeartbeat] = None
         try:
             if once:
                 # Deterministic CI mode: one bounded once-run per project,
                 # sequential, no threads, no signals.
                 return self._run_once_over_registry()
+            # Renew the fleet lease so a host sharing this home reads it as
+            # live; each unit's Daemon renews its own project lease.
+            heartbeat = pidlock.LeaseHeartbeat(self._pidfile).start()
             # Fleet uses signal.signal (main-thread only); unit Daemons use loop.add_signal_handler — see daemon.py.
             try:
                 for sig in (signal.SIGTERM, signal.SIGINT):
@@ -342,6 +346,8 @@ class FleetDaemon:
             for sig, previous in self._replaced_signals.items():
                 signal.signal(sig, previous)
             self._replaced_signals.clear()
+            if heartbeat is not None:
+                heartbeat.stop()
             self._remove_pidfile()
 
     # ----- pidfile (atomic acquire; only the owner removes it) ---------------
@@ -387,7 +393,9 @@ class FleetDaemon:
                     # bug this guards against). Unknown identity degrades to a
                     # plain liveness check (conservative; see pidlock).
                     if pidlock.owner_is_alive(owner):
-                        raise RuntimeError(f"fleet engine already running (pid {old_pid})")
+                        version = (owner or {}).get("version")
+                        running = f", version {version}" if version else ""
+                        raise RuntimeError(f"fleet engine already running (pid {old_pid}{running})")
                     if fcntl is None:
                         # Without a lock backend the unlink+retry reclaim is
                         # the very race the flock exists to close: two starts

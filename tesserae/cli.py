@@ -84,11 +84,15 @@ def _bump_read_access(project_root, node_ids: Iterable[Optional[str]]) -> None:
     Records a read of each id in the ``node_memory`` sidecar (never
     ``graph.json``), mirroring the MCP read path so CLI-driven reads keep the
     same findings alive against forgetting-by-disuse. Opens the sidecar once,
-    dedups ids, and swallows every failure so a read never breaks when the
-    memory layer is unavailable.
+    dedups ids, and never lets a failure break the read — but every failure
+    is logged at WARNING, because a bump that silently fails to land starves
+    forgetting-by-disuse of the very signal it exists to provide.
     """
     if project_root is None:
         return
+    import logging
+
+    log = logging.getLogger(__name__)
     try:
         from datetime import datetime, timezone
 
@@ -106,10 +110,10 @@ def _bump_read_access(project_root, node_ids: Iterable[Optional[str]]) -> None:
             seen.add(nid)
             try:
                 _bump_access(db_path, nid, now)
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as exc:  # noqa: BLE001 — a read must survive its bump
+                log.warning("bump_access failed for node %s (%s)", nid, exc)
+    except Exception as exc:  # noqa: BLE001 — a read must survive its bump
+        log.warning("bump_read_access setup failed (%s)", exc)
 
 
 def _envelope_hit_ids(envelope) -> List[str]:
@@ -1295,8 +1299,8 @@ def _run_over_all_projects(args: argparse.Namespace, verb: str, work) -> int:
     return exit_code_for(outcomes)
 
 
-def _add_lock_wait_arg(parser: argparse.ArgumentParser) -> None:
-    """Attach ``--wait [SECONDS]``: queue for the compile lock, don't fail."""
+def _add_lock_wait_arg(parser: argparse.ArgumentParser, lock: str = "compile lock") -> None:
+    """Attach ``--wait [SECONDS]``: queue for ``lock``, don't fail."""
     parser.add_argument(
         "--wait",
         dest="lock_wait",
@@ -1306,14 +1310,14 @@ def _add_lock_wait_arg(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="SECONDS",
         help=(
-            "Wait for the project's compile lock instead of failing when a "
+            f"Wait for the project's {lock} instead of failing when a "
             f"background engine or another run holds it (default {int(DEFAULT_LOCK_WAIT_SECONDS)}s "
             "with a bare --wait). Progress is reported every 5s."
         ),
     )
 
 
-def _lock_wait_reporter(label: str):
+def _lock_wait_reporter(label: str, lock: str = "compile lock"):
     """An ``on_wait`` callback that says what is being waited for.
 
     Without this the command looks hung: the lock is held by a process the
@@ -1324,7 +1328,7 @@ def _lock_wait_reporter(label: str):
         from .locking import describe_holder
 
         print(
-            f"{label}: waiting for the project compile lock"
+            f"{label}: waiting for the project {lock}"
             f"{describe_holder(holder)} — {int(elapsed)}s elapsed",
             file=sys.stderr,
         )
@@ -2410,6 +2414,10 @@ def _handle_refresh_one(args: argparse.Namespace) -> int:
     wiki = ProjectWiki.load(args.project)
 
     def step_sessions_import():
+        with _sessions_import_lock(wiki, getattr(args, "lock_wait", None), "refresh"):
+            return _sessions_import_step()
+
+    def _sessions_import_step():
         roots = hs.discover_harness_roots()
         sessions = hs.discover_harness_sessions(wiki.project_root, roots=roots)
         # Same reason as `sessions discover`: refresh never configures logging,
@@ -2670,7 +2678,50 @@ def _handle_export_obsidian(args: argparse.Namespace) -> int:
     return 0
 
 
+#: Held by every writer of the session store for the whole of its run, scan
+#: included: ``sessions discover --import``, ``sessions import`` and the
+#: ``sessions-import`` step of ``refresh``.
+SESSIONS_IMPORT_LOCK = "sessions-import.lock"
+
+
+def _sessions_import_lock(wiki: "ProjectWiki", wait_seconds: Optional[float], label: str):
+    """``sessions-import.lock`` for ``wiki``, as a context manager.
+
+    The scan has to sit inside it, not just the write: a replace+prune import
+    whose scan predates another import's write prunes the record that write
+    just added. Fails fast like the compile lock (``--wait`` or
+    ``TESSERAE_COMPILE_LOCK_WAIT`` queue instead); it is its own file so an
+    import never waits behind a multi-minute compile.
+    """
+    from .locking import compile_lock
+
+    return compile_lock(
+        wiki.paths.root,
+        wait_seconds=wait_seconds,
+        name=SESSIONS_IMPORT_LOCK,
+        what="session import",
+        on_wait=_lock_wait_reporter(label, "session-import lock"),
+    )
+
+
 def _handle_sessions(args: argparse.Namespace) -> int:
+    """Store-writing ``sessions`` verbs run under :data:`SESSIONS_IMPORT_LOCK`.
+
+    They used to take no lock at all: three concurrent runs each scanned for
+    ~133 s and rewrote the store over one another, which is how a burst of
+    SessionEnd hooks stacks imports. Discovery without ``--import`` and
+    ``list`` only read, so they stay unlocked.
+    """
+    command = getattr(args, "sessions_command", None)
+    if command == "import" or (command == "discover" and getattr(args, "import_sessions", False)):
+        with _sessions_import_lock(
+            ProjectWiki.load(args.project), getattr(args, "lock_wait", None), f"sessions {command}",
+        ):
+            return _handle_sessions_unlocked(args)
+    return _handle_sessions_unlocked(args)
+
+
+def _handle_sessions_unlocked(args: argparse.Namespace) -> int:
     if True:
         wiki = ProjectWiki.load(args.project)
         store = HarnessSessionStore(wiki.paths.harness_sessions)
@@ -3378,7 +3429,7 @@ def _build_refresh_parser() -> argparse.ArgumentParser:
         action=_RemovedFlagAction,
         message="refresh: --skip-sessions has moved → --no-sessions",
     )
-    _add_lock_wait_arg(parser)
+    _add_lock_wait_arg(parser, "compile and session-import locks")
     _add_all_projects_args(parser, "refresh")
     return parser
 
@@ -4267,6 +4318,7 @@ def _build_sessions_parser() -> argparse.ArgumentParser:
     # what the Task-5 `test_group_dispatch` contract requires.
     p_import.add_argument("paths", nargs="*", default=[], help="JSON files containing one session object or a list of sessions")
     p_import.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    _add_lock_wait_arg(p_import, "session-import lock")
     p_import.set_defaults(_handler="_handle_sessions_import")
     p_discover = sub.add_parser("discover", help="Discover local Claude Code/Codex sessions scoped to this project")
     p_discover.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
@@ -4274,6 +4326,7 @@ def _build_sessions_parser() -> argparse.ArgumentParser:
     p_discover.add_argument("--harness", action="append", default=[], choices=["claude-code", "codex"], help="Harness to scan; repeat for multiple harnesses. Defaults to both")
     p_discover.add_argument("--import", dest="import_sessions", action="store_true", help="Import discovered normalized sessions into .tesserae/harness_sessions")
     p_discover.add_argument("--adopt-unowned", action="store_true", help="Claim records that predate provenance stamping, so discovery may refresh and prune them. One-time migration; do NOT use if another tool writes into this store")
+    _add_lock_wait_arg(p_discover, "session-import lock")
     p_discover.set_defaults(_handler="_handle_sessions_discover")
     p_list = sub.add_parser("list", help="List normalized harness sessions for this project")
     p_list.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
@@ -4791,6 +4844,46 @@ def _build_code_parser() -> argparse.ArgumentParser:
 def _route_code(rest: List[str]) -> int:
     args = _build_code_parser().parse_args(rest)
     return _resolve_handler(args._handler)(args)
+
+
+# ----- hook -----------------------------------------------------------------
+def _build_hook_parser() -> argparse.ArgumentParser:
+    from .hook_inject import add_arguments as _add_inject_arguments
+
+    parser = argparse.ArgumentParser(
+        prog="tesserae hook",
+        description="Entry points for the Claude Code plugin hooks.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  echo '{\"hook_event_name\":\"UserPromptSubmit\",\"prompt\":\"why is compile locked\"}' | tesserae hook inject\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="hook_command", required=True)
+    p_inject = sub.add_parser(
+        "inject",
+        help="Read a UserPromptSubmit/PreToolUse payload on stdin; print matching decisions, gotchas and supersede warnings as hook JSON",
+        description=(
+            "Lexical (BM25) lookup over .tesserae/sqlite.db: no LLM, no embedding call, read-only. "
+            "Fail-open: any error prints nothing, exits 0 and is logged to .tesserae/.prompt-inject-hook.log. "
+            "hooks/prompt-inject.sh runs this as `python -m tesserae.hook_inject` to skip CLI start-up."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  echo '{\"hook_event_name\":\"UserPromptSubmit\",\"prompt\":\"why is compile locked\"}' | tesserae hook inject\n"
+            "  tesserae hook inject --budget-tokens 800 < payload.json\n"
+        ),
+    )
+    _add_inject_arguments(p_inject)
+    return parser
+
+
+def _route_hook(rest: List[str]) -> int:
+    from .hook_inject import run_args
+
+    args = _build_hook_parser().parse_args(rest)
+    return run_args(args)
 
 
 # ----- ingest ---------------------------------------------------------------
@@ -7194,7 +7287,8 @@ def _build_doctor_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--all", dest="all_projects", action="store_true", help="Doctor every registered project (ignores --project)")
     parser.add_argument("--apply", action="store_true", help="With migrate-code-scope: actually delete. Without it the verb reports what it would remove and touches nothing.")
-    parser.add_argument("--fix", action="store_true", help="Apply the safe fixes only: registry prune, site rebuild, lint trivial fixes, stale daemon-pidfile removal (THIS host's only — another machine's pidfile is never touched), build-history trim, hook-log rotation, vault mkdir, git worktree prune. Never kills or removes a live compile lock.")
+    parser.add_argument("--fix", action="store_true", help="Apply the safe fixes only: registry prune, site rebuild, lint trivial fixes, stale daemon-pidfile removal (THIS host's only — another machine's pidfile is never touched), interrupted journaled-write recovery (see --recover), build-history trim, hook-log rotation, vault mkdir, git worktree prune. Never kills or removes a live compile lock.")
+    parser.add_argument("--recover", action="store_true", help="Only finish or discard journaled writes whose writer died mid-publish (.tesserae/journal): a complete temp file is rolled forward when the target has not changed since, an obsolete one is discarded. Records whose writer may still be running are left alone. Records are only written when TESSERAE_JOURNALED_WRITES=1.")
     parser.add_argument("--deep", action="store_true", help="With --fix: also apply the SLOW local repairs (session-chunk backfill). Still credential-free and LLM-free — just minutes rather than seconds.")
     parser.add_argument("--json", dest="doctor_json", action="store_true", help="Print the JSON report to stdout instead of the markdown checklist")
     return parser
@@ -7245,6 +7339,18 @@ def _handle_doctor(args: argparse.Namespace) -> int:
     if getattr(args, "deep", False) and not args.fix:
         print("doctor: --deep only means something with --fix", file=sys.stderr)
         return 2
+    if getattr(args, "recover", False):
+        from .doctor import CHECKS
+
+        if args.all_projects:
+            print("doctor: --recover runs per project; pass --project", file=sys.stderr)
+            return 2
+        # No write_report: a one-check run must not overwrite the full report.
+        report = run_doctor(
+            args.project, fix=True, checks=[c for c in CHECKS if c.id == "write_journal"]
+        )
+        sys.stdout.write(to_json(report) if args.doctor_json else render_markdown(report))
+        return report.exit_code
     if args.all_projects:
         from .mcp_server import ProjectRegistry
 
@@ -7547,12 +7653,27 @@ def _handle_graph_repair(args: argparse.Namespace) -> int:
     if not wiki.paths.graph.exists():
         print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
         return 2
-    graph = graph_from_payload(_json.loads(wiki.paths.graph.read_text(encoding="utf-8")))
+    import hashlib
+
+    from .locking import WriteConflictError
+
+    raw = wiki.paths.graph.read_bytes()
+    graph = graph_from_payload(_json.loads(raw.decode("utf-8")))
     repaired, report = repair_graph(graph)
     changed = report["anchors_collapsed"] + report["entities_merged"] > 0
     if changed and not args.dry_run:
-        # the compile's own writer, byte for byte: indent=2 and a trailing newline
-        _publish_atomically(wiki.paths.graph, repaired.to_json(indent=2) + "\n")
+        # the compile's own writer, byte for byte: indent=2 and a trailing newline.
+        # This read-modify-write holds no compile lock, so it publishes only if
+        # graph.json still holds the bytes it repaired — otherwise a compile that
+        # landed in between would be silently overwritten with the older graph.
+        try:
+            _publish_atomically(
+                wiki.paths.graph, repaired.to_json(indent=2) + "\n",
+                expected_sha256=hashlib.sha256(raw).hexdigest(),
+            )
+        except WriteConflictError as exc:
+            print(f"error: {exc} (a compile published while repair ran)", file=sys.stderr)
+            return 2
     report["written"] = bool(changed and not args.dry_run)
     if args.json:
         print(_json.dumps(report, indent=2, sort_keys=True))
@@ -7585,6 +7706,8 @@ def _build_verify_attribution_parser() -> argparse.ArgumentParser:
             "  no_checkable_figure                 the answer reports no number\n"
             "  subject_name_uncheckable /          a name with no identity tokens; the check\n"
             "  benchmark_name_uncheckable            cannot run (flagged=false)\n"
+            "  evidence_absent_cannot_prove        no evidence text (source session/document\n"
+            "                                        absent): flagged=true, exit 2\n"
             "\n"
             "flagged=true means ownership could not be confirmed, not that the figure is\n"
             "false. exit 0 = checked (flagged or not), 2 = could not check.\n"
@@ -7671,7 +7794,8 @@ def _handle_verify_attribution(args: argparse.Namespace) -> int:
     out = check_attribution(args.answer, args.evidence, subject=args.subject, obj=args.object_)
     print(json.dumps(out, ensure_ascii=False, sort_keys=True))
     # Could-not-check is the only non-zero exit, as for verify-claim: a flag is an answer.
-    return 2 if str(out.get("reason", "")).endswith("_uncheckable") else 0
+    reason = str(out.get("reason", ""))
+    return 2 if reason.endswith("_uncheckable") or reason == "evidence_absent_cannot_prove" else 0
 
 
 def _route_verify_claim(rest: List[str]) -> int:
@@ -7995,6 +8119,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "vault": _route_vault,
     "export": _route_export,
     "code": _route_code,
+    "hook": _route_hook,
     "ingest": _route_ingest,
     "config": _route_config,
     "setup": _route_setup,

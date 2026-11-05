@@ -136,3 +136,211 @@ def test_ps_start_time_is_locale_pinned():
 
     src = inspect.getsource(pidlock.process_start_time)
     assert 'LC_ALL' in src  # regression guard: locale-pinned ps invocation
+
+
+# --------------------------------------------------------------------------- #
+# Lease records: host- and version-aware (roadmap R5)                          #
+# --------------------------------------------------------------------------- #
+
+
+def test_serialize_writes_a_lease(monkeypatch):
+    monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
+    monkeypatch.setenv("TESSERAE_LEASE_TTL", "60")
+    payload = pidlock.parse(pidlock.serialize())
+    assert payload["host"] == "srv-a"
+    assert payload["schema"] == pidlock.LEASE_SCHEMA
+    assert payload["version"] == pidlock.package_version()
+    assert payload["lease_expires"] - payload["renewed_at"] == pytest.approx(60.0)
+    assert {"hostname", "boot_id"} <= set(payload)
+
+
+def test_foreign_pid_is_never_probed(monkeypatch):
+    """A pid recorded by another host names nothing in THIS process table.
+
+    ``_DEAD_PID`` is dead here; judged locally it would read as stale. With a
+    live lease from another host it must read as alive, and with an expired
+    one as gone, whatever the local table says.
+    """
+    monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
+    import time as _time
+
+    live = {"pid": _DEAD_PID, "host": "srv-b", "lease_expires": _time.time() + 60}
+    expired = {"pid": os.getpid(), "host": "srv-b", "lease_expires": _time.time() - 1}
+    assert pidlock.owner_is_alive(live) is True
+    assert pidlock.owner_is_alive(expired) is False  # our own pid is alive here; irrelevant
+    # No lease at all (a pre-lease record carrying a host): cannot judge, so alive.
+    assert pidlock.owner_is_alive({"pid": _DEAD_PID, "host": "srv-b"}) is True
+
+
+def test_reboot_on_this_host_makes_the_record_stale(monkeypatch):
+    """Linux: /proc start times restart at boot, so the boot id decides."""
+    monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
+    monkeypatch.setattr(pidlock, "boot_id", lambda: "BOOT-NEW")
+    monkeypatch.setattr(pidlock, "_start_time_survives_reboot", lambda: False)
+    monkeypatch.setattr(pidlock, "process_start_time", lambda pid: "SAME")
+    payload = {"pid": os.getpid(), "host": "srv-a", "boot_id": "BOOT-OLD", "start_time": "SAME"}
+    assert pidlock.owner_is_alive(payload) is False
+    assert pidlock.owner_is_alive({**payload, "boot_id": "BOOT-NEW"}) is True
+
+
+def test_absolute_start_time_outranks_a_changed_boot_id(monkeypatch):
+    """macOS: lstart is wall-clock, so a matching one proves the pid is the
+    recorded process whatever kern.boottime says; the boot id only decides
+    when the start time cannot."""
+    monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
+    monkeypatch.setattr(pidlock, "boot_id", lambda: "1793711863")
+    monkeypatch.setattr(pidlock, "_start_time_survives_reboot", lambda: True)
+    monkeypatch.setattr(pidlock, "process_start_time", lambda pid: "SAME")
+    payload = {"pid": os.getpid(), "host": "srv-a", "boot_id": "1700000000", "start_time": "SAME"}
+    assert pidlock.owner_is_alive(payload) is True
+    assert pidlock.owner_is_alive({**payload, "start_time": None}) is False
+    assert pidlock.owner_is_alive({**payload, "start_time": "OTHER", "cmdline": None}) is False
+
+
+def test_boot_token_ignores_the_local_time_date():
+    """A pre-fix record carried the whole kern.boottime line, date included."""
+    old = "{ sec = 1793711863, usec = 718139 } Tue Nov  3 13:17:43 2026"
+    assert pidlock._boot_token(old) == "1793711863"
+    assert pidlock._boot_token("4c1e-uuid") == "4c1e-uuid"
+
+
+def test_owner_written_under_another_timezone_is_alive(tmp_path):
+    """Reproduces the review blocker with real subprocesses: an owner started
+    with TZ=UTC must read as alive to a checker running with TZ=Asia/Seoul.
+    Before the fix kern.boottime's local-time date differed between them, and
+    the boot-id mismatch declared the live owner dead."""
+    import subprocess
+    import sys
+
+    record = tmp_path / "owner.json"
+    env = {**os.environ, "TESSERAE_HOST_ID": "tz-test-host"}
+    owner = subprocess.Popen(
+        [sys.executable, "-c",
+         "import sys, pathlib; from tesserae.engine import pidlock; "
+         f"pathlib.Path({str(record)!r}).write_text(pidlock.serialize()); "
+         "print('ready', flush=True); sys.stdin.read()"],
+        env={**env, "TZ": "UTC"}, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+    )
+    try:
+        assert owner.stdout.readline().strip() == "ready"
+        check = subprocess.run(
+            [sys.executable, "-c",
+             "import pathlib; from tesserae.engine import pidlock; "
+             f"print(pidlock.owner_is_alive(pidlock.read_owner(pathlib.Path({str(record)!r}))))"],
+            env={**env, "TZ": "Asia/Seoul"}, capture_output=True, text=True, timeout=60,
+        )
+        assert check.returncode == 0, check.stderr
+        assert check.stdout.strip() == "True"
+    finally:
+        owner.stdin.close()
+        owner.wait(timeout=30)
+
+
+def test_renew_extends_only_our_own_lease(tmp_path, monkeypatch):
+    monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
+    monkeypatch.setenv("TESSERAE_LEASE_TTL", "60")
+    path = tmp_path / "daemon.srv-a.pid"
+    path.write_text(pidlock.serialize())
+    before = pidlock.read_owner(path)["lease_expires"]
+    monkeypatch.setenv("TESSERAE_LEASE_TTL", "600")
+    assert pidlock.renew(path) is True
+    assert pidlock.read_owner(path)["lease_expires"] > before
+    # Someone else's record (reclaimed after we stalled) is never overwritten.
+    path.write_text(json.dumps({"pid": os.getpid() + 1, "host": "srv-a"}))
+    assert pidlock.renew(path) is False
+    assert pidlock.read_owner(path)["pid"] == os.getpid() + 1
+
+
+def test_heartbeat_renews_until_stopped(tmp_path, monkeypatch):
+    monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
+    path = tmp_path / "engine.pid"
+    path.write_text(pidlock.serialize())
+    first = pidlock.read_owner(path)["renewed_at"]
+    beat = pidlock.LeaseHeartbeat(path, interval=0.02).start()
+    import time as _time
+
+    deadline = _time.monotonic() + 5
+    while pidlock.read_owner(path)["renewed_at"] == first and _time.monotonic() < deadline:
+        _time.sleep(0.01)
+    beat.stop()
+    assert pidlock.read_owner(path)["renewed_at"] > first
+
+
+def test_version_conflicts_reports_only_live_leases_of_other_versions(tmp_path, monkeypatch):
+    import time as _time
+
+    monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
+    monkeypatch.setattr(pidlock, "package_version", lambda: "0.42.0")
+    live_old = tmp_path / "daemon.srv-b.pid"
+    live_old.write_text(json.dumps({"pid": 11, "host": "srv-b", "version": "0.41.8",
+                                    "lease_expires": _time.time() + 60}))
+    dead_old = tmp_path / "daemon.srv-c.pid"
+    dead_old.write_text(json.dumps({"pid": 12, "host": "srv-c", "version": "0.40.0",
+                                    "lease_expires": _time.time() - 60}))
+    same = tmp_path / "daemon.srv-d.pid"
+    same.write_text(json.dumps({"pid": 13, "host": "srv-d", "version": "0.42.0",
+                                "lease_expires": _time.time() + 60}))
+    conflicts = pidlock.version_conflicts([live_old, dead_old, same])
+    assert [c["version"] for c in conflicts] == ["0.41.8"]
+
+
+def _foreign_old_version_lease(daemon):
+    import time as _time
+
+    daemon._pidfile.parent.mkdir(parents=True, exist_ok=True)
+    (daemon._pidfile.parent / "daemon.srv-b.pid").write_text(json.dumps(
+        {"pid": 11, "host": "srv-b", "hostname": "srv-b", "version": "0.0.1",
+         "lease_expires": _time.time() + 60}))
+
+
+def test_daemon_warns_by_default_on_a_live_other_version_lease(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
+    monkeypatch.delenv("TESSERAE_LEASE_STRICT_VERSION", raising=False)
+    d = Daemon(tmp_path)
+    _foreign_old_version_lease(d)
+    with caplog.at_level("WARNING"):
+        d._write_pidfile()
+    assert d._pidfile.exists()
+    assert "0.0.1 (pid 11 on srv-b)" in caplog.text
+
+
+def test_daemon_refuses_under_strict_version_guard(tmp_path, monkeypatch):
+    monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
+    monkeypatch.setenv("TESSERAE_LEASE_STRICT_VERSION", "1")
+    d = Daemon(tmp_path)
+    _foreign_old_version_lease(d)
+    with pytest.raises(RuntimeError, match="refusing to start"):
+        d._write_pidfile()
+    assert not d._pidfile.exists()
+
+
+def test_once_run_keeps_its_lease_alive_past_one_heartbeat(tmp_path, monkeypatch):
+    """A once-run is one compile, and a compile can outlive the lease TTL.
+
+    Without a heartbeat its lease expires mid-compile and another host on the
+    shared disk reads it as dead and starts a second compile. The pipeline
+    here holds the run open until the on-disk lease has been renewed.
+    """
+    import time
+
+    monkeypatch.setenv("TESSERAE_LEASE_TTL", "10")  # the floor: renewal every ~3.3 s
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    (tdir / "graph.json").write_text(json.dumps({"nodes": [], "edges": []}))
+    seen: dict = {}
+
+    def slow_pipeline(paths):
+        pidfile = next(tdir.glob("*.pid"))
+        first = pidlock.read_owner(pidfile)["renewed_at"]
+        deadline = time.monotonic() + 8.0
+        while time.monotonic() < deadline:
+            seen["renewed"] = pidlock.read_owner(pidfile)["renewed_at"] > first
+            if seen["renewed"]:
+                return
+            time.sleep(0.1)
+
+    d = Daemon(tmp_path, debounce=0.0, enable_watch=False, enable_vault=False,
+               enable_session_tail=False, install_signal_handlers=False,
+               run_pipeline=slow_pipeline)
+    assert d.run(once=True) == 0
+    assert seen.get("renewed") is True, "once-run lease was never renewed"

@@ -1,5 +1,5 @@
 {
-  "description": "Tesserae plugin hooks — session-start status, session-end auto-compile, docs/ edit incremental recompile (opt-in), PostToolUse code-graph sync (debounced 30s), large-graph compile gate.",
+  "description": "Tesserae plugin hooks — session-start status, session-end auto-compile, docs/ edit incremental recompile (opt-in), PostToolUse code-graph sync (debounced 30s), large-graph compile gate, opt-in prompt-time context injection (UserPromptSubmit + PreToolUse Read|Grep|Edit; off unless TESSERAE_HOOK_INJECT=1 or hooks.prompt_inject).",
   "hooks": {
     "SessionStart": [
       {
@@ -45,6 +45,26 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-compile.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Grep|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/prompt-inject.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/prompt-inject.sh"
           }
         ]
       }

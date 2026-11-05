@@ -329,11 +329,13 @@ ein falsches Ja. `tesserae doctor` gibt überhaupt keinen Aufruf aus.
 | `TESSERAE_AGENT_DISTILL` | aus | Pro-Agent L1-Expertise-Artefakte (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | aus | Runbook/Gotcha distillierte Gedächtnis-Knoten |
 | `TESSERAE_SESSION_EVENT_PASS` | **ein** | `Event`-Knoten pro Zug aus Sitzungstranskripten. Ohne LLM und bytegenau deterministisch, aber ein Knoten je bedeutsamem Zug — bei langem Korpus umfangreich. `false`/`0`/`no`/`off` deaktiviert |
+| `TESSERAE_UNTRUSTED_DOC_GUARD` | aus | Umschließt Dokumenttext im Extraktions-Prompt als nicht vertrauenswürdige Daten und verwirft Knoten und Kanten, deren Text wie eine Anweisung geformt ist. Sitzungstranskripte erhalten beide Schutzmaßnahmen immer. Einschalten extrahiert jedes Dokument einmal neu, weil der Prompt Teil des Cache-Schlüssels ist, und ein Dokument, das eine Injektion zitiert, verliert diese Knoten |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | ein | Verlinkt Session-Insights mit Code-Symbolen |
 | `TESSERAE_SUPERSEDE_PASS` | ein | `superseded_by` Kanten zwischen überarbeiteten Ansprüchen |
 | `TESSERAE_RECONCILE_PASS` | aus | Abgleich beim Schreiben: jeder Session-Befund und jeder Anspruch wird gegen seine nächsten Embedding-Nachbarn geprüft, mit dem Ergebnis `ADD`, `UPDATE`, `INVALIDATE` oder `NOOP`. Benötigt `TESSERAE_ENABLE_LLM_PASSES` und ein semantisches Embedding-Backend (`tesserae[semantic]`); sonst wird der Pass mit einer Warnung übersprungen. `INVALIDATE` erzeugt eine `supersedes`-Kante mit `invalid_at`, und nur wenn beide Fakten einen Quellzeitstempel tragen; `UPDATE` fügt dem Sidecar `node_memory_proof` eine Zeile hinzu. `raw_source` listet solche Fakten unter `invalidated_facts`, `verify_claim` unter `advisory.invalidated_endpoints`; keines von beiden hält sie zurück. Standardmäßig aus, weil die Präzision von `INVALIDATE` nicht geprüft wurde und ein falsches Ergebnis einen korrekten Fakt vor der Suche verbirgt |
 | `TESSERAE_RECONCILE_MAX_CALLS` | 200 | Klassifikator-Aufrufe pro Kompilierung für `TESSERAE_RECONCILE_PASS`. Urteile werden nach Inhalt gecacht, daher wird ein großer Graph über mehrere Kompilierungen abgeglichen, und `graph.json` kann sich bei jeder ändern, bis der Cache vorgewärmt ist |
 | `TESSERAE_PROMPT_SIGNATURES` | aus | Zeichnet Prompt-Signaturen für Drift-Erkennung auf |
+| `TESSERAE_CONTEXT_TIERS` | aus | Schreibt beim Kompilieren `.tesserae/context_tiers.json`: pro Node eine L0-Zeile (~25 Tokens) und eine L1-Übersicht (~150 Tokens), aus seiner Beschreibung extrahiert. `compile_context` mit `tiers: true` liest die Datei und berechnet die Stufen selbst, wenn sie fehlt. Ob gestufte Bündel die Antwortgenauigkeit mit weniger Tokens halten, ist nicht gemessen |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | Sekunden bis zum Warten auf `.tesserae/compile.lock` vor Aufgabe |
 
 **Zu Community-Summaries:** Der Kompilierungs-Pass deckt eifrig die gröbste Ebene ab;
@@ -433,6 +435,9 @@ das Backend ist, sodass ein Modellwechsel nie veraltete Vektoren liefert.
 | `TESSERAE_NO_FEDERATION_CACHE` | aus | Deaktiviert die föderale Graph-LRU |
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | aus | Gibt den kombinierten Cross-Project-Graph aus |
 | `TESSERAE_FLEET_PIDFILE` | — | Engine-Fleet-Pidfile |
+| `TESSERAE_LEASE_TTL` | `120` | Sekunden, die der Lease im Pidfile einer Engine ohne Erneuerung gilt; Werte unter 10 werden auf 10 angehoben. Ein anderer Host hält die Engine dieses Hosts nur für lebendig, solange der Lease nicht abgelaufen ist, also deutlich über dem Uhrenversatz zwischen den Hosts halten |
+| `TESSERAE_LEASE_STRICT_VERSION` | aus | Mit `1` verweigert `tesserae engine` den Start, solange ein lebender Engine-Lease auf demselben `.tesserae` eine andere Tesserae-Version nennt. Aus, protokolliert es eine Warnung und startet, damit ein schrittweises Upgrade nicht blockiert wird |
+| `TESSERAE_JOURNALED_WRITES` | aus | Mit `1` führen atomare Veröffentlichungen zusätzlich ein fsync der Temp-Datei und ihres Verzeichnisses aus und halten bis zum Abschluss des rename einen Absichtsdatensatz in `.tesserae/journal`, damit `tesserae doctor --recover` einen Schreibvorgang, dessen Schreiber gestorben ist, zu Ende führen oder verwerfen kann. Aus, ist eine Veröffentlichung nur das atomare rename |
 | `TESSERAE_CLIP_TOKEN` | — | Gemeinsames Secret für den Web-Clipper |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | aus | Wendet die **genehmigten** Einträge in `.tesserae/schema-drift-proposals.json` zur Kompilierungszeit an (deterministisch, kein LLM). Schreiben Sie Vorschläge mit `tesserae schema-drift`; einen genehmigen bedeutet zunächst `ResearchNodeType` zu editieren, dann `"approved": true` zu setzen — ein nicht auflösbarer Name retypisiert nichts. |
 
@@ -450,6 +455,16 @@ bereits aufgezeichnet wurde, und es tritt in Kraft, ohne den Server neu zu start
 Audit *für* ist, ist [Vergessen-durch-Disuse](agent-memory.de.md#vergessen--keine-löschung):
 Zugriffszähler steuern, was absorbiert oder herabgestuft wird, und ohne einen Actor ist ein
 chatty Agent, der einen Node abruft, und ein Mensch, der ihn einmal liest, dieselbe Eingabe.
+
+Über den MCP-Transport trägt jede Tool-Antwort zusätzlich `est_tokens` (ihre Größe
+in Zeichen geteilt durch 4, eine Schätzung und keine Tokenizer-Zählung),
+`truncated` und `next_cursor`. Eine lange Liste kommt seitenweise: Gib
+`next_cursor` als `page_cursor` zurück, um die nächste Seite zu bekommen, und lege
+die Seitengröße mit `max_items` fest, höchstens bis zur Obergrenze des Tools. Als
+Lesezugriff zählen nur die Nodes, die eine Seite tatsächlich ausliefert, und eine
+Audit-Zeile hält die `est_tokens` der Antwort fest, zu der sie gehört.
+In-Process-Aufrufe und die CLI liefern genau das zurück, was sie vorher geliefert
+haben.
 
 ---
 
