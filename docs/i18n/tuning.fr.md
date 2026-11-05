@@ -331,6 +331,7 @@ dépense aucun appel.
 | `TESSERAE_AGENT_DISTILL` | désactivé | Artefacts d'expertise L1 par agent (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | désactivé | Nœuds de mémoire distillée Runbook/Gotcha |
 | `TESSERAE_SESSION_EVENT_PASS` | **activé** | Nœuds `Event` par tour issus des transcriptions de session. Sans LLM et déterministe à l'octet près, mais un nœud par tour significatif — volumineux sur un corpus long. `false`/`0`/`no`/`off` le désactive |
+| `TESSERAE_UNTRUSTED_DOC_GUARD` | désactivé | Encadre le texte du document comme donnée non fiable dans le prompt d'extraction et écarte les nœuds et arêtes dont le texte a la forme d'une instruction. Les transcriptions de session reçoivent toujours les deux protections. L'activer ré-extrait chaque document une fois, car le prompt fait partie de la clé de cache, et un document qui cite une injection perd ces nœuds |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | activé | Lie les insights de session aux symboles de code |
 | `TESSERAE_SUPERSEDE_PASS` | activé | Arêtes `superseded_by` entre affirmations révisées |
 | `TESSERAE_PROMPT_SIGNATURES` | désactivé | Enregistre les signatures de requête pour la détection de dérive |
