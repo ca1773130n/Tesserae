@@ -236,3 +236,25 @@ def test_refresh_parity_with_manual_sequence(tmp_path: Path, monkeypatch: pytest
         hs.discover_harness_sessions(refresh_wiki.project_root)
     , producer="")
     assert refresh_manifest["sessions"] == manual_store_result["sessions"]
+
+
+def test_refresh_import_step_takes_the_session_import_lock(tmp_path, monkeypatch, capsys):
+    """Review finding: refresh's import step scanned and replace+pruned the
+    store with no lock, so it could race a SessionEnd `discover --import` and
+    prune the record that import had just written."""
+    from tesserae.cli import SESSIONS_IMPORT_LOCK
+    from tesserae.locking import compile_lock
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    wiki = ProjectWiki.init(project_root, name="lock_test")
+    monkeypatch.setattr(hs, "discover_harness_roots", lambda: [])
+    monkeypatch.setattr(hs, "discover_harness_sessions", lambda root, *a, **k: [])
+    monkeypatch.setattr(ProjectWiki, "compile", lambda self, **k: {})
+    with compile_lock(wiki.paths.root, name=SESSIONS_IMPORT_LOCK):
+        assert _run_refresh(project_root) == 2
+        out = capsys.readouterr().out
+        assert "sessions-import: FAILED" in out
+        assert "session import is already running" in out
+    assert _run_refresh(project_root) == 0
+    assert "sessions-import: ok" in capsys.readouterr().out

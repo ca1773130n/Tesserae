@@ -291,6 +291,51 @@ def test_live_daemon_pid_is_ok_and_never_removed(tmp_path):
     assert pidfile.exists()
 
 
+def test_live_daemon_running_an_older_version_is_reported_as_stale_code(tmp_path, monkeypatch):
+    """The stale-code failure mode: the process imported the old modules and
+    keeps running them after an upgrade. Report it; never touch the process."""
+    from tesserae.engine import pidlock
+
+    monkeypatch.setattr(pidlock, "package_version", lambda: "0.42.0")
+    make_project(tmp_path)
+    pidfile = tmp_path / ".tesserae" / "daemon.pid"
+    pidfile.write_text(json.dumps({"pid": os.getpid(), "version": "0.41.8"}), encoding="utf-8")
+    report = doctor.run_doctor(tmp_path, fix=True, now=PINNED_NOW)
+    f = finding(report, "daemon_pid")
+    assert f.severity == "warn"
+    assert "runs Tesserae 0.41.8 but 0.42.0 is installed" in f.message
+    assert pidfile.exists()
+
+
+def test_write_journal_interrupted_publish_is_recovered(tmp_path):
+    from tesserae import locking
+
+    make_project(tmp_path)
+    tdir = tmp_path / ".tesserae"
+    target = tdir / "graph.json"
+    prior = locking.sha256_of(target)
+    tmp = target.with_suffix(".tmp.2147483646.deadbeef")
+    tmp.write_text('{"nodes": [], "edges": []}\n', encoding="utf-8")
+    (tdir / "journal").mkdir(exist_ok=True)
+    (tdir / "journal" / "2147483646.ab.wal").write_text(json.dumps({
+        "target": str(target), "tmp": str(tmp), "sha256": locking.sha256_of(tmp),
+        "prior_sha256": prior, "host": locking._host_tag(), "pid": 2147483646,
+        "start_time": None, "created_at": 0,
+    }))
+    report = doctor.run_doctor(tmp_path, now=PINNED_NOW)
+    f = finding(report, "write_journal")
+    assert f.severity == "warn" and f.fixable
+    assert "rolled graph.json forward" in f.message
+    assert tmp.exists()  # read-only run
+
+    from tesserae.cli import main
+
+    assert main(["doctor", "--recover", "--project", str(tmp_path)]) == 0
+    assert not tmp.exists()
+    assert target.read_text(encoding="utf-8") == '{"nodes": [], "edges": []}\n'
+    assert locking.pending_journal(tdir) == []
+
+
 def test_foreign_host_pidfile_is_reported_but_never_judged_or_removed(tmp_path):
     """Shared disk: srv-b's daemon is alive on srv-b, and its pid is dead here.
 

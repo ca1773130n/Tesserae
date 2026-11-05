@@ -107,6 +107,8 @@ deleting the database.
 | `compile.lock` | `scratch` | the compile mutex. **Never** removed by any automated path — the recorded failure mode is SessionEnd compile pile-ups, and doctor's `compile_lock` check is report-only for the same reason |
 | `.recompile.lock.d` | `scratch` | mkdir-based hook mutex; removing a held one lets two recompiles race |
 | `session_chunks.lock` | `scratch` | backfill's skip-if-held flock; removing a held one lets two backfills write the same day |
+| `sessions-import.lock` | `scratch` | mutex for every session-store import (`sessions discover --import`, `sessions import`, the `sessions-import` step of `refresh`); removing a held one lets two imports scan and rewrite the session store at once |
+| `journal` | `scratch` | intent records for journaled writes in flight. One that outlives its writer points at a complete temp file `doctor --recover` can still roll forward; deleting it turns that file into plain debris. Only written under `TESSERAE_JOURNALED_WRITES=1` |
 | `daemon*.pid` | `scratch` | engine pidfile, host-scoped as `daemon.<host>.pid`. Doctor removes one only after confirming the recorded owner is dead **on this machine** |
 | `graph.json.bak-*` | `scratch` | no Tesserae code path writes these. They are hand-made copies from a restore session — reported, never removed, because a human made them |
 | `*.tmp*` | `scratch` | the orphaned half of a tmp+replace write, named `<target>.tmp.<pid>.<hex>`. Removable only once the owning pid is gone: a live writer is mid-rename |
@@ -130,6 +132,7 @@ configuration, here it is LLM configuration for every project on the machine.
 | `wiki` | `derived` | machine-scoped serve scratch — safe to drop |
 | `engine.pid` | `scratch` | fleet pidfile; a stale one once held a six-day-dead pid, which is why pidlock validates rather than trusts |
 | `engine.pid.lock` | `scratch` | fleet pidfile mutex; removing a held one lets two fleets start |
+| `journal` | `scratch` | intent records for journaled writes to the machine-wide session store, as in the project table |
 | `*.bak*` | `scratch` | pre-migration copies of `registry.json` and `config.json`. No code path writes them, so they exist because somebody wanted them kept |
 
 ## Seeing the live classification

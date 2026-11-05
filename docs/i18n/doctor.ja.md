@@ -47,6 +47,7 @@ tesserae doctor --project ~/src/other
 | `compile_lock` | processes | 稼働中のコンパイルロックが保持されているか、またどの pid **とホスト**によってか | レポートのみ — doctor は**稼働中のロックを決して kill も削除もしません** |
 | `filesystem_locking` | processes | `.tesserae/` がネットワークファイルシステム上にあり、`flock(2)` が黙って no-op になりうる場所かどうか | レポートのみ（ホスト間での強制は証明できません — 後述） |
 | `daemon_pid` | processes | `daemon.<host>.pid` が生きているエンジンプロセスを指していること | **SAFE**: 所有プロセスが死んでいる場合に**このホストの** pidfile を削除。他マシンのものは報告するだけで、決して触りません |
+| `write_journal` | processes | `.tesserae/journal` に、rename の前に書き手が死んだ書き込みが残っていないこと | **SAFE**: 書き込み開始後に対象が変わっていなければ完成した一時ファイルをロールフォワードし、変わっていれば破棄。まだ動いている可能性のある書き手のものは触りません。パスが `.tesserae` の外を指す記録は何もせずに削除し、コンパイルが `compile.lock` を握っている間は復旧を見送ります。`--recover` はこのチェックだけを実行。記録は `TESSERAE_JOURNALED_WRITES=1` のときだけ書かれます |
 | `llm_login` | environment | プロジェクトが実際に使うことになる設定ディレクトリが存在するかどうか | レポートのみ — **認証情報の検証は行いません**（後述） |
 | `optional_deps` | environment | オプション依存関係（memex、raganything）の状態 | レポートのみ（インストールはネットワークを要するため） |
 | `embedding_backend` | environment | 実際のセマンティック埋め込みバックエンドが利用可能であること | レポートのみ（`pip install tesserae[semantic]` を提案） |

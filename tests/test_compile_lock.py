@@ -326,3 +326,274 @@ def test_cli_wait_flag_queues_instead_of_failing(tmp_path, capsys):
         thread.join(timeout=15)
         timer.cancel()
     assert rc != 2, capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# Journaled atomic writes (roadmap R5)                                         #
+# --------------------------------------------------------------------------- #
+
+_DEAD_PID = 2_147_483_646
+
+
+def _interrupted(tdir, target, new_text, *, pid=_DEAD_PID, host=None, age=0.0, written=None):
+    """Leave exactly what a writer SIGKILLed between journal and rename leaves."""
+    import json as _json
+
+    import hashlib
+
+    tmp = target.with_suffix(f".tmp.{pid}.deadbeef")
+    # ``written`` < the whole text models a writer killed mid-write.
+    tmp.write_text(new_text if written is None else written, encoding="utf-8")
+    journal = tdir / locking.JOURNAL_DIRNAME
+    journal.mkdir(parents=True, exist_ok=True)
+    entry = journal / f"{pid}.cafe.wal"
+    entry.write_text(_json.dumps({
+        "target": str(target), "tmp": str(tmp),
+        "sha256": hashlib.sha256(new_text.encode()).hexdigest(),
+        "prior_sha256": locking.sha256_of(target),
+        "host": host if host is not None else locking._host_tag(),
+        "pid": pid, "start_time": None, "created_at": time.time() - age,
+    }))
+    return tmp, entry
+
+
+def test_journaled_write_publishes_and_leaves_nothing_behind(tmp_path, monkeypatch):
+    monkeypatch.setenv("TESSERAE_JOURNALED_WRITES", "1")
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    target = tdir / "graph.json"
+    sha = locking.journaled_write(target, '{"nodes": []}\n')
+    assert target.read_text() == '{"nodes": []}\n'
+    assert sha == locking.sha256_of(target)
+    assert locking.pending_journal(tdir) == []
+    assert sorted(p.name for p in tdir.iterdir()) == ["graph.json", "journal"]
+
+
+def test_journaling_is_opt_in(tmp_path, monkeypatch):
+    """Off by default: the same atomic rename as before, and no journal dir."""
+    monkeypatch.delenv("TESSERAE_JOURNALED_WRITES", raising=False)
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    locking.journaled_write(tdir / "graph.json", "{}")
+    assert sorted(p.name for p in tdir.iterdir()) == ["graph.json"]
+
+
+def test_journal_lives_in_the_nearest_tesserae_dir(tmp_path):
+    deep = tmp_path / ".tesserae" / "harness_sessions" / "codex" / "x.json"
+    assert locking.journal_dir_for(deep) == tmp_path / ".tesserae" / "journal"
+
+
+def test_expected_sha_mismatch_refuses_before_writing(tmp_path):
+    target = tmp_path / "graph.json"
+    target.write_text("read by the caller")
+    stale = locking.sha256_of(target)
+    target.write_text("published by a compile in between")
+    with pytest.raises(locking.WriteConflictError):
+        locking.journaled_write(target, "repaired from the stale read", expected_sha256=stale)
+    assert target.read_text() == "published by a compile in between"
+    assert list(tmp_path.glob("graph.tmp.*")) == []
+
+
+def test_recover_rolls_a_complete_write_forward(tmp_path):
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    target = tdir / "graph.json"
+    target.write_text("old")
+    tmp, entry = _interrupted(tdir, target, "new")
+    assert locking.recover_journal(tdir, dry_run=True) == [f"{entry.name}: rolled graph.json forward"]
+    assert target.read_text() == "old" and entry.exists()  # dry run touched nothing
+    locking.recover_journal(tdir)
+    assert target.read_text() == "new"
+    assert not tmp.exists() and not entry.exists()
+
+
+def test_recover_discards_a_half_written_temp_file(tmp_path):
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    target = tdir / "graph.json"
+    target.write_text("old")
+    tmp, entry = _interrupted(tdir, target, '{"nodes": [1, 2]}', written='{"nodes": [1')
+    assert "temp file incomplete" in locking.recover_journal(tdir)[0]
+    assert target.read_text() == "old"
+    assert not tmp.exists() and not entry.exists()
+
+
+def test_journal_record_precedes_the_temp_file(tmp_path, monkeypatch):
+    """A SIGKILL anywhere before the rename leaves a record naming the temp
+    file, so recovery never has to guess whose a temp file is."""
+    monkeypatch.setenv("TESSERAE_JOURNALED_WRITES", "1")
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    seen = []
+    real_open = open
+
+    def spy(path, mode="r", *a, **k):
+        if ".tmp." in str(path) and "w" in mode:
+            seen.append(len(locking.pending_journal(tdir)))
+        return real_open(path, mode, *a, **k)
+
+    monkeypatch.setattr("builtins.open", spy)
+    locking.journaled_write(tdir / "graph.json", "{}")
+    assert seen == [1]
+
+
+def test_recover_never_rolls_back_over_a_newer_publish(tmp_path):
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    target = tdir / "graph.json"
+    target.write_text("old")
+    tmp, entry = _interrupted(tdir, target, "interrupted")
+    target.write_text("published later by another writer")
+    actions = locking.recover_journal(tdir)
+    assert "moved on since" in actions[0]
+    assert target.read_text() == "published later by another writer"
+    assert not tmp.exists() and not entry.exists()
+
+
+def test_recover_leaves_a_live_writer_alone(tmp_path):
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    target = tdir / "graph.json"
+    target.write_text("old")
+    tmp, entry = _interrupted(tdir, target, "new", pid=os.getpid())
+    assert locking.recover_journal(tdir)[0].endswith("left alone")
+    assert target.read_text() == "old" and tmp.exists() and entry.exists()
+
+
+def test_recover_judges_a_foreign_writer_by_age_not_pid(tmp_path):
+    """Another host's pid is meaningless here; only the record's age is."""
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    target = tdir / "graph.json"
+    target.write_text("old")
+    _interrupted(tdir, target, "new", host="srv-elsewhere", age=5)
+    assert locking.recover_journal(tdir)[0].endswith("left alone")
+    for entry in locking.pending_journal(tdir):
+        entry.unlink()
+    _interrupted(tdir, target, "new", host="srv-elsewhere", age=locking.JOURNAL_FOREIGN_STALE_S + 1)
+    locking.recover_journal(tdir)
+    assert target.read_text() == "new"
+
+
+def _planted(tdir, *, target, tmp, payload=b"attacker bytes", host="other-host"):
+    """A record nobody's journaled_write wrote: planted on a shared disk or
+    shipped in a cloned repo's ``.tesserae/journal``."""
+    import hashlib
+    import json as _json
+
+    tmp.write_bytes(payload)
+    journal = tdir / locking.JOURNAL_DIRNAME
+    journal.mkdir(parents=True, exist_ok=True)
+    entry = journal / "1.aa.wal"
+    entry.write_text(_json.dumps({
+        "target": str(target), "tmp": str(tmp),
+        "sha256": hashlib.sha256(payload).hexdigest(), "prior_sha256": None,
+        "host": host, "pid": 1, "start_time": None, "created_at": 1,
+    }))
+    return entry
+
+
+def test_recover_refuses_a_target_outside_the_tesserae_dir(tmp_path):
+    """Review repro: a planted record must not make doctor write anywhere."""
+    tdir = tmp_path / "proj" / ".tesserae"
+    tdir.mkdir(parents=True)
+    outside = tmp_path / "outside" / "pwned.txt"
+    outside.parent.mkdir()
+    entry = _planted(tdir, target=outside, tmp=tdir / "x.tmp.1.aa")
+    actions = locking.recover_journal(tdir)
+    assert "refused" in actions[0] and "outside" in actions[0]
+    assert not outside.exists()
+    assert not entry.exists()  # dropped
+    assert (tdir / "x.tmp.1.aa").exists()  # but nothing it names is touched
+
+
+def test_recover_refuses_a_temp_file_it_did_not_name(tmp_path):
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    target = tdir / "graph.json"
+    elsewhere = tmp_path / "secret.txt"
+    elsewhere.write_text("not ours")
+    _planted(tdir, target=target, tmp=tdir / "notes.txt")
+    assert "not named like" in locking.recover_journal(tdir)[0]
+    _planted(tdir, target=target, tmp=tmp_path / "graph.tmp.1.aa")
+    assert "not beside its target" in locking.recover_journal(tdir)[0]
+    link = tdir / "graph.tmp.1.ab"
+    _planted(tdir, target=target, tmp=tdir / "graph.tmp.1.ac")
+    (tdir / "graph.tmp.1.ac").unlink()
+    link.symlink_to(elsewhere)
+    import json as _json
+
+    entry = locking.pending_journal(tdir)[0]
+    record = _json.loads(entry.read_text())
+    entry.write_text(_json.dumps({**record, "tmp": str(link)}))
+    assert "symlink" in locking.recover_journal(tdir)[0]
+    assert not target.exists() and elsewhere.read_text() == "not ours"
+
+
+def test_recover_waits_for_no_compile(tmp_path):
+    """A real recovery fails fast while a compile holds the lock; the dry run
+    (doctor's detect pass) does not need it."""
+    tdir = tmp_path / ".tesserae"
+    tdir.mkdir()
+    target = tdir / "graph.json"
+    target.write_text("old")
+    _tmp, entry = _interrupted(tdir, target, "new")
+    with locking.compile_lock(tdir):
+        assert locking.recover_journal(tdir, dry_run=True)[0].endswith("forward")
+        with pytest.raises(locking.CompileLockHeldError, match="journal recovery deferred"):
+            locking.recover_journal(tdir)
+    assert target.read_text() == "old" and entry.exists()
+    locking.recover_journal(tdir)
+    assert target.read_text() == "new"
+
+
+def test_recover_drops_a_torn_record(tmp_path):
+    tdir = tmp_path / ".tesserae"
+    (tdir / "journal").mkdir(parents=True)
+    (tdir / "journal" / "1.ab.wal").write_text('{"target": ')
+    assert "unreadable record" in locking.recover_journal(tdir)[0]
+    assert locking.pending_journal(tdir) == []
+
+
+def test_cli_discover_import_fails_fast_while_another_import_runs(tmp_path, capsys):
+    from tesserae.cli import SESSIONS_IMPORT_LOCK, main
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    wiki = ProjectWiki.init(project, name="proj")
+    (tmp_path / "roots").mkdir()
+    argv = ["sessions", "discover", "--project", str(project), "--root", str(tmp_path / "roots")]
+    with compile_lock(wiki.paths.root, name=SESSIONS_IMPORT_LOCK):
+        assert main([*argv, "--import"]) == 2
+        assert "session import is already running" in capsys.readouterr().err
+        assert main(argv) == 0  # discovery without --import only reads; never locked
+    assert main([*argv, "--import"]) == 0
+
+
+def test_sessions_import_takes_the_import_lock(tmp_path, capsys):
+    """Review finding: `sessions import` wrote the store with no lock."""
+    from tesserae.cli import SESSIONS_IMPORT_LOCK, main
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    wiki = ProjectWiki.init(project, name="proj")
+    with compile_lock(wiki.paths.root, name=SESSIONS_IMPORT_LOCK):
+        assert main(["sessions", "import", "--project", str(project)]) == 2
+        assert "session import is already running" in capsys.readouterr().err
+    assert main(["sessions", "import", "--project", str(project)]) == 0
+
+
+def test_discover_import_accepts_the_wait_the_error_suggests(tmp_path, capsys):
+    """The lock-held error says 'pass --wait'; the verb must accept it (it
+    used to be an argparse 'unrecognized arguments' error)."""
+    from tesserae.cli import SESSIONS_IMPORT_LOCK, main
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    wiki = ProjectWiki.init(project, name="proj")
+    (tmp_path / "roots").mkdir()
+    argv = ["sessions", "discover", "--project", str(project), "--root", str(tmp_path / "roots"), "--import"]
+    with compile_lock(wiki.paths.root, name=SESSIONS_IMPORT_LOCK):
+        assert main([*argv, "--wait", "0.2"]) == 2  # queued, timed out — not a usage error
+        assert "session import is already running" in capsys.readouterr().err
+    assert main([*argv, "--wait", "0.2"]) == 0

@@ -48,6 +48,7 @@ tesserae doctor --project ~/src/other
 | `compile_lock` | processes | 라이브 compile lock이 잡혀 있는지, 어느 pid **와 어느 호스트**가 잡고 있는지 | 보고만 — doctor는 **살아 있는 lock을 절대 죽이거나 제거하지 않음** |
 | `filesystem_locking` | processes | `.tesserae/`가 `flock(2)`이 조용한 no-op일 수 있는 네트워크 파일시스템 위에 있는지 | 보고만 (호스트 간 강제를 증명할 수는 없음 — 아래 참조) |
 | `daemon_pid` | processes | `daemon.<host>.pid`가 살아 있는 엔진 프로세스를 가리키는지 | **SAFE**: 소유자가 죽었을 때 **이 호스트의** pidfile을 제거; 다른 머신의 것은 보고할 뿐 절대 건드리지 않음 |
+| `write_journal` | processes | `.tesserae/journal`에 rename 전에 작성자가 죽은 쓰기가 남아 있지 않은지 | **SAFE**: 쓰기가 시작된 뒤 대상이 바뀌지 않았으면 완성된 임시 파일을 대상에 반영하고, 아니면 버림; 아직 실행 중일 수 있는 작성자의 것은 건드리지 않음. `.tesserae` 밖의 경로를 가리키는 기록은 아무것도 하지 않고 지우며, 컴파일이 `compile.lock`을 잡고 있는 동안에는 복구를 미룹니다. `--recover`는 이 검사만 실행. 기록은 `TESSERAE_JOURNALED_WRITES=1`일 때만 쓰입니다 |
 | `llm_login` | environment | 프로젝트가 실제로 사용할 config 디렉터리가 존재하는지 | 보고만 — **자격 증명을 검증하지 않음** (아래 참조) |
 | `optional_deps` | environment | 선택적 의존성 상태 (memex, raganything) | 보고만 (설치는 네트워크가 필요) |
 | `embedding_backend` | environment | 실제 시맨틱 embedding 백엔드가 사용 가능한지 | 보고만 (`pip install tesserae[semantic]` 제안) |

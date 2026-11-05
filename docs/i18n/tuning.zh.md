@@ -362,6 +362,9 @@ export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face
 | `TESSERAE_NO_FEDERATION_CACHE` | 关闭 | 禁用联合图 LRU |
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | 关闭 | 发出组合跨项目图 |
 | `TESSERAE_FLEET_PIDFILE` | — | 引擎舰队 pidfile |
+| `TESSERAE_LEASE_TTL` | `120` | 引擎 pidfile 的租约在不续期时保持有效的秒数；小于 10 的值按 10 处理。其他主机只在租约未过期时才认为本机的引擎还活着，所以要远大于主机之间的时钟偏差 |
+| `TESSERAE_LEASE_STRICT_VERSION` | 关闭 | 设为 `1` 时，若同一 `.tesserae` 上有存活的引擎租约写着另一个 Tesserae 版本，`tesserae engine` 拒绝启动。关闭时只记一条警告然后启动，不会挡住滚动升级 |
+| `TESSERAE_JOURNALED_WRITES` | 关闭 | 设为 `1` 时，原子发布还会对临时文件及其目录做 fsync，并在 rename 完成之前在 `.tesserae/journal` 中保留一条意图记录，让 `tesserae doctor --recover` 能收尾或丢弃写入者已死的写入。关闭时发布只有原子 rename |
 | `TESSERAE_CLIP_TOKEN` | — | Web clipper 的共享密钥 |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | 关闭 | 在编译时应用 `.tesserae/schema-drift-proposals.json` 中的 **approved** 记录（确定性、无 LLM）。使用 `tesserae schema-drift` 编写提案；批准一个意味着首先编辑 `ResearchNodeType`，然后设置 `"approved": true` — 无法解析的名称不会重新键入任何内容。 |
 

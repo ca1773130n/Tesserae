@@ -408,6 +408,9 @@ así que cambiar de modelo nunca sirve vectores obsoletos.
 | `TESSERAE_NO_FEDERATION_CACHE` | desactivado | Deshabilita el LRU del gráfico federado |
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | desactivado | Emite el gráfico combinado entre proyectos |
 | `TESSERAE_FLEET_PIDFILE` | — | Archivo pidfile de la flota del motor |
+| `TESSERAE_LEASE_TTL` | `120` | Segundos que el lease del pidfile de un motor sigue vigente sin renovarse; los valores por debajo de 10 se suben a 10. Otro host da por vivo el motor de este solo mientras el lease no haya vencido, así que mantenlo muy por encima del desfase de reloj entre hosts |
+| `TESSERAE_LEASE_STRICT_VERSION` | desactivado | Con `1`, `tesserae engine` se niega a arrancar mientras un lease vivo de motor sobre el mismo `.tesserae` indique otra versión de Tesserae. Apagado, registra un aviso y arranca, para no bloquear una actualización escalonada |
+| `TESSERAE_JOURNALED_WRITES` | desactivado | Con `1`, las publicaciones atómicas también hacen fsync del archivo temporal y de su directorio, y guardan un registro de intención en `.tesserae/journal` hasta que el rename termina, para que `tesserae doctor --recover` pueda completar o descartar una escritura cuyo escritor murió. Apagado, una publicación es solo el rename atómico |
 | `TESSERAE_CLIP_TOKEN` | — | Secreto compartido para el cortador web |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | desactivado | Aplica los registros **aprobados** en `.tesserae/schema-drift-proposals.json` en tiempo de compilación (determinístico, sin LLM). Escribe propuestas con `tesserae schema-drift`; aprobar una significa editar primero `ResearchNodeType`, luego establecer `"approved": true` — un nombre no resolvible no retipifica nada. |
 
