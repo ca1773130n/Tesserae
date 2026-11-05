@@ -1106,6 +1106,8 @@ def _reverse(root: Path, journal: Mapping[str, Any], *, interrupted: bool) -> No
         restored_graph = _canonical_graph_text(graph)
         if hashlib.sha256(restored_graph.encode("utf-8")).hexdigest() != before["graph_sha256"]:
             raise DreamError("undo: the replayed graph.json would not match its pre-pass bytes; left untouched")
+    for agent in before.get("distill", {}):
+        _distill_undo_target(root, agent)  # raises before any write below
 
     for agent, info in sorted(before.get("distill", {}).items()):
         _undo_distill(root, agent, info)
@@ -1154,20 +1156,42 @@ def undo_dream(project_root: Path | str, pass_id: str = "last", *, lock_wait: Op
         return {"undone": journal["pass_id"], "journal": str(path), "op_counts": _op_counts(journal["ops"])}
 
 
-def _undo_distill(root: Path, agent: str, info: Mapping[str, Any]) -> None:
-    from .agent_distill import DistillStateStore, _state_db_path, agent_artifact_path
+def _distill_undo_target(root: Path, agent: str) -> Path:
+    """The artifact an undo may restore for ``agent``, or DreamError.
 
-    # Re-derived, never read from info["artifact"]: the journal is project data
-    # (a cloned repo can ship one), so trusting its path would let an undo
-    # write or delete any file the user can. agent_artifact_path sanitizes the
-    # key, which keeps the target inside .tesserae/agents/.
+    Re-derived, never read from the journal's ``artifact`` field: the journal
+    is project data (a cloned repo can ship one), so trusting its path would
+    let an undo write or delete any file the user can. agent_artifact_path
+    sanitizes the key, which keeps the path inside .tesserae/agents/. A
+    symlinked agents dir, key dir or artifact would still lead outside, so
+    those are refused.
+    """
+    from .agent_distill import agent_artifact_path
+
     artifact = agent_artifact_path(root, agent)
+    for part in (artifact.parent.parent, artifact.parent, artifact):
+        if part.is_symlink():
+            raise DreamError(f"undo: {part} is a symlink; refusing to restore {agent}'s distill artifact through it")
+    return artifact
+
+
+def _undo_distill(root: Path, agent: str, info: Mapping[str, Any]) -> None:
+    from .agent_distill import DistillStateStore, _state_db_path
+
+    artifact = _distill_undo_target(root, agent)
     if info.get("artifact_b64") is None:
         if artifact.is_file():
             artifact.unlink()
     else:
         artifact.parent.mkdir(parents=True, exist_ok=True)
-        artifact.write_bytes(base64.b64decode(info["artifact_b64"]))
+        # tmp + rename, as distill itself writes: a rename replaces whatever
+        # sits at the path instead of writing through it.
+        tmp = artifact.with_suffix(f".tmp.{os.getpid()}.{secrets.token_hex(4)}")
+        try:
+            tmp.write_bytes(base64.b64decode(info["artifact_b64"]))
+            os.replace(tmp, artifact)
+        finally:
+            tmp.unlink(missing_ok=True)
     DistillStateStore(_state_db_path(root)).put(
         DistillStateStore.SCOPE_WATERMARK, agent, "", info.get("watermark") or ""
     )
