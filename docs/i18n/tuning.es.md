@@ -303,6 +303,7 @@ ninguna llamada.
 | `TESSERAE_AGENT_DISTILL` | desactivado | Artefactos de pericia L1 por agente (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | desactivado | Nodos de memoria destilada Runbook/Gotcha |
 | `TESSERAE_SESSION_EVENT_PASS` | **activado** | Nodos `Event` por turno a partir de las transcripciones de sesión. Sin LLM y determinista byte a byte, pero un nodo por cada turno significativo: considerable en un corpus largo. `false`/`0`/`no`/`off` lo desactiva |
+| `TESSERAE_UNTRUSTED_DOC_GUARD` | desactivado | Delimita el texto del documento como datos no confiables en el prompt de extracción y descarta los nodos y aristas cuyo texto tiene forma de instrucción. Las transcripciones de sesión siempre reciben ambas protecciones. Activarlo vuelve a extraer cada documento una vez, porque el prompt forma parte de la clave de caché, y un documento que cita una inyección pierde esos nodos |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | activado | Vincula ideas de sesión a símbolos de código |
 | `TESSERAE_SUPERSEDE_PASS` | activado | Aristas `superseded_by` entre reclamaciones revisadas |
 | `TESSERAE_PROMPT_SIGNATURES` | desactivado | Registra firmas de prompt para detección de deriva |

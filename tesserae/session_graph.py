@@ -42,7 +42,7 @@ import hashlib
 import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Set, Tuple
 
@@ -60,7 +60,7 @@ from .research_graph import (
 )
 from .redaction import redact_home_paths
 from .session_event import OUTCOME_ERROR, OUTCOME_OK, turn_outcome
-from .session_graph_llm import Finding, extract_with_llm
+from .session_graph_llm import Finding, drop_instruction_shaped, extract_with_llm
 from .session_graph_path_index import DocPathIndex
 from .session_graph_structural import extract_structural
 
@@ -105,6 +105,7 @@ class SessionGraphExtractor:
         # per-session pass increments them).
         self._llm_calls = 0
         self._llm_failed = 0
+        self._injection_dropped = 0
         in_project = [
             s for s in self.sessions
             if session_matches_project(s, self.project_root)
@@ -152,6 +153,17 @@ class SessionGraphExtractor:
         # findings. Make that unmissable instead of caching zeros. The failed
         # chunks were intentionally NOT cached above, so a recompile with a
         # working backend re-extracts them.
+        if self._injection_dropped:
+            msg = (
+                f"[tesserae] ⚠ session extraction: dropped {self._injection_dropped} "
+                f"instruction-shaped finding(s) (possible prompt injection). Each "
+                f"Session node records its count as "
+                f"metadata.instruction_shaped_findings_dropped; the chunk cache "
+                f"still holds them."
+            )
+            logger.warning(msg)
+            print(msg, flush=True)
+
         if self._llm_failed:
             msg = (
                 f"[tesserae] ⚠ session extraction: {self._llm_failed}/{self._llm_calls} "
@@ -341,6 +353,21 @@ class SessionGraphExtractor:
         )
         if session_node is None:
             return
+
+        # R6: drop findings that are a transcript's directive copied through.
+        # Filtered HERE, after the cache, so it covers findings cached before
+        # the guard existed, and a narrower filter later recovers a false hit
+        # without re-extracting. The count is stamped on the Session node (only
+        # when non-zero, so unaffected graphs stay byte-identical) so a drop is
+        # visible in graph.json, not only in a log line.
+        findings, dropped = drop_instruction_shaped(findings, session_id=session_id_str)
+        if dropped:
+            self._injection_dropped += dropped
+            session_node = replace(
+                session_node,
+                metadata={**session_node.metadata, "instruction_shaped_findings_dropped": dropped},
+            )
+            builder._nodes[session_node.id] = session_node  # type: ignore[attr-defined]
 
         for f in findings:
             node_type = _KIND_TO_NODE_TYPE.get(f.kind)

@@ -29,7 +29,7 @@ For the remote-install form against this repo, check `/plugin install --help` in
 
 ## Hooks
 
-All four are opt-out per-project via `.claude/tesserae.local.md` frontmatter (see "Per-project opt-out" below).
+Each one is switched per project in `.claude/tesserae.local.md` frontmatter (see "Per-project opt-out" below).
 
 | Hook | When it fires | What it does | Default |
 |---|---|---|---|
@@ -37,6 +37,7 @@ All four are opt-out per-project via `.claude/tesserae.local.md` frontmatter (se
 | `SessionEnd` | Every session close | Backgrounds `sessions discover --import` + `project compile` so this conversation's insights become graph nodes for the next session. Detach is best-effort (`setsid` where it exists, else `nohup`) — see the caveat below. | on |
 | `PostToolUse` (Edit / Write / MultiEdit) | Agent edits a file under `docs/` | Debounced `tesserae project compile --changed-only`. Path filter applied inside the script (matchers can't filter by path). | **off** — opt in if you want live wiki updates as you write docs |
 | `PreToolUse` (Bash → `tesserae project compile`) | Agent invokes compile via Bash | If graph has > 5000 nodes, emits `{"permissionDecision": "ask", "systemMessage": "..."}` so Claude Code surfaces a confirmation dialog. | on |
+| `UserPromptSubmit` + `PreToolUse` (Read / Grep / Edit) | Every prompt, and every read, grep or edit of a file | `hooks/prompt-inject.sh` → `python -m tesserae.hook_inject`: adds the project's active decisions, gotchas and supersede warnings that lexically match the prompt or file (BM25 over `.tesserae/sqlite.db`; no LLM, no embedding call, read-only, never reads transcripts) as `additionalContext`, behind a one-line cost header. At most ~1.5k tokens and 8 items, each item once per session. The first event after a compile injects nothing and builds a candidate cache in the background (one detached process, about a second). A 300 ms watchdog on the Python injector (`TESSERAE_HOOK_INJECT_TIMEOUT_MS`) and any error leave the prompt untouched; the shell prelude before it is not under the watchdog (~68 ms on a loaded machine; 25-30 ms when the hook is off, which every user pays); errors go to `.tesserae/.prompt-inject-hook.log`. | **off**. Opt in with `TESSERAE_HOOK_INJECT=1` or `prompt_inject: true`. Whether it improves task success has not been measured |
 
 > **Caveat — the `SessionEnd` compile is opportunistic, not guaranteed.** The hook
 > detaches with `setsid` where that exists and falls back to `nohup` otherwise.
@@ -84,6 +85,7 @@ hooks:
   session_end: true          # default on
   posttooluse_edit: true     # default OFF — opt in for live wiki updates
   pretooluse_compile: true   # default on
+  prompt_inject: true        # default OFF — prompt-time context injection
 ---
 ```
 

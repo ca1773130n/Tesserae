@@ -271,6 +271,7 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_AGENT_DISTILL` | 关闭 | 每个代理 L1 专业知识工件（`tesserae distill`） |
 | `TESSERAE_RUNBOOK_DISTILLATION` | 关闭 | Runbook/Gotcha 蒸馏内存节点 |
 | `TESSERAE_SESSION_EVENT_PASS` | **打开** | 从会话记录生成的逐轮 `Event` 节点。不调用 LLM，字节级确定性，但每个有效轮次生成一个节点——语料库较长时规模可观。`false`/`0`/`no`/`off` 可禁用 |
+| `TESSERAE_UNTRUSTED_DOC_GUARD` | 关闭 | 在提取 prompt 中将文档文本包裹为不可信数据，并丢弃文本呈指令形态的节点和边。会话记录始终启用这两项防护。开启后，由于 prompt 是缓存键的一部分，每个文档都会重新提取一次；引用了注入内容的文档会失去这些节点 |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | 打开 | 将会话洞察链接到代码符号 |
 | `TESSERAE_SUPERSEDE_PASS` | 打开 | 修订声明之间的 `superseded_by` 边 |
 | `TESSERAE_PROMPT_SIGNATURES` | 关闭 | 记录提示签名以进行漂移检测 |

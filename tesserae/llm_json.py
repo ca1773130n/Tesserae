@@ -43,6 +43,14 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol, Seque
 
 logger = logging.getLogger(__name__)
 
+#: Set to ``"1"`` in the env of every ``claude -p`` child Tesserae starts.
+#: ``--strict-mcp-config`` drops MCP servers but NOT plugin hooks, and the
+#: child inherits this env and cwd, so an opted-in ``hooks/prompt-inject.sh``
+#: would otherwise fire on each extraction prompt and push the project's own
+#: decisions into the model that is extracting new ones — the KB feeding
+#: itself. The hook (and ``tesserae.hook_inject``) exits at once when it is set.
+INTERNAL_LLM_ENV = "TESSERAE_INTERNAL_LLM"
+
 
 #: Process groups of the CLI agents running now, and whether new ones are
 #: refused. A process that exits without unwinding the threads that started
@@ -1001,6 +1009,7 @@ class ClaudeCLIJsonClient:
             attempted += 1
             try:
                 env = _os.environ.copy()
+                env[INTERNAL_LLM_ENV] = "1"  # our own call: hooks must not inject into it
                 # WORKAROUND for Claude CLI quirk: setting
                 # CLAUDE_CONFIG_DIR explicitly (even to the same
                 # value the user is implicitly using) causes the

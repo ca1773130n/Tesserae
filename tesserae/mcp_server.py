@@ -1496,7 +1496,9 @@ class LLMWikiMCPServer:
                     "4 false alarms in 33 true answers). Returns {flagged, reason, detail}. "
                     "reason: attributed | figure_attributed_to_other_subject | "
                     "benchmark_absent_from_source_paper | figure_absent_from_evidence | "
-                    "no_checkable_figure | subject_name_uncheckable | benchmark_name_uncheckable. "
+                    "no_checkable_figure | subject_name_uncheckable | benchmark_name_uncheckable | "
+                    "evidence_absent_cannot_prove (no evidence text: the source session or "
+                    "document is absent; flagged=true). "
                     "flagged=true means ownership could not be confirmed, NOT that the figure "
                     "is false; *_uncheckable means the check could not run (flagged=false)."
                 ),
