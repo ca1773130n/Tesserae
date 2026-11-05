@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence
 
-from .llm_json import _note_failure, last_failure_kind
+from .llm_json import INTERNAL_LLM_ENV, _note_failure, last_failure_kind
 from .type_registry import is_producer_only_edge_type
 from .research_graph import (
     ALLOWED_EDGE_TYPES,
@@ -1121,6 +1121,7 @@ def run_claude_cli(
     auth_token: Optional[str] = None,
 ) -> str:
     env = os.environ.copy()
+    env[INTERNAL_LLM_ENV] = "1"  # our own call: hooks must not inject into it
     # Same routing as ClaudeCLIJsonClient._run_prompt: a configured custom
     # endpoint reaches the CLI child as ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN.
     if base_url:

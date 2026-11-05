@@ -82,10 +82,32 @@ class SqliteGraphStore:
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
+        self._readonly_timeout: Optional[float] = None
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as con:
             self._ensure_schema(con)
             con.commit()
+
+    @classmethod
+    def open_readonly(cls, path: str | Path, *, timeout: float = 0.1) -> "SqliteGraphStore":
+        """Open an EXISTING store for reads only — no schema DDL, no commit.
+
+        ``__init__`` runs ``CREATE TABLE IF NOT EXISTS`` and commits, which is a
+        write transaction on the user's database. A latency-bound reader (the
+        prompt-time hook, :mod:`tesserae.hook_inject`) must neither take that
+        lock nor wait 5 s (sqlite3's default) behind a compile that holds one,
+        so this connects with ``mode=ro`` and a short busy ``timeout``. Any
+        write attempted through the returned store fails with
+        ``sqlite3.OperationalError`` instead of silently succeeding. A missing
+        file raises ``FileNotFoundError`` rather than being created.
+        """
+        target = Path(path)
+        if not target.is_file():
+            raise FileNotFoundError(f"SQLite store not found: {target}")
+        store = cls.__new__(cls)
+        store.path = target
+        store._readonly_timeout = float(timeout)
+        return store
 
     # ------------------------------------------------------------------ #
     # GraphStore protocol surface                                         #
@@ -1562,6 +1584,12 @@ class SqliteGraphStore:
     # ------------------------------------------------------------------ #
 
     def _connect(self) -> sqlite3.Connection:
+        if self._readonly_timeout is not None:
+            return sqlite3.connect(
+                f"{self.path.resolve().as_uri()}?mode=ro",
+                uri=True,
+                timeout=self._readonly_timeout,
+            )
         return sqlite3.connect(self.path)
 
     @staticmethod

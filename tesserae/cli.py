@@ -4793,6 +4793,46 @@ def _route_code(rest: List[str]) -> int:
     return _resolve_handler(args._handler)(args)
 
 
+# ----- hook -----------------------------------------------------------------
+def _build_hook_parser() -> argparse.ArgumentParser:
+    from .hook_inject import add_arguments as _add_inject_arguments
+
+    parser = argparse.ArgumentParser(
+        prog="tesserae hook",
+        description="Entry points for the Claude Code plugin hooks.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  echo '{\"hook_event_name\":\"UserPromptSubmit\",\"prompt\":\"why is compile locked\"}' | tesserae hook inject\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="hook_command", required=True)
+    p_inject = sub.add_parser(
+        "inject",
+        help="Read a UserPromptSubmit/PreToolUse payload on stdin; print matching decisions, gotchas and supersede warnings as hook JSON",
+        description=(
+            "Lexical (BM25) lookup over .tesserae/sqlite.db: no LLM, no embedding call, read-only. "
+            "Fail-open: any error prints nothing, exits 0 and is logged to .tesserae/.prompt-inject-hook.log. "
+            "hooks/prompt-inject.sh runs this as `python -m tesserae.hook_inject` to skip CLI start-up."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  echo '{\"hook_event_name\":\"UserPromptSubmit\",\"prompt\":\"why is compile locked\"}' | tesserae hook inject\n"
+            "  tesserae hook inject --budget-tokens 800 < payload.json\n"
+        ),
+    )
+    _add_inject_arguments(p_inject)
+    return parser
+
+
+def _route_hook(rest: List[str]) -> int:
+    from .hook_inject import run_args
+
+    args = _build_hook_parser().parse_args(rest)
+    return run_args(args)
+
+
 # ----- ingest ---------------------------------------------------------------
 def _build_ingest_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -7998,6 +8038,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "vault": _route_vault,
     "export": _route_export,
     "code": _route_code,
+    "hook": _route_hook,
     "ingest": _route_ingest,
     "config": _route_config,
     "setup": _route_setup,
