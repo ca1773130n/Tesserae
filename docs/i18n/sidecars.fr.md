@@ -130,6 +130,7 @@ de la machine.
 | `config.json` | `accumulated` | configuration LLM pour toute la machine ; saisie utilisateur |
 | `host_id` | `accumulated` | l'identité de cette machine. La regénérer fait paraître étranger chaque pidfile à portée d'hôte et chaque enregistrement de session sur un stockage partagé |
 | `harness_sessions` | `accumulated` | état d'import de sessions pour toute la machine |
+| `evals` | `accumulated` | fichiers de résultats des évaluations de cycle de vie ; une nouvelle exécution coûte des appels LLM et ne les reproduit pas |
 | `llm_cache` | `cache` | réponses de LLM mises en cache ; une reconstruction appelle les modèles et ne les reproduit pas |
 | `federation` | `cache` | caches de liens et de vecteurs inter-projets — supprimables sans risque |
 | `wiki` | `derived` | scratch de serve à portée machine — supprimable sans risque |
