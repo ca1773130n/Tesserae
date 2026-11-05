@@ -129,6 +129,7 @@ proyectos de la máquina.
 | `config.json` | `accumulated` | configuración de LLM para toda la máquina; entrada del usuario |
 | `host_id` | `accumulated` | la identidad de esta máquina. Regenerarla hace que todo pidfile y registro de sesión con ámbito de host en almacenamiento compartido parezca ajeno |
 | `harness_sessions` | `accumulated` | estado de importación de sesiones para toda la máquina |
+| `evals` | `accumulated` | archivos de resultados de las evaluaciones de ciclo de vida; repetirlas cuesta llamadas al LLM y no las reproduce |
 | `llm_cache` | `cache` | respuestas de LLM cacheadas; rehacerlas llama a modelos y no las reproduce |
 | `federation` | `cache` | cachés de enlaces y vectores entre proyectos — seguro de borrar |
 | `wiki` | `derived` | scratch de serve con ámbito de máquina — seguro de borrar |

@@ -126,6 +126,7 @@ LLM 호출 비용을 치러야 하며, 무엇이 그 무엇으로도 재구성�
 | `config.json` | `accumulated` | 머신 전역 LLM 설정. 사용자 입력입니다 |
 | `host_id` | `accumulated` | 이 머신의 정체성. 다시 생성하면 공유 스토리지 위의 모든 호스트 범위 pid 파일과 세션 기록이 낯선 것으로 보이게 됩니다 |
 | `harness_sessions` | `accumulated` | 머신 전역 세션 임포트 상태 |
+| `evals` | `accumulated` | 라이프사이클 평가 결과 파일. 다시 실행하면 LLM 호출 비용이 들고 같은 결과가 재현되지 않습니다 |
 | `llm_cache` | `cache` | 캐시된 LLM 응답. 다시 만들면 모델을 호출하며 같은 것을 재현하지 못합니다 |
 | `federation` | `cache` | 프로젝트 간 링크 및 벡터 캐시 — 지워도 안전합니다 |
 | `wiki` | `derived` | 머신 범위 serve 스크래치 — 지워도 안전합니다 |

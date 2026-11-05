@@ -131,6 +131,7 @@ der Maschine.
 | `config.json` | `accumulated` | maschinenweite LLM-Konfiguration; Nutzereingabe |
 | `host_id` | `accumulated` | die Identität dieser Maschine. Neu erzeugt, wirkt jedes host-bezogene Pidfile und jeder Sitzungseintrag auf geteiltem Speicher fremd |
 | `harness_sessions` | `accumulated` | maschinenweiter Zustand des Sitzungsimports |
+| `evals` | `accumulated` | Ergebnisdateien der Lifecycle-Evals; ein erneuter Lauf kostet LLM-Aufrufe und reproduziert sie nicht |
 | `llm_cache` | `cache` | zwischengespeicherte LLM-Antworten; ein Neuaufbau ruft Modelle und reproduziert sie nicht |
 | `federation` | `cache` | projektübergreifende Link- und Vektor-Caches — gefahrlos löschbar |
 | `wiki` | `derived` | maschinenweiter serve-Scratch — gefahrlos löschbar |

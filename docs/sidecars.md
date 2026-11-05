@@ -125,6 +125,7 @@ configuration, here it is LLM configuration for every project on the machine.
 | `config.json` | `accumulated` | machine-wide LLM configuration; user input |
 | `host_id` | `accumulated` | this machine's identity. Regenerating it makes every host-scoped pidfile and session record on shared storage look foreign |
 | `harness_sessions` | `accumulated` | machine-wide session import state |
+| `evals` | `accumulated` | lifecycle eval result files; a rerun costs LLM calls and does not reproduce them |
 | `llm_cache` | `cache` | cached LLM responses; a rebuild calls models and does not reproduce them |
 | `federation` | `cache` | cross-project link and vector caches — safe to drop |
 | `wiki` | `derived` | machine-scoped serve scratch — safe to drop |

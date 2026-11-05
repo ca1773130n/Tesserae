@@ -114,6 +114,7 @@
 | `config.json` | `accumulated` | 全机范围的 LLM 配置；属于用户输入 |
 | `host_id` | `accumulated` | 本机的身份标识。重新生成它，会让共享存储上每一个按主机划分的 pid 文件和会话记录都变成「外来的」 |
 | `harness_sessions` | `accumulated` | 全机范围的会话导入状态 |
+| `evals` | `accumulated` | 生命周期评测的结果文件；重跑要花 LLM 调用，且无法复现原结果 |
 | `llm_cache` | `cache` | 缓存的 LLM 响应；重建会调用模型，且无法复现原样 |
 | `federation` | `cache` | 跨项目的链接与向量缓存 —— 可以安全丢弃 |
 | `wiki` | `derived` | 全机范围的 serve 临时目录 —— 可以安全丢弃 |
