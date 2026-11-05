@@ -51,7 +51,7 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 _LOG_DOCTOR = logging.getLogger(__name__)
 
@@ -902,6 +902,8 @@ def _detect_daemon_pid(ctx: DoctorContext) -> Optional[Finding]:
     note = _foreign_pidfile_note(sorted(host for host, _ in entries if host and host != local))
     stale: List[str] = []
     live: List[int] = []
+    stale_code: List[Tuple[int, str]] = []
+    installed = pidlock.package_version()
     for host, path in entries:
         if host and host != local:
             continue
@@ -913,6 +915,9 @@ def _detect_daemon_pid(ctx: DoctorContext) -> Optional[Finding]:
         owner = pidlock.read_owner(path)
         if owner is not None and pidlock.owner_is_alive(owner):
             live.append(owner["pid"])
+            running = owner.get("version")
+            if running and installed != "unknown" and running != installed:
+                stale_code.append((owner["pid"], str(running)))
         else:
             stale.append(path.name)
     if stale:
@@ -923,6 +928,16 @@ def _detect_daemon_pid(ctx: DoctorContext) -> Optional[Finding]:
             f"stale {', '.join(stale)} — recorded owner is not running{note}",
             suggestion="tesserae doctor --fix (removes the stale pidfile)",
             fixable=True,
+        )
+    if stale_code:
+        # Report only: restarting means signalling a process, which doctor
+        # never does. The running engine imported its modules at startup and
+        # keeps executing the old version until it is restarted.
+        return _f(
+            "daemon_pid", "processes", WARN,
+            f"engine daemon pid {stale_code[0][0]} runs Tesserae {stale_code[0][1]} but "
+            f"{pidlock.package_version()} is installed — it is executing the old code{note}",
+            suggestion="restart the engine process (SIGTERM it, then run `tesserae engine` again)",
         )
     if live:
         return _f("daemon_pid", "processes", OK, f"engine daemon running (pid {live[0]}){note}")
@@ -945,6 +960,52 @@ def _fix_daemon_pid(ctx: DoctorContext) -> Optional[str]:
     if not removed:
         return None
     return f"{', '.join(removed)}: removed stale pidfile (owner dead)"
+
+
+def _detect_write_journal(ctx: DoctorContext) -> Optional[Finding]:
+    """Journaled writes whose writer died before its rename.
+
+    Each intent record in ``.tesserae/journal`` belongs to one in-flight
+    publish (:func:`tesserae.locking.journaled_write`). One that outlives its
+    writer is either a complete temp file waiting to be rolled forward or one
+    that a newer publish has made obsolete; the dry run says which. A record
+    whose writer may still be running — alive here, or written on another
+    host less than ten minutes ago — is reported and never touched.
+    """
+    if ctx.wiki is None:
+        return None
+    from .locking import pending_journal, recover_journal
+
+    tdir = _tesserae_dir(ctx)
+    if not pending_journal(tdir):
+        return _f("write_journal", "processes", OK, "no interrupted writes in the journal")
+    actions = recover_journal(tdir, dry_run=True)
+    actionable = [a for a in actions if not a.endswith("left alone")]
+    if not actionable:
+        return _f(
+            "write_journal", "processes", OK,
+            f"{len(actions)} journaled write(s) in flight — doctor will not touch them",
+        )
+    return _f(
+        "write_journal", "processes", WARN,
+        f"{len(actionable)} interrupted write(s): " + "; ".join(actionable[:3]),
+        suggestion="tesserae doctor --recover (rolls complete writes forward, discards obsolete ones)",
+        fixable=True,
+    )
+
+
+def _fix_write_journal(ctx: DoctorContext) -> Optional[str]:
+    from .locking import CompileLockHeldError, recover_journal
+
+    # Re-run, not replayed from detect: a writer may have finished meanwhile.
+    try:
+        actions = recover_journal(_tesserae_dir(ctx))
+    except CompileLockHeldError as exc:
+        # Not a crash: recovery waits for the compile, and the finding stays.
+        _LOG_DOCTOR.warning("write_journal: recovery deferred — %s", exc)
+        return None
+    done = [a for a in actions if not a.endswith("left alone")]
+    return "; ".join(done) if done else None
 
 
 def _detect_llm_login(ctx: DoctorContext) -> Optional[Finding]:
@@ -2414,6 +2475,7 @@ CHECKS: List[Check] = [
     Check("compile_lock", "processes", _detect_compile_lock, manual=_DESTRUCTIVE),  # NEVER kill
     Check("filesystem_locking", "processes", _detect_filesystem_locking, manual=_ENVIRONMENTAL),
     Check("daemon_pid", "processes", _detect_daemon_pid, fix=_fix_daemon_pid, safe=True),
+    Check("write_journal", "processes", _detect_write_journal, fix=_fix_write_journal, safe=True),
     Check("llm_login", "environment", _detect_llm_login, fix=_fix_llm_login, safe=True,
           manual=_CREDENTIALS + " — `tesserae test` proves whether the backend answers"),
     Check("optional_deps", "environment", _detect_optional_deps, manual=_NETWORKED),

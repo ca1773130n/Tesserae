@@ -39,8 +39,10 @@ asserted about an endpoint, not about the triple: "R supersedes Q" says nothing
 about whether "P supports_claim Q" held, only that Q's currency changed. v1
 conflated the two and returned ``CONTRADICTED`` for 86 of 15,284 structurally
 true edges verifying themselves. Here it lives in ``advisory.superseded_endpoints``
-— the one deliberately non-local field in the payload, and one that no verdict
-may read.
+— a field no verdict may read. ``advisory.invalidated_endpoints`` (present only
+when an endpoint carries a ``supersedes`` edge with ``invalid_at``, written by
+the opt-in ``memory.reconcile`` pass) is the same kind of field: an invalidated
+endpoint is DEMOTED by being reported, never filtered out of the verdict.
 
 The verdict set is TOTAL and every gap is a REFUSAL, so no default leaks
 confidence: an edge with no evidence is ``PRESENT_UNEVIDENCED``, not
@@ -112,6 +114,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from .graph_filters import invalidations
 from .research_graph import (
     ALLOWED_EDGE_TYPES,
     ResearchGraph,
@@ -672,6 +675,19 @@ def verify_claim(
         "matched_nodes": None,
         "observed_predicates": None,
     }
+    # DEMOTE, never filter (write-time reconciliation, memory.reconcile): an
+    # endpoint a newer fact INVALIDATED is still verified exactly as before,
+    # and the invalidation is reported beside the verdict. Endpoint-local, not
+    # pair-local, so like ``superseded_endpoints`` no verdict branch reads it —
+    # a wrong invalidation must not be able to flip a document-backed verdict.
+    # Present only when non-empty, so graphs without invalidations return the
+    # payload they always did.
+    invalidated = invalidations(graph)
+    invalidated_endpoints = {
+        node_id: invalidated[node_id] for node_id in (s_id, o_id) if node_id in invalidated
+    }
+    if invalidated_endpoints:
+        advisory["invalidated_endpoints"] = invalidated_endpoints
 
     # STRONGEST match, not first match. ``load_graph`` does not dedup and the MCP
     # tool accepts an arbitrary graph_path, so two edges can differ only in

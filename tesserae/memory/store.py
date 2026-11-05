@@ -2,7 +2,8 @@
 
 Phase-5 KB-01 foundation. This is the SINGLE place project.py and
 mcp_server.py read/write mutable memory state — decay_score, access_count,
-last_accessed_at, confidence, superseded — so no call site embeds raw SQL.
+last_accessed_at, confidence, superseded, plus the reconciliation pass's
+proof evidence (``node_memory_proof``) — so no call site embeds raw SQL.
 All state lives in the ``node_memory`` table inside ``.tesserae/sqlite.db``
 (created on demand by :class:`SqliteGraphStore`); NOTHING mutable is written
 to ``graph.json``, which must stay byte-identical across compiles.
@@ -24,16 +25,19 @@ here. ``node_memory`` owns only the columns that mutate after mint.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
 
 from ..graph_stores.sqlite import SqliteGraphStore
 
 PathLike = Union[str, Path]
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass
@@ -131,6 +135,38 @@ def bump_access(db_path: PathLike, node_id: str, accessed_at: str) -> None:
     _store(db_path).bump_access(node_id, accessed_at)
 
 
+@dataclass(frozen=True)
+class NodeProofRow:
+    """One piece of evidence that a later fact restated ``node_id`` (UPDATE).
+
+    ``evidence_key`` is a content hash of the evidence, so the same evidence
+    re-minted under a new node id is still ONE proof. Written only by the
+    opt-in reconciliation pass (:mod:`tesserae.memory.reconcile`).
+    """
+
+    node_id: str
+    evidence_key: str
+    evidence_node_id: Optional[str]
+    evidence_span: str
+    recorded_at: Optional[str] = None
+
+
+def append_proofs(db_path: PathLike, rows: Iterable[NodeProofRow]) -> int:
+    """Append proof rows to ``node_memory_proof``; returns how many were new."""
+    return _store(db_path).append_node_proof_many(
+        (r.node_id, r.evidence_key, r.evidence_node_id, r.evidence_span, r.recorded_at)
+        for r in rows
+    )
+
+
+def read_proofs(db_path: PathLike) -> Dict[str, List[NodeProofRow]]:
+    """``{node_id: [NodeProofRow, ...]}`` — a node's proof count is ``len()``."""
+    return {
+        node_id: [NodeProofRow(node_id=node_id, **item) for item in items]
+        for node_id, items in _store(db_path).read_node_proof().items()
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Read audit — opt-in attribution for the reads that already count             #
 # --------------------------------------------------------------------------- #
@@ -158,8 +194,8 @@ _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 #: Row shape, bumped whenever a column's meaning changes. Stamped on every row
 #: beside the release version so a reader can decide whether it understands a
-#: row without first mapping releases to shapes.
-READ_AUDIT_SCHEMA_VERSION = 1
+#: row without first mapping releases to shapes. 2 added ``est_tokens``.
+READ_AUDIT_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -172,6 +208,14 @@ class ReadAuditRow:
     node_ids: Tuple[str, ...]
     tesserae_version: str
     schema_version: int
+    #: Estimated tokens of the tool response this read belongs to. Only the
+    #: FIRST row a response writes carries its estimate (the rest carry 0),
+    #: so summing the column is total tokens served — never a double count of
+    #: a call that bumped through several rows. A follow-up page writes rows
+    #: (with its own estimate) only for nodes it delivers first; a page that
+    #: delivers none writes no row, so its tokens go unrecorded. 0 on
+    #: shape-1 rows.
+    est_tokens: int = 0
 
 
 def read_audit_enabled() -> bool:
@@ -223,6 +267,68 @@ def current_reader() -> Tuple[str, str]:
     return _READER.get()
 
 
+# A read's row is written when the read happens — except inside an MCP tool
+# call, where the response size it should carry is only known once the
+# response is built. Inside :func:`deferred_reads` rows are held, then written
+# by :func:`flush_deferred_reads` with the call's token estimate. Still
+# append-only: a row is written once, complete, never updated afterwards.
+_PENDING: ContextVar[Optional[List[Tuple[str, str, str, str, List[str]]]]] = ContextVar(
+    "tesserae_read_pending", default=None
+)
+
+
+@contextmanager
+def deferred_reads() -> Iterator[List[Tuple[str, str, str, str, List[str]]]]:
+    """Hold every audit row recorded inside the block; yields the buffer.
+
+    The caller MUST hand the buffer to :func:`flush_deferred_reads` (in a
+    ``finally``), or the rows are lost — the bumps they explain have already
+    landed.
+    """
+    pending: List[Tuple[str, str, str, str, List[str]]] = []
+    token = _PENDING.set(pending)
+    try:
+        yield pending
+    finally:
+        _PENDING.reset(token)
+
+
+def flush_deferred_reads(
+    pending: Sequence[Tuple[str, str, str, str, List[str]]], est_tokens: int
+) -> None:
+    """Write rows held by :func:`deferred_reads`; the first written carries ``est_tokens``.
+
+    Each row is written independently: the bumps every row explains have
+    already landed, so one failed append (a transient ``database is locked``)
+    must not discard the rows after it. Every lost row is logged at WARNING
+    with its tool and id count, and the call's token estimate moves to the
+    next row that does land, so the column's sum stays the tokens served.
+    """
+    version = _reader_version() if pending else ""
+    tokens = est_tokens
+    lost = 0
+    for db_path, at, tool, actor, ids in pending:
+        try:
+            _store(db_path).append_read_audit(
+                at,
+                tool,
+                actor,
+                ids,
+                version,
+                READ_AUDIT_SCHEMA_VERSION,
+                est_tokens=tokens,
+            )
+        except Exception as exc:  # noqa: BLE001 — a read must survive its audit
+            lost += 1
+            _LOG.warning(
+                "read audit row lost (tool %r, %d node ids): %s", tool, len(ids), exc
+            )
+            continue
+        tokens = 0
+    if lost:
+        _LOG.warning("%d of %d read audit rows from one call were lost", lost, len(pending))
+
+
 def record_read(
     db_path: PathLike,
     node_ids: Iterable[str],
@@ -259,6 +365,10 @@ def record_read(
         # honest record of a read that touched nothing.
         return False
     ctx_tool, ctx_actor = current_reader()
+    pending = _PENDING.get()
+    if pending is not None:
+        pending.append((str(db_path), at, tool or ctx_tool, actor or ctx_actor, ids))
+        return True
     _store(db_path).append_read_audit(
         at,
         tool or ctx_tool,
@@ -288,7 +398,7 @@ def read_audit_rows(
     """
     raw = _store(db_path).read_audit_rows(limit=limit, actor=actor, tool=tool, node_id=node_id)
     rows: List[ReadAuditRow] = []
-    for _id, at, row_tool, row_actor, node_ids_json, _count, version, schema in raw:
+    for _id, at, row_tool, row_actor, node_ids_json, _count, version, schema, tokens in raw:
         try:
             ids = json.loads(node_ids_json or "[]")
         except ValueError:
@@ -304,13 +414,14 @@ def read_audit_rows(
                 node_ids=ids,
                 tesserae_version=str(version or ""),
                 schema_version=int(schema or 0),
+                est_tokens=int(tokens or 0),
             )
         )
     return rows
 
 
 def read_audit_actors(rows: Iterable[ReadAuditRow]) -> List[Dict[str, object]]:
-    """Per-actor tally over ``rows``: reads, nodes touched, tools used.
+    """Per-actor tally over ``rows``: reads, nodes touched, tools, tokens.
 
     This is the question the audit exists to answer — whose demand is driving
     the access counts forgetting reads — so it is computed here rather than by
@@ -318,10 +429,12 @@ def read_audit_actors(rows: Iterable[ReadAuditRow]) -> List[Dict[str, object]]:
     for equal counts.
     """
     reads: Dict[str, int] = {}
+    tokens: Dict[str, int] = {}
     nodes: Dict[str, set] = {}
     tools: Dict[str, set] = {}
     for row in rows:
         reads[row.actor] = reads.get(row.actor, 0) + 1
+        tokens[row.actor] = tokens.get(row.actor, 0) + row.est_tokens
         nodes.setdefault(row.actor, set()).update(row.node_ids)
         if row.tool:
             tools.setdefault(row.actor, set()).add(row.tool)
@@ -331,6 +444,9 @@ def read_audit_actors(rows: Iterable[ReadAuditRow]) -> List[Dict[str, object]]:
             "reads": count,
             "nodes": len(nodes.get(actor, ())),
             "tools": sorted(tools.get(actor, ())),
+            # Tokens served to this actor by enveloped (MCP transport) calls;
+            # in-process reads are not measured and count 0.
+            "est_tokens": tokens.get(actor, 0),
         }
         for actor, count in reads.items()
     ]

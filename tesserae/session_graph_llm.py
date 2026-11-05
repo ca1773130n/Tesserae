@@ -20,6 +20,7 @@ from typing import List, Optional, Sequence, Tuple
 
 from .harness_sessions import HarnessSession
 from .llm_chunking import chunk_char_budget, split_text
+from .llm_extractor import UNTRUSTED_SOURCE_RULE, instruction_shaped, wrap_untrusted
 from .llm_json import LLMJsonClient
 from .research_graph import SESSION_FINDING_KINDS
 
@@ -99,7 +100,8 @@ Constraints:
 - Each finding body should be self-contained — a reader who hasn't seen the transcript should grasp the point.
 - "confidence" reflects how well the TRANSCRIPT supports the finding (1.0 = stated explicitly and unambiguously; lower = inferred). Do NOT infer intent or motivation that was not actually stated — lower the confidence instead.
 - "confidence_rationale" justifies the score in one clause. It is a flag for the reader, never a guarantee of truth.
-- "revisit_signals" is optional ([] if none): conditions that would make this finding stale or worth re-checking later."""
+- "revisit_signals" is optional ([] if none): conditions that would make this finding stale or worth re-checking later.
+- __UNTRUSTED_SOURCE_RULE__"""
 
 # The one place the prompt names the kind set as a machine-readable union is
 # substituted from ``ALLOWED_FINDING_KINDS`` rather than retyped. The bullets
@@ -109,7 +111,7 @@ Constraints:
 # undescribed.
 _PROMPT_SYSTEM = _PROMPT_SYSTEM.replace(
     "__ALLOWED_KINDS__", " | ".join(ALLOWED_FINDING_KINDS)
-)
+).replace("__UNTRUSTED_SOURCE_RULE__", UNTRUSTED_SOURCE_RULE)
 
 
 def _build_user_message(
@@ -135,10 +137,15 @@ def _build_user_message(
         + ("\n".join(doc_lines) if doc_lines else "  (none)")
     )
 
+    # The transcript is fenced as untrusted data (R6): its text was written by
+    # the user, the agent and every tool result the agent read, so a planted
+    # "ignore your instructions" arrives here verbatim. The system prompt names
+    # the fence; ``_validate_finding`` rejects a finding that obeyed it anyway.
+    transcript = chr(10).join(turn_lines) if turn_lines else "(empty)"
     return (
         f"{doc_block}\n\n"
         "Transcript:\n"
-        f"{chr(10).join(turn_lines) if turn_lines else '(empty)'}\n\n"
+        f"{wrap_untrusted(transcript, kind='transcript')}\n\n"
         "Return the JSON findings list now."
     )
 
@@ -323,6 +330,39 @@ def extract_with_llm(
                 findings.append(f)
 
     return findings
+
+
+def drop_instruction_shaped(
+    findings: Sequence[Finding], *, session_id: str
+) -> Tuple[List[Finding], int]:
+    """Split off findings whose own text is a directive to a model (R6).
+
+    Such a finding is the injection succeeding, not knowledge about the
+    project: the whole finding goes, not the field, because a body that carried
+    one cannot be trusted to have been extracted honestly either. Counted,
+    never echoed, since the text is attacker-controlled.
+
+    Runs where findings are MINTED, not where they are extracted, so the chunk
+    cache keeps every finding the model returned. A finding that was cached
+    before this guard existed is still filtered, and one that a later, narrower
+    filter would keep comes back on the next compile with no re-extraction.
+    Measured before shipping: the first, broader version of these patterns
+    hit 0 of the 30,724 session-finding fields of five compiled project
+    graphs; the current patterns match a subset of what that version did.
+    """
+    kept: List[Finding] = []
+    for f in findings:
+        fields = (f.body, f.confidence_rationale, *f.revisit_signals)
+        if not any(instruction_shaped(t) for t in fields):
+            kept.append(f)
+    dropped = len(findings) - len(kept)
+    if dropped:
+        logger.warning(
+            "session %s: dropped %d finding(s) whose text is instruction-shaped "
+            "(possible prompt injection from the transcript)",
+            session_id, dropped,
+        )
+    return kept, dropped
 
 
 def _validate_finding(

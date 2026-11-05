@@ -42,6 +42,7 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("vault", "sync | sync-all | set-root | export | prune — Obsidian projection"),
         ("export", "harness | graphiti | site | okf | kuzu — artifact exports"),
         ("code", "ingest | sync — CodeGraph ⇄ project graph (hook-invoked)"),
+        ("hook", "inject — prompt-time context for Claude Code hooks (opt-in, lexical, fail-open)"),
         ("setup", "Machine-wide setup: LLM defaults + optional deps (interactive by default)"),
         ("config", "llm | deps | show | status | clip-token — LLM backend defaults + resolved view & liveness ping"),
         ("projects", "register | list | unregister | mcp-config — registry"),

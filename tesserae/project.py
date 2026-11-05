@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import re
-import secrets
 import shutil
 import sys
 import time
@@ -144,7 +143,9 @@ def _recompile_note(limit: Optional[int], corpus_size: int) -> str:
     return "re-extracting the whole corpus."
 
 
-def _publish_atomically(target: Path, content: str) -> None:
+def _publish_atomically(
+    target: Path, content: str, *, expected_sha256: Optional[str] = None
+) -> None:
     """Write ``content`` to ``target`` via a temp file no other writer can share.
 
     The graph publishes used to go through ``target.with_suffix(".tmp")``, and
@@ -162,17 +163,18 @@ def _publish_atomically(target: Path, content: str) -> None:
     which is atomic: the loser publishes a whole graph, just not the last one.
     The ``finally`` unlink matters because without it a failed write leaves the
     scratch file behind forever — a fixed name was at least reused.
+
+    The write itself is :func:`tesserae.locking.journaled_write`. With
+    ``TESSERAE_JOURNALED_WRITES=1`` (opt-in) the write is recorded in
+    ``.tesserae/journal`` and fsynced, so a writer SIGKILLed before the rename
+    leaves a record ``doctor --recover`` resolves instead of anonymous debris;
+    without it this is the plain tmp+rename it always was. ``expected_sha256``
+    passes through for read-modify-write callers that do not hold the compile
+    lock (``graph repair``).
     """
-    tmp = target.with_suffix(f".tmp.{os.getpid()}.{secrets.token_hex(4)}")
-    try:
-        tmp.write_text(content, encoding="utf-8")
-        os.replace(tmp, target)
-    finally:
-        if tmp.exists():
-            try:
-                tmp.unlink()
-            except OSError:
-                pass
+    from .locking import journaled_write
+
+    journaled_write(target, content, expected_sha256=expected_sha256)
 
 
 @dataclass(frozen=True)
@@ -4070,8 +4072,10 @@ class ProjectWiki:
         # the documented ``TESSERAE_ENABLE_LLM_PASSES`` env gate is set — in
         # which case we build the best-effort default. Otherwise they are
         # skipped entirely and the default path stays deterministic and
-        # credential-free. Either way graph.json is byte-idempotent (the
-        # content-keyed disk caches keep warm LLM reruns byte-stable).
+        # credential-free. Either way graph.json is byte-idempotent once the
+        # content-keyed disk caches are warm. The opt-in reconcile pass (4b) has
+        # a per-run call budget, so on a large graph it needs several compiles
+        # to warm and graph.json can change on each of them until it is.
         if json_client is None and _env_truthy("TESSERAE_ENABLE_LLM_PASSES"):
             try:
                 # Provider-aware (honors llm_provider=codex), same as the
@@ -4150,6 +4154,37 @@ class ProjectWiki:
             except Exception:  # pragma: no cover — defensive
                 logger.exception("phase5 contradiction resolution failed")
                 conf_map = {}
+
+        # (4b) Write-time reconciliation (R3) — OPT-IN (TESSERAE_RECONCILE_PASS)
+        # and LLM-gated like (4). INVALIDATE mints dated ``supersedes`` edges
+        # into graph.json (so step 6 below flags their targets); UPDATE proofs
+        # go to the node_memory_proof sidecar only, and only when this compile
+        # owns the default sqlite.db (an injected store keeps it untouched).
+        from .memory.reconcile import reconcile_pass_enabled
+
+        if reconcile_pass_enabled():
+            if json_client is None:
+                logger.warning(
+                    "memory.reconcile: TESSERAE_RECONCILE_PASS is set but no LLM "
+                    "passes client is available (set TESSERAE_ENABLE_LLM_PASSES); skipped"
+                )
+            else:
+                try:
+                    from .memory.reconcile import LLMReconcileClassifier, run_reconcile_pass
+                    from .retrieval.hybrid import active_embedding_backend
+                    from .retrieval.vector_cache import VectorCache
+
+                    graph, _reconcile_stats = run_reconcile_pass(
+                        graph,
+                        classifier=LLMReconcileClassifier(json_client),
+                        embedder=active_embedding_backend(),
+                        cache_dir=self.paths.root / "reconcile_cache",
+                        proof_db_path=self.paths.sqlite if store is None else None,
+                        recorded_at=reference_iso,
+                        vector_cache=VectorCache(self.paths.sqlite) if store is None else None,
+                    )
+                except Exception:
+                    logger.exception("memory.reconcile: pass failed; continuing without it")
 
 
         # (5) Recurring-insight reinforcement (KB-05): confidence -> node_memory
@@ -4330,6 +4365,14 @@ class ProjectWiki:
         self._published_node_ids = {node.id for node in graph.nodes}
 
         _publish_atomically(self.paths.graph, research_graph.to_json(indent=2) + "\n")
+        # Progressive-disclosure tiers (R7, opt-in): L0/L1 per node in a
+        # content-keyed sidecar beside graph.json, never inside it.
+        from .context_tiers import CONTEXT_TIERS_ENV, SIDECAR_NAME, render_sidecar
+
+        if _env_truthy(CONTEXT_TIERS_ENV):
+            _publish_atomically(
+                self.paths.graph.parent / SIDECAR_NAME, render_sidecar(research_graph)
+            )
         # ``code-graph.json`` follows the opt-in, and follows it in BOTH
         # directions — same shape as ``combined_graph`` below, for the same
         # reason. Writing it unconditionally left an empty artifact on every

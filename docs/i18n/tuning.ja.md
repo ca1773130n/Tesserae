@@ -276,9 +276,13 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_AGENT_DISTILL` | オフ | エージェントごとの L1 専門知識アーティファクト（`tesserae distill`） |
 | `TESSERAE_RUNBOOK_DISTILLATION` | オフ | Runbook/Gotcha 蒸留メモリノード |
 | `TESSERAE_SESSION_EVENT_PASS` | **オン** | セッショントランスクリプトからターンごとに生成する `Event` ノード。LLM を使わずバイト単位で決定的ですが、有意なターンごとに 1 ノード — 長いコーパスでは規模が大きくなります。`false`/`0`/`no`/`off` で無効化 |
+| `TESSERAE_UNTRUSTED_DOC_GUARD` | オフ | 抽出プロンプト内で文書テキストを信頼できないデータとして囲み、テキストが指示文の形をしたノードとエッジを破棄します。セッショントランスクリプトには 2 つのガードが常に適用されます。有効にするとプロンプトがキャッシュキーの一部であるため全文書を 1 回再抽出し、インジェクションを引用する文書はそのノードを失います |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | オン | セッション洞察をコードシンボルにリンク |
 | `TESSERAE_SUPERSEDE_PASS` | オン | 修正されたクレーム間の `superseded_by` エッジ |
+| `TESSERAE_RECONCILE_PASS` | オフ | 書き込み時の照合：各セッションの発見と各クレームを最も近い embedding の近傍と比べ、`ADD`、`UPDATE`、`INVALIDATE`、`NOOP` のいずれかを決める。`TESSERAE_ENABLE_LLM_PASSES` とセマンティック embedding バックエンド（`tesserae[semantic]`）が必要で、ない場合は警告を出してスキップする。`INVALIDATE` は `invalid_at` を持つ `supersedes` エッジを作成し、両方の事実にソースのタイムスタンプがある場合に限る。`UPDATE` は `node_memory_proof` サイドカーに行を追加する。`raw_source` はこれらの事実を `invalidated_facts` に、`verify_claim` は `advisory.invalidated_endpoints` に列挙し、どちらも隠さない。デフォルトでオフ：`INVALIDATE` の精度は監査されておらず、誤った判定は正しい事実を検索から隠す |
+| `TESSERAE_RECONCILE_MAX_CALLS` | 200 | `TESSERAE_RECONCILE_PASS` のコンパイルごとの分類器呼び出し回数。判定は内容でキャッシュされるため、大きなグラフは複数回のコンパイルにわたって照合され、キャッシュのウォーミングが終わるまで `graph.json` は毎回変わりうる |
 | `TESSERAE_PROMPT_SIGNATURES` | オフ | ドリフト検出のためのプロンプトシグネチャの記録 |
+| `TESSERAE_CONTEXT_TIERS` | オフ | コンパイル時に `.tesserae/context_tiers.json` を書き出します。ノードごとに、説明から抽出した L0 の 1 行（約 25 トークン）と L1 の概要（約 150 トークン）です。`tiers: true` を指定した `compile_context` がこれを読み、ファイルがなければ階層を自分で計算します。階層化したバンドルが少ないトークンで回答の正確さを保てるかは、まだ測定されていません |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | `.tesserae/compile.lock` を待つまでの秒数 |
 
 **コミュニティサマリーについて：** コンパイルパスは最も粗い粒度を積極的にカバーします；
@@ -372,6 +376,9 @@ export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face
 | `TESSERAE_NO_FEDERATION_CACHE` | オフ | フェデレーション グラフ LRU を無効化 |
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | オフ | 結合されたクロスプロジェクトグラフを出力 |
 | `TESSERAE_FLEET_PIDFILE` | — | エンジンフリート pidfile |
+| `TESSERAE_LEASE_TTL` | `120` | エンジン pidfile のリースが更新なしで有効な秒数。10 未満は 10 に引き上げます。他のホストはリースが切れていない間だけこのホストのエンジンを生きているとみなすので、ホスト間の時計のずれより十分大きくしてください |
+| `TESSERAE_LEASE_STRICT_VERSION` | オフ | `1` にすると、同じ `.tesserae` に別の Tesserae バージョンを記した生きているエンジンのリースがある間、`tesserae engine` は起動を拒否します。オフなら警告を出して起動するので、ローリングアップグレードを妨げません |
+| `TESSERAE_JOURNALED_WRITES` | オフ | `1` にすると、アトミックな公開が一時ファイルとそのディレクトリも fsync し、rename が終わるまで `.tesserae/journal` に意図の記録を残します。これで `tesserae doctor --recover` が、書き手が死んだ書き込みを完了または破棄できます。オフなら公開はアトミックな rename だけです |
 | `TESSERAE_CLIP_TOKEN` | — | Web クリッパーの共有シークレット |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | オフ | `.tesserae/schema-drift-proposals.json` の**承認済み**レコードをコンパイル時に適用（決定論的、LLM なし）。`tesserae schema-drift` で提案を記述し、承認は `ResearchNodeType` を先に編集してから `"approved": true` に設定することを意味する — 解決不可能な名前は何も再型付けしない。 |
 
@@ -390,6 +397,14 @@ export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face
 のためです: アクセス回数が何を吸収し何を降格させるかを駆動しており、アクターが
 なければ、あるノードをポーリングし続けるおしゃべりなエージェントと、それを一度
 読んだ人間とが同じ入力になってしまいます。
+
+MCP トランスポート経由では、すべてのツール応答に `est_tokens`（応答の文字数を 4 で
+割った値で、トークナイザーによる計数ではなく推定値）、`truncated`、`next_cursor` も
+含まれます。長いリストはページ単位で届きます。`next_cursor` を `page_cursor` として
+渡すと次のページが返り、ページサイズはツールの上限の範囲で `max_items` で指定します。
+読み取りとして数えるのは、そのページが実際に届けたノードだけです。監査行には、その行が
+属する応答の `est_tokens` が記録されます。プロセス内の呼び出しと CLI は以前とまったく
+同じものを返します。
 
 ---
 

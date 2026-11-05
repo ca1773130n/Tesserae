@@ -289,9 +289,13 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_AGENT_DISTILL` | off | Per-agent L1 expertise artifacts (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | off | Runbook/Gotcha distilled-memory nodes |
 | `TESSERAE_SESSION_EVENT_PASS` | **on** | 세션 트랜스크립트의 턴별 `Event` 노드. LLM을 쓰지 않고 바이트 단위로 결정적이지만, 유의미한 턴마다 노드 하나씩 — 긴 코퍼스에서는 규모가 커집니다. `false`/`0`/`no`/`off`로 비활성화 |
+| `TESSERAE_UNTRUSTED_DOC_GUARD` | off | 추출 prompt에서 문서 텍스트를 신뢰할 수 없는 데이터로 감싸고, 텍스트가 지시문 형태인 노드와 엣지를 버립니다. 세션 트랜스크립트에는 두 가드가 항상 적용됩니다. 켜면 prompt가 캐시 키에 포함되므로 모든 문서를 한 번 다시 추출하며, 인젝션을 인용하는 문서는 해당 노드를 잃습니다 |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | on | session insights를 code symbols에 link |
 | `TESSERAE_SUPERSEDE_PASS` | on | 수정된 claims 사이의 `superseded_by` edges |
+| `TESSERAE_RECONCILE_PASS` | off | 쓰기 시점 reconciliation: 각 세션 finding과 claim을 가장 가까운 embedding 이웃과 비교해 `ADD`, `UPDATE`, `INVALIDATE`, `NOOP` 중 하나를 정합니다. `TESSERAE_ENABLE_LLM_PASSES`와 시맨틱 embedding 백엔드(`tesserae[semantic]`)가 필요하며, 없으면 경고와 함께 건너뜁니다. `INVALIDATE`는 `invalid_at`을 담은 `supersedes` edge를 만들며, 두 사실 모두 소스 타임스탬프가 있을 때만 그렇게 합니다. `UPDATE`는 `node_memory_proof` 사이드카에 행을 하나 추가합니다. `raw_source`는 이런 사실을 `invalidated_facts`에, `verify_claim`은 `advisory.invalidated_endpoints`에 나열하며, 둘 다 숨기지 않습니다. 기본값 off: `INVALIDATE`의 정밀도는 감사되지 않았고, 잘못된 판정은 올바른 사실을 검색에서 숨깁니다 |
+| `TESSERAE_RECONCILE_MAX_CALLS` | 200 | `TESSERAE_RECONCILE_PASS`의 컴파일당 분류기 호출 수. 판정은 내용 기준으로 캐시되므로 큰 그래프는 여러 번의 컴파일에 걸쳐 reconcile되고, 캐시 예열이 끝날 때까지 `graph.json`은 매번 바뀔 수 있습니다 |
 | `TESSERAE_PROMPT_SIGNATURES` | off | drift detection을 위한 prompt signatures 기록 |
+| `TESSERAE_CONTEXT_TIERS` | off | 컴파일 시 `.tesserae/context_tiers.json`을 씁니다: 노드마다 설명에서 추출한 L0 한 줄(~25 토큰)과 L1 개요(~150 토큰). `tiers: true`를 준 `compile_context`가 이 파일을 읽고, 파일이 없으면 티어를 직접 계산합니다. 티어로 나눈 번들이 더 적은 토큰으로 답의 정확도를 유지하는지는 측정되지 않았습니다 |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | `.tesserae/compile.lock`을 기다릴 초 단위의 초 |
 
 **커뮤니티 요약 정보:** compile pass는 가장 coarse level을 eagerly cover합니다;
@@ -386,6 +390,9 @@ export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face
 | `TESSERAE_NO_FEDERATION_CACHE` | off | federated-graph LRU 비활성화 |
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | off | combined cross-project graph emit |
 | `TESSERAE_FLEET_PIDFILE` | — | Engine fleet pidfile |
+| `TESSERAE_LEASE_TTL` | `120` | 엔진 pidfile의 lease가 갱신 없이 유효한 시간(초). 10보다 작은 값은 10으로 올립니다. 다른 호스트는 lease가 만료되지 않은 동안에만 이 호스트의 엔진을 살아 있다고 보므로, 호스트 간 시계 차이보다 충분히 크게 두세요 |
+| `TESSERAE_LEASE_STRICT_VERSION` | off | `1`이면 같은 `.tesserae`에 다른 Tesserae 버전을 적은 살아 있는 엔진 lease가 있을 때 `tesserae engine`이 시작을 거부합니다. 꺼져 있으면 경고만 남기고 시작하므로 롤링 업그레이드를 막지 않습니다 |
+| `TESSERAE_JOURNALED_WRITES` | off | `1`이면 원자적 게시가 임시 파일과 그 디렉터리도 fsync하고, rename이 끝날 때까지 `.tesserae/journal`에 의도 기록을 남겨 `tesserae doctor --recover`가 작성자가 죽은 쓰기를 마무리하거나 버릴 수 있게 합니다. 꺼져 있으면 게시는 원자적 rename뿐입니다 |
 | `TESSERAE_CLIP_TOKEN` | — | web clipper용 shared secret |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | off | `.tesserae/schema-drift-proposals.json`의 **approved** 레코드를 컴파일 시점에 적용합니다 (결정론적, LLM 없음). `tesserae schema-drift`로 제안을 작성하며, 하나를 승인한다는 것은 먼저 `ResearchNodeType`을 편집하고 그다음 `"approved": true`로 설정하는 것을 의미합니다 — 해석할 수 없는 이름은 아무것도 다시 타이핑하지 않습니다. |
 
@@ -403,6 +410,14 @@ export TESSERAE_ST_MODEL=BAAI/bge-base-en-v1.5   # the default; any Hugging Face
 것인지*는 [사용하지 않음에 의한 망각](agent-memory.ko.md#망각--절대-삭제-아님)입니다:
 접근 횟수가 무엇이 흡수되거나 강등되는지를 결정하며, actor가 없으면 한 노드를
 계속 폴링하는 수다스러운 agent와 그것을 한 번 읽은 사람이 똑같은 입력이 됩니다.
+
+MCP 전송을 거치면 모든 도구 응답에 `est_tokens`(응답 크기를 문자 수로 재어 4로
+나눈 값이며, 토크나이저로 센 값이 아닌 추정치), `truncated`, `next_cursor`가 함께
+담깁니다. 긴 목록은 페이지 단위로 도착합니다: `next_cursor`를 `page_cursor`로
+돌려주면 다음 페이지를 받고, 페이지 크기는 도구의 상한 안에서 `max_items`로
+정합니다. 한 페이지가 실제로 전달한 노드만 읽기로 세며, 감사 행에는 그 행이 속한
+응답의 `est_tokens`가 기록됩니다. 프로세스 내부 호출과 CLI는 예전과 똑같은 것을
+반환합니다.
 
 ---
 

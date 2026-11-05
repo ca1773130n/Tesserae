@@ -275,3 +275,27 @@ def test_verify_attribution_is_an_mcp_tool_and_a_cli_verb(capsys):
                    "--answer", "It scores 88.0.", "--evidence", ATTR_EVIDENCE])
     assert rc == 2, "could-not-check is the only non-zero exit, as for verify-claim"
     assert json.loads(capsys.readouterr().out)["reason"] == "subject_name_uncheckable"
+
+
+def test_absent_evidence_is_flagged_as_cannot_prove(capsys):
+    """R6: with the source session or document absent there is nothing to check
+    against. ``figure_absent_from_evidence`` would read as a checked negative;
+    an unflagged result would let a caller gating on ``flagged`` pass a figure
+    nobody could check. Header-only evidence is the pruned-provenance case: the
+    packed block keeps its ``[Title]`` after its session is gone."""
+    import json
+
+    import tesserae.cli as cli
+
+    for empty in ("", "  \n\n ", "[Session 2026-10-01 abc]\n", "[A]\n\n[B]\n  \n"):
+        r = _attr("SystemX scores 88.0 on BenchY.", evidence=empty)
+        assert r["flagged"] is True and r["reason"] == "evidence_absent_cannot_prove", empty
+    rc = cli.main(["verify-attribution", "-s", "SystemX", "-o", "BenchY",
+                   "--answer", "SystemX scores 88.0 on BenchY.", "--evidence", ""])
+    assert rc == 2, "could not check: same exit as the *_uncheckable reasons"
+    assert json.loads(capsys.readouterr().out)["reason"] == "evidence_absent_cannot_prove"
+    # No figure still wins: there is nothing to prove in the first place.
+    assert _attr("SystemX is strong.", evidence="")["reason"] == "no_checkable_figure"
+    # A header with a body is evidence, and is checked as before.
+    r = _attr("SystemX scores 88.0 on BenchY.", evidence="[Doc]\nOther notes, no numbers.")
+    assert r["reason"] == "figure_absent_from_evidence"

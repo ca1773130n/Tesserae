@@ -98,6 +98,8 @@
 | `compile.lock` | `scratch` | 编译互斥锁。**任何**自动路径都不会删除它 —— 有记录的失败模式是 SessionEnd 编译堆积，doctor 的 `compile_lock` 检查只报告不处理也是同一个原因 |
 | `.recompile.lock.d` | `scratch` | 基于 mkdir 的钩子互斥锁；删掉一个正被持有的，会让两次重编译互相竞争 |
 | `session_chunks.lock` | `scratch` | 回填用的「被持有就跳过」flock；删掉一个正被持有的，会让两次回填写入同一天 |
+| `sessions-import.lock` | `scratch` | 所有写会话存储的导入（`sessions discover --import`、`sessions import`、`refresh` 的 `sessions-import` 步骤）共用的互斥锁；删掉一个正被持有的，会让两次导入同时扫描并改写会话存储 |
+| `journal` | `scratch` | 进行中的日志式写入的意图记录。写入者死后留下的记录指向一个完整的临时文件，`doctor --recover` 仍可将其前滚；删掉它，那个文件就只是残留垃圾。仅在 `TESSERAE_JOURNALED_WRITES=1` 时写入 |
 | `daemon*.pid` | `scratch` | 引擎 pid 文件，按主机划分，形如 `daemon.<host>.pid`。只有在确认记录的持有者**在本机**已经死亡之后，doctor 才会删除 |
 | `graph.json.bak-*` | `scratch` | Tesserae 没有任何代码路径会写出它们。它们是某次恢复作业中手工复制的副本 —— 只报告，绝不删除，因为那是人做的 |
 | `*.tmp*` | `scratch` | tmp+replace 写入留下的孤儿一半，命名为 `<target>.tmp.<pid>.<hex>`。只有在持有它的 pid 消失之后才可删除：活着的写入方正处在 rename 中途 |
@@ -120,6 +122,7 @@
 | `wiki` | `derived` | 全机范围的 serve 临时目录 —— 可以安全丢弃 |
 | `engine.pid` | `scratch` | 舰队 pid 文件；曾经有一个陈旧的文件握着一个死了六天的 pid，这正是 pidlock 选择验证而非信任的原因 |
 | `engine.pid.lock` | `scratch` | 舰队 pid 文件的互斥锁；删掉一个正被持有的，会让两个舰队同时启动 |
+| `journal` | `scratch` | 针对全机会话存储的日志式写入的意图记录，与项目表中的含义相同 |
 | `*.bak*` | `scratch` | `registry.json` 与 `config.json` 迁移前的副本。没有代码路径会写出它们，所以它们存在是因为有人想留着 |
 
 ## 查看实时的分类

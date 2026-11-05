@@ -313,9 +313,13 @@ now" is a wrong yes. `tesserae doctor` never spends a call at all.
 | `TESSERAE_AGENT_DISTILL` | off | Per-agent L1 expertise artifacts (`tesserae distill`) |
 | `TESSERAE_RUNBOOK_DISTILLATION` | off | Runbook/Gotcha distilled-memory nodes |
 | `TESSERAE_SESSION_EVENT_PASS` | **on** | Per-turn `Event` nodes from session transcripts. LLM-free and byte-deterministic, but one node per significant turn — sizeable on a long corpus. `false`/`0`/`no`/`off` disables |
+| `TESSERAE_UNTRUSTED_DOC_GUARD` | off | Fences document text as untrusted data in the extraction prompt and drops nodes and edges whose text is instruction-shaped. Session transcripts always get both guards. Turning it on re-extracts every document once, because the prompt is part of the cache key, and a document that quotes an injection loses those nodes |
 | `TESSERAE_INSIGHT_SYMBOL_LINK` | on | Links session insights to code symbols |
 | `TESSERAE_SUPERSEDE_PASS` | on | `superseded_by` edges between revised claims |
+| `TESSERAE_RECONCILE_PASS` | off | Write-time reconciliation of each session finding and claim against its nearest embedding neighbours: `ADD`, `UPDATE`, `INVALIDATE` or `NOOP`. Needs `TESSERAE_ENABLE_LLM_PASSES` and a semantic embedding backend (`tesserae[semantic]`); otherwise it is skipped with a warning. `INVALIDATE` mints a `supersedes` edge carrying `invalid_at`, and only when both facts have source timestamps; `UPDATE` adds a row to the `node_memory_proof` sidecar. `raw_source` lists such facts under `invalidated_facts` and `verify_claim` under `advisory.invalidated_endpoints`; neither withholds them. Off by default: its `INVALIDATE` precision has not been audited, and a wrong one hides a correct fact from search |
+| `TESSERAE_RECONCILE_MAX_CALLS` | 200 | Classifier calls per compile for `TESSERAE_RECONCILE_PASS`. Verdicts are cached by content, so a large graph is reconciled over several compiles and `graph.json` can change on each one until the cache is warm |
 | `TESSERAE_PROMPT_SIGNATURES` | off | Records prompt signatures for drift detection |
+| `TESSERAE_CONTEXT_TIERS` | off | Writes `.tesserae/context_tiers.json` at compile time: an L0 line (~25 tokens) and an L1 overview (~150 tokens) per node, extracted from its description. `compile_context` with `tiers: true` reads it, and computes the tiers itself when the file is absent. Whether tiered bundles keep answer accuracy at fewer tokens has not been measured |
 | `TESSERAE_COMPILE_LOCK_WAIT` | — | Seconds to wait for `.tesserae/compile.lock` before giving up |
 
 **On community summaries:** the compile pass eagerly covers the coarsest level;
@@ -413,6 +417,9 @@ which is keyed on the backend, so switching models never serves stale vectors.
 | `TESSERAE_NO_FEDERATION_CACHE` | off | Disables the federated-graph LRU |
 | `TESSERAE_INCLUDE_COMBINED_GRAPH` | off | Emits the combined cross-project graph |
 | `TESSERAE_FLEET_PIDFILE` | — | Engine fleet pidfile |
+| `TESSERAE_LEASE_TTL` | `120` | Seconds an engine pidfile's lease stays valid without a renewal; values below 10 are raised to 10. Another host reads this host's engine as alive only while the lease is unexpired, so keep it well above the clock skew between hosts |
+| `TESSERAE_LEASE_STRICT_VERSION` | off | With `1`, `tesserae engine` refuses to start while a live engine lease on the same `.tesserae` names a different Tesserae version. Off, it logs a warning and starts, so a rolling upgrade is not blocked |
+| `TESSERAE_JOURNALED_WRITES` | off | With `1`, atomic publishes also fsync the temp file and its directory, and keep an intent record in `.tesserae/journal` until the rename lands, so `tesserae doctor --recover` can finish or discard a write whose writer died. Off, a publish is the atomic rename alone |
 | `TESSERAE_CLIP_TOKEN` | — | Shared secret for the web clipper |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | off | Applies the **approved** records in `.tesserae/schema-drift-proposals.json` at compile time (deterministic, no LLM). Write proposals with `tesserae schema-drift`; approving one means editing `ResearchNodeType` first, then setting `"approved": true` — an unresolvable name retypes nothing. |
 
@@ -430,6 +437,14 @@ already recorded, and it takes effect without restarting the server. What the
 audit is *for* is [forgetting by disuse](agent-memory.md#forgetting--never-deletion):
 access counts drive what gets absorbed or demoted, and without an actor one
 chatty agent polling a node and a human reading it once are the same input.
+
+Over the MCP transport every tool response also carries `est_tokens` (its size
+in characters divided by 4, an estimate rather than a tokenizer count),
+`truncated` and `next_cursor`. A long list arrives in pages: pass `next_cursor`
+back as `page_cursor` for the next one, and set the page size with `max_items`,
+up to the tool's cap. Only the nodes a page delivers count as reads, and an
+audit row records the `est_tokens` of the response it belongs to. In-process
+calls and the CLI return exactly what they did before.
 
 ---
 
