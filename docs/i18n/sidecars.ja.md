@@ -123,6 +123,7 @@
 | `config.json` | `accumulated` | マシン全体の LLM 設定。ユーザー入力です |
 | `host_id` | `accumulated` | このマシンの識別子。作り直すと、共有ストレージ上のホスト単位の pid ファイルとセッション記録がすべて他所のものに見えます |
 | `harness_sessions` | `accumulated` | マシン全体のセッション取り込み状態 |
+| `evals` | `accumulated` | ライフサイクル評価の結果ファイル。再実行には LLM 呼び出しがかかり、同じ結果は再現されません |
 | `llm_cache` | `cache` | キャッシュされた LLM 応答。作り直すとモデルを呼び、同じものは再現されません |
 | `federation` | `cache` | プロジェクト横断のリンクとベクトルのキャッシュ — 消して安全です |
 | `wiki` | `derived` | マシンスコープの serve 用スクラッチ — 消して安全です |

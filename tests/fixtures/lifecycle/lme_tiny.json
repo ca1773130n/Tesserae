@@ -1,0 +1,82 @@
+[
+ {
+  "question_id": "ku1",
+  "question_type": "knowledge-update",
+  "question": "Where do I live now?",
+  "answer": "Porto",
+  "question_date": "2023/06/01 (Thu) 09:00",
+  "haystack_dates": [
+   "2023/05/20 (Sat) 10:00",
+   "2023/05/01 (Mon) 10:00"
+  ],
+  "haystack_session_ids": [
+   "b",
+   "a"
+  ],
+  "haystack_sessions": [
+   [
+    {
+     "role": "user",
+     "content": "I just moved to Porto!",
+     "has_answer": true
+    },
+    {
+     "role": "assistant",
+     "content": "Exciting!",
+     "has_answer": false
+    }
+   ],
+   [
+    {
+     "role": "user",
+     "content": "I live in Lisbon.",
+     "has_answer": false
+    },
+    {
+     "role": "assistant",
+     "content": "Lovely city.",
+     "has_answer": false
+    }
+   ]
+  ],
+  "answer_session_ids": [
+   "b"
+  ]
+ },
+ {
+  "question_id": "ss1_abs",
+  "question_type": "single-session-user",
+  "question": "What is my dog's name?",
+  "answer": "You never mentioned a dog.",
+  "question_date": "2023/06/01 (Thu) 09:00",
+  "haystack_dates": [
+   "2023/05/01 (Mon) 10:00"
+  ],
+  "haystack_session_ids": [
+   "c"
+  ],
+  "haystack_sessions": [
+   [
+    {
+     "role": "user",
+     "content": "I have a cat called Mia.",
+     "has_answer": false
+    }
+   ]
+  ],
+  "answer_session_ids": [
+   "c"
+  ]
+ },
+ {
+  "question_id": "tr1",
+  "question_type": "temporal-reasoning",
+  "question": "unused",
+  "answer": "x",
+  "question_date": "2023/06/01 (Thu) 09:00",
+  "haystack_dates": [],
+  "haystack_session_ids": [],
+  "haystack_sessions": [],
+  "answer_session_ids": []
+ }
+]

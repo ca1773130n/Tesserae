@@ -333,6 +333,9 @@ SIDECARS: Tuple[Sidecar, ...] = (
             "why pidlock validates rather than trusts", SCOPE_USER),
     Sidecar("engine.pid.lock", "tesserae.engine.pidlock", KIND_SCRATCH, False,
             "fleet pidfile mutex; removing a held one lets two fleets start", SCOPE_USER),
+    Sidecar("evals", "tesserae.eval_results", KIND_ACCUMULATED, False,
+            "lifecycle eval result files; a rerun costs LLM calls and does "
+            "not reproduce them", SCOPE_USER),
     Sidecar("federation", "tesserae.federation", KIND_CACHE, True,
             "cross-project link and vector caches", SCOPE_USER),
     Sidecar("harness_sessions", "tesserae.harness_sessions", KIND_ACCUMULATED, False,

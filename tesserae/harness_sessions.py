@@ -758,6 +758,12 @@ _TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
     "You decide whether one research-session finding obsoletes another",
     "You arbitrate a contradiction between two research performance claims",
     "You split a single retrieval question into a short list",
+    # evals/lifecycle (R1) judge and reader prompts. Not in the package, so the
+    # AST scan in test_harness_self_capture cannot see them;
+    # tests/test_lifecycle_eval.py asserts each one is covered here instead.
+    "You grade a memory extractor against gold memory points",
+    "You answer a question from a user's stored memories",
+    "You grade an answer against the LongMemEval rubric",
     # agent_distill (per-agent L1 distillation, §5.3) map/reduce/fold prompts:
     "You distill a cluster of related agent-session findings",
     "You merge partial distilled notes over ONE cluster",
