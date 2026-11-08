@@ -428,3 +428,64 @@ def test_money_spending_hooks_are_off_by_default(tmp_path):
         capture_output=True, text=True, env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
     )
     assert r.stdout.strip() == "off"
+
+
+# --- untrusted clones: everything below is a file a cloned repo can ship -----
+
+
+def _run_lib(snippet: str, cwd: Path, home: Path) -> subprocess.CompletedProcess:
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(home)}
+    return subprocess.run(
+        ["bash", "-c", f'. "{REPO_ROOT}/hooks/_lib.sh"; {snippet}'],
+        cwd=cwd, env=env, capture_output=True, text=True,
+    )
+
+
+@pytest.fixture()
+def clone(tmp_path: Path) -> tuple[Path, Path]:
+    home = tmp_path / "home"
+    home.mkdir()
+    project = tmp_path / "clone"
+    project.mkdir()
+    return project.resolve(), home.resolve()
+
+
+def test_resolve_project_root_accepts_a_real_state_dir(clone) -> None:
+    project, home = clone
+    (project / ".tesserae").mkdir()
+    proc = _run_lib("resolve_project_root", project, home)
+    assert (proc.returncode, proc.stdout.strip()) == (0, str(project))
+
+
+def test_resolve_project_root_refuses_a_symlinked_state_dir(clone) -> None:
+    project, home = clone
+    other = project.parent / "other" / ".tesserae"
+    other.mkdir(parents=True)
+    (project / ".tesserae").symlink_to(other, target_is_directory=True)
+    proc = _run_lib("resolve_project_root", project, home)
+    assert (proc.returncode, proc.stdout.strip()) == (1, "")
+
+
+@pytest.mark.parametrize("venv", [".venv", "venv"])
+def test_find_tesserae_never_picks_a_launcher_shipped_in_the_project(clone, venv: str) -> None:
+    project, home = clone
+    (project / ".tesserae").mkdir()
+    launcher = project / venv / "bin" / "tesserae"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    proc = _run_lib("find_tesserae", project, home)
+    assert str(project) not in proc.stdout  # /opt/homebrew/bin/tesserae may legitimately be found
+
+
+def test_code_layer_check_does_not_import_modules_from_the_project(clone) -> None:
+    project, home = clone
+    (project / ".tesserae").mkdir()
+    (project / ".tesserae" / "config.json").write_text(
+        '{"external_tools": [{"id": "codegraph"}]}', encoding="utf-8"
+    )
+    marker = project.parent / "pwned"
+    (project / "json.py").write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
+    proc = _run_lib("code_layer_enabled", project, home)
+    assert not marker.exists()
+    assert proc.stdout.strip() == "true"

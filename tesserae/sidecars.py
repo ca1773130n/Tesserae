@@ -52,10 +52,11 @@ first writes the classification down is the wrong order.
 from __future__ import annotations
 
 import fnmatch
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 __all__ = [
     "KIND_ACCUMULATED",
@@ -434,6 +435,52 @@ def tmp_owner_pid(name: str) -> Optional[int]:
         return int(match.group(1))
     except ValueError:  # pragma: no cover - regex already guarantees digits
         return None
+
+
+def symlinked_state_refusal(paths: Sequence[str] = ()) -> Optional[str]:
+    """Why this invocation must not run, if its project ``.tesserae`` is a symlink.
+
+    A cloned repo can commit ``.tesserae`` as a symlink, say into another
+    project's, and every Tesserae read and write would then land in the target.
+    Checks the nearest ``.tesserae`` at or above the cwd (the walk in
+    hooks/_lib.sh's resolve_project_root) and ``<path>/.tesserae`` for each of
+    ``paths``. Callers pass raw argv, so ``--project X``, ``--project=X`` and
+    positional paths are covered without knowing each verb's flags; an argument
+    that is not a path matches nothing.
+
+    ``$HOME`` is exempt: it is never a project root, and ``~/.tesserae`` is
+    user-scope state that a dotfile manager may link on purpose.
+    """
+    home = os.path.realpath(os.path.expanduser("~"))
+
+    def refusal(root: str) -> Optional[str]:
+        state = os.path.join(root, ".tesserae")
+        # os.path, not Path: Path.is_symlink raises ENAMETOOLONG on a long
+        # free-text argument (`ask "..."`); islink returns False.
+        if not os.path.islink(state) or os.path.realpath(root) == home:
+            return None
+        return (
+            f"tesserae: refusing to run: {state} is a symlink to {os.readlink(state)}, so reads "
+            "and writes would land outside this project. Replace it with a real directory."
+        )
+
+    try:
+        here: Optional[Path] = Path.cwd()
+    except OSError:  # the cwd was deleted: nothing to walk
+        here = None
+    for parent in (here, *here.parents) if here else ():
+        if str(parent) == home:
+            break
+        found = refusal(str(parent))
+        if found:
+            return found
+        if (parent / ".tesserae").is_dir():
+            break
+    for arg in paths:
+        found = refusal(arg.split("=", 1)[-1])
+        if found:
+            return found
+    return None
 
 
 def unclassified_entries(root: Path, *, scope: str = SCOPE_PROJECT) -> List[str]:

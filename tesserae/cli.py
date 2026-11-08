@@ -3122,6 +3122,12 @@ def main(argv: List[str] | None = None) -> int:
             except SystemExit:
                 pass
             return 2
+    from .sidecars import symlinked_state_refusal
+
+    refusal = symlinked_state_refusal(argv[1:])
+    if refusal:
+        print(refusal, file=sys.stderr)
+        return 2
     try:
         return _dispatch_command(argv[0], argv[1:])
     except NotImplementedError:

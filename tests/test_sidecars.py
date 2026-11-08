@@ -20,6 +20,7 @@ import pytest
 from tesserae import doctor
 from tesserae.project import ProjectPaths, ProjectWiki
 from tesserae.sidecars import (
+    symlinked_state_refusal,
     KIND_ACCUMULATED,
     KIND_CACHE,
     KIND_DERIVED,
@@ -377,3 +378,91 @@ def test_doctor_is_ok_on_a_clean_workspace(tmp_path: Path) -> None:
     finding = doctor._detect_sidecars(_ctx(tmp_path))
     assert finding.severity == doctor.OK
     assert finding.fixable is False
+
+
+# --- a cloned repo can commit .tesserae as a symlink -------------------------
+
+
+@pytest.fixture()
+def linked_project(tmp_path: Path, monkeypatch) -> Path:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    target = tmp_path / "other" / ".tesserae"
+    target.mkdir(parents=True)
+    project = tmp_path / "clone"
+    project.mkdir()
+    (project / ".tesserae").symlink_to(target, target_is_directory=True)
+    return project
+
+
+def test_refuses_when_standing_in_or_below_a_linked_project(linked_project: Path, monkeypatch) -> None:
+    monkeypatch.chdir(linked_project)
+    assert ".tesserae" in symlinked_state_refusal([])
+    (linked_project / "sub").mkdir()
+    monkeypatch.chdir(linked_project / "sub")
+    assert ".tesserae" in symlinked_state_refusal([])
+
+
+@pytest.mark.parametrize("form", ["--project {}", "--project={}", "{}"])
+def test_refuses_a_linked_project_named_in_argv(linked_project: Path, tmp_path: Path, monkeypatch, form: str) -> None:
+    monkeypatch.chdir(tmp_path / "home")
+    argv = form.format(linked_project).split()
+    assert symlinked_state_refusal(argv) is not None
+
+
+def test_a_real_state_dir_passes_and_ends_the_walk(tmp_path: Path, linked_project: Path, monkeypatch) -> None:
+    inner = linked_project / "nested"
+    (inner / ".tesserae").mkdir(parents=True)
+    monkeypatch.chdir(inner)  # the nearest .tesserae is real; the linked one above it is not in use
+    assert symlinked_state_refusal([]) is None
+
+
+def test_home_may_link_its_user_scope_state(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    (home / "work").mkdir(parents=True)
+    target = tmp_path / "dotfiles" / ".tesserae"
+    target.mkdir(parents=True)
+    (home / ".tesserae").symlink_to(target, target_is_directory=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(home / "work")
+    assert symlinked_state_refusal([]) is None
+    assert symlinked_state_refusal(["--project", str(home)]) is None
+
+
+def test_free_text_arguments_are_not_paths(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    assert symlinked_state_refusal(["ask", "why " * 200]) is None
+
+
+def test_cli_refuses_before_any_verb_runs(linked_project: Path, tmp_path: Path, monkeypatch, capsys) -> None:
+    from tesserae import cli
+
+    monkeypatch.chdir(linked_project)
+    assert cli.main(["status"]) == 2
+    assert "symlink" in capsys.readouterr().err
+    assert list((tmp_path / "other" / ".tesserae").iterdir()) == []
+
+
+def test_cli_version_and_help_still_work_there(linked_project: Path, monkeypatch) -> None:
+    from tesserae import cli
+
+    monkeypatch.chdir(linked_project)
+    assert cli.main(["--version"]) == 0
+
+
+def test_mcp_server_refuses_to_start_there(linked_project: Path, monkeypatch, capsys) -> None:
+    from tesserae import mcp_server
+
+    monkeypatch.chdir(linked_project)
+    assert mcp_server.main([]) == 2
+    assert "symlink" in capsys.readouterr().err
+
+
+def test_mcp_never_registers_or_roots_a_linked_project(linked_project: Path, tmp_path: Path) -> None:
+    from tesserae import mcp_server
+
+    (tmp_path / "other" / ".tesserae" / "graph.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="symlink"):
+        mcp_server._discover_graph_and_root(linked_project)
+    assert mcp_server._project_root_for_graph_path(linked_project / ".tesserae" / "graph.json") is None
