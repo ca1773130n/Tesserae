@@ -10,18 +10,17 @@
 # find_tesserae — locate the CLI binary. Probes PATH first, then the
 # common pipx/pip --user locations. Echoes the absolute path on
 # success; non-empty exit code on miss.
+#
+# Never probes inside the project: a cloned repo can commit
+# .venv/bin/tesserae, and these hooks would run it on session start. A
+# tesserae installed only in a project venv needs that venv on PATH.
 # --------------------------------------------------------------------
 find_tesserae() {
   if command -v tesserae >/dev/null 2>&1; then
     command -v tesserae
     return 0
   fi
-  local project_root
-  project_root=$(resolve_project_root 2>/dev/null || echo "$PWD")
-  # Probe project-local venvs first, then user-wide locations.
   for candidate in \
-    "${project_root}/.venv/bin/tesserae" \
-    "${project_root}/venv/bin/tesserae" \
     "$HOME/.local/bin/tesserae" \
     "$HOME/Library/Python/3.13/bin/tesserae" \
     "$HOME/Library/Python/3.12/bin/tesserae" \
@@ -56,10 +55,14 @@ resolve_project_root() {
   #      project. Callers then tested -d "$root/.tesserae" and, for a cwd under
   #      $HOME, that test passed. Returning empty with rc=1 makes callers no-op
   #      instead of guessing.
+  #
+  # A symlinked .tesserae is refused too: a cloned repo can commit one, and
+  # every read and write would land in its target, such as another project's
+  # knowledge base. tesserae.sidecars.symlinked_state_refusal is the CLI's half.
   local candidate="$PWD"
   while [[ "$candidate" != "/" && -n "$candidate" ]]; do
     if [[ -d "${candidate}/.tesserae" ]]; then
-      [[ "$candidate" == "$HOME" ]] && { echo ""; return 1; }
+      [[ "$candidate" == "$HOME" || -L "${candidate}/.tesserae" ]] && { echo ""; return 1; }
       echo "$candidate"
       return 0
     fi
@@ -67,7 +70,7 @@ resolve_project_root() {
   done
   local git_root
   if git_root=$(git rev-parse --show-toplevel 2>/dev/null) && [[ -d "${git_root}/.tesserae" ]]; then
-    [[ "$git_root" == "$HOME" ]] && { echo ""; return 1; }
+    [[ "$git_root" == "$HOME" || -L "${git_root}/.tesserae" ]] && { echo ""; return 1; }
     echo "$git_root"
     return 0
   fi
@@ -122,7 +125,9 @@ code_layer_enabled() {
     echo "false"
     return 0
   fi
-  python3 - "$cfg" 2>/dev/null <<'PY' || echo "false"
+  # -I: without it `python3 -` puts the cwd first on sys.path, so a json.py
+  # committed to the project would run on every session start.
+  python3 -I - "$cfg" 2>/dev/null <<'PY' || echo "false"
 import json, sys
 try:
     cfg = json.load(open(sys.argv[1], encoding="utf-8"))

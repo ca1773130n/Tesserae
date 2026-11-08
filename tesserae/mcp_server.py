@@ -897,6 +897,8 @@ def _project_root_for_graph_path(graph_path: str | Path) -> Optional[Path]:
     Recognizes the canonical layout ``<root>/.tesserae/graph.json``. Returns
     ``None`` for ad-hoc paths so filesystem-backed tools fall back gracefully.
     """
+    if Path(graph_path).parent.name == ".tesserae" and Path(graph_path).parent.is_symlink():
+        return None  # resolving would make the link's target the project root
     p = Path(graph_path).resolve() if Path(graph_path).exists() else Path(graph_path)
     if p.parent.name == ".tesserae":
         return p.parent.parent
@@ -956,6 +958,8 @@ def _discover_graph_and_root(path: Path) -> tuple[Path, Path]:
             return p / "graph.json", p.parent
         nested = p / ".tesserae" / "graph.json"
         if nested.is_file():
+            if (p / ".tesserae").is_symlink():
+                raise ValueError(f"{p / '.tesserae'} is a symlink; refusing to use it as a project")
             return nested, p
         raise ValueError(f"No .tesserae/graph.json found at {p}")
     raise ValueError(f"Path does not exist: {p}")
@@ -6723,6 +6727,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+
+    from .sidecars import symlinked_state_refusal
+
+    refusal = symlinked_state_refusal(sys.argv[1:] if argv is None else argv)
+    if refusal:
+        print(refusal, file=sys.stderr)
+        return 2
 
     # Resolve auth token → user_id at startup so a bad token fails fast.
     owner_user_id: Optional[str] = None
