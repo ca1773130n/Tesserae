@@ -304,6 +304,8 @@ tesserae test --provider codex   # try a backend before committing to it
 | `TESSERAE_EMBEDDING_PREFER` | auto | 稠密通道编码器：`model2vec`（随包附带，静态，无需 torch）、`st`（经过训练的 sentence-transformers 模型）、`openai`、`gemini`、`hash`。未设置时按顺序选用第一个已安装的 |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | `st` 加载的 sentence-transformers 模型；任意 Hugging Face 名称 |
 | `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | `gemini` 调用的模型。需要 `GEMINI_API_KEY`（或 `GOOGLE_API_KEY`）；托管服务，按调用计费，因此 `auto` 从不选用 |
+| `TESSERAE_GEMINI_API_KEY` | — | `gemini` 的密钥，先于 `GEMINI_API_KEY` 和 `GOOGLE_API_KEY` 读取。用于同时运行生成式工具的主机，这些工具会自行读取两个通用名称 |
+| `TESSERAE_GEMINI_DIM` | — (3072) | `gemini` 请求的输出维度，例如 `768`；截断后的向量做 L2 归一化 |
 
 ### `TESSERAE_VERIFY_BAND`
 

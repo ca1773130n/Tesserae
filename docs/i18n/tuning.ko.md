@@ -322,6 +322,8 @@ cross-project navigate하는 project는 eager pass를 원합니다.
 | `TESSERAE_EMBEDDING_PREFER` | auto | 밀집 레인 인코더: `model2vec`(기본 탑재, 정적, torch 불필요), `st`(학습된 sentence-transformers 모델), `openai`, `gemini`, `hash`. 설정하지 않으면 설치된 것 중 첫 번째를 고른다 |
 | `TESSERAE_ST_MODEL` | `BAAI/bge-base-en-v1.5` | `st`가 로드하는 sentence-transformers 모델; Hugging Face 이름 아무거나 |
 | `TESSERAE_GEMINI_MODEL` | `gemini-embedding-2` | `gemini`가 호출하는 모델. `GEMINI_API_KEY`(또는 `GOOGLE_API_KEY`)가 필요하다. 호스팅되고 호출마다 과금되므로 `auto`는 절대 고르지 않는다 |
+| `TESSERAE_GEMINI_API_KEY` | — | `gemini`의 키. `GEMINI_API_KEY`와 `GOOGLE_API_KEY`보다 먼저 읽는다. 생성형 도구도 함께 도는 호스트에서 쓴다. 그런 도구는 두 일반 이름을 스스로 읽는다 |
+| `TESSERAE_GEMINI_DIM` | — (3072) | `gemini`가 요청하는 출력 차원. 예: `768`. 잘린 벡터는 L2 정규화한다 |
 
 ### `TESSERAE_VERIFY_BAND`
 
